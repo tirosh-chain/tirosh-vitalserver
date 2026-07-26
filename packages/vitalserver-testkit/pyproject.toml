@@ -1,13 +1,14 @@
 [project]
 name = "tirosh-vitalserver-testkit"
 version = "0.1.1"
-description = "Validation and transfer helpers for productionizing VitalServer."
-requires-python = ">=3.14"
+description = "Dev-only smoke/load tooling for VitalServer validation."
+requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1",
   "pydantic>=2.12,<3",
   "python-socketio[client]>=4.6,<5",
   "tirosh-vitalserver-core",
+  "tirosh-vitalserver-vitalfile",
   "uvicorn>=0.32,<1",
   "vitaldb>=1.7,<2",
 ]

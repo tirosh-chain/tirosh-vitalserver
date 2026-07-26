@@ -8,32 +8,40 @@ import XCTest
 
 final class RuntimeGuestShutdownCompositionTests: XCTestCase {
     func testShutdownCompositionExecutesShutdownPlanThroughBootstrapEffects() throws {
-        let fileStore = RuntimeFileStoreSpy()
         let guestRunDirectory = URL(fileURLWithPath: "/product/guest/run")
-        let gateway = RuntimeGuestShutdownGatewaySpy(results: [
-            .missing,
-            .loaded(result(status: .running, requestId: "request-1", message: "stopping")),
-            .loaded(result(
-                status: .ready,
-                requestId: "request-1",
-                message: "poweroff requested",
-                shutdownPhase: .poweroffRequested
-            )),
-        ])
+        var operationReads = [
+            updateShutdownOperation(state: .completed, shutdownPhase: "poweroff-ready"),
+        ]
         var events: [String] = []
         var statuses: [(RuntimeStatusLevel, RuntimeOperation, String)] = []
         var logs: [String] = []
         let composition = RuntimeGuestShutdownComposition(
             context: RuntimeGuestShutdownCompositionContext(guestRunDirectory: guestRunDirectory),
             operations: RuntimeGuestShutdownCompositionOperations(
-                fileStore: fileStore,
-                guestGateway: gateway,
                 requireCapability: { events.append("capability") },
+                prepareUpdateShutdown: { requestID, version in
+                    events.append("prepare:\(requestID):\(version)")
+                    return updateShutdownOperation(state: .running)
+                },
+                loadOperation: { operationID in
+                    events.append("load-operation:\(operationID)")
+                    return operationReads.removeFirst()
+                },
+                requestGuestPoweroff: {
+                    events.append("poweroff")
+                    return RuntimeGuestControlServiceOperation(
+                        operationId: "guest-poweroff-1",
+                        service: "guest-poweroff",
+                        command: .requestGuestPoweroff,
+                        state: .completed,
+                        createdAt: "2026-07-01T00:00:00+00:00",
+                        updatedAt: "2026-07-01T00:00:01+00:00"
+                    )
+                },
                 writeStatus: { level, operation, message in
                     statuses.append((level, operation, message))
                 },
                 requestID: { "request-1" },
-                timestamp: { "2026-05-22T00:00:00Z" },
                 sleep: { events.append("sleep") },
                 log: { logs.append($0) }
             )
@@ -41,23 +49,18 @@ final class RuntimeGuestShutdownCompositionTests: XCTestCase {
 
         try composition.prepareForUpdate(manifest: manifest())
 
-        XCTAssertTrue(fileStore.directories.contains(guestRunDirectory))
-        XCTAssertEqual(gateway.events, [
-            "remove-result",
-            "write-request:request-1:2026-05-22T00:00:00Z:1.2.3",
-            "load-result",
-            "load-result",
-            "load-result",
-        ])
         XCTAssertTrue(events.contains("capability"))
-        XCTAssertEqual(events.filter { $0 == "sleep" }.count, 2)
+        XCTAssertTrue(events.contains("prepare:request-1:1.2.3"))
+        XCTAssertTrue(events.contains("poweroff"))
+        XCTAssertEqual(events.filter { $0 == "sleep" }.count, 1)
         XCTAssertTrue(statuses.contains {
             $0.0 == .updating &&
                 $0.1 == .applyBundle &&
-                $0.2 == "waiting for guest update shutdown worker"
+                $0.2 == "guest update shutdown operation running"
         })
         XCTAssertTrue(logs.contains("guest update shutdown requested version=1.2.3"))
-        XCTAssertTrue(logs.contains("guest update shutdown result ready message=poweroff requested"))
+        XCTAssertTrue(logs.contains("guest update shutdown operation completed operationId=update-shutdown-1"))
+        XCTAssertTrue(logs.contains("guest poweroff requested operationId=guest-poweroff-1"))
         XCTAssertTrue(logs.contains("guest update shutdown ready version=1.2.3"))
     }
 
@@ -75,60 +78,25 @@ final class RuntimeGuestShutdownCompositionTests: XCTestCase {
         )
     }
 
-    private func result(
-        status: GuestShutdownStatus,
-        requestId: String,
-        message: String,
-        shutdownPhase: GuestShutdownPhase? = nil
-    ) -> GuestUpdateShutdownResultDocument {
-        GuestUpdateShutdownResultDocument(
-            schemaVersion: 1,
-            requestId: requestId,
-            operation: .prepareUpdateShutdown,
-            status: status,
-            shutdownPhase: shutdownPhase,
-            message: message,
-            updatedAt: "2026-05-22T00:00:00Z"
-        )
-    }
 }
 
-private final class RuntimeGuestShutdownGatewaySpy: RuntimeGuestGateway {
-    var events: [String] = []
-    var results: [RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>]
-
-    init(results: [RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>]) {
-        self.results = results
-    }
-
-    func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
-        .missing
-    }
-
-    func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> {
-        .missing
-    }
-
-    func removeUpdateActivationResult() throws {}
-    func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
-    func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
-
-    func removeUpdateShutdownResult() throws {
-        events.append("remove-result")
-    }
-
-    func clearUpdateShutdownPreparation() throws {}
-
-    func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {
-        events.append("write-request:\(request.id):\(request.requestedAt):\(request.version)")
-    }
-
-    func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> {
-        events.append("load-result")
-        return results.isEmpty ? .missing : results.removeFirst()
-    }
-
-    func removeDatastoreRepairResult() throws {}
-    func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
-    func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
+private func updateShutdownOperation(
+    state: RuntimeGuestControlOperationState,
+    shutdownPhase: String? = nil
+) -> RuntimeGuestControlServiceOperation {
+    RuntimeGuestControlServiceOperation(
+        operationId: "update-shutdown-1",
+        service: "update-shutdown",
+        command: .updateShutdown,
+        state: state,
+        createdAt: "2026-07-01T00:00:00+00:00",
+        updatedAt: "2026-07-01T00:00:01+00:00",
+        result: shutdownPhase.map {
+            RuntimeGuestControlOperationResult(
+                shutdownPhase: $0,
+                redisBackupPath: "/mnt/tirosh/backups/redis/update.tar.gz",
+                postgresBackupPath: "/mnt/tirosh/backups/postgres/update.tar.gz"
+            )
+        }
+    )
 }

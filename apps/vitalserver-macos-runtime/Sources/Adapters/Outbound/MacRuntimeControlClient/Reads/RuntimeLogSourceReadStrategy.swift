@@ -14,20 +14,21 @@ struct RuntimeLogFileSource {
 
 struct RuntimeLogSourceReadStrategyCatalog {
     func strategy(for sourceID: RuntimeLogSource) -> RuntimeLogSourceReadStrategy {
+        let installed = InstalledRuntimePaths.defaultInstalled
         switch sourceID {
         case .helperMessage:
             return .direct(RuntimeLogFileSource(
-                path: RuntimeControlClientConstants.Paths.helperMessageLogFile,
+                path: installed.managerHelperMessageLog.path,
                 sourcePath: nil
             ))
         case .command:
             return .direct(RuntimeLogFileSource(
-                path: RuntimeControlClientConstants.Paths.commandLogFile,
+                path: installed.managerCommandLog.path,
                 sourcePath: nil
             ))
         case .install:
             return .refreshThenRead(RuntimeLogFileSource(
-                path: RuntimeControlClientConstants.Paths.installLog,
+                path: installed.installLog.path,
                 sourcePath: nil
             ))
         case .launcher:
@@ -67,6 +68,7 @@ struct RuntimeLogSourceReadStrategyCatalog {
     }
 
     private func sourcePath(for contract: RuntimeLogCollectionFileContract) -> String {
+        let installed = InstalledRuntimePaths.defaultInstalled
         switch contract.sourceID {
         case .launcherLog,
              .launchdOutputLog,
@@ -79,33 +81,34 @@ struct RuntimeLogSourceReadStrategyCatalog {
              .sleepPreventionErrorLog,
              .watchdogOutputLog,
              .watchdogErrorLog:
-            return (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString)
+            return (installed.logsDirectory.path as NSString)
                 .appendingPathComponent(contract.sourceFileName)
         case .bootstrapLog:
-            return RuntimeControlClientConstants.Paths.bootstrapLogSource
+            return installed.bootstrapLog.path
         case .containerLog:
-            return RuntimeControlClientConstants.Paths.containerLogSource
+            return installed.containerLogs.path
         case .updateActivationLog:
-            return RuntimeControlClientConstants.Paths.updateActivationLogSource
+            return installed.updateActivationLog.path
         case .updateShutdownLog:
-            return RuntimeControlClientConstants.Paths.updateShutdownLogSource
+            return installed.updateShutdownLog.path
         case .datastoreRepairLog:
-            return RuntimeControlClientConstants.Paths.datastoreRepairLogSource
+            return installed.datastoreRepairLog.path
         case .redisBackupLog:
-            return RuntimeControlClientConstants.Paths.redisBackupLogSource
+            return installed.redisBackupLog.path
         case .commandLog:
-            return RuntimeControlClientConstants.Paths.commandLogFile
+            return installed.managerCommandLog.path
         }
     }
 
     private func destinationRootPath(for scope: RuntimeLogCollectionDestinationScope) -> String {
+        let installed = InstalledRuntimePaths.defaultInstalled
         switch scope {
         case .runtimeLogs:
-            return RuntimeControlClientConstants.Paths.runtimeLogs
+            return installed.centralRuntimeLogsDirectory.path
         case .guestLogs:
-            return RuntimeControlClientConstants.Paths.guestLogs
+            return installed.centralGuestLogsDirectory.path
         case .productLogs:
-            return RuntimeControlClientConstants.Paths.productLogs
+            return installed.productLogsDirectory.path
         }
     }
 

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "v1",
+  "id": "external-upstream-primary",
+  "resourceRevision": 1,
+  "spec": {
+    "provider": {
+      "kind": "external-vitalserver",
+      "id": "hospital-vitalserver",
+      "capabilityRevision": 3
+    },
+    "endpointReference": {
+      "resourceType": "upstream-endpoint",
+      "resourceId": "hospital-vitalserver-endpoint"
+    }
+  },
+  "status": {
+    "state": "available",
+    "connection": {
+      "state": "reachable",
+      "observedAt": "2026-07-17T00:00:00Z"
+    },
+    "observedAt": "2026-07-17T00:00:00Z"
+  },
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:00:00Z"
+}

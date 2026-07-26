@@ -5,10 +5,13 @@ import {
   useDeleteUpdateBackup,
   useHostBackups,
   useRuntimeDataBackups,
-  useRuntimeCapabilities,
+  useControlCapabilities,
   useUninstallRuntime
 } from "@/console/hooks";
-import type { RuntimeBackup } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import type {
+  PlatformWorkflowOperation,
+  RuntimeBackup
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CommandResult } from "@/components/CommandResult";
@@ -17,9 +20,15 @@ import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";
 
 export function DangerZonePage() {
-  const capabilities = useRuntimeCapabilities();
-  const hostBackups = useHostBackups();
-  const runtimeDataBackups = useRuntimeDataBackups();
+  const capabilities = useControlCapabilities();
+  const canManageBackups = capabilities.data?.canRollback === true;
+  const unavailableBackupMessage = capabilities.isPending
+    ? "Loading backup capability..."
+    : capabilities.isError
+      ? "Backup capability could not be read."
+      : "Backup and rollback operations are not supported by this Runtime Control API.";
+  const hostBackups = useHostBackups(canManageBackups);
+  const runtimeDataBackups = useRuntimeDataBackups(canManageBackups);
   const deleteUpdateBackup = useDeleteUpdateBackup();
   const deleteRuntimeDataBackup = useDeleteRuntimeDataBackup();
   const uninstallRuntime = useUninstallRuntime();
@@ -33,12 +42,10 @@ export function DangerZonePage() {
   const latestCommand = useMemo(
     () =>
       deleteUpdateBackup.data ??
-      deleteRuntimeDataBackup.data ??
-      uninstallRuntime.data,
+      deleteRuntimeDataBackup.data,
     [
       deleteRuntimeDataBackup.data,
-      deleteUpdateBackup.data,
-      uninstallRuntime.data
+      deleteUpdateBackup.data
     ]
   );
   const latestError =
@@ -50,22 +57,36 @@ export function DangerZonePage() {
     cleanUninstallConfirmation.trim() === "CLEAN UNINSTALL";
   const canUninstallRuntime =
     capabilities.data?.canUninstallRuntime === true;
-  const canRollback = capabilities.data?.canRollback === true;
-  const canControlServices =
-    capabilities.data?.canControlRuntimeServices === true;
+  const canRollback = canManageBackups;
 
   return (
     <div className="page-stack">
+      {capabilities.isError ? (
+        <ErrorState
+          title="Failed to read backup capability"
+          error={capabilities.error}
+        />
+      ) : null}
+      {!capabilities.isPending && !capabilities.isError && !canManageBackups ? (
+        <p className="muted">
+          Backup and rollback operations are not supported by this Runtime
+          Control API.
+        </p>
+      ) : null}
       <Panel title="Delete Update Backup">
         <p className="muted">
           Deletes a managed update/rollback backup. This does not delete
           VitalServer backups.
         </p>
         <BackupTable
-          rows={hostBackups.data ?? []}
+          rows={canManageBackups ? hostBackups.data ?? [] : []}
           selected={selectedUpdateBackup}
           onSelect={setSelectedUpdateBackup}
-          emptyText="No update backups are available."
+          emptyText={
+            canManageBackups
+              ? "No update backups are available."
+              : unavailableBackupMessage
+          }
         />
         <div className="action-row">
           <ConfirmButton
@@ -95,10 +116,14 @@ export function DangerZonePage() {
           rollback backups or the current runtime data.
         </p>
         <BackupTable
-          rows={runtimeDataBackups.data ?? []}
+          rows={canManageBackups ? runtimeDataBackups.data ?? [] : []}
           selected={selectedRuntimeDataBackup}
           onSelect={setSelectedRuntimeDataBackup}
-          emptyText="No VitalServer backups are available."
+          emptyText={
+            canManageBackups
+              ? "No VitalServer backups are available."
+              : unavailableBackupMessage
+          }
         />
         <div className="action-row">
           <ConfirmButton
@@ -106,7 +131,7 @@ export function DangerZonePage() {
             disabled={
               !selectedRuntimeDataBackup?.path ||
               deleteRuntimeDataBackup.isPending ||
-              !canControlServices
+              !canManageBackups
             }
             onClick={() =>
               selectedRuntimeDataBackup?.path
@@ -131,6 +156,13 @@ export function DangerZonePage() {
           files. Clean uninstall removes runtime data and configured Vital files.
         </p>
         <div className="inline-form">
+          <ConfirmButton
+            confirmMessage="Standard uninstall removes the application and Runtime system files while preserving Runtime data. Continue?"
+            disabled={uninstallRuntime.isPending || !canUninstallRuntime}
+            onClick={() => uninstallRuntime.mutate(false)}
+          >
+            Standard Uninstall
+          </ConfirmButton>
           <label>
             Confirmation
             <input
@@ -154,12 +186,31 @@ export function DangerZonePage() {
             Clean Uninstall
           </ConfirmButton>
         </div>
-        <p className="muted">Standard uninstall is temporarily unavailable.</p>
       </Panel>
 
       <Panel title="Operation result">
         <CommandResult result={latestCommand} error={latestError} />
+        <WorkflowOperation operation={uninstallRuntime.data ?? null} />
       </Panel>
+    </div>
+  );
+}
+
+function WorkflowOperation({ operation }: { operation: PlatformWorkflowOperation | null }) {
+  if (!operation) {
+    return null;
+  }
+  return (
+    <div className="operation-state">
+      <p>
+        Operation {operation.operationId}: {operation.kind} / {operation.state}
+      </p>
+      {operation.failure ? (
+        <ErrorState
+          title={`Uninstall workflow failed: ${operation.failure.kind}`}
+          error={new Error(operation.failure.message)}
+        />
+      ) : null}
     </div>
   );
 }

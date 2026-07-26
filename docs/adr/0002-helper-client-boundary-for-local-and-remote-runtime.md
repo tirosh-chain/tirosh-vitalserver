@@ -131,7 +131,7 @@ Local web mode와 Remote mode는 같은 `RuntimeControlClient` contract를 HTTP/
 
 `RuntimeHostClient`는 browser/PWA가 그대로 구현할 계약이 아니라, 현재 SwiftUI transition app이 local host 기능을 잃지 않도록 분리한 임시 경계다. PWA에서는 local file 선택, log export destination, pairing/native shell 같은 기능이 native shell 또는 Runtime Control API endpoint로 재배치된다.
 
-현재 branch는 `RuntimeControlAPI` target에 route/DTO, transport-independent router, local loopback HTTP server, OpenAPI contract를 둔다. macOS app composition은 Runtime Control local API server를 TestKit/dev console 노출 여부와 분리해서 조립한다. `/runtime/*`, `/vitaldb/*`, `/host/*`는 PWA가 사용할 product API surface이고, `/dev/runtime-control` 확인 화면과 `/dev/testkit/*` route만 test-enabled build 뒤에 둔다. auth/session 강화, pairing token, progress client adapter, generated client는 후속 Runtime Control API/PWA 이슈에서 구현한다.
+현재 branch는 `RuntimeControlAPI` target에 route/DTO, transport-independent router, local loopback HTTP server, OpenAPI contract를 둔다. macOS app composition은 Runtime Control local API server를 browser diagnostics page와 분리해서 조립한다. `/runtime/*`, `/runtime/vitaldb/*`, `/host/*`, `/runtime/lab/*`는 PWA가 사용할 product API surface이고, `/dev/runtime-control`은 diagnostics page로만 둔다. Legacy `/dev/testkit/*` route는 Runtime v2 product surface가 아니며, virtual recorder와 `.vital` replay는 Product Lab 계약으로 노출한다. auth/session 강화, pairing token, progress client adapter, generated client는 후속 Runtime Control API/PWA 이슈에서 구현한다.
 
 Local web mode에서 mobile browser가 local host에 접근하는 방식은 배포 환경별로 다를 수 있다. Same LAN, QR/pairing token, reverse tunnel, remote management server 중 하나를 사용할 수 있지만, UI는 그 transport 세부에 의존하지 않는다.
 

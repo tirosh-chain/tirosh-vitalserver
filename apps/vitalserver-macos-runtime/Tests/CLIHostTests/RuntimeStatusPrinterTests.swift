@@ -29,7 +29,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs.img.gz"),
             vmDisk: URL(fileURLWithPath: "/runtime/vm-disk.raw"),
             latestBackupPath: { "/runtime/backups/latest" },
-            runtimeStatusDocument: { .loaded(self.statusDocument(status: .unknown("running"), vmIP: "192.168.64.20")) },
+            currentStatus: { RuntimeStatusPrinterCurrentStatus(status: .unknown("running"), vmIP: "192.168.64.20") },
             runtimeVersionValue: { "2026.05.23" },
             installedProxyPort: { 18080 },
             hostProxyHTTP: { port in "200@\(port)" },
@@ -46,7 +46,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             "  product root: /product",
             "  runtime dir: /runtime",
             "  latest backup: /runtime/backups/latest",
-            "  status file: present",
+            "  status diagnostics file: present",
             "  status: running",
             "  launcher: executable",
             "  proxy runner: present",
@@ -73,7 +73,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs.img.gz"),
             vmDisk: URL(fileURLWithPath: "/runtime/vm-disk.raw"),
             latestBackupPath: { nil },
-            runtimeStatusDocument: { .loaded(self.statusDocument(status: .unknown("not-installed"), vmIP: "waiting")) },
+            currentStatus: { RuntimeStatusPrinterCurrentStatus(status: .unknown("not-installed"), vmIP: "waiting") },
             runtimeVersionValue: { "unknown" },
             installedProxyPort: { 8080 },
             hostProxyHTTP: { _ in "000" },
@@ -104,7 +104,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs.img.gz"),
             vmDisk: URL(fileURLWithPath: "/runtime/vm-disk.raw"),
             latestBackupPath: { throw error },
-            runtimeStatusDocument: { .loaded(self.statusDocument(status: .unknown("not-installed"), vmIP: "waiting")) },
+            currentStatus: { RuntimeStatusPrinterCurrentStatus(status: .unknown("not-installed"), vmIP: "waiting") },
             runtimeVersionValue: { "unknown" },
             installedProxyPort: { 8080 },
             hostProxyHTTP: { _ in "000" },
@@ -119,7 +119,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
         XCTAssertEqual(lines[3], "  latest backup: read failed: backup directory inspection failed")
     }
 
-    func testPrintStatusReportsMissingStatusDocumentExplicitly() {
+    func testPrintStatusUsesCurrentStatusWhenStatusDocumentIsMissing() {
         var lines: [String] = []
         let printer = RuntimeStatusPrinter(
             productRoot: URL(fileURLWithPath: "/product"),
@@ -130,7 +130,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs.img.gz"),
             vmDisk: URL(fileURLWithPath: "/runtime/vm-disk.raw"),
             latestBackupPath: { nil },
-            runtimeStatusDocument: { .missing },
+            currentStatus: { RuntimeStatusPrinterCurrentStatus(status: .healthy, vmIP: "192.168.64.30") },
             runtimeVersionValue: { "unknown" },
             installedProxyPort: { 8080 },
             hostProxyHTTP: { _ in "000" },
@@ -142,11 +142,12 @@ final class RuntimeStatusPrinterTests: XCTestCase {
 
         printer.printStatus()
 
-        XCTAssertEqual(lines[5], "  status: missing status document")
-        XCTAssertEqual(lines[14], "  VM IP: missing status document")
+        XCTAssertEqual(lines[4], "  status diagnostics file: missing")
+        XCTAssertEqual(lines[5], "  status: healthy")
+        XCTAssertEqual(lines[14], "  VM IP: 192.168.64.30")
     }
 
-    func testPrintStatusReportsStatusDocumentReadFailureDistinctFromMissing() {
+    func testPrintStatusUsesCurrentStatusWhenStatusDocumentReadFails() {
         var lines: [String] = []
         let printer = RuntimeStatusPrinter(
             productRoot: URL(fileURLWithPath: "/product"),
@@ -157,7 +158,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs.img.gz"),
             vmDisk: URL(fileURLWithPath: "/runtime/vm-disk.raw"),
             latestBackupPath: { nil },
-            runtimeStatusDocument: { .failed("decode failed") },
+            currentStatus: { RuntimeStatusPrinterCurrentStatus(status: .degraded, vmIP: nil) },
             runtimeVersionValue: { "unknown" },
             installedProxyPort: { 8080 },
             hostProxyHTTP: { _ in "000" },
@@ -169,8 +170,9 @@ final class RuntimeStatusPrinterTests: XCTestCase {
 
         printer.printStatus()
 
-        XCTAssertEqual(lines[5], "  status: status document read failed: decode failed")
-        XCTAssertEqual(lines[14], "  VM IP: status document read failed: decode failed")
+        XCTAssertEqual(lines[4], "  status diagnostics file: missing")
+        XCTAssertEqual(lines[5], "  status: degraded")
+        XCTAssertEqual(lines[14], "  VM IP: not reported")
     }
 
     func testPrintStatusPreservesFileInspectionFailure() {
@@ -184,7 +186,7 @@ final class RuntimeStatusPrinterTests: XCTestCase {
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs.img.gz"),
             vmDisk: URL(fileURLWithPath: "/runtime/vm-disk.raw"),
             latestBackupPath: { nil },
-            runtimeStatusDocument: { .missing },
+            currentStatus: { RuntimeStatusPrinterCurrentStatus(status: .degraded, vmIP: nil) },
             runtimeVersionValue: { "unknown" },
             installedProxyPort: { nil },
             hostProxyHTTP: { _ in "000" },
@@ -202,31 +204,5 @@ final class RuntimeStatusPrinterTests: XCTestCase {
 
         XCTAssertEqual(lines[6], "  launcher: inspect-failed: permission denied")
         XCTAssertEqual(lines[8], "  rootfs base: inspect-failed: stat failed")
-    }
-
-    private func statusDocument(status: RuntimeStatusLevel, vmIP: String?) -> RuntimeStatusDocument {
-        RuntimeStatusDocument(
-            product: "VitalServerHelper",
-            status: status,
-            operation: .health,
-            message: "runtime status",
-            updatedAt: "2026-05-22T00:00:00Z",
-            productRoot: "/product",
-            runtimeHome: "/runtime",
-            runtimeVersion: "2026.05.23",
-            vmService: .loaded,
-            proxyService: .loaded,
-            watchdogService: .loaded,
-            vmIP: vmIP,
-            proxyPort: 18080,
-            hostProxyHTTP: "200",
-            guestHTTP: "200",
-            redisUIHTTP: nil,
-            swaggerUIHTTP: nil,
-            rootfsBase: .present,
-            vmDisk: .present,
-            failureReasons: [],
-            latestBackup: nil
-        )
     }
 }

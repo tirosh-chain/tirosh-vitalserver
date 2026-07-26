@@ -494,7 +494,12 @@ class _ActivityBuilder:
         bucket = self.buckets.setdefault(
             bucket_started_at, _ActivityBucketBuilder(bucket_started_at, 60)
         )
-        bucket.observe(byte_count=byte_count, room_count=room_count)
+        bucket.observe(
+            timestamp=timestamp,
+            event_time=event_time,
+            byte_count=byte_count,
+            room_count=room_count,
+        )
 
     def observation(self) -> RecorderActivityObservation:
         return RecorderActivityObservation(
@@ -520,19 +525,40 @@ class _ActivityBucketBuilder:
     message_count: int = 0
     byte_count: int = 0
     room_count: int = 0
+    first_observed_at: str | None = None
+    last_observed_at: str | None = None
+    first_observed_time: datetime | None = None
+    last_observed_time: datetime | None = None
 
-    def observe(self, byte_count: int, room_count: int) -> None:
+    def observe(
+        self,
+        *,
+        timestamp: str,
+        event_time: datetime,
+        byte_count: int,
+        room_count: int,
+    ) -> None:
         self.message_count += 1
         self.byte_count += byte_count
         self.room_count += room_count
+        if self.first_observed_time is None or event_time < self.first_observed_time:
+            self.first_observed_time = event_time
+            self.first_observed_at = timestamp
+        if self.last_observed_time is None or event_time > self.last_observed_time:
+            self.last_observed_time = event_time
+            self.last_observed_at = timestamp
 
     def observation(self) -> RecorderActivityBucket:
+        if self.first_observed_at is None or self.last_observed_at is None:
+            raise ValueError("activity bucket has no observed timestamps")
         return RecorderActivityBucket(
             bucket_started_at=self.bucket_started_at,
             bucket_seconds=self.bucket_seconds,
             message_count=self.message_count,
             byte_count=self.byte_count,
             room_count=self.room_count,
+            first_observed_at=self.first_observed_at,
+            last_observed_at=self.last_observed_at,
         )
 
 

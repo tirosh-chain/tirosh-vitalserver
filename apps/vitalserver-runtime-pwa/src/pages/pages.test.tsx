@@ -6,44 +6,78 @@ import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import { AppSettingsProvider } from "@/config/AppSettingsContext";
 
 const hooks = vi.hoisted(() => ({
-  useApplyRuntimeSettings: vi.fn(),
+  useApplyRuntimeAdminPassword: vi.fn(),
+  useApplyRuntimeRedisRelaySettings: vi.fn(),
+  useApplyRuntimeProductSettings: vi.fn(),
+  useApplyRuntimePlatformSettings: vi.fn(),
   useApplyUpdateBundle: vi.fn(),
   useCreateRedisBackup: vi.fn(),
   useCreateRuntimeDataBackup: vi.fn(),
-  useCreateTestKitBeds: vi.fn(),
   useDeleteHostBackup: vi.fn(),
   useDeleteRuntimeDataBackup: vi.fn(),
+  useDeleteVitalDBBeds: vi.fn(),
+  useDeleteVitalDBRecorders: vi.fn(),
   useDeleteUpdateBackup: vi.fn(),
-  useDeleteTestKitBeds: vi.fn(),
-  useDeleteTestKitOrphanVRecorder: vi.fn(),
-  useExportHostLogs: vi.fn(),
+  useCreatePlatformSupportExport: vi.fn(),
+  useCreateLabBeds: vi.fn(),
+  useCreateLabRecorders: vi.fn(),
+  useCreateLabSession: vi.fn(),
+  useDeleteLabBeds: vi.fn(),
+  useDeleteLabRecorders: vi.fn(),
+  useRuntimeStack: vi.fn(),
+  useRuntimeServiceResources: vi.fn(),
+  useHideVitalDBBeds: vi.fn(),
+  useHideVitalDBRecorders: vi.fn(),
   useHostBackups: vi.fn(),
   useHostLogs: vi.fn(),
+  useLabBeds: vi.fn(),
+  useLabRecorders: vi.fn(),
+  useLabScenarios: vi.fn(),
+  useLabSession: vi.fn(),
+  useLabSessions: vi.fn(),
+  useLabVitalFiles: vi.fn(),
+  useReplayLabVitalFile: vi.fn(),
+  useResetLabBeds: vi.fn(),
+  useResetLabRecorders: vi.fn(),
   useRedisBackups: vi.fn(),
   useRepairDatastore: vi.fn(),
-  useRepairProxy: vi.fn(),
-  useRepairRuntime: vi.fn(),
-  useRepairVMDisk: vi.fn(),
-  useResetTestKitBeds: vi.fn(),
-  useResetTestKitVirtualRecorders: vi.fn(),
-  useRestartTestKitVirtualRecorders: vi.fn(),
+  useRecorderObservabilityDetail: vi.fn(),
+  useRecorderObservabilityTimeline: vi.fn(),
+  useRecorderObservabilityIncidents: vi.fn(),
+  useRestartRuntimeProvider: vi.fn(),
+  useRestartGuestService: vi.fn(),
   useRollbackBackup: vi.fn(),
+  useRollbackRelease: vi.fn(),
   useRestoreRuntimeDataBackup: vi.fn(),
-  useRuntimeCapabilities: vi.fn(),
+  useControlCapabilities: vi.fn(),
   useRuntimeDataBackups: vi.fn(),
   useRuntimeEvents: vi.fn(),
-  useRuntimeOverview: vi.fn(),
-  useRuntimeSettings: vi.fn(),
-  useSessionTestKitAction: vi.fn(),
-  useStartRuntimeServices: vi.fn(),
-  useStartTestKitVirtualRecorders: vi.fn(),
-  useStopRuntimeServices: vi.fn(),
+  usePlatformOperationState: vi.fn(),
+  usePlatformWorkflow: vi.fn(),
+  useLatestVitalDBObservation: vi.fn(),
+  usePlatformState: vi.fn(),
+  useRuntimeProductSettings: vi.fn(),
+  useRuntimePlatformSettings: vi.fn(),
+  useRuntimeRedisRelaySettings: vi.fn(),
+  useStartLabSession: vi.fn(),
+  useStartLabRecorder: vi.fn(),
+  useStartGuestService: vi.fn(),
+  useStopGuestService: vi.fn(),
+  useStopLabSession: vi.fn(),
+  useFinishLabSession: vi.fn(),
+  useStopLabRecorder: vi.fn(),
   useSummarizeUpdateBundle: vi.fn(),
-  useTestKitStatus: vi.fn(),
+  useUnhideVitalDBBeds: vi.fn(),
+  useUnhideVitalDBRecorders: vi.fn(),
+  useUploadLabVitalFiles: vi.fn(),
   useVerifyUpdateBundle: vi.fn(),
   useVitalDBBeds: vi.fn(),
+  useVitalDBRecorderActivity: vi.fn(),
+  useVitalDBRecorderVitalFiles: vi.fn(),
   useVitalDBRelationships: vi.fn(),
   useVitalDBRecorders: vi.fn(),
+  useReleaseInfo: vi.fn(),
+  useInstallInfo: vi.fn(),
   useUninstallRuntime: vi.fn()
 }));
 
@@ -52,15 +86,36 @@ vi.mock("@/console/hooks", () => hooks);
 import { AdvancedPage } from "./advanced/AdvancedPage";
 import { BedsPage } from "./beds/BedsPage";
 import { DangerZonePage } from "./danger-zone/DangerZonePage";
+import { LabPage } from "./lab/LabPage";
 import { LogsPage } from "./logs/LogsPage";
+import { InfoPage } from "./info/InfoPage";
 import { ObservabilityPage } from "./observability/ObservabilityPage";
 import { RecordersPage } from "./recorders/RecordersPage";
 import { SettingsPage } from "./settings/SettingsPage";
 import { StatusPage } from "./status/StatusPage";
-import { TestKitPage } from "./testkit/TestKitPage";
 import { UpdatePage } from "./update/UpdatePage";
 
-const commandResult = { result: { exitCode: 0, stdout: "ok", stderr: "" } };
+const commandResult = {
+  result: {
+    exitCode: 0,
+    stdout: "ok",
+    stderr: "",
+    outputIssues: [],
+    executionIssue: null
+  }
+};
+
+const completedApplyWorkflow = {
+  schemaVersion: 1 as const,
+  operationId: "update-apply-1",
+  kind: "update-apply" as const,
+  state: "completed" as const,
+  startedAt: "2026-07-01T00:00:00Z",
+  updatedAt: "2026-07-01T00:00:01Z",
+  release: null,
+  artifact: null,
+  failure: null
+};
 
 function Wrapper({ children }: PropsWithChildren) {
   return (
@@ -72,6 +127,14 @@ function Wrapper({ children }: PropsWithChildren) {
 
 function renderPage(element: ReactElement) {
   return render(element, { wrapper: Wrapper });
+}
+
+function selectVitalRecorder(vrcode: string) {
+  const recorderPanel = screen
+    .getByRole("heading", { name: "Recorders" })
+    .closest("section")!;
+  const recorderTable = within(recorderPanel).getByRole("table");
+  fireEvent.click(within(recorderTable).getByText(vrcode).closest("tr")!);
 }
 
 function query<T>(data: T) {
@@ -132,10 +195,10 @@ afterEach(() => {
 });
 
 describe("runtime console pages", () => {
-  it("renders status metrics from the overview document", () => {
+  it("renders status metrics without using container observation as recorder ingress source", () => {
     renderPage(<StatusPage />);
 
-    expect(screen.getByText("Overall health")).toBeInTheDocument();
+    expect(screen.getByText("Platform health")).toBeInTheDocument();
     expect(screen.getByText("Healthy")).toBeInTheDocument();
     expect(screen.getByText("VitalServer")).toBeInTheDocument();
     expect(
@@ -154,25 +217,26 @@ describe("runtime console pages", () => {
     expect(
       screen.getByText("5.0 MiB/s, adaptive 1.0 MiB/s-10.0 MiB/s, guard unavailable, 500 items/tick, concurrency 8")
     ).toBeInTheDocument();
-    expect(screen.getByText("100.0 MiB / 512.0 MiB")).toBeInTheDocument();
+    expect(screen.getByText("/var/lib/vitalserver/vital-files")).toBeInTheDocument();
+    expect(screen.queryByText("VitalServer memory")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recorder ingress memory")).not.toBeInTheDocument();
+    expect(screen.queryByText("Redis memory")).not.toBeInTheDocument();
+    expect(screen.queryByText("100.0 MiB / 512.0 MiB")).not.toBeInTheDocument();
     expect(screen.getByText(/2.0 KiB \/ 4.0 KiB/)).toBeInTheDocument();
   });
 
   it("renders same-host service URLs as browser-reachable links", () => {
-    const baseOverview = overview();
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        settings: {
-          ...baseOverview.settings,
-          vitalServerURL: "",
-          remoteConsoleURL: "",
-          publicHost: "",
-          publicPort: 18080,
-          runtimeControlPort: 18321
-        }
-      })
-    );
+    hooks.useRuntimeProductSettings.mockReturnValue(query({
+      state: "loaded",
+      settings: {
+        ...productSettings(),
+        vitalServerURL: "",
+        remoteConsoleURL: "",
+        publicHost: "",
+        publicPort: 18080
+      },
+      readError: null
+    }));
 
     renderPage(<StatusPage />);
 
@@ -180,35 +244,30 @@ describe("runtime console pages", () => {
     expect(
       screen.getByRole("link", { name: `http://${hostname}:18080/` })
     ).toHaveAttribute("href", `http://${hostname}:18080/`);
-    expect(
-      screen.getByRole("link", { name: `http://${hostname}:18321/` })
-    ).toHaveAttribute("href", `http://${hostname}:18321/`);
+    expect(screen.queryByRole("link", { name: /18321/ })).not.toBeInTheDocument();
   });
 
   it("does not infer missing status endpoint or resource fields", () => {
-    const baseOverview = overview();
-    hooks.useRuntimeOverview.mockReturnValue(
+    hooks.useRuntimeProductSettings.mockReturnValue(query({
+      state: "unavailable",
+      settings: null,
+      readError: "settings unavailable"
+    }));
+    hooks.usePlatformState.mockReturnValue(
       query({
-        ...baseOverview,
-        settings: {
-          ...baseOverview.settings,
-          vitalServerURL: "",
-          remoteConsoleURL: "",
-          publicHost: "",
-          publicPort: undefined,
-          runtimeControlPort: undefined
-        },
-        status: {
-          ...baseOverview.status,
-          proxyPort: undefined,
-          cpuUsagePercent: undefined,
-          dataDirectoryStats: {
-            sizeBytes: 4096
-          },
-          memory: {
-            usedBytes: 2048
-          }
+        ...platformState(),
+        proxyPort: undefined,
+        dataDirectoryStats: {
+          sizeBytes: 4096
         }
+      })
+    );
+    hooks.useRuntimeStack.mockReturnValue(
+      query({
+        ...guestStackStatus(),
+        cpuUsagePercent: undefined,
+        memory: { usedBytes: 2048 },
+        systemDisk: undefined
       })
     );
 
@@ -221,293 +280,391 @@ describe("runtime console pages", () => {
     expect(screen.queryByRole("link", { name: /18321/ })).not.toBeInTheDocument();
   });
 
-  it("renders settings, validation, and applies edited values", () => {
+  it("keeps a failed Platform settings read distinct from a missing data directory", () => {
+    hooks.useRuntimePlatformSettings.mockReturnValue(query({
+      state: "failed",
+      settings: null,
+      readIssues: [],
+      readError: "host settings database is unreadable"
+    }));
+
+    renderPage(<StatusPage />);
+
+    expect(screen.getByText("Read failed")).toBeInTheDocument();
+    expect(screen.getByText(/host settings database is unreadable/)).toBeInTheDocument();
+  });
+
+
+  it("edits and applies Runtime-owned product settings", () => {
     const apply = pendingMutation();
-    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
+    hooks.useApplyRuntimeProductSettings.mockReturnValue(apply);
 
     renderPage(<SettingsPage />);
 
-    fireEvent.change(screen.getByLabelText("CPU cores"), {
-      target: { value: "3" }
-    });
-    fireEvent.change(screen.getByLabelText("Custom advertised host"), {
-      target: { value: "edge.local" }
-    });
+    expect(screen.getByText("Advertised product endpoints")).toBeInTheDocument();
+    expect(screen.getByText("Recorder load control")).toBeInTheDocument();
+    expect(screen.queryByText("VM resources")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Advertised port"), {
-      target: { value: "443" }
+      target: { value: "8080" }
     });
-    fireEvent.change(screen.getByLabelText("Max replay throughput"), {
-      target: { value: "25" }
-    });
-    fireEvent.change(screen.getByLabelText(/VitalServer limit/), {
-      target: { value: "40" }
-    });
-    fireEvent.change(screen.getByLabelText(/Recorder ingress limit/), {
-      target: { value: "8" }
-    });
-    fireEvent.change(screen.getByLabelText(/Redis limit/), {
-      target: { value: "12" }
-    });
-    fireEvent.click(screen.getByLabelText("Start on boot"));
-    fireEvent.click(screen.getByLabelText("Auto recovery"));
-    fireEvent.click(screen.getByLabelText("Prevent system sleep"));
-    fireEvent.click(
-      screen.getByLabelText("Activate required runtime changes after save")
-    );
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
 
-    expect(apply.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        settings: expect.objectContaining({
-          cpuCount: 3,
-          publicHost: "edge.local",
-          publicPort: 443,
-          recorderIngressSendDataReplayMaxMiBPerSecond: 25,
-          containerMemoryLimitsEnabled: true,
-          vitalServerContainerMemoryLimitMiB: 1638,
-          recorderIngressContainerMemoryLimitMiB: 328,
-          redisContainerMemoryLimitMiB: 492,
-          startOnBoot: false,
-          autoRecoveryEnabled: false,
-          preventSystemSleep: false,
-          restartAfterSave: false
-        })
-      }),
-      expect.any(Object)
-    );
+    expect(apply.mutate).toHaveBeenCalledWith({
+      settings: expect.objectContaining({ publicPort: 8080 })
+    });
   });
 
-  it("normalizes enabled container memory limits to the combined cap", () => {
+  it("keeps Platform-owned Host settings separate and applies only mutable fields", () => {
     const apply = pendingMutation();
-    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
-    hooks.useRuntimeSettings.mockReturnValue(query(settings({
-      memoryGiB: 4,
-      containerMemoryLimitsEnabled: true,
-      vitalServerContainerMemoryLimitMiB: 4096,
-      recorderIngressContainerMemoryLimitMiB: 512,
-      redisContainerMemoryLimitMiB: 1024
-    })));
+    hooks.useApplyRuntimePlatformSettings.mockReturnValue(apply);
 
     renderPage(<SettingsPage />);
 
-    expect(screen.getByText("Container limit total: 70% / 70% of VM memory")).toBeInTheDocument();
+    expect(screen.getByText("Platform settings")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("CPU count"), {
+      target: { value: "6" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply Host settings" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(apply.mutate).toHaveBeenCalledWith({
+      settings: expect.objectContaining({ cpuCount: 6, diskGiB: 128 })
+    });
+    expect(apply.mutate.mock.calls[0]?.[0].settings).not.toHaveProperty("minimumDiskGiB");
+    expect(apply.mutate.mock.calls[0]?.[0].settings).not.toHaveProperty("startOnBootConfigurable");
+  });
 
-    expect(apply.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        settings: expect.objectContaining({
-          containerMemoryLimitsEnabled: true,
-          vitalServerContainerMemoryLimitMiB: 1311,
-          recorderIngressContainerMemoryLimitMiB: 512,
-          redisContainerMemoryLimitMiB: 1024
-        })
-      }),
-      expect.any(Object)
+  it("does not apply Runtime settings when the Runtime Controller omits settings:apply", () => {
+    const apply = pendingMutation();
+    hooks.useApplyRuntimeProductSettings.mockReturnValue(apply);
+    hooks.useControlCapabilities.mockReturnValue(
+      query({
+        ...capabilities(),
+        canApplyRuntimeProductSettings: false
+      })
+    );
+
+    renderPage(<SettingsPage />);
+
+    const button = screen.getByRole("button", { name: "Apply" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(apply.mutate).not.toHaveBeenCalled();
+  });
+
+  it("replaces the Runtime administrator password without placing it in settings", () => {
+    const applyAdmin = pendingMutation();
+    hooks.useApplyRuntimeAdminPassword.mockReturnValue(applyAdmin);
+
+    renderPage(<SettingsPage />);
+
+    fireEvent.change(screen.getByLabelText("New administrator password"), {
+      target: { value: "new-admin-secret" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Replace password" }));
+
+    expect(applyAdmin.mutate).toHaveBeenCalledWith(
+      { password: "new-admin-secret" },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
     );
   });
 
-  it("enables activation automatically for container memory limit changes", () => {
-    const apply = pendingMutation();
-    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
-    hooks.useRuntimeSettings.mockReturnValue(query(settings({
-      restartAfterSave: false,
-      containerMemoryLimitsEnabled: true,
-      vitalServerContainerMemoryLimitMiB: 2048,
-      recorderIngressContainerMemoryLimitMiB: 256,
-      redisContainerMemoryLimitMiB: 512
-    })));
+  it("applies Runtime-owned Redis Relay settings without reading a password", () => {
+    const applyRelay = pendingMutation();
+    hooks.useApplyRuntimeRedisRelaySettings.mockReturnValue(applyRelay);
+    renderPage(<SettingsPage />);
+
+    expect(screen.getByText("Password currently configured: no")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Target URL"), {
+      target: { value: "redis://relay.example:6379/1" }
+    });
+    fireEvent.change(screen.getByLabelText("New target password"), {
+      target: { value: "relay-secret" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply relay" }));
+
+    expect(applyRelay.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: expect.objectContaining({
+          url: "redis://relay.example:6379/1",
+          password: "relay-secret"
+        })
+      })
+    );
+  });
+
+  it("keeps unavailable Runtime settings distinct from an empty settings form", () => {
+    hooks.useRuntimeProductSettings.mockReturnValue(query({
+      state: "unavailable",
+      settings: null,
+      readError: "settings owner missing"
+    }));
 
     renderPage(<SettingsPage />);
 
-    expect(
-      screen.getByLabelText("Activate required runtime changes after save")
-    ).not.toBeChecked();
+    expect(screen.getByRole("alert")).toHaveTextContent("settings owner missing");
+    expect(screen.queryByLabelText("Advertised port")).not.toBeInTheDocument();
+  });
 
-    fireEvent.change(screen.getByLabelText(/VitalServer limit/), {
-      target: { value: "40" }
+  it("reports invalid advanced recorder settings without applying", () => {
+    const apply = pendingMutation();
+    hooks.useApplyRuntimeProductSettings.mockReturnValue(apply);
+    renderPage(<SettingsPage />);
+
+    fireEvent.change(screen.getByLabelText("Recorder ingress advanced settings"), {
+      target: { value: "{" }
     });
 
-    expect(
-      screen.getByLabelText("Activate required runtime changes after save")
-    ).toBeChecked();
-
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-
-    expect(apply.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        settings: expect.objectContaining({
-          restartAfterSave: true,
-          vitalServerContainerMemoryLimitMiB: 1638
-        })
-      }),
-      expect.any(Object)
-    );
-  });
-
-  it("does not render an empty settings draft before settings load", () => {
-    hooks.useRuntimeSettings.mockReturnValue(query(undefined));
-
-    renderPage(<SettingsPage />);
-
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Settings response is incomplete"
-    );
-    expect(screen.queryByLabelText("CPU cores")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Start on boot")).not.toBeInTheDocument();
+    expect(screen.getByText(/Recorder ingress settings JSON is invalid/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
-  });
-
-  it("uses provider-owned settings values without form fallbacks", () => {
-    renderPage(<SettingsPage />);
-
-    expect(
-      screen.getByText(/Applied: Automatic backups on · 03:15 · .* · keep 7 archives/)
-    ).toBeInTheDocument();
-    expect(screen.getByText("Applied: keep 14 days · max 1 GiB")).toBeInTheDocument();
-    expect(screen.getByLabelText("VM disk GiB")).toHaveAttribute("min", "20");
-    expect(
-      screen.getByText("VM disk can only be increased. Minimum for this install is 20 GiB.")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Change activation")).toBeInTheDocument();
-    expect(
-      screen.getByText("No runtime activation required for these changes.")
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
-    const hostname = globalThis.location.hostname;
-    expect(
-      screen.getByText(`Default advertised URL: http://${hostname}:18080/`)
-    ).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("VitalServer listen port"), {
-      target: { value: "" }
-    });
-    expect(
-      screen.getByText("Default advertised URL: Proxy port is not available.")
-    ).toBeInTheDocument();
-  });
-
-  it("shows VM restart activation when vital files directory changes", () => {
-    renderPage(<SettingsPage />);
-
-    fireEvent.change(screen.getByLabelText("Vital files directory"), {
-      target: { value: "/Users/shared/new-vital" }
-    });
-    fireEvent.click(
-      screen.getByLabelText("Activate required runtime changes after save")
-    );
-
-    expect(
-      screen.getByText(
-        "Saved changes will not become active until the VM runtime restarts. Required by: Vital files directory."
-      )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Requires VM restart. Required by: Vital files directory.")
-    ).toBeInTheDocument();
-  });
-
-  it("shows unapplied settings state for backup and log edits", () => {
-    renderPage(<SettingsPage />);
-
-    fireEvent.change(screen.getByLabelText("Backup times"), {
-      target: { value: "03:15, 15:15" }
-    });
-    fireEvent.change(screen.getByLabelText("Log archive retention"), {
-      target: { value: "10" }
-    });
-
-    expect(
-      screen.getByText(/Not applied yet\. Applied: Automatic backups on · 03:15 · .* · keep 7 archives/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Not applied yet. Applied: keep 14 days · max 1 GiB")
-    ).toBeInTheDocument();
-  });
-
-  it("does not erase custom advertised URL draft values when toggled off", () => {
-    renderPage(<SettingsPage />);
-
-    expect(screen.getByLabelText("Custom advertised host")).toHaveValue(
-      "host.local"
-    );
-
-    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
-    expect(screen.queryByLabelText("Custom advertised host")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("Custom advertised URL"));
-    expect(screen.getByLabelText("Custom advertised host")).toHaveValue(
-      "host.local"
-    );
-  });
-
-  it("shows explicit start-on-boot disabled reasons", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(
-      query({ ...capabilities(), canControlRuntimeServices: false })
-    );
-
-    renderPage(<SettingsPage />);
-
-    expect(screen.getByLabelText("Start on boot")).toBeDisabled();
-    expect(
-      screen.getByText("Runtime service control capability is unavailable.")
-    ).toBeInTheDocument();
-  });
-
-  it("does not guess Remote Console readiness with a timed redirect after settings apply", () => {
-    const apply = mutation(commandResult);
-    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
-
-    renderPage(<SettingsPage />);
-
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    fireEvent.change(screen.getByLabelText("Remote Console port"), {
-      target: { value: "18322" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-
-    expect(setTimeoutSpy).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/Remote Console port changed to 18322/)
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Remote Console" })).not.toBeInTheDocument();
   });
 
   it("renders recorder lists, filters history, and selects recorder details", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-31T01:00:30Z"));
+    const hideRecorder = mutation({});
+    const unhideRecorder = mutation({});
+    hooks.useHideVitalDBRecorders.mockReturnValue(hideRecorder);
+    hooks.useUnhideVitalDBRecorders.mockReturnValue(unhideRecorder);
 
     renderPage(<RecordersPage />);
 
     expect(screen.getByText("Known recorders")).toBeInTheDocument();
     expect(screen.getAllByText("VR_A").length).toBeGreaterThan(0);
     expect(screen.getAllByText("IP verified").length).toBeGreaterThan(0);
-    expect(screen.getByText("Network access")).toBeInTheDocument();
-    expect(screen.getByText("Active IP")).toBeInTheDocument();
-    expect(screen.queryByText("Redis key")).not.toBeInTheDocument();
-    expect(screen.queryByText("x-forwarded-for")).not.toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
-    expect(screen.getByText("0 B/s")).toBeInTheDocument();
-    expect(screen.queryByText("Room entries")).not.toBeInTheDocument();
     expect(screen.getAllByText("Recorder anomalies").length).toBeGreaterThan(0);
     expect(screen.getByText("Data updated")).toBeInTheDocument();
-    expect(screen.getAllByText(/Stale Recorder · warning/).length).toBeGreaterThan(0);
-    expect(screen.getByText("Relationship history")).toBeInTheDocument();
-    expect(screen.getAllByText("Assignments").length).toBeGreaterThan(0);
-    expect(screen.getByText("Events")).toBeInTheDocument();
-    expect(screen.getByText("Bed has no linked VRecorder.")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Recorder Details" })
+    ).not.toBeInTheDocument();
+    expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith(null);
+    expect(hooks.useRecorderObservabilityDetail).toHaveBeenLastCalledWith(null);
+    expect(hooks.useRecorderObservabilityTimeline).toHaveBeenLastCalledWith(null);
+    expect(hooks.useRecorderObservabilityIncidents).toHaveBeenLastCalledWith(null);
+
+    const recorderPanel = screen.getByRole("heading", { name: "Recorders" }).closest("section")!;
+    const recorderTable = within(recorderPanel).getByRole("table");
+    expect(
+      within(recorderTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+    ).toEqual([
+      "Status",
+      "VRecorder",
+      "Bed",
+      "Last seen",
+      "Device health",
+      "Anomaly",
+      "IP"
+    ]);
+    expect(within(recorderTable).queryByText("Visibility")).not.toBeInTheDocument();
+    expect(within(recorderTable).queryByRole("button", { name: "Hide" })).not.toBeInTheDocument();
+    expect(within(recorderTable).getByText("30s ago")).toBeInTheDocument();
+    expect(within(recorderTable).getByText("Warning (1)")).toBeInTheDocument();
+    expect(within(recorderTable).getByText("Report Current")).toBeInTheDocument();
+
+    fireEvent.click(within(recorderTable).getByText("VR_A").closest("tr")!);
+    expect(hooks.useVitalDBRecorderVitalFiles).toHaveBeenLastCalledWith("VR_A");
+    expect(hooks.useRecorderObservabilityDetail).toHaveBeenLastCalledWith("VR_A");
+    expect(hooks.useRecorderObservabilityTimeline).toHaveBeenLastCalledWith(
+      expect.objectContaining({ vrcode: "VR_A", bucketSeconds: 900 })
+    );
+    expect(hooks.useRecorderObservabilityIncidents).toHaveBeenLastCalledWith(
+      expect.objectContaining({ vrcode: "VR_A", limit: 20 })
+    );
+
+    const recorderDetails = screen
+      .getByRole("heading", { name: "Recorder Details" })
+      .closest("section")!;
+    expect(within(recorderDetails).queryByText("Visibility")).not.toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Network access")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Health report")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Supported")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("52.5 °C")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Publisher buffer")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Latest reported issues")).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByText("System service state is not fully running")
+    ).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByText(
+        "degraded; failed units: rpi-eeprom-update.service"
+      )
+    ).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Last 24 hours")).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByText("No health report was received during this window.")
+    ).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Recent incidents")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Active IP")).toBeInTheDocument();
+    expect(within(recorderDetails).queryByText("Redis key")).not.toBeInTheDocument();
+    expect(within(recorderDetails).queryByText("x-forwarded-for")).not.toBeInTheDocument();
+    expect(within(recorderDetails).getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("34 B/s")).toBeInTheDocument();
+    expect(within(recorderDetails).queryByText("Room entries")).not.toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Relationship history")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Assignments")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Events")).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Vital files")).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByText(
+        "No tracked Vital files are attributed to this VRecorder."
+      )
+    ).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Bed has no linked VRecorder.")).toBeInTheDocument();
+    const lastSeenRow = within(recorderDetails)
+      .getByText("Last seen")
+      .closest(".key-value-row");
+    expect(lastSeenRow).toHaveTextContent("2026-05-31");
+    expect(lastSeenRow).not.toHaveTextContent("ago");
+
+    fireEvent.click(
+      within(recorderDetails).getByRole("button", { name: "Hide from list" })
+    );
+    expect(hideRecorder.mutate).toHaveBeenCalledWith(
+      { vrcodes: ["VR_A"] },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Recorder Details" })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "VR_A hidden from recorder list."
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(unhideRecorder.mutate).toHaveBeenCalledWith(
+      { vrcodes: ["VR_A"] },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
+    expect(
+      screen.getByRole("heading", { name: "Recorder Details" })
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("Search VRecorders"), {
       target: { value: "missing" }
     });
-    expect(screen.getByText("No VRecorders found.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No VitalDB VRecorder observations found.")
+    ).toBeInTheDocument();
+  });
+
+  it("labels hidden recorders and keeps destructive management secondary", () => {
+    const hiddenRecorders = recorders();
+    hiddenRecorders.recorders[0].visibility = "hidden";
+    const unhideRecorder = mutation({});
+    const deleteRecorder = mutation({});
+    hooks.useVitalDBRecorders.mockReturnValue(query(hiddenRecorders));
+    hooks.useUnhideVitalDBRecorders.mockReturnValue(unhideRecorder);
+    hooks.useDeleteVitalDBRecorders.mockReturnValue(deleteRecorder);
+
+    renderPage(<RecordersPage />);
+
+    expect(screen.queryByText("VR_A")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show hidden" }));
+
+    const recorderPanel = screen.getByRole("heading", { name: "Recorders" }).closest("section")!;
+    const recorderTable = within(recorderPanel).getByRole("table");
+    expect(within(recorderTable).getByText("Hidden")).toBeInTheDocument();
+    fireEvent.click(within(recorderTable).getByText("VR_A").closest("tr")!);
+
+    const recorderDetails = screen
+      .getByRole("heading", { name: "Recorder Details" })
+      .closest("section")!;
+    expect(within(recorderDetails).getByText("Hidden from list")).toBeInTheDocument();
+    expect(within(recorderDetails).queryByText("Visibility")).not.toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByRole("button", { name: "Show in list" })
+    ).toBeInTheDocument();
+    expect(within(recorderDetails).getByText("Data management")).toBeInTheDocument();
+    expect(
+      within(recorderDetails).getByRole("button", { name: "Delete hidden recorder" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(recorderDetails).getByRole("button", { name: "Show in list" })
+    );
+    expect(unhideRecorder.mutate).toHaveBeenCalledWith(
+      { vrcodes: ["VR_A"] },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
+  });
+
+  it("keeps recorder details selected when hiding fails", () => {
+    const hideRecorder = {
+      ...pendingMutation(),
+      error: new Error("visibility owner unavailable"),
+      isError: true
+    };
+    hooks.useHideVitalDBRecorders.mockReturnValue(hideRecorder);
+
+    renderPage(<RecordersPage />);
+    selectVitalRecorder("VR_A");
+
+    const recorderDetails = screen
+      .getByRole("heading", { name: "Recorder Details" })
+      .closest("section")!;
+    fireEvent.click(
+      within(recorderDetails).getByRole("button", { name: "Hide from list" })
+    );
+
+    expect(hideRecorder.mutate).toHaveBeenCalledWith(
+      { vrcodes: ["VR_A"] },
+      expect.objectContaining({ onSuccess: expect.any(Function) })
+    );
+    expect(
+      screen.getByRole("heading", { name: "Recorder Details" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("visibility owner unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("shows Product Lab recorders separately from VitalDB recorder observations", () => {
+    hooks.useLabRecorders.mockReturnValue(query({
+      state: "loaded",
+      readError: null,
+      recorders: [
+        {
+          recorderId: "lab-session-1-recorder-1",
+          sessionId: "lab-session-1",
+          bedId: "lab-session-1-bed-1",
+          vrcode: "LAB-lab-session-1-1",
+          state: "running",
+          createdAt: "2026-05-31T00:00:00Z",
+          updatedAt: "2026-05-31T00:00:10Z",
+          messagesSent: 1,
+          lastSendState: "sent",
+          lastSendAt: "2026-05-31T00:00:10Z",
+          lastSendError: null
+        }
+      ]
+    }));
+
+    renderPage(<RecordersPage />);
+
+    expect(screen.getByText("Product Lab recorders")).toBeInTheDocument();
+    expect(screen.getAllByText("LAB-lab-session-1-1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("lab-session-1-recorder-1").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByText("LAB-lab-session-1-1")[0]!);
+    expect(screen.getByText("Messages")).toBeInTheDocument();
+    expect(screen.getByText("Last send at")).toBeInTheDocument();
   });
 
   it("browses all recorder activity in twelve hour windows with one minute buckets", () => {
     hooks.useVitalDBRecorders.mockReturnValue(query(recordersWithLongActivity()));
+    hooks.useVitalDBRecorderActivity.mockReturnValue(
+      query(recorderActivityWindow({
+        page: {
+          ...recorderActivityWindow().page,
+          index: 1,
+          count: 2,
+          windowStartedAt: "2026-05-31T04:00:00Z",
+          windowEndedAt: "2026-05-31T16:00:00Z"
+        }
+      }))
+    );
 
     renderPage(<RecordersPage />);
+    selectVitalRecorder("VR_A");
 
     expect(screen.queryByLabelText("Window")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Bucket")).toHaveValue("60");
@@ -529,21 +686,10 @@ describe("runtime console pages", () => {
     const windowSlider = screen.getByLabelText("Window") as HTMLInputElement;
     expect(windowSlider.max).toBe("1");
     expect(windowSlider.value).toBe("1");
-    const slideSlider = screen.getByLabelText("Window slide") as HTMLInputElement;
-    expect(slideSlider.value).toBe("4");
-    expect(slideSlider.max).toBe("12");
-    expect(slideSlider).toHaveAttribute(
-      "title",
-      "Window slides by 4h each move"
-    );
-    expect(screen.getByText(/slide 4h/)).toBeInTheDocument();
-
     fireEvent.change(windowSlider, { target: { value: "0" } });
-    expect(windowSlider.value).toBe("0");
-
-    fireEvent.change(slideSlider, { target: { value: "1" } });
-    expect(slideSlider.value).toBe("1");
-    expect(screen.getByText(/slide 1h/)).toBeInTheDocument();
+    expect(hooks.useVitalDBRecorderActivity).toHaveBeenLastCalledWith(
+      expect.objectContaining({ period: "all", pageIndex: 0 })
+    );
   });
 
   it("shows missing recorder activity history as not reported", () => {
@@ -554,17 +700,21 @@ describe("runtime console pages", () => {
           {
             ...recorders().recorders[0],
             status: "notObserved",
-            activityTimeline: undefined
+            activityTimeline: null
           }
         ]
       })
     );
+    hooks.useVitalDBRecorderActivity.mockReturnValue(
+      query(recorderActivityWindow({ state: "empty", buckets: [] }))
+    );
 
     renderPage(<RecordersPage />);
+    selectVitalRecorder("VR_A");
 
     expect(screen.getAllByText("Not observed").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("Recorder activity history is not reported.")
+      screen.getByText("No recent data activity has been observed for this VRecorder.")
     ).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Packet activity/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Last sample/)).not.toBeInTheDocument();
@@ -581,17 +731,27 @@ describe("runtime console pages", () => {
         }
       })
     );
+    hooks.useVitalDBRecorderActivity.mockReturnValue(
+      query(recorderActivityWindow({
+        state: "readFailed",
+        buckets: [],
+        readError: "activity projection denied"
+      }))
+    );
 
     renderPage(<RecordersPage />);
+    selectVitalRecorder("VR_A");
 
     expect(
-      screen.getByText("Recorder activity history is incomplete")
+      screen.getByText("Recorder activity data is unavailable")
     ).toBeInTheDocument();
     expect(screen.getByText(/activity projection denied/)).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Packet activity/ })).not.toBeInTheDocument();
   });
 
   it("renders beds, filters rows, and shows selected bed details", () => {
+    hooks.useVitalDBRecorders.mockReturnValue(failedQuery(new Error("recorders denied")));
+
     renderPage(<BedsPage />);
 
     expect(screen.getByText("Known beds")).toBeInTheDocument();
@@ -607,18 +767,61 @@ describe("runtime console pages", () => {
     fireEvent.change(screen.getByPlaceholderText("Search beds"), {
       target: { value: "none" }
     });
-    expect(screen.getByText("No beds found.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No VitalDB bed observations found.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows Product Lab beds separately from VitalDB bed observations", () => {
+    hooks.useLabBeds.mockReturnValue(query({
+      state: "loaded",
+      readError: null,
+      beds: [
+        {
+          bedId: "lab-session-1-bed-1",
+          sessionId: "lab-session-1",
+          name: "Lab OR-1",
+          state: "accepted",
+          createdAt: "2026-05-31T00:00:00Z",
+          updatedAt: "2026-05-31T00:00:10Z"
+        },
+        {
+          bedId: "lab-session-1-bed-2",
+          sessionId: "lab-session-1",
+          name: "Lab OR-2",
+          state: "running",
+          createdAt: "2026-05-31T00:01:00Z",
+          updatedAt: "2026-05-31T00:01:10Z"
+        }
+      ]
+    }));
+
+    renderPage(<BedsPage />);
+
+    expect(screen.getByText("Product Lab beds")).toBeInTheDocument();
+    expect(screen.getByText("Product Lab Bed Details")).toBeInTheDocument();
+    expect(screen.getAllByText("Lab OR-1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("lab-session-1-bed-1").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByText("Lab OR-2")[0]);
+
+    expect(screen.getAllByText("Lab OR-2").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("lab-session-1-bed-2").length).toBeGreaterThan(1);
+    expect(screen.getByText("Created")).toBeInTheDocument();
+    expect(screen.getAllByText("Updated").length).toBeGreaterThan(0);
   });
 
   it("does not render missing bed query data as an empty bed list", () => {
-    hooks.useVitalDBRecorders.mockReturnValue(query(undefined));
+    hooks.useVitalDBBeds.mockReturnValue(query(undefined));
 
     renderPage(<BedsPage />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Bed history response is incomplete"
     );
-    expect(screen.queryByText("No beds found.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("No VitalDB bed observations found.")
+    ).not.toBeInTheDocument();
   });
 
   it("renders observability events and reacts to filters", () => {
@@ -629,36 +832,57 @@ describe("runtime console pages", () => {
     expect(screen.getByText("duplicate-ip")).toBeInTheDocument();
     expect(screen.getByText("10.0.0.10")).toBeInTheDocument();
     expect(screen.getByText("runtime updated")).toBeInTheDocument();
-    expect(screen.getByText("runtime recovered")).toBeInTheDocument();
+    expect(screen.getByText("runtime reconcile failed")).toBeInTheDocument();
     expect(
-      screen.getByText("runtime recovered").compareDocumentPosition(
+      screen.getByText("runtime reconcile failed").compareDocumentPosition(
         screen.getByText("runtime updated")
       ) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Period"), { target: { value: "7d" } });
     fireEvent.change(screen.getByLabelText("Filter"), {
-      target: { value: "recovery-deferred" }
+      target: { value: "operation-failed" }
     });
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "100" } });
 
     expect(hooks.useRuntimeEvents).toHaveBeenCalled();
   });
 
+  it("does not present an unknown paged runtime event total as exact", () => {
+    hooks.useRuntimeEvents.mockReturnValue(query({
+      ...events(),
+      nextCursor: "guest-ledger-page-2",
+      matchingCount: null
+    }));
+
+    renderPage(<ObservabilityPage />);
+
+    expect(screen.getAllByText("2 shown · more available")).toHaveLength(2);
+    expect(screen.queryByText("2 events")).not.toBeInTheDocument();
+  });
+
+  it("does not present an unavailable runtime event total as exact", () => {
+    hooks.useRuntimeEvents.mockReturnValue(query({
+      ...events(),
+      matchingCount: null
+    }));
+
+    renderPage(<ObservabilityPage />);
+
+    expect(screen.getAllByText("2 shown · total unavailable")).toHaveLength(2);
+    expect(screen.queryByText("2 events")).not.toBeInTheDocument();
+  });
+
   it("keeps observability read failures distinct from empty data", () => {
-    const baseOverview = overview();
-    hooks.useRuntimeOverview.mockReturnValue(
+    hooks.useLatestVitalDBObservation.mockReturnValue(query({
+      state: "failed",
+      observation: null,
+      readError: "sqlite denied"
+    }));
+    hooks.usePlatformState.mockReturnValue(
       query({
-        ...baseOverview,
-        status: {
-          ...baseOverview.status,
-          guestLogSyncServiceLoaded: undefined
-        },
-        vitalDBObservationSnapshot: {
-          state: "failed",
-          observation: null,
-          readError: "sqlite denied"
-        }
+        ...platformState(),
+        services: platformState().services.filter((service) => service.role !== "log-sync")
       })
     );
     hooks.useRuntimeEvents.mockReturnValue(query({ nextCursor: null }));
@@ -687,17 +911,11 @@ describe("runtime console pages", () => {
         }
       ]
     };
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        vitalDBObservation,
-        vitalDBObservationSnapshot: {
-          state: "loaded",
-          observation: vitalDBObservation,
-          readError: null
-        }
-      })
-    );
+    hooks.useLatestVitalDBObservation.mockReturnValue(query({
+      state: "loaded",
+      observation: vitalDBObservation,
+      readError: null
+    }));
 
     renderPage(<ObservabilityPage />);
 
@@ -729,17 +947,11 @@ describe("runtime console pages", () => {
         }
       ]
     };
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        vitalDBObservation,
-        vitalDBObservationSnapshot: {
-          state: "loaded",
-          observation: vitalDBObservation,
-          readError: null
-        }
-      })
-    );
+    hooks.useLatestVitalDBObservation.mockReturnValue(query({
+      state: "loaded",
+      observation: vitalDBObservation,
+      readError: null
+    }));
 
     renderPage(<ObservabilityPage />);
 
@@ -758,17 +970,11 @@ describe("runtime console pages", () => {
       anomalies: [],
       readIssues: []
     };
-    hooks.useRuntimeOverview.mockReturnValue(
-      query({
-        ...baseOverview,
-        vitalDBObservation,
-        vitalDBObservationSnapshot: {
-          state: "loaded",
-          observation: vitalDBObservation,
-          readError: "projection=read failed"
-        }
-      })
-    );
+    hooks.useLatestVitalDBObservation.mockReturnValue(query({
+      state: "loaded",
+      observation: vitalDBObservation,
+      readError: "projection=read failed"
+    }));
 
     renderPage(<ObservabilityPage />);
 
@@ -785,11 +991,17 @@ describe("runtime console pages", () => {
       query({
         events: [
           {
+            schemaVersion: 1,
             id: "event-missing-message",
+            source: "",
             timestamp: "2026-05-31T01:00:00Z",
-            eventType: "status-changed",
-            status: "healthy",
-            failureReasons: []
+            eventType: "operation-completed",
+            operationId: "operation-1",
+            operationService: "runtime-settings",
+            operationCommand: "apply-settings",
+            operationState: "completed",
+            message: "",
+            failure: null
           }
         ],
         nextCursor: null,
@@ -803,9 +1015,18 @@ describe("runtime console pages", () => {
     expect(screen.getByText("source not reported")).toBeInTheDocument();
   });
 
-  it("reads and exports logs with host path validation", () => {
-    const exportLogs = mutation({ destination: "file:///tmp/vitalserver-logs.zip" });
-    hooks.useExportHostLogs.mockReturnValue(exportLogs);
+  it("reads logs and creates a managed support bundle", () => {
+    const exportLogs = mutation({
+      ...completedApplyWorkflow,
+      operationId: "support-export-1",
+      kind: "support-export" as const,
+      artifact: {
+        path: "/var/lib/vitalserver/support/support.zip",
+        sha256: "a".repeat(64),
+        sizeBytes: 42
+      }
+    });
+    hooks.useCreatePlatformSupportExport.mockReturnValue(exportLogs);
 
     renderPage(<LogsPage />);
 
@@ -815,10 +1036,10 @@ describe("runtime console pages", () => {
     });
     fireEvent.change(screen.getByLabelText("Lines"), { target: { value: "100" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "Live" }));
-    fireEvent.click(screen.getByRole("button", { name: "Export Logs" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Support Bundle" }));
 
-    expect(exportLogs.mutate).toHaveBeenCalledWith("/tmp/vitalserver-logs.zip");
-    expect(screen.getByText(/Exported to/)).toBeInTheDocument();
+    expect(exportLogs.mutate).toHaveBeenCalledWith();
+    expect(screen.getByText(/\/var\/lib\/vitalserver\/support\/support.zip/)).toBeInTheDocument();
   });
 
   it("does not render missing log response data as an empty log", () => {
@@ -845,21 +1066,21 @@ describe("runtime console pages", () => {
   });
 
   it("shows log export capability read failure separately from unsupported export", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(
+    hooks.useControlCapabilities.mockReturnValue(
       failedQuery(new Error("capabilities denied"))
     );
 
     renderPage(<LogsPage />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Failed to read export capability"
-    );
-    expect(screen.getByRole("alert")).toHaveTextContent("capabilities denied");
-    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
+    expect(screen.getByText("Failed to read log streaming capability")).toBeInTheDocument();
+    expect(screen.getByText("Failed to read export capability")).toBeInTheDocument();
+    expect(screen.getAllByRole("alert")).toHaveLength(2);
+    expect(screen.getAllByRole("alert")[0]).toHaveTextContent("capabilities denied");
+    expect(screen.getByRole("button", { name: "Create Support Bundle" })).toBeDisabled();
   });
 
   it("shows unsupported log export as explicit unsupported capability", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(
+    hooks.useControlCapabilities.mockReturnValue(
       query({ ...capabilities(), canExportLogs: false })
     );
 
@@ -869,27 +1090,50 @@ describe("runtime console pages", () => {
       screen.getByText("Log export is not supported by this Runtime Control API.")
     ).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create Support Bundle" })).toBeDisabled();
   });
 
-  it("does not render missing log export capability as unsupported export", () => {
-    hooks.useRuntimeCapabilities.mockReturnValue(query(undefined));
+  it("does not request logs when log streaming is unsupported", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({ ...capabilities(), canStreamLogs: false })
+    );
 
     renderPage(<LogsPage />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Export capability response is incomplete"
+    expect(
+      screen.getByText("Log streaming is not supported by this Runtime Control API.")
+    ).toBeInTheDocument();
+    expect(hooks.useHostLogs).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false })
     );
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+  });
+
+  it("does not render missing log export capability as unsupported export", () => {
+    hooks.useControlCapabilities.mockReturnValue(query(undefined));
+
+    renderPage(<LogsPage />);
+
+    expect(
+      screen.getByText("Log streaming capability response is incomplete")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Export capability response is incomplete")
+    ).toBeInTheDocument();
     expect(
       screen.queryByText("Log export is not supported by this Runtime Control API.")
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export Logs" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create Support Bundle" })).toBeDisabled();
   });
 
   it("runs update inspection, verification, and apply actions", () => {
     const summarize = pendingMutation();
-    const verify = pendingMutation();
-    const apply = mutation(commandResult);
+    const verify = mutation({
+      ...completedApplyWorkflow,
+      operationId: "update-verify-1",
+      kind: "update-verify" as const
+    });
+    const apply = mutation(completedApplyWorkflow);
     hooks.useSummarizeUpdateBundle.mockReturnValue(summarize);
     hooks.useVerifyUpdateBundle.mockReturnValue(verify);
     hooks.useApplyUpdateBundle.mockReturnValue(apply);
@@ -900,13 +1144,64 @@ describe("runtime console pages", () => {
       target: { value: "/tmp/update.tar.gz" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check Integrity" }));
     fireEvent.click(screen.getByRole("button", { name: "Apply Bundle" }));
 
     expect(summarize.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
     expect(verify.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
-    expect(apply.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz", expect.any(Object));
+    expect(apply.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
     expect(screen.getByText(/Helper is relaunching/)).toBeInTheDocument();
+  });
+
+  it("renders Platform release, installation, and bundled service information", () => {
+    renderPage(<InfoPage />);
+
+    expect(screen.getByText("Product information")).toBeInTheDocument();
+    expect(screen.getByText("helper-1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("runtime.example")).toBeInTheDocument();
+    expect(screen.getAllByText("ghcr.io/tirosh/app:1").length).toBeGreaterThan(0);
+  });
+
+  it("keeps update apply disabled when the Platform trust policy is verify-only", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({ ...capabilities(), canApplyBundle: false })
+    );
+
+    renderPage(<UpdatePage />);
+
+    fireEvent.change(screen.getByLabelText("Offline bundle"), {
+      target: { value: "/tmp/update.tar.gz" }
+    });
+    expect(screen.getByRole("button", { name: "Check Integrity" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Apply Bundle" })).toBeDisabled();
+    expect(
+      screen.getByText(
+        "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("treats an absent Platform workflow as an initial state, not an error", () => {
+    hooks.usePlatformWorkflow.mockReturnValue(query({
+      state: "missing",
+      operation: null,
+      readError: null
+    }));
+
+    renderPage(<UpdatePage />);
+
+    expect(screen.getByText("No Platform workflow has run.")).toBeInTheDocument();
+    expect(screen.queryByText("Platform workflow is unavailable")).not.toBeInTheDocument();
+  });
+
+  it("schedules an owner-selected Platform release rollback", () => {
+    const rollback = pendingMutation();
+    hooks.useRollbackRelease.mockReturnValue(rollback);
+
+    renderPage(<UpdatePage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rollback Release" }));
+    expect(rollback.mutate).toHaveBeenCalledWith();
   });
 
   it("renders advanced recovery controls and dispatches selected actions", () => {
@@ -915,58 +1210,65 @@ describe("runtime console pages", () => {
     const createRedisBackup = pendingMutation();
     const createRuntimeDataBackup = pendingMutation();
     const restoreRuntimeDataBackup = pendingMutation();
-    const start = pendingMutation();
-    const stop = pendingMutation();
-    const repairRuntime = pendingMutation();
+    const startGuestService = pendingMutation();
+    const stopGuestService = pendingMutation();
+    const restartGuestService = pendingMutation();
+    const restartRuntimeProvider = pendingMutation();
     const repairDatastore = pendingMutation();
-    const repairVMDisk = pendingMutation();
-    const repairProxy = pendingMutation();
-    hooks.useApplyRuntimeSettings.mockReturnValue(applySettings);
+    hooks.useApplyRuntimeProductSettings.mockReturnValue(applySettings);
     hooks.useRollbackBackup.mockReturnValue(rollback);
     hooks.useCreateRedisBackup.mockReturnValue(createRedisBackup);
     hooks.useCreateRuntimeDataBackup.mockReturnValue(createRuntimeDataBackup);
     hooks.useRestoreRuntimeDataBackup.mockReturnValue(restoreRuntimeDataBackup);
-    hooks.useStartRuntimeServices.mockReturnValue(start);
-    hooks.useStopRuntimeServices.mockReturnValue(stop);
-    hooks.useRepairRuntime.mockReturnValue(repairRuntime);
+    hooks.useStartGuestService.mockReturnValue(startGuestService);
+    hooks.useStopGuestService.mockReturnValue(stopGuestService);
+    hooks.useRestartGuestService.mockReturnValue(restartGuestService);
+    hooks.useRestartRuntimeProvider.mockReturnValue(restartRuntimeProvider);
     hooks.useRepairDatastore.mockReturnValue(repairDatastore);
-    hooks.useRepairVMDisk.mockReturnValue(repairVMDisk);
-    hooks.useRepairProxy.mockReturnValue(repairProxy);
 
     renderPage(<AdvancedPage />);
 
-    expect(screen.getByText("VM health")).toBeInTheDocument();
+    expect(screen.getByText("Runtime provider health")).toBeInTheDocument();
     expect(screen.getByText("Advanced network")).toBeInTheDocument();
-    expect(screen.getByText("Admin operations")).toBeInTheDocument();
-    expect(screen.getByText("Sleep prevention service")).toBeInTheDocument();
-    expect(screen.getByText("VitalDB Observer")).toBeInTheDocument();
-    expect(screen.getByText("Redis UI")).toBeInTheDocument();
-    expect(screen.getByText("Swagger UI")).toBeInTheDocument();
+    expect(screen.queryByText("Admin operations")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Sleep prevention").length).toBeGreaterThan(0);
+    expect(screen.getByText("Platform services")).toBeInTheDocument();
+    expect(screen.getByText("Runtime product services")).toBeInTheDocument();
+    expect(screen.getByText("Access endpoints")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reconnect Runtime Control" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Redis UI service")).not.toBeInTheDocument();
+    expect(screen.queryByText("Swagger UI service")).not.toBeInTheDocument();
+    expect(screen.getByText("VitalServer API")).toBeInTheDocument();
+    expect(screen.getByText("Runtime Control API")).toBeInTheDocument();
+    expect(screen.getByText("Recorder Ingress API")).toBeInTheDocument();
+    expect(screen.getByText("VitalDB Observer API")).toBeInTheDocument();
+    expect(screen.getByText("apply-bundle")).toBeInTheDocument();
+    expect(
+      screen.getByText("install: unavailable, lease: stale, lease staleReason: expired")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "http://127.0.0.1:18080/swagger/docs/macos-runtime/runtime-control.openapi.json"
+      })
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("VitalServer URL"), {
       target: { value: "http://127.0.0.1:18080/" }
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Apply Settings" })[0]);
-    fireEvent.click(screen.getByLabelText("Reset admin password"));
-    fireEvent.change(screen.getByLabelText("New admin password"), {
-      target: { value: "new-admin-password" }
-    });
-    fireEvent.click(screen.getAllByRole("button", { name: "Apply Settings" })[1]);
-    fireEvent.click(screen.getByRole("button", { name: "Start Runtime Services" }));
-    fireEvent.click(screen.getByRole("button", { name: "Stop Runtime Services" }));
     fireEvent.click(screen.getByRole("row", { name: /backup-a/ }));
     fireEvent.click(screen.getByRole("button", { name: "Rollback" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Redis-only Backup" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Backup" }));
     fireEvent.click(screen.getByRole("row", { name: /runtime-data-a/ }));
     fireEvent.click(screen.getByRole("button", { name: "Restore Backup" }));
-    fireEvent.click(screen.getByRole("button", { name: "Repair Runtime" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart Runtime Provider" }));
     fireEvent.click(screen.getByRole("button", { name: "Repair Data Store" }));
-    fireEvent.click(screen.getByRole("button", { name: "Repair VM Disk" }));
-    fireEvent.change(screen.getByLabelText("Proxy port"), {
-      target: { value: "18444" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Repair Proxy" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Start" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Stop" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Restart" })[0]);
 
     expect(applySettings.mutate).toHaveBeenNthCalledWith(1, {
       settings: expect.objectContaining({
@@ -974,22 +1276,304 @@ describe("runtime console pages", () => {
         remoteConsoleURL: "http://console.example.test/"
       })
     });
-    expect(applySettings.mutate).toHaveBeenNthCalledWith(2, {
-      settings: expect.objectContaining({
-        changeAdminPassword: true,
-        adminPassword: "new-admin-password"
-      })
-    });
-    expect(start.mutate).toHaveBeenCalled();
-    expect(stop.mutate).toHaveBeenCalled();
     expect(rollback.mutate).toHaveBeenCalledWith("/tmp/backup-a");
     expect(createRedisBackup.mutate).toHaveBeenCalledWith("");
     expect(createRuntimeDataBackup.mutate).toHaveBeenCalledWith("");
     expect(restoreRuntimeDataBackup.mutate).toHaveBeenCalledWith("/tmp/runtime-data-a");
-    expect(repairRuntime.mutate).toHaveBeenCalled();
+    expect(restartRuntimeProvider.mutate).toHaveBeenCalled();
     expect(repairDatastore.mutate).toHaveBeenCalled();
-    expect(repairVMDisk.mutate).toHaveBeenCalled();
-    expect(repairProxy.mutate).toHaveBeenCalledWith(18444);
+    expect(startGuestService.mutate).toHaveBeenCalledWith("app");
+    expect(stopGuestService.mutate).toHaveBeenCalledWith("app");
+    expect(restartGuestService.mutate).toHaveBeenCalledWith("app");
+  });
+
+  it("renders the selected Guest datastore result after a failed Runtime Provider restart", () => {
+    const providerFailure = {
+      operationId: "provider-restart-failed",
+      action: "restart" as const,
+      state: "failed" as const,
+      provider: {
+        state: "loaded" as const,
+        document: {
+          schemaVersion: 1,
+          state: "waiting-for-hypervisor",
+          operation: "restart",
+          operationID: "provider-restart-failed",
+          bootID: "boot-1",
+          startedAt: "2026-07-12T00:00:00Z",
+          updatedAt: "2026-07-12T00:00:01Z",
+          deadlineAt: null,
+          terminalReason: "hyperv-provider-exit",
+          message: "Hyper-V did not report a running VM"
+        },
+        readError: null
+      },
+      failure: {
+        kind: "launch-failed",
+        message: "Runtime Provider restart failed"
+      }
+    };
+    const datastoreRepair = {
+      operationId: "datastore-repair-1",
+      service: "datastore-repair",
+      command: "repair-datastore" as const,
+      state: "accepted" as const,
+      createdAt: "2026-07-12T00:00:00Z",
+      updatedAt: "2026-07-12T00:00:00Z",
+      failure: null
+    };
+    hooks.useRestartRuntimeProvider.mockReturnValue(mutation(providerFailure));
+    hooks.useRepairDatastore.mockReturnValue(mutation(datastoreRepair));
+
+    renderPage(<AdvancedPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Restart Runtime Provider" }));
+    expect(screen.getByText(/operationId: provider-restart-failed/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/failure: launch-failed Runtime Provider restart failed/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/provider lifecycle: waiting-for-hypervisor/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/provider terminal reason: hyperv-provider-exit/)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Repair Data Store" }));
+    expect(screen.getByText(/operationId: datastore-repair-1/)).toBeInTheDocument();
+    expect(screen.getByText(/service: datastore-repair/)).toBeInTheDocument();
+    expect(screen.queryByText(/operationId: provider-restart-failed/)).not.toBeInTheDocument();
+  });
+
+  it("keeps unsupported maintenance explicit and does not offer platform-specific repair routes", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({
+        ...capabilities(),
+        canControlRuntimeServices: false,
+        canRepairRuntimeDatastore: false
+      })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(
+      screen.getByRole("button", { name: "Restart Runtime Provider" })
+    ).toBeDisabled();
+    expect(
+      screen.getByText("Runtime Provider control is not supported by this Platform Agent.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Data store repair is not supported by this Runtime Controller.")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Repair Data Store" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Repair Proxy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Repair VM Disk" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a maintenance capability read failure distinct from unsupported maintenance", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      failedQuery(new Error("runtime capability endpoint unavailable"))
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getByText("Failed to read control capabilities")).toBeInTheDocument();
+    expect(
+      screen.getByText("Runtime Provider control capability could not be read.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Data store repair capability could not be read.")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Data store repair is not supported by this Runtime Controller.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not read or enable backup resources without rollback capability", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({ ...capabilities(), canRollback: false })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(
+      screen.getAllByText(
+        "Backup and rollback operations are not supported by this Runtime Control API."
+      )
+    ).toHaveLength(4);
+    expect(hooks.useHostBackups).toHaveBeenCalledWith(false);
+    expect(hooks.useRedisBackups).toHaveBeenCalledWith(false);
+    expect(hooks.useRuntimeDataBackups).toHaveBeenCalledWith(false);
+    expect(screen.getByRole("button", { name: "Create Backup" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Create Redis-only Backup" })
+    ).toBeDisabled();
+  });
+
+  it("shows Guest service read failures without falling back to compose observations", () => {
+    hooks.useRuntimeStack.mockReturnValue(
+      failedQuery(new Error("guest control api timed out"))
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getByText("Observed state and control")).toBeInTheDocument();
+    expect(screen.getByText("Failed to read Runtime product services")).toBeInTheDocument();
+    expect(screen.getByText("guest control api timed out")).toBeInTheDocument();
+    expect(screen.queryByText("VitalDB Observer")).not.toBeInTheDocument();
+  });
+
+  it("shows Runtime service desired, observed, and resource read states from direct resources", () => {
+    hooks.useRuntimeServiceResources.mockReturnValue([
+      {
+        service: "app",
+        resource:
+            {
+              service: "app",
+              spec: {
+                state: "configured",
+                desiredState: "running",
+                updatedAt: "2026-05-31T01:00:00Z"
+              },
+              status: {
+                state: "loaded",
+                observedState: "running",
+                observedAt: "2026-05-31T01:00:00Z"
+              },
+              conditions: [
+                {
+                  type: "Reconciled",
+                  status: "true",
+                  reason: "DesiredStateObserved",
+                  message: "matched desired state",
+                  observedAt: "2026-05-31T01:00:00Z"
+                },
+                {
+                  type: "ResourceFresh",
+                  status: "true",
+                  reason: "ObservedRecently",
+                  message: "resource observation is current",
+                  observedAt: "2026-05-31T01:00:01Z"
+                }
+              ],
+              lastOperationId: "op-app-1"
+            },
+        error: null
+      },
+      {
+        service: "worker",
+        resource:
+            {
+              service: "worker",
+              spec: {
+                state: "configured",
+                desiredState: "running",
+                updatedAt: "2026-05-31T01:00:00Z"
+              },
+              status: {
+                state: "failed",
+                observedState: null,
+                observedAt: null,
+                serviceStatus: null,
+                readError: {
+                  kind: "serviceStatusReadFailed",
+                  message: "docker inspect failed"
+                }
+              },
+              conditions: [],
+              lastOperationId: "op-worker-2"
+            },
+        error: null
+      },
+      {
+        service: "scheduler",
+        resource:
+            {
+              service: "scheduler",
+              spec: {
+                state: "configured",
+                desiredState: null,
+                updatedAt: "2026-05-31T01:00:00Z"
+              },
+              status: {
+                state: "loaded",
+                observedState: null,
+                observedAt: null
+              },
+              conditions: [],
+              lastOperationId: null
+            },
+        error: null
+      },
+      {
+        service: "postgres",
+        resource: undefined,
+        error: new Error("resource document decode failed")
+      }
+    ]);
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getByRole("columnheader", { name: "Desired" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Spec" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Status read" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Observed" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Conditions" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Last operation" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Resource read" })).toBeInTheDocument();
+    const appRow = screen.getByRole("row", { name: /app running healthy configured running loaded running/i });
+    expect(
+      within(appRow).getByText(
+        "Reconciled=true DesiredStateObserved: matched desired state; ResourceFresh=true ObservedRecently: resource observation is current"
+      )
+    ).toBeInTheDocument();
+    expect(within(appRow).getByText("op-app-1")).toBeInTheDocument();
+    expect(within(appRow).getByText("OK")).toBeInTheDocument();
+    const workerRow = screen.getByRole("row", {
+      name: /worker Not reported Not reported configured running serviceStatusReadFailed: docker inspect failed Not reported Not reported op-worker-2 OK/i
+    });
+    expect(workerRow).toBeInTheDocument();
+    const schedulerRow = screen.getByRole("row", {
+      name: /scheduler Not reported Not reported configured Not reported loaded Not reported Not reported Not reported OK/i
+    });
+    expect(schedulerRow).toBeInTheDocument();
+    const postgresRow = screen.getByRole("row", {
+      name: /postgres Not reported Not reported Not reported Not reported Not reported Not reported Not reported Not reported resource document decode failed/i
+    });
+    expect(postgresRow).toBeInTheDocument();
+  });
+
+  it("shows non-loaded Runtime stack status without treating it as an empty service list", () => {
+    hooks.useRuntimeStack.mockReturnValue(
+      query({
+        state: "failed",
+        observedAt: "2026-05-31T01:00:00Z",
+        services: []
+      })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getByText("Observed state and control")).toBeInTheDocument();
+    expect(screen.getByText("Failed to read Runtime product services")).toBeInTheDocument();
+    expect(screen.getByText("Runtime stack status is failed.")).toBeInTheDocument();
+    expect(screen.queryByText("No Runtime product services are reported.")).not.toBeInTheDocument();
+  });
+
+  it("gates Guest service actions with Guest service control capability", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({
+        ...capabilities(),
+        canControlRuntimeServices: true,
+        canControlGuestServices: false
+      })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getAllByRole("button", { name: "Start" })[0]).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Stop" })[0]).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Restart" })[0]).toBeDisabled();
   });
 
   it("deletes explicit backup types and keeps gated uninstall flow in danger zone", () => {
@@ -1013,134 +1597,274 @@ describe("runtime console pages", () => {
 
     expect(deleteUpdateBackup.mutate).toHaveBeenCalledWith("/tmp/backup-a");
     expect(deleteRuntimeDataBackup.mutate).toHaveBeenCalledWith("/tmp/runtime-data-a");
-    expect(screen.getByText("Standard uninstall is temporarily unavailable.")).toBeInTheDocument();
-    expect(uninstall.mutate).toHaveBeenCalledOnce();
-    expect(uninstall.mutate).toHaveBeenCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "Standard Uninstall" }));
+    expect(uninstall.mutate).toHaveBeenCalledTimes(2);
+    expect(uninstall.mutate).toHaveBeenNthCalledWith(1, true);
+    expect(uninstall.mutate).toHaveBeenNthCalledWith(2, false);
   });
 
-  it("manages TestKit beds, sessions, and orphan cleanup", () => {
-    const createBeds = pendingMutation();
-    const deleteBeds = pendingMutation();
-    const resetBeds = pendingMutation();
-    const startSession = mutation(testKitSession("running"));
-    const resetSessions = pendingMutation();
-    const deleteOrphan = pendingMutation();
-    const sessionAction = pendingMutation();
-    hooks.useCreateTestKitBeds.mockReturnValue(createBeds);
-    hooks.useDeleteTestKitBeds.mockReturnValue(deleteBeds);
-    hooks.useResetTestKitBeds.mockReturnValue(resetBeds);
-    hooks.useStartTestKitVirtualRecorders.mockReturnValue(startSession);
-    hooks.useResetTestKitVirtualRecorders.mockReturnValue(resetSessions);
-    hooks.useDeleteTestKitOrphanVRecorder.mockReturnValue(deleteOrphan);
-    hooks.useSessionTestKitAction.mockReturnValue(sessionAction);
+  it("manages Product Lab scenarios, sessions, and vital file replay", () => {
+    const createLabSession = mutation(labSessionResponse("accepted"));
+    const startLabSession = mutation(labSessionResponse("running"));
+    const stopLabSession = mutation(labSessionResponse("stopped"));
+    const finishLabSession = mutation(labSessionResponse("finished"));
+    const replayLabVitalFile = mutation(labSessionResponse("accepted"));
+    hooks.useCreateLabSession.mockReturnValue(createLabSession);
+    hooks.useStartLabSession.mockReturnValue(startLabSession);
+    hooks.useStopLabSession.mockReturnValue(stopLabSession);
+    hooks.useFinishLabSession.mockReturnValue(finishLabSession);
+    hooks.useReplayLabVitalFile.mockReturnValue(replayLabVitalFile);
+    const uploadLabVitalFile = mutation({
+      state: "completed",
+      files: [],
+      failedFiles: []
+    });
+    hooks.useUploadLabVitalFiles.mockReturnValue(uploadLabVitalFile);
 
-    renderPage(<TestKitPage />);
+    renderPage(<LabPage />);
 
-    const bedCheckbox = within(screen.getByText("OR-1").closest("label")!).getByRole(
-      "checkbox"
-    );
-    fireEvent.click(bedCheckbox);
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete selected" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    fireEvent.change(screen.getByLabelText("Target URL"), {
+      target: { value: "http://edge/" }
+    });
+    fireEvent.change(screen.getByLabelText("Recorders"), {
+      target: { value: "2" }
+    });
+    fireEvent.change(screen.getAllByLabelText("Session name")[0]!, {
+      target: { value: "Case review" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create session" }));
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset sessions" }));
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
-    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
-    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    fireEvent.change(screen.getByLabelText("Orphan VRecorder code"), {
-      target: { value: "VR_ORPHAN" }
+    fireEvent.click(screen.getByRole("button", { name: "Finish & export" }));
+    const selectedFiles = [
+      new File(["first"], "first.vital"),
+      new File(["second"], "second.vital")
+    ];
+    fireEvent.change(screen.getByLabelText("Vital files to upload"), {
+      target: { files: selectedFiles }
     });
-    fireEvent.click(screen.getByRole("button", { name: "Delete VRecorder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload 2 file(s)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replay" }));
 
-    expect(createBeds.mutate).toHaveBeenCalledWith({
-      count: 1,
-      prefix: "testbed"
-    });
-    expect(deleteBeds.mutate).toHaveBeenCalledWith(["OR-1"]);
-    expect(resetBeds.mutate).toHaveBeenCalledWith(undefined);
-    expect(startSession.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bedRoomNames: ["OR-1"],
-        recorders: 1,
-        source: null,
-        realSampleKey: null
-      }),
+    expect(createLabSession.mutate).toHaveBeenCalledWith(
+      {
+        scenarioId: "baseline",
+        name: "Case review",
+        recorderCount: 2,
+        targetURL: "http://edge/",
+        bedIds: []
+      },
       expect.any(Object)
     );
-    expect(resetSessions.mutate).toHaveBeenCalledWith(undefined);
-    expect(sessionAction.mutate).toHaveBeenCalledWith("session-1");
-    expect(deleteOrphan.mutate).toHaveBeenCalledWith("VR_ORPHAN");
-  });
-
-  it("starts TestKit sessions from explicit vital file sources", () => {
-    const startSession = mutation(testKitSession("running"));
-    hooks.useStartTestKitVirtualRecorders.mockReturnValue(startSession);
-
-    renderPage(<TestKitPage />);
-
-    const bedCheckbox = within(screen.getByText("OR-1").closest("label")!).getByRole(
-      "checkbox"
+    expect(startLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
+    expect(stopLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
+    expect(finishLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
+    expect(replayLabVitalFile.mutate).toHaveBeenCalledWith(
+      {
+        vitalFileRelativePath: "case.vital",
+        sessionName: "Vital file replay",
+        targetURL: "http://edge/",
+        resourceSelection: { mode: "quickCreate" },
+        repeatPolicy: { mode: "once" }
+      },
+      expect.any(Object)
     );
-    fireEvent.click(bedCheckbox);
-    fireEvent.change(screen.getByLabelText("Source"), {
-      target: { value: "vitalFile" }
-    });
-    fireEvent.change(screen.getByLabelText("Vital file path"), {
-      target: { value: "/Users/Shared/VitalServerHelper/vital-files/case.vital" }
-    });
-    fireEvent.change(screen.getByLabelText("Track preset"), {
-      target: { value: "periop_full" }
-    });
-    fireEvent.change(screen.getByLabelText("Start offset seconds"), {
-      target: { value: "8" }
-    });
-    fireEvent.change(screen.getByLabelText("Playback duration seconds"), {
-      target: { value: "90" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
-
-    expect(startSession.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scenario: "normal",
-        source: {
-          type: "vitalFile",
-          path: "/Users/Shared/VitalServerHelper/vital-files/case.vital",
-          scenario: "periop_full",
-          startOffsetSeconds: 8,
-          durationSeconds: 90
-        },
-        realSampleKey: null
-      }),
+    expect(uploadLabVitalFile.mutate).toHaveBeenCalledWith(
+      {
+        files: selectedFiles
+      },
       expect.any(Object)
     );
   });
 
-  it("does not turn missing TestKit status into empty beds or sessions", () => {
-    hooks.useTestKitStatus.mockReturnValue(query(undefined));
+  it("shows only failed Vital File uploads after a partial batch", () => {
+    hooks.useUploadLabVitalFiles.mockReturnValue(
+      mutation({
+        state: "partial",
+        files: [
+          {
+            fileName: "valid.vital",
+            relativePath: "valid.vital",
+            sizeBytes: 42
+          }
+        ],
+        failedFiles: [
+          {
+            fileName: "broken.vital",
+            reason: "Vital file gzip stream is invalid."
+          }
+        ]
+      })
+    );
 
-    renderPage(<TestKitPage />);
+    renderPage(<LabPage />);
 
-    expect(screen.getAllByText("Not reported").length).toBeGreaterThanOrEqual(5);
-    expect(screen.getByText("TestKit bed state is not reported.")).toBeInTheDocument();
-    expect(screen.getByText("TestKit session state is not reported.")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Create beds before starting VRecorders.")
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("No virtual recorder sessions.")
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Files that could not be uploaded");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "broken.vital: Vital file gzip stream is invalid."
+    );
+    expect(screen.getByRole("alert")).not.toHaveTextContent("valid.vital");
+  });
+
+  it("keeps Product Lab visible but disables Lab commands when Lab capability is unavailable", () => {
+    hooks.useControlCapabilities.mockReturnValue(
+      query({
+        ...capabilities(),
+        canUseLab: false
+      })
+    );
+
+    renderPage(<LabPage />);
+
+    expect(screen.getByText("Product Lab")).toBeInTheDocument();
+    expect(screen.getByText("false")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create session" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create beds" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create recorders" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Finish & export" })).toBeDisabled();
+
+    expect(screen.getByRole("button", { name: "Replay" })).toBeDisabled();
+  });
+
+  it("shows the ingress-owned archive upload projection for the selected Lab session", () => {
+    const finished = labSessionResponse("finished");
+    const response = {
+      ...finished,
+      session: {
+        ...finished.session,
+        archiveFinalization: {
+          state: "processing" as const,
+          updatedAt: "2026-05-31T00:05:00Z",
+          readError: null
+        }
+      }
+    };
+    hooks.useLabSessions.mockReturnValue(query({
+      state: "loaded",
+      sessions: [response.session],
+      readError: null
+    }));
+    hooks.useLabSession.mockReturnValue(query(response));
+
+    renderPage(<LabPage />);
+
+    expect(screen.getAllByText("Recovery artifact export").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("processing").length).toBeGreaterThan(0);
+    expect(screen.getByText("2026-05-31T00:05:00Z")).toBeInTheDocument();
+  });
+
+  it("shows persisted Vital File replay validation failure evidence", () => {
+    const base = labSessionResponse("stopped");
+    const response = {
+      ...base,
+      session: {
+        ...base.session,
+        state: "failed" as const,
+        failure: {
+          stage: "fileValidation",
+          code: "noVitalServerGraphTracks",
+          message: "Vital File contains no VitalServer graph-compatible tracks.",
+          failedAt: "2026-07-22T08:45:00Z"
+        }
+      }
+    };
+    hooks.useLabSessions.mockReturnValue(query({
+      state: "loaded",
+      sessions: [response.session],
+      readError: null
+    }));
+    hooks.useLabSession.mockReturnValue(query(response));
+
+    renderPage(<LabPage />);
+
+    expect(screen.getAllByText("fileValidation").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("noVitalServerGraphTracks").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Vital File contains no VitalServer graph-compatible tracks.").length
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("2026-07-22T08:45:00Z").length).toBeGreaterThan(0);
+  });
+
+  it("selects a running Lab session and controls only its recorders", () => {
+    const runningSession = labSessionResponse("running");
+    const startLabRecorder = mutation({});
+    const stopLabRecorder = mutation({});
+    hooks.useLabSessions.mockReturnValue(query({
+      state: "loaded",
+      sessions: [runningSession.session],
+      readError: null
+    }));
+    hooks.useLabSession.mockReturnValue(query(runningSession));
+    hooks.useLabRecorders.mockReturnValue(query({
+      state: "loaded",
+      recorders: [
+        labRecorder("recorder-running", "running"),
+        labRecorder("recorder-stopped", "stopped"),
+        { ...labRecorder("other-session-recorder", "running"), sessionId: "lab-2" }
+      ],
+      readError: null
+    }));
+    hooks.useStartLabRecorder.mockReturnValue(startLabRecorder);
+    hooks.useStopLabRecorder.mockReturnValue(stopLabRecorder);
+
+    renderPage(<LabPage />);
+
+    expect(screen.getByText("Case review")).toBeInTheDocument();
+    const recorderPanel = screen.getByText("Session recorders").closest("section")!;
+    expect(within(recorderPanel).queryByText("other-session-recorder")).not.toBeInTheDocument();
+    const startButtons = within(recorderPanel).getAllByRole("button", {
+      name: "Start recorder"
+    });
+    const stopButtons = within(recorderPanel).getAllByRole("button", {
+      name: "Stop recorder"
+    });
+    fireEvent.click(startButtons[1]!);
+    fireEvent.click(stopButtons[0]!);
+
+    expect(startLabRecorder.mutate).toHaveBeenCalledWith({
+      sessionId: "lab-1",
+      recorderId: "recorder-stopped"
+    });
+    expect(stopLabRecorder.mutate).toHaveBeenCalledWith({
+      sessionId: "lab-1",
+      recorderId: "recorder-running"
+    });
+  });
+
+  it("creates a Product Lab session for explicit Lab bed IDs", () => {
+    const createLabSession = mutation(labSessionResponse("accepted"));
+    hooks.useCreateLabSession.mockReturnValue(createLabSession);
+
+    renderPage(<LabPage />);
+
+    fireEvent.change(screen.getByLabelText("Recorders"), {
+      target: { value: "5" }
+    });
+    fireEvent.change(screen.getByLabelText("Session bed IDs"), {
+      target: { value: "manual_session_1-bed-1, manual_session_1-bed-2" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create session" }));
+
+    expect(createLabSession.mutate).toHaveBeenCalledWith(
+      {
+        scenarioId: "baseline",
+        name: "Lab session",
+        recorderCount: 2,
+        targetURL: null,
+        bedIds: ["manual_session_1-bed-1", "manual_session_1-bed-2"]
+      },
+      expect.any(Object)
+    );
   });
 
   it("shows page-level query errors", () => {
-    hooks.useRuntimeOverview.mockReturnValue(failedQuery(new Error("overview denied")));
-    hooks.useVitalDBRecorders.mockReturnValue(failedQuery(new Error("beds denied")));
+    hooks.usePlatformState.mockReturnValue(failedQuery(new Error("platform denied")));
+    hooks.useVitalDBBeds.mockReturnValue(failedQuery(new Error("beds denied")));
 
     const { rerender } = renderPage(<StatusPage />);
-    expect(screen.getByRole("alert")).toHaveTextContent("overview denied");
+    expect(screen.getByRole("alert")).toHaveTextContent("platform denied");
 
     rerender(
       <Wrapper>
@@ -1152,51 +1876,248 @@ describe("runtime console pages", () => {
 });
 
 function setupDefaultHooks() {
-  hooks.useRuntimeCapabilities.mockReturnValue(query(capabilities()));
-  hooks.useRuntimeOverview.mockReturnValue(query(overview()));
-  hooks.useRuntimeSettings.mockReturnValue(query(settings()));
+  hooks.useControlCapabilities.mockReturnValue(query(capabilities()));
+  hooks.useLatestVitalDBObservation.mockReturnValue(
+    query(overview().vitalDBObservationSnapshot)
+  );
+  hooks.usePlatformState.mockReturnValue(query(platformState()));
+  hooks.usePlatformOperationState.mockReturnValue(query(operationState()));
+  hooks.usePlatformWorkflow.mockReturnValue(query({
+    state: "missing",
+    operation: null,
+    readError: null
+  }));
+  hooks.useRuntimeStack.mockReturnValue(query(guestStackStatus()));
+  hooks.useRuntimeServiceResources.mockReturnValue([]);
+  hooks.useRuntimeProductSettings.mockReturnValue(query({
+    state: "loaded",
+    settings: productSettings(),
+    readError: null
+  }));
+  hooks.useRuntimePlatformSettings.mockReturnValue(query({
+    state: "loaded",
+    settings: {
+      cpuCount: 4,
+      memoryGiB: 8,
+      diskGiB: 128,
+      minimumDiskGiB: 4,
+      networkMode: "shared",
+      bridgedInterface: null,
+      proxyPort: 18080,
+      runtimeControlPort: 18321,
+      vitalFilesDirectory: "/var/lib/vitalserver/vital-files",
+      startOnBoot: true,
+      startOnBootConfigurable: true,
+      autoRecoveryEnabled: true,
+      preventSystemSleep: true,
+      automaticBackupEnabled: true,
+      backupScheduleTimes: ["03:00"],
+      backupRetentionCount: 7,
+      logArchiveRetentionDays: 14,
+      logArchiveMaximumGiB: 10,
+      restartAfterSave: false
+    },
+    readIssues: [],
+    readError: null
+  }));
+  hooks.useRuntimeRedisRelaySettings.mockReturnValue(query({
+    state: "loaded",
+    settings: {
+      enabled: false,
+      target: {
+        url: "redis://redis.example:6379/0",
+        username: "",
+        passwordConfigured: false,
+        tls: false
+      },
+      scope: "vital_reconstruction",
+      includeRecorderNetworkContext: false,
+      intervalSeconds: 1,
+      scanCount: 1000
+    },
+    readError: null
+  }));
   hooks.useVitalDBRecorders.mockReturnValue(query(recorders()));
-  hooks.useVitalDBBeds.mockReturnValue(query(beds()));
+  hooks.useVitalDBRecorderActivity.mockReturnValue(query(recorderActivityWindow()));
+  hooks.useVitalDBRecorderVitalFiles.mockReturnValue(query({
+    state: "loaded",
+    vrcode: "VR_A",
+    files: [],
+    unattributedCount: 0,
+    sources: {
+      nativeUpload: { state: "loaded", readError: null },
+      coldPathRecovery: { state: "loaded", readError: null }
+    },
+    readError: null
+  }));
+  hooks.useRecorderObservabilityDetail.mockReturnValue(
+    query(recorderObservabilityDetail())
+  );
+  hooks.useRecorderObservabilityTimeline.mockReturnValue(query({
+    state: "notReported",
+    vrcode: "VR_A",
+    supportState: "supported",
+    timeBasis: "receivedAt",
+    query: {
+      from: "2026-07-23T00:00:00Z",
+      until: "2026-07-24T00:00:00Z",
+      bucketSeconds: 900
+    },
+    buckets: [],
+    readError: null
+  }));
+  hooks.useRecorderObservabilityIncidents.mockReturnValue(query({
+    state: "loaded",
+    vrcode: "VR_A",
+    timeBasis: "receivedAt",
+    incidents: [],
+    nextCursor: null,
+    readError: null
+  }));
+  hooks.useVitalDBBeds.mockReturnValue(query(bedHistory()));
   hooks.useVitalDBRelationships.mockReturnValue(query(relationships()));
   hooks.useRuntimeEvents.mockReturnValue(query(events()));
   hooks.useHostLogs.mockReturnValue(query({ text: "line one\nline two" }));
   hooks.useHostBackups.mockReturnValue(query([{ path: "/tmp/backup-a", sizeBytes: 2048 }]));
   hooks.useRedisBackups.mockReturnValue(query([{ path: "/tmp/redis-a", sizeBytes: 1024 }]));
   hooks.useRuntimeDataBackups.mockReturnValue(query([{ path: "/tmp/runtime-data-a", sizeBytes: 4096 }]));
-  hooks.useTestKitStatus.mockReturnValue(query(testKitStatus()));
+  hooks.useLabScenarios.mockReturnValue(query({
+    state: "loaded",
+    scenarios: [
+      {
+        scenarioId: "baseline",
+        name: "Baseline monitor",
+        category: "generated",
+        description: "Stable generated vitals"
+      }
+    ],
+    readError: null
+  }));
+  hooks.useLabBeds.mockReturnValue(query({
+    state: "loaded",
+    beds: [],
+    readError: null
+  }));
+  hooks.useLabRecorders.mockReturnValue(query({
+    state: "loaded",
+    recorders: [],
+    readError: null
+  }));
+  hooks.useReleaseInfo.mockReturnValue(query({
+    helperVersion: "helper-1.0.0",
+    minimumUpdaterVersion: "updater-1.0.0",
+    vitalServerVersion: "vitalserver-1.0.0",
+    services: [{ name: "app", image: "ghcr.io/tirosh/app:1", version: "1" }]
+  }));
+  hooks.useInstallInfo.mockReturnValue(query({
+    appBundlePath: "/Applications/VitalServer Helper.app",
+    packageIdentifier: "runtime.example",
+    runtimeHomePath: "/var/lib/vitalserver",
+    backupsPath: "/var/lib/vitalserver/backups",
+    redisBackupsPath: "/var/lib/vitalserver/redis-backups",
+    runtimeDataBackupsPath: "/var/lib/vitalserver/runtime-data-backups"
+  }));
+  hooks.useLabVitalFiles.mockReturnValue(query({
+    state: "loaded",
+    vitalFiles: [
+      {
+        displayName: "case.vital",
+        relativePath: "case.vital",
+        guestPath: "/mnt/tirosh-vital-files/case.vital",
+        sizeBytes: 1024,
+        modifiedAt: "2026-05-31T00:00:00Z"
+      }
+    ],
+    readError: null
+  }));
+  hooks.useLabSession.mockReturnValue(query(labSessionResponse("accepted")));
+  hooks.useLabSessions.mockReturnValue(query({
+    state: "loaded",
+    sessions: [labSessionResponse("accepted").session],
+    readError: null
+  }));
 
   for (const mock of [
-    hooks.useApplyRuntimeSettings,
+    hooks.useApplyRuntimeAdminPassword,
+    hooks.useApplyRuntimePlatformSettings,
+    hooks.useApplyRuntimeRedisRelaySettings,
     hooks.useApplyUpdateBundle,
     hooks.useCreateRedisBackup,
     hooks.useCreateRuntimeDataBackup,
-    hooks.useCreateTestKitBeds,
+    hooks.useCreateLabBeds,
+    hooks.useCreateLabRecorders,
+    hooks.useCreateLabSession,
+    hooks.useDeleteLabBeds,
+    hooks.useDeleteLabRecorders,
     hooks.useDeleteHostBackup,
     hooks.useDeleteRuntimeDataBackup,
+    hooks.useDeleteVitalDBBeds,
+    hooks.useDeleteVitalDBRecorders,
     hooks.useDeleteUpdateBackup,
-    hooks.useDeleteTestKitBeds,
-    hooks.useDeleteTestKitOrphanVRecorder,
-    hooks.useExportHostLogs,
+    hooks.useCreatePlatformSupportExport,
+    hooks.useHideVitalDBBeds,
+    hooks.useHideVitalDBRecorders,
     hooks.useRepairDatastore,
-    hooks.useRepairProxy,
-    hooks.useRepairRuntime,
-    hooks.useRepairVMDisk,
-    hooks.useResetTestKitBeds,
-    hooks.useResetTestKitVirtualRecorders,
-    hooks.useRestartTestKitVirtualRecorders,
+    hooks.useRestartRuntimeProvider,
+    hooks.useRollbackRelease,
+    hooks.useRestartGuestService,
     hooks.useRollbackBackup,
     hooks.useRestoreRuntimeDataBackup,
-    hooks.useStartRuntimeServices,
-    hooks.useStartTestKitVirtualRecorders,
-    hooks.useStopRuntimeServices,
+    hooks.useReplayLabVitalFile,
+    hooks.useResetLabBeds,
+    hooks.useResetLabRecorders,
+    hooks.useStartLabSession,
+    hooks.useStartLabRecorder,
+    hooks.useStartGuestService,
+    hooks.useStopGuestService,
+    hooks.useStopLabSession,
+    hooks.useFinishLabSession,
+    hooks.useStopLabRecorder,
     hooks.useSummarizeUpdateBundle,
+    hooks.useUnhideVitalDBBeds,
+    hooks.useUnhideVitalDBRecorders,
     hooks.useUninstallRuntime,
+    hooks.useUploadLabVitalFiles,
     hooks.useVerifyUpdateBundle
   ]) {
     mock.mockReturnValue(pendingMutation());
   }
 
-  hooks.useSessionTestKitAction.mockImplementation(() => pendingMutation());
+  hooks.useApplyRuntimeProductSettings.mockReturnValue(
+    pendingMutation()
+  );
+
+}
+
+function guestStackStatus() {
+  return {
+    state: "loaded",
+    observedAt: "2026-05-31T01:00:00Z",
+    cpuUsagePercent: 12,
+    memory: { usedBytes: 2048, totalBytes: 4096 },
+    systemDisk: { availableBytes: 8192, totalBytes: 16384 },
+    services: [
+      {
+        service: "app",
+        state: "running",
+        health: "healthy",
+        source: {
+          kind: "compose",
+          observedAt: "2026-05-31T01:00:00Z"
+        }
+      },
+      {
+        service: "recorder-ingress",
+        state: "running",
+        health: "healthy",
+        source: {
+          kind: "compose",
+          observedAt: "2026-05-31T01:00:00Z"
+        }
+      }
+    ],
+    probeErrors: []
+  };
 }
 
 function capabilities() {
@@ -1205,18 +2126,25 @@ function capabilities() {
     canUninstallRuntime: true,
     canApplyBundle: true,
     canRollback: true,
-    canEditVMResources: true,
+    canRollbackRelease: true,
+    canEditRuntimeProviderResources: true,
     canEditNetworkExposure: true,
     canResetAdminPassword: true,
     canOpenLocalFiles: true,
     canStreamLogs: true,
     canControlRuntimeServices: true,
+    canControlGuestServices: true,
+    canRepairRuntimeDatastore: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseTestTools: true,
+    canUseLab: true,
+    canListLabSessions: true,
+    canControlLabRecorders: true,
+    canApplyRuntimeProductSettings: true,
+    canApplyRuntimeAdminPassword: true,
+    canApplyRuntimeRedisRelaySettings: true,
     canApplySettings: true,
     canApplyRuntimeSettings: true,
-    canControlRecovery: true,
     canEditLocalFiles: true
   };
 }
@@ -1248,155 +2176,6 @@ function overview() {
 
   return {
     settings: settings(),
-    status: {
-      runtimeState: "healthy",
-      operation: "idle",
-      runtimeVersion: "1.2.3",
-      vmIP: "192.168.64.8",
-      proxyPort: 18080,
-      startedAt: "2026-05-31T00:00:00Z",
-      runtimeControlStartedAt: "2026-05-31T00:00:00Z",
-      guestHTTP: "HTTP 200",
-      hostProxyHTTP: "HTTP 200",
-      runtimeControlHTTP: "HTTP 200",
-      vmServiceLoaded: true,
-      proxyServiceLoaded: true,
-      watchdogServiceLoaded: true,
-      guestLogSyncServiceLoaded: true,
-      sleepPreventionServiceLoaded: true,
-      redisUIHTTP: "HTTP 200",
-      swaggerUIHTTP: "HTTP 200",
-      cpuUsagePercent: 12,
-      dataDirectoryStats: { fileCount: 2, sizeBytes: 4096 },
-      memory: { usedBytes: 2048, totalBytes: 4096 },
-      systemDisk: { availableBytes: 8192, totalBytes: 16384 },
-      dataStorage: { usedBytes: 1024, totalBytes: 2048 },
-      containerObservation: {
-        recorderIngressHTTP: "HTTP 200",
-        recorderIngressStatus: {
-          activeWebSockets: 3,
-          activeRecorderConnections: 2,
-          recorders: [],
-          httpRequests: 4,
-          socketIoEventsSeen: 5,
-          socketIoParseFailures: 0,
-          auditWriteFailures: 0,
-          auditFileWriteFailures: 0,
-          auditStdoutWriteFailures: 0,
-          redisIpWriteFailures: 0,
-          redisIpVerifyFailures: 0,
-          redisIpVerifyMismatches: 0,
-          throughput: {
-            windowSeconds: 10,
-            observedBytesPerSecond: 2097152,
-            spooledBytesPerSecond: 2097152,
-            replayedBytesPerSecond: 1048576,
-            queueGrowthBytesPerSecond: 1048576
-          },
-          spool: {
-            mode: "spool_and_replay",
-            status: "draining",
-            storage: "redis",
-            acceptedEvents: 10,
-            spooledEvents: 9,
-            rejectedEvents: 0,
-            writeFailures: 0,
-            pendingItems: 5,
-            pendingBytes: 9216,
-            oldestPendingAgeSeconds: 34,
-            lastAcceptedAt: "2026-05-31T01:00:00Z",
-            lastSpooledAt: "2026-05-31T01:00:00Z",
-            lastFailure: null
-          },
-          replay: {
-            status: "replaying",
-            pendingItems: 5,
-            inFlightItems: 1,
-            replayedEvents: 4,
-            retryableFailures: 0,
-            deadLetteredEvents: 0,
-            replayLagSeconds: 12,
-            maxBytesPerSecond: 5242880,
-            configuredMaxBytesPerSecond: 10485760,
-            adaptive: {
-              enabled: true,
-              minBytesPerSecond: 1048576,
-              maxBytesPerSecond: 10485760,
-              currentMaxBytesPerSecond: 5242880,
-              minItemsPerTick: 50,
-              maxItemsPerTick: 1000,
-              currentItemsPerTick: 500,
-              minConcurrency: 1,
-              maxConcurrency: 8,
-              currentConcurrency: 8,
-              lastDecision: "increase",
-              lastReason: "queue_growth",
-              lastChangedAt: "2026-05-31T01:00:00Z",
-              memoryGuardStatus: "unavailable"
-            },
-            lastReplayAt: "2026-05-31T01:00:00Z",
-            lastFailure: null
-          }
-        },
-        recorderIngressStatusReadState: "loaded",
-        recorderIngressStatusReadError: null,
-        runtimeStateUpdatedAt: null,
-        runtimeStateFileUpdatedAt: null,
-        runtimeStateFileMetadataReadState: "notRead",
-        runtimeStateFileMetadataError: null,
-        containerLogsPresent: true,
-        containerLogsBytes: null,
-        containerLogsUpdatedAt: null,
-        containerLogsMetadataError: null,
-        composeServicesReadState: "loaded",
-        composeServices: [
-          {
-            service: "app",
-            name: "vitalserver-app-1",
-            state: "running",
-            health: "healthy",
-            memoryUsedBytes: 104857600,
-            memoryLimitBytes: 536870912,
-            exitCode: null,
-            startedAt: "2026-05-31T00:00:00Z",
-            uptimeSeconds: 3600
-          },
-          {
-            service: "recorder-ingress",
-            name: "recorder-ingress-1",
-            state: "running",
-            health: "healthy",
-            memoryUsedBytes: 20971520,
-            memoryLimitBytes: 134217728,
-            exitCode: null,
-            startedAt: "2026-05-31T00:00:00Z",
-            uptimeSeconds: 3600
-          },
-          {
-            service: "redis",
-            name: "redis-1",
-            state: "running",
-            health: "healthy",
-            memoryUsedBytes: 31457280,
-            memoryLimitBytes: null,
-            exitCode: null,
-            startedAt: "2026-05-31T00:00:00Z",
-            uptimeSeconds: 3600
-          },
-          {
-            service: "vitaldb-observer",
-            name: "vitaldb-observer-1",
-            state: "running",
-            health: "healthy",
-            exitCode: null,
-            startedAt: "2026-05-31T00:00:00Z",
-            uptimeSeconds: 3600
-          }
-        ],
-        composeServicesReadError: null
-      },
-      failureReasons: []
-    },
     vitalDBObservation,
     vitalDBObservationSnapshot: {
       state: "loaded",
@@ -1412,6 +2191,65 @@ function overview() {
       staleRecorders: 0,
       knownBeds: 1,
       recorderAnomalies: 1
+    },
+    conditions: [
+      {
+        type: "VitalDBObservationReady",
+        status: "True",
+        reason: "Loaded",
+        message: null,
+        observedAt: "2026-05-31T01:00:00Z"
+      }
+    ]
+  };
+}
+
+function platformState() {
+  return {
+    runtimeInstallationState: "executable",
+    platformHealth: "healthy",
+    installedVersion: "1.2.3",
+    runtimeEndpoint: "192.168.64.8",
+    publicProxyPort: 18080,
+    platformAPIStartedAt: "2026-05-31T00:00:00Z",
+    runtimeControllerHTTP: "HTTP 200",
+    publicProxyHTTP: "HTTP 200",
+    platformAPIHTTP: "HTTP 200",
+    services: [
+      { role: "runtime-provider" as const, state: "running" as const, readError: null },
+      { role: "public-proxy" as const, state: "running" as const, readError: null },
+      { role: "log-sync" as const, state: "running" as const, readError: null },
+      { role: "sleep-prevention" as const, state: "running" as const, readError: null },
+      { role: "watchdog" as const, state: "running" as const, readError: null }
+    ],
+    dataDirectoryStats: { fileCount: 2, sizeBytes: 4096 },
+    dataStorage: { usedBytes: 1024, totalBytes: 2048 },
+    healthIssues: []
+  };
+}
+
+function operationState() {
+  return {
+    activeOperation: "apply-bundle",
+    install: {
+      state: "unavailable",
+      document: null,
+      readError: null
+    },
+    lease: {
+      state: "stale",
+      document: {
+        schemaVersion: 1,
+        operationId: "operation-1",
+        operation: "apply-bundle",
+        ownerPID: 123,
+        startedAt: "2026-05-31T00:00:00Z",
+        heartbeatAt: "2026-05-31T00:00:05Z",
+        expiresAt: "2026-05-31T00:00:10Z",
+        message: "applying bundle"
+      },
+      readError: null,
+      staleReason: "expired"
     }
   };
 }
@@ -1476,6 +2314,31 @@ function settings(overrides = {}) {
   };
 }
 
+function productSettings() {
+  const value = settings();
+  return {
+    automaticBackupEnabled: value.automaticBackupEnabled,
+    backupRetentionCount: value.backupRetentionCount,
+    backupScheduleTimes: value.backupScheduleTimes,
+    containerMemoryLimitsEnabled: value.containerMemoryLimitsEnabled,
+    publicHost: value.publicHost,
+    publicPort: value.publicPort,
+    recorderIngress: value.recorderIngress,
+    recorderIngressContainerMemoryLimitMiB:
+      value.recorderIngressContainerMemoryLimitMiB,
+    recorderIngressSendDataMode: value.recorderIngressSendDataMode,
+    recorderIngressSendDataReplayBatchSize:
+      value.recorderIngressSendDataReplayBatchSize,
+    recorderIngressSendDataReplayMaxMiBPerSecond:
+      value.recorderIngressSendDataReplayMaxMiBPerSecond,
+    redisContainerMemoryLimitMiB: value.redisContainerMemoryLimitMiB,
+    remoteConsoleURL: value.remoteConsoleURL,
+    vitalServerContainerMemoryLimitMiB:
+      value.vitalServerContainerMemoryLimitMiB,
+    vitalServerURL: value.vitalServerURL
+  };
+}
+
 function recorderIngressSettings() {
   return {
     sendDataMaxPendingItems: 100000,
@@ -1501,8 +2364,142 @@ function recorderIngressSettings() {
   };
 }
 
+function recorderObservabilityDetail() {
+  const missing = {
+    state: "missing" as const,
+    value: null,
+    detail: "health observation is absent",
+    observedAt: null
+  };
+  return {
+    state: "loaded" as const,
+    vrcode: "VR_A",
+    support: {
+      state: "supported" as const,
+      source: "accepted_report",
+      expectedSince: null,
+      recorderVersion: "1.0",
+      producerVersion: "1.0",
+      protocolVersion: "1"
+    },
+    report: {
+      state: "current" as const,
+      receivedAt: "2026-05-31T00:59:30Z",
+      deviceObservedAt: "2026-05-31T00:59:29Z",
+      collectionState: "complete",
+      readIssueCount: 0
+    },
+    profile: {
+      state: "associated" as const,
+      receivedAt: "2026-05-31T00:58:00Z",
+      deviceObservedAt: "2026-05-31T00:57:59Z",
+      deviceId: "observer-1",
+      bootId: "boot-1",
+      software: {},
+      collection: {
+        powerIntervalSeconds: 1,
+        telemetryIntervalSeconds: 10,
+        observationIntervalSeconds: 60
+      },
+      capabilities: {}
+    },
+    boot: {
+      state: "started" as const,
+      orderingState: "ordered" as const,
+      bootId: "boot-1",
+      startedAt: "2026-05-30T00:00:00Z",
+      cleanShutdownAt: null
+    },
+    evidenceHealth: {
+      state: "healthy" as const,
+      checkedAt: "2026-05-31T00:59:29Z",
+      checkCount: 3,
+      detail: null
+    },
+    incidentState: {
+      state: "reported" as const,
+      policyVersion: "recorder-incident/v1",
+      bootLoopState: "none" as const,
+      repeatedUndervoltageState: "none" as const,
+      evidenceState: "healthy" as const,
+      consecutiveUnexpectedBoots: 0,
+      undervoltageBootsConsidered: 0
+    },
+    operationalHealth: {
+      state: "warning" as const,
+      evaluatedAt: "2026-05-31T00:59:29Z",
+      issueCount: 1,
+      issues: [
+        {
+          code: "systemd-system-degraded",
+          category: "service" as const,
+          severity: "warning" as const,
+          title: "System service state is not fully running",
+          detail: "degraded; failed units: rpi-eeprom-update.service",
+          field: "payload.services.systemRunning"
+        }
+      ]
+    },
+    readings: {
+      temperatureCelsius: {
+        state: "ok" as const,
+        value: 52.5,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      memoryAvailableBytes: {
+        state: "ok" as const,
+        value: 4_294_967_296,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      memoryTotalBytes: {
+        state: "ok" as const,
+        value: 8_589_934_592,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      rootUsedPercent: {
+        state: "ok" as const,
+        value: 41.2,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      dataUsedPercent: { ...missing },
+      recorderActiveState: {
+        state: "ok" as const,
+        value: "active",
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      publisherActiveState: {
+        state: "ok" as const,
+        value: "active",
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      publisherBufferBytes: {
+        state: "ok" as const,
+        value: 2048,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      publisherBufferLimitBytes: {
+        state: "ok" as const,
+        value: 8_388_608,
+        detail: null,
+        observedAt: "2026-05-31T00:59:29Z"
+      },
+      networkInterfaces: []
+    },
+    readIssues: [],
+    readError: null
+  };
+}
+
 function recorders() {
   return {
+    state: "loaded",
     updatedAt: "2026-05-31T01:00:00Z",
     recorders: [
       {
@@ -1523,6 +2520,7 @@ function recorders() {
         latestAnomalyMessage: "Recorder activity is stale.",
         latestAnomalyObservedAt: "2026-05-31T01:00:00Z",
         presentInLatestObservation: true,
+        visibility: "visible",
         redisIPSync: {
           status: "verified",
           redisKey: "ip_VR_A",
@@ -1532,6 +2530,21 @@ function recorders() {
           lastWriteAt: "2026-05-31T01:00:01Z",
           lastVerifiedAt: "2026-05-31T01:00:02Z",
           lastFailure: null
+        },
+        observability: {
+          state: "loaded",
+          vrcode: "VR_A",
+          supportState: "supported",
+          supportSource: "accepted_report",
+          reportState: "current",
+          profileState: "associated",
+          collectionState: "ok",
+          latestObservationReceivedAt: "2026-05-31T00:59:30Z",
+          lastBootStartedAt: "2026-05-30T00:00:00Z",
+          readIssueCount: 0,
+          operationalHealthState: "warning",
+          operationalIssueCount: 1,
+          readError: null
         },
         activityTimeline: [
           {
@@ -1566,7 +2579,109 @@ function recorders() {
       earliestBucketStartedAt: null,
       latestBucketStartedAt: null,
       readError: null
+    },
+    recorderIngressStatusRead: {
+      readState: "loaded",
+      httpStatus: "200",
+      readError: null,
+      document: {
+        activeWebSockets: 3,
+        activeRecorderConnections: 2,
+        recorders: [],
+        httpRequests: 4,
+        socketIoEventsSeen: 5,
+        socketIoParseFailures: 0,
+        auditWriteFailures: 0,
+        auditFileWriteFailures: 0,
+        auditStdoutWriteFailures: 0,
+        redisIpWriteFailures: 0,
+        redisIpVerifyFailures: 0,
+        redisIpVerifyMismatches: 0,
+        throughput: {
+          windowSeconds: 10,
+          observedBytesPerSecond: 2097152,
+          spooledBytesPerSecond: 2097152,
+          replayedBytesPerSecond: 1048576,
+          queueGrowthBytesPerSecond: 1048576
+        },
+        spool: {
+          mode: "spool_and_replay",
+          status: "draining",
+          storage: "redis",
+          acceptedEvents: 10,
+          spooledEvents: 9,
+          rejectedEvents: 0,
+          writeFailures: 0,
+          pendingItems: 5,
+          pendingBytes: 9216,
+          oldestPendingAgeSeconds: 34,
+          lastAcceptedAt: "2026-05-31T01:00:00Z",
+          lastSpooledAt: "2026-05-31T01:00:00Z",
+          lastFailure: null
+        },
+        replay: {
+          status: "replaying",
+          pendingItems: 5,
+          inFlightItems: 1,
+          replayedEvents: 4,
+          retryableFailures: 0,
+          deadLetteredEvents: 0,
+          replayLagSeconds: 12,
+          maxBytesPerSecond: 5242880,
+          configuredMaxBytesPerSecond: 10485760,
+          adaptive: {
+            enabled: true,
+            minBytesPerSecond: 1048576,
+            maxBytesPerSecond: 10485760,
+            currentMaxBytesPerSecond: 5242880,
+            minItemsPerTick: 50,
+            maxItemsPerTick: 1000,
+            currentItemsPerTick: 500,
+            minConcurrency: 1,
+            maxConcurrency: 8,
+            currentConcurrency: 8,
+            lastDecision: "increase",
+            lastReason: "queue_growth",
+            lastChangedAt: "2026-05-31T01:00:00Z",
+            memoryGuardStatus: "unavailable"
+          },
+          lastReplayAt: "2026-05-31T01:00:00Z",
+          lastFailure: null
+        }
+      }
     }
+  };
+}
+
+function recorderActivityWindow(overrides: Record<string, unknown> = {}) {
+  return {
+    state: "loaded" as const,
+    query: {
+      vrcode: "VR_A",
+      bucketSeconds: 60 as const,
+      period: "lastHour" as const
+    },
+    page: {
+      index: 0,
+      count: 1,
+      windowSeconds: 3600,
+      windowStartedAt: "2026-05-31T00:00:00Z",
+      windowEndedAt: "2026-05-31T01:00:00Z",
+      firstBucketStartedAt: "2026-05-31T00:59:00Z",
+      latestBucketStartedAt: "2026-05-31T00:59:00Z"
+    },
+    buckets: [
+      {
+        bucketStartedAt: "2026-05-31T00:59:00Z",
+        bucketSeconds: 60,
+        messageCount: 3,
+        byteCount: 2048,
+        roomCount: 1
+      }
+    ],
+    latestSampleAt: "2026-05-31T00:59:00Z",
+    readError: null,
+    ...overrides
   };
 }
 
@@ -1600,7 +2715,7 @@ function recordersWithLongActivity() {
       }
     ],
     activityHistory: {
-      source: "sqliteProjection",
+      source: "readModelProjection",
       bucketCount: 156,
       earliestBucketStartedAt: "2026-05-31T00:00:00.000Z",
       latestBucketStartedAt: "2026-05-31T12:55:00.000Z",
@@ -1628,9 +2743,26 @@ function beds() {
       latestAnomalyKind: "offline",
       latestAnomalySeverity: "warning",
       latestAnomalyMessage: "Bed link is offline.",
-      latestAnomalyObservedAt: "2026-05-31T01:00:00Z"
+      latestAnomalyObservedAt: "2026-05-31T01:00:00Z",
+      visibility: "visible"
     }
   ];
+}
+
+function bedHistory() {
+  return {
+    state: "loaded",
+    updatedAt: "2026-05-31T01:00:00Z",
+    beds: beds(),
+    summary: {
+      knownBeds: 1,
+      onlineBeds: 1,
+      staleBeds: 0,
+      bedAssignments: 1,
+      bedAnomalies: 1
+    },
+    readError: null
+  };
 }
 
 function relationships() {
@@ -1673,24 +2805,30 @@ function events() {
   return {
     events: [
       {
-        id: "event-1",
+        schemaVersion: 1,
+        id: "runtime-operation-event-1",
         timestamp: "2026-05-31T01:00:00Z",
-        eventType: "status-changed",
-        status: "healthy",
-        operation: "apply",
-        source: "runtime",
+        eventType: "operation-completed",
+        operationId: "operation-1",
+        operationService: "runtime-settings",
+        operationCommand: "apply-settings",
+        operationState: "completed",
+        source: "runtime-controller",
         message: "runtime updated",
-        failureReasons: []
+        failure: null
       },
       {
-        id: "event-2",
+        schemaVersion: 1,
+        id: "runtime-operation-event-2",
         timestamp: "2026-05-31T01:05:00Z",
-        eventType: "recovery-deferred",
-        status: "degraded",
-        operation: "watchdog",
-        source: "runtime",
-        message: "runtime recovered",
-        failureReasons: []
+        eventType: "operation-failed",
+        operationId: "operation-2",
+        operationService: "runtime-provider",
+        operationCommand: "reconcile",
+        operationState: "failed",
+        source: "runtime-controller",
+        message: "runtime reconcile failed",
+        failure: { kind: "reconcileFailed", message: "provider unavailable" }
       }
     ],
     nextCursor: null,
@@ -1698,53 +2836,42 @@ function events() {
   };
 }
 
-function testKitStatus() {
+function labSessionResponse(
+  state: "accepted" | "running" | "stopping" | "stopped" | "finished"
+) {
   return {
-    enabled: true,
-    state: "running",
-    serviceName: "testkit",
-    apiBaseURL: "http://testkit.local",
-    recorderTargetURL: "http://edge/",
-    startedAt: "2026-05-31T00:00:00Z",
-    activeSession: null,
-    sessions: [testKitSession("running")],
-    beds: [{ roomName: "OR-1", bedId: "bed-1" }],
-    lastError: null
+    state: "loaded" as const,
+    operationId: "op-1",
+    labOperationId: "lab-op-1",
+    readError: null,
+    session: {
+      sessionId: "lab-1",
+      state,
+      scenarioId: "baseline",
+      name: "Case review",
+      recorderCount: 2,
+      targetURL: "http://edge/",
+      createdAt: "2026-05-31T00:00:00Z",
+      updatedAt: "2026-05-31T00:00:00Z"
+    }
   };
 }
 
-function testKitSession(state: string) {
+function labRecorder(
+  recorderId: string,
+  state: "running" | "stopped"
+) {
   return {
-    id: "session-1",
+    recorderId,
+    sessionId: "lab-1",
+    bedId: `${recorderId}-bed`,
+    vrcode: recorderId,
     state,
-    targetUrl: "http://edge/",
-    recordersRequested: 1,
-    bedsRequested: 1,
-    bedRoomNames: ["OR-1"],
-    vrcode: "VR_A",
-    version: "testkit",
-    intervalSeconds: 1,
-    durationSeconds: null,
-    maxMessages: null,
-    shiftTime: true,
-    generateFrames: true,
-    scenario: "normal",
-    defaultScenario: "normal",
     createdAt: "2026-05-31T00:00:00Z",
-    startedAt: "2026-05-31T00:00:00Z",
-    stoppedAt: null,
-    messagesSent: 5,
-    bytesSent: 2048,
-    lastError: null,
-    cleanupErrors: [],
-    vital: {
-      exportStatus: "not-requested",
-      uploadStatus: "not-requested",
-      exportError: null,
-      uploadError: null,
-      artifact: null,
-      uploadResult: null
-    },
-    recorders: []
+    updatedAt: "2026-05-31T00:00:00Z",
+    messagesSent: 0,
+    lastSendState: "notAttempted" as const,
+    lastSendAt: null,
+    lastSendError: null
   };
 }

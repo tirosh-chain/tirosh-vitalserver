@@ -32,6 +32,18 @@ public extension AppConstants {
         public static func swaggerURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/swagger/"
         }
+        public static func vitalServerOpenAPIURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/swagger/docs/openapi.yaml"
+        }
+        public static func runtimeControlOpenAPIURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/swagger/docs/macos-runtime/runtime-control.openapi.json"
+        }
+        public static func recorderIngressOpenAPIURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/swagger/docs/openapi/recorder-ingress.openapi.yaml"
+        }
+        public static func vitalDBObserverOpenAPIURL(proxyPort: Int) -> String {
+            "http://127.0.0.1:\(proxyPort)/swagger/docs/openapi/vitaldb-observer.openapi.yaml"
+        }
         public static func hostProxyLivenessURL(proxyPort: Int) -> String {
             "http://127.0.0.1:\(proxyPort)/health"
         }

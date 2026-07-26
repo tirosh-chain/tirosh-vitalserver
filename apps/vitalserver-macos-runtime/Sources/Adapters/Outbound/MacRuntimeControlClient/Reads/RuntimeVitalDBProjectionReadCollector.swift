@@ -19,8 +19,14 @@ struct RuntimeVitalDBProjectionReadCollector {
         RuntimeVitalDBRecorderProjectionReads(
             observations: observationListRead(),
             currentObservation: currentObservationProvider.load(),
-            activityBuckets: includeActivityBuckets ? recorderActivityBucketListRead() : .notLoaded
+            activityBuckets: recorderActivityBucketListRead(includeActivityBuckets: includeActivityBuckets)
         )
+    }
+
+    func recorderActivityBucketListRead(
+        includeActivityBuckets: Bool
+    ) -> RuntimeVitalDBRecorderActivityBucketListRead {
+        includeActivityBuckets ? loadRecorderActivityBucketListRead() : .notLoaded
     }
 
     func relationshipProjectionReads() -> RuntimeVitalDBRelationshipProjectionReads {
@@ -46,7 +52,7 @@ struct RuntimeVitalDBProjectionReadCollector {
         }
     }
 
-    private func recorderActivityBucketListRead() -> RuntimeVitalDBRecorderActivityBucketListRead {
+    private func loadRecorderActivityBucketListRead() -> RuntimeVitalDBRecorderActivityBucketListRead {
         do {
             return .loaded(try repository.loadRecorderActivityBuckets())
         } catch {

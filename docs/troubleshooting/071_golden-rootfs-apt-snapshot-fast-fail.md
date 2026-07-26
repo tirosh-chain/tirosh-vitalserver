@@ -53,7 +53,9 @@ If the failure is a current `runId`, `stage=apt-plan`, `exitCode=100`, and launc
 - no stale rootfs ready/manifest/failure/apt-plan proof before VM start
 - Ubuntu snapshot `noble`, `noble-updates`, and `noble-security` InRelease reachability
 
-The Guest script also separates `apt-index-update` from `apt-plan`, so late Guest failures name index fetch separately from package planning.
+The Guest script also separates `apt-index-update` from `apt-plan`, uses bounded APT retries,
+and sets `APT::Update::Error-Mode=any`. A partial index fetch therefore fails as
+`apt-index-update` instead of advancing to a misleading broken `apt-plan`.
 
 ## Prevention
 
@@ -71,3 +73,5 @@ The Guest script also separates `apt-index-update` from `apt-plan`, so late Gues
 
 - 2026-06-13: Golden rootfs compile reached VM `apt-plan` before detecting snapshot `503 Service Unavailable`. Added Host preflight and separated Guest `apt-index-update` stage.
 - 2026-06-19: Dev DMG verify failed before VM start because `noble-updates/InRelease` timed out. Increased snapshot probe timeout and added a bounded retry while preserving final `UNAVAILABLE` status after exhausted attempts.
+- 2026-07-21: 세 snapshot 경로가 번갈아 502/503을 반환해 2회 probe가 실제 VM 검증을 막았다. 모든 경로가 실제 2xx를 반환해야 한다는 계약은 유지하고 CDN jitter를 위한 bounded probe를 4회, 3초 간격으로 조정했다.
+- 2026-07-21: `apt-get update`가 `noble-updates` 500을 warning으로 남기고 0으로 종료한 뒤 `apt-plan`이 broken package로 실패했다. Partial index를 성공으로 취급하지 않도록 `APT::Update::Error-Mode=any`와 bounded Acquire retry를 명시했다.

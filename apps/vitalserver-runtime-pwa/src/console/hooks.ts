@@ -1,43 +1,154 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useRuntimeControlGateway } from "@/console/runtimeControlGatewayContext";
+import type { RuntimeEventQuery } from "@/console/runtimeControlGateway";
 import { consoleQueryKeys } from "@/console/queryKeys";
 import {
   backupRequest,
   parseConsoleRequest,
-  testKitCreateBedsRequest,
-  testKitDeleteBedsRequest,
-  testKitSessionSelectionRequest,
   uninstallRequest,
   updateBundleRequest
 } from "@/console/requestBuilders";
 import type {
-  RuntimeApplySettingsRequest,
+  RuntimeApplyProductSettingsRequest,
+  RuntimeApplyPlatformSettingsRequest,
+  RuntimeAdminPasswordRequest,
+  RuntimeRedisRelaySettingsApplyRequest,
   RuntimeCommandResponse,
+  RuntimeLabBedCreateRequest,
+  RuntimeLabBedDeleteRequest,
+  RuntimeLabRecorderCreateRequest,
+  RuntimeLabRecorderDeleteRequest,
+  RuntimeLabSessionCreateRequest,
+  RuntimeLabVitalFileUploadRequest,
+  RuntimeLabVitalFileReplayRequest,
   RuntimeLogSource,
-  RuntimeTestKitRestartRequest,
-  RuntimeTestKitVirtualRecorderStartRequest,
+  RuntimeRecorderObservabilityIncidentQuery,
+  RuntimeRecorderObservabilityTimelineQuery,
+  RuntimeVitalRecorderActivityWindowQuery,
+  VitalDBBedVisibilityRequest,
+  VitalDBRecorderVisibilityRequest,
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
-  runtimeApplySettingsRequestSchema,
   runtimeExportLogsRequestSchema,
+  runtimeLabBedCreateRequestSchema,
+  runtimeLabBedDeleteRequestSchema,
+  runtimeLabRecorderCreateRequestSchema,
+  runtimeLabRecorderDeleteRequestSchema,
+  runtimeLabSessionIdSchema,
+  runtimeLabSessionCreateRequestSchema,
+  runtimeLabVitalFileReplayRequestSchema,
   runtimeLogTextRequestSchema,
-  runtimeRepairProxyRequestSchema,
-  runtimeTestKitRecorderDeletionRequestSchema,
-  runtimeTestKitRestartRequestSchema,
-  runtimeTestKitVirtualRecorderStartRequestSchema,
+  vitalDBBedVisibilityRequestSchema,
+  vitalDBRecorderVisibilityRequestSchema,
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas";
 
-export function useRuntimeOverview() {
+export function usePlatformState() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
-    queryKey: consoleQueryKeys.overview,
-    queryFn: () => runtimeControlGateway.getOverview(),
+    queryKey: consoleQueryKeys.platformState,
+    queryFn: () => runtimeControlGateway.getPlatformState(),
     refetchInterval: 2_000
   });
 }
 
-export function useRuntimeCapabilities() {
+export function useRedisRelayStatus() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.redisRelayStatus,
+    queryFn: () => runtimeControlGateway.getRedisRelayStatus(),
+    refetchInterval: 2_000
+  });
+}
+
+export function useRuntimeRedisRelaySettings() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.redisRelaySettings,
+    queryFn: () => runtimeControlGateway.getRuntimeRedisRelaySettings()
+  });
+}
+
+export function useApplyRuntimeRedisRelaySettings() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RuntimeRedisRelaySettingsApplyRequest) =>
+      runtimeControlGateway.applyRuntimeRedisRelaySettings(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.redisRelaySettings
+      });
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.runtimeStack });
+    }
+  });
+}
+
+export function useLatestVitalDBObservation() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.vitalDBObservation,
+    queryFn: () => runtimeControlGateway.getLatestVitalDBObservation(),
+    refetchInterval: 5_000
+  });
+}
+
+export function usePlatformOperationState() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.operationState,
+    queryFn: () => runtimeControlGateway.getOperationState(),
+    refetchInterval: 2_000
+  });
+}
+
+export function usePlatformWorkflow() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.platformWorkflow,
+    queryFn: () => runtimeControlGateway.getPlatformWorkflow(),
+    refetchInterval: 2_000
+  });
+}
+
+export function useCreatePlatformSupportExport() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => runtimeControlGateway.createPlatformSupportExport(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformWorkflow });
+    }
+  });
+}
+
+export function useRuntimeStack() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.runtimeStack,
+    queryFn: () => runtimeControlGateway.getRuntimeStack(),
+    refetchInterval: 2_000
+  });
+}
+
+export function useRuntimeServiceResources(services: string[]) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const uniqueServices = Array.from(new Set(services)).sort();
+  const results = useQueries({
+    queries: uniqueServices.map((service) => ({
+      queryKey: consoleQueryKeys.runtimeServiceResource(service),
+      queryFn: () => runtimeControlGateway.getGuestServiceResource(service),
+      refetchInterval: 2_000
+    }))
+  });
+  return uniqueServices.map((service, index) => ({
+    service,
+    resource: results[index]?.data,
+    error: results[index]?.error ?? null
+  }));
+}
+
+export function useControlCapabilities() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.capabilities,
@@ -46,11 +157,7 @@ export function useRuntimeCapabilities() {
   });
 }
 
-export function useRuntimeEvents(query: {
-  limit?: number;
-  type?: string;
-  since?: string;
-}) {
+export function useRuntimeEvents(query: RuntimeEventQuery) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.events(query),
@@ -59,23 +166,244 @@ export function useRuntimeEvents(query: {
   });
 }
 
-export function useRuntimeSettings() {
+export function useRuntimeProductSettings() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
-    queryKey: consoleQueryKeys.settings,
-    queryFn: () => runtimeControlGateway.getSettings(),
+    queryKey: consoleQueryKeys.runtimeProductSettings,
+    queryFn: () => runtimeControlGateway.getRuntimeProductSettings(),
     refetchInterval: 5_000
   });
 }
 
-export function useApplyRuntimeSettings() {
+export function useRuntimePlatformSettings() {
   const runtimeControlGateway = useRuntimeControlGateway();
-  return useMutation({
-    mutationFn: (request: RuntimeApplySettingsRequest) =>
-      runtimeControlGateway.applySettings(
-        parseConsoleRequest(runtimeApplySettingsRequestSchema, request)
-      )
+  return useQuery({
+    queryKey: consoleQueryKeys.runtimePlatformSettings,
+    queryFn: () => runtimeControlGateway.getRuntimePlatformSettings(),
+    refetchInterval: 5_000
   });
+}
+
+export function useApplyRuntimePlatformSettings() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RuntimeApplyPlatformSettingsRequest) =>
+      runtimeControlGateway.applyRuntimePlatformSettings(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.runtimePlatformSettings
+      });
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformState });
+    }
+  });
+}
+
+export function useApplyRuntimeProductSettings() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RuntimeApplyProductSettingsRequest) =>
+      runtimeControlGateway.applyRuntimeProductSettings(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.runtimeProductSettings
+      });
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.runtimeStack });
+    }
+  });
+}
+
+export function useApplyRuntimeAdminPassword() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: RuntimeAdminPasswordRequest) =>
+      runtimeControlGateway.applyRuntimeAdminPassword(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.runtimeStack });
+    }
+  });
+}
+
+export function useLabScenarios() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.labScenarios,
+    queryFn: () => runtimeControlGateway.getLabScenarios(),
+    refetchInterval: 5_000
+  });
+}
+
+export function useLabBeds() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.labBeds,
+    queryFn: () => runtimeControlGateway.getLabBeds(),
+    refetchInterval: 2_000
+  });
+}
+
+export function useLabRecorders() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.labRecorders,
+    queryFn: () => runtimeControlGateway.getLabRecorders(),
+    refetchInterval: 2_000
+  });
+}
+
+export function useLabSessions(enabled = true) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.labSessions,
+    queryFn: () => runtimeControlGateway.getLabSessions(),
+    enabled,
+    refetchInterval: 2_000
+  });
+}
+
+export function useLabVitalFiles() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.labVitalFiles,
+    queryFn: () => runtimeControlGateway.getLabVitalFiles(),
+    refetchInterval: 10_000
+  });
+}
+
+export function useCreateLabBeds() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((request: RuntimeLabBedCreateRequest) =>
+    runtimeControlGateway.createLabBeds(
+      parseConsoleRequest(runtimeLabBedCreateRequestSchema, request)
+    )
+  );
+}
+
+export function useDeleteLabBeds() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((request: RuntimeLabBedDeleteRequest) =>
+    runtimeControlGateway.deleteLabBeds(
+      parseConsoleRequest(runtimeLabBedDeleteRequestSchema, request)
+    )
+  );
+}
+
+export function useResetLabBeds() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation(() => runtimeControlGateway.resetLabBeds());
+}
+
+export function useCreateLabRecorders() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((request: RuntimeLabRecorderCreateRequest) =>
+    runtimeControlGateway.createLabRecorders(
+      parseConsoleRequest(runtimeLabRecorderCreateRequestSchema, request)
+    )
+  );
+}
+
+export function useDeleteLabRecorders() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((request: RuntimeLabRecorderDeleteRequest) =>
+    runtimeControlGateway.deleteLabRecorders(
+      parseConsoleRequest(runtimeLabRecorderDeleteRequestSchema, request)
+    )
+  );
+}
+
+export function useResetLabRecorders() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation(() => runtimeControlGateway.resetLabRecorders());
+}
+
+export function useLabSession(sessionId: string | null) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.labSession(sessionId ?? ""),
+    queryFn: () => runtimeControlGateway.getLabSession(sessionId ?? ""),
+    enabled: sessionId !== null && sessionId.trim().length > 0,
+    refetchInterval: 2_000
+  });
+}
+
+export function useCreateLabSession() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((request: RuntimeLabSessionCreateRequest) =>
+    runtimeControlGateway.createLabSession(
+      parseConsoleRequest(runtimeLabSessionCreateRequestSchema, request)
+    )
+  );
+}
+
+export function useStartLabSession() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((sessionId: string) =>
+    runtimeControlGateway.startLabSession(parseSessionId(sessionId))
+  );
+}
+
+export function useStopLabSession() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((sessionId: string) =>
+    runtimeControlGateway.stopLabSession(parseSessionId(sessionId))
+  );
+}
+
+export function useFinishLabSession() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((sessionId: string) =>
+    runtimeControlGateway.finishLabSession(parseSessionId(sessionId))
+  );
+}
+
+export type RuntimeLabRecorderCommand = {
+  sessionId: string;
+  recorderId: string;
+};
+
+export function useStartLabRecorder() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation(({ sessionId, recorderId }: RuntimeLabRecorderCommand) =>
+    runtimeControlGateway.startLabRecorder(
+      parseSessionId(sessionId),
+      parseSessionId(recorderId)
+    )
+  );
+}
+
+export function useStopLabRecorder() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation(({ sessionId, recorderId }: RuntimeLabRecorderCommand) =>
+    runtimeControlGateway.stopLabRecorder(
+      parseSessionId(sessionId),
+      parseSessionId(recorderId)
+    )
+  );
+}
+
+export function useReplayLabVitalFile() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((request: RuntimeLabVitalFileReplayRequest) =>
+    runtimeControlGateway.replayLabVitalFile(
+      parseConsoleRequest(runtimeLabVitalFileReplayRequestSchema, request)
+    )
+  );
+}
+
+export function useUploadLabVitalFiles() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((request: RuntimeLabVitalFileUploadRequest) => {
+    validateVitalFileUpload(request.files);
+    return runtimeControlGateway.uploadLabVitalFiles(request);
+  });
+}
+
+function validateVitalFileUpload(files: File[]): void {
+  if (files.length === 0) {
+    throw new Error("Select at least one .vital file.");
+  }
 }
 
 export function useVitalDBRecorders() {
@@ -84,6 +412,74 @@ export function useVitalDBRecorders() {
     queryKey: consoleQueryKeys.recorders,
     queryFn: () => runtimeControlGateway.getRecorders(),
     refetchInterval: 5_000
+  });
+}
+
+export function useVitalDBRecorderActivity(
+  query: RuntimeVitalRecorderActivityWindowQuery
+) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderActivity(query),
+    queryFn: () => runtimeControlGateway.getRecorderActivity(query),
+    refetchInterval: 5_000
+  });
+}
+
+export function useVitalDBRecorderVitalFiles(vrcode: string | null) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderVitalFiles(vrcode ?? ""),
+    queryFn: () => runtimeControlGateway.getRecorderVitalFiles(vrcode ?? ""),
+    enabled: vrcode !== null
+  });
+}
+
+export function useRecorderObservabilityDetail(vrcode: string | null) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderObservability(vrcode ?? ""),
+    queryFn: () => runtimeControlGateway.getRecorderObservability(vrcode ?? ""),
+    enabled: vrcode !== null,
+    refetchInterval: 5_000
+  });
+}
+
+export function useRecorderObservabilityTimeline(
+  query: RuntimeRecorderObservabilityTimelineQuery | null
+) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderObservabilityTimeline(query ?? {}),
+    queryFn: () => runtimeControlGateway.getRecorderObservabilityTimeline(query!),
+    enabled: query !== null
+  });
+}
+
+export function useRecorderObservabilityIncidents(
+  query: RuntimeRecorderObservabilityIncidentQuery | null
+) {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.recorderObservabilityIncidents(query ?? {}),
+    queryFn: () => runtimeControlGateway.getRecorderObservabilityIncidents(query!),
+    enabled: query !== null
+  });
+}
+
+export function useReleaseInfo() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.releaseInfo,
+    queryFn: () => runtimeControlGateway.getReleaseInfo()
+  });
+}
+
+export function useInstallInfo() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.installInfo,
+    queryFn: () => runtimeControlGateway.getInstallInfo()
   });
 }
 
@@ -96,6 +492,60 @@ export function useVitalDBBeds() {
   });
 }
 
+export function useHideVitalDBRecorders() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useVitalDBMutation((request: VitalDBRecorderVisibilityRequest) =>
+    runtimeControlGateway.hideRecorders(
+      parseConsoleRequest(vitalDBRecorderVisibilityRequestSchema, request)
+    )
+  );
+}
+
+export function useUnhideVitalDBRecorders() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useVitalDBMutation((request: VitalDBRecorderVisibilityRequest) =>
+    runtimeControlGateway.unhideRecorders(
+      parseConsoleRequest(vitalDBRecorderVisibilityRequestSchema, request)
+    )
+  );
+}
+
+export function useDeleteVitalDBRecorders() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useVitalDBMutation((request: VitalDBRecorderVisibilityRequest) =>
+    runtimeControlGateway.deleteRecorders(
+      parseConsoleRequest(vitalDBRecorderVisibilityRequestSchema, request)
+    )
+  );
+}
+
+export function useHideVitalDBBeds() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useVitalDBMutation((request: VitalDBBedVisibilityRequest) =>
+    runtimeControlGateway.hideBeds(
+      parseConsoleRequest(vitalDBBedVisibilityRequestSchema, request)
+    )
+  );
+}
+
+export function useUnhideVitalDBBeds() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useVitalDBMutation((request: VitalDBBedVisibilityRequest) =>
+    runtimeControlGateway.unhideBeds(
+      parseConsoleRequest(vitalDBBedVisibilityRequestSchema, request)
+    )
+  );
+}
+
+export function useDeleteVitalDBBeds() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useVitalDBMutation((request: VitalDBBedVisibilityRequest) =>
+    runtimeControlGateway.deleteBeds(
+      parseConsoleRequest(vitalDBBedVisibilityRequestSchema, request)
+    )
+  );
+}
+
 export function useVitalDBRelationships() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
@@ -105,10 +555,27 @@ export function useVitalDBRelationships() {
   });
 }
 
+function useVitalDBMutation<TRequest>(
+  mutationFn: (request: TRequest) => Promise<unknown>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.recorders });
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.beds });
+      void queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.relationships
+      });
+    }
+  });
+}
+
 export function useHostLogs(request: {
   source: RuntimeLogSource;
   lineLimit: number;
   live: boolean;
+  enabled: boolean;
 }) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
@@ -119,7 +586,8 @@ export function useHostLogs(request: {
         helperMessage: null,
         lineLimit: request.lineLimit
       })),
-    refetchInterval: request.live ? 2_000 : false
+    enabled: request.enabled,
+    refetchInterval: request.enabled && request.live ? 2_000 : false
   });
 }
 
@@ -146,43 +614,65 @@ export function useSummarizeUpdateBundle() {
 
 export function useVerifyUpdateBundle() {
   const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (path: string) =>
-      runtimeControlGateway.verifyUpdateBundle(updateBundleRequest(path))
+      runtimeControlGateway.verifyUpdateBundle(updateBundleRequest(path)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformWorkflow });
+    }
   });
 }
 
 export function useApplyUpdateBundle() {
   const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (path: string) =>
-      runtimeControlGateway.applyUpdateBundle(updateBundleRequest(path))
+      runtimeControlGateway.applyUpdateBundle(updateBundleRequest(path)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformWorkflow });
+    }
   });
 }
 
-export function useHostBackups() {
+export function useRollbackRelease() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => runtimeControlGateway.rollbackRelease(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: consoleQueryKeys.platformWorkflow });
+    }
+  });
+}
+
+export function useHostBackups(enabled: boolean) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.hostBackups,
     queryFn: () => runtimeControlGateway.listHostBackups(),
+    enabled,
     refetchInterval: 10_000
   });
 }
 
-export function useRedisBackups() {
+export function useRedisBackups(enabled: boolean) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.redisBackups,
     queryFn: () => runtimeControlGateway.listRedisBackups(),
+    enabled,
     refetchInterval: 10_000
   });
 }
 
-export function useRuntimeDataBackups() {
+export function useRuntimeDataBackups(enabled: boolean) {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({
     queryKey: consoleQueryKeys.runtimeDataBackups,
     queryFn: () => runtimeControlGateway.listRuntimeDataBackups(),
+    enabled,
     refetchInterval: 10_000
   });
 }
@@ -241,20 +731,10 @@ export function useRestoreRuntimeDataBackup() {
   );
 }
 
-export function useRepairRuntime() {
+export function useRestartRuntimeProvider() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => runtimeControlGateway.repairRuntime()
-  });
-}
-
-export function useRepairProxy() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useMutation({
-    mutationFn: (proxyPort: number) =>
-      runtimeControlGateway.repairProxy(
-        parseConsoleRequest(runtimeRepairProxyRequestSchema, { proxyPort }).proxyPort
-      )
+    mutationFn: () => runtimeControlGateway.restartRuntimeProvider()
   });
 }
 
@@ -265,24 +745,27 @@ export function useRepairDatastore() {
   });
 }
 
-export function useRepairVMDisk() {
+export function useStartGuestService() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => runtimeControlGateway.repairVMDisk()
+    mutationFn: (service: string) =>
+      runtimeControlGateway.startGuestService({ service })
   });
 }
 
-export function useStartRuntimeServices() {
+export function useStopGuestService() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => runtimeControlGateway.startRuntimeServices()
+    mutationFn: (service: string) =>
+      runtimeControlGateway.stopGuestService({ service })
   });
 }
 
-export function useStopRuntimeServices() {
+export function useRestartGuestService() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useMutation({
-    mutationFn: () => runtimeControlGateway.stopRuntimeServices()
+    mutationFn: (service: string) =>
+      runtimeControlGateway.restartGuestService({ service })
   });
 }
 
@@ -294,93 +777,36 @@ export function useUninstallRuntime() {
   });
 }
 
-export function useTestKitStatus() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useQuery({
-    queryKey: consoleQueryKeys.testKitStatus,
-    queryFn: () => runtimeControlGateway.getTestKitStatus(),
-    refetchInterval: 2_000
-  });
-}
-
-export function useCreateTestKitBeds() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useTestKitMutation((request: {
-    count: number | null;
-    prefix: string;
-    roomNames?: string[];
-  }) =>
-    runtimeControlGateway.createTestKitBeds(testKitCreateBedsRequest(
-      request.count,
-      request.prefix,
-      request.roomNames ?? []
-    ))
-  );
-}
-
-export function useDeleteTestKitBeds() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useTestKitMutation((roomNames: string[]) =>
-    runtimeControlGateway.deleteTestKitBeds(testKitDeleteBedsRequest(roomNames))
-  );
-}
-
-export function useResetTestKitBeds() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useTestKitMutation(() => runtimeControlGateway.resetTestKitBeds());
-}
-
-export function useStartTestKitVirtualRecorders() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useTestKitMutation((request: RuntimeTestKitVirtualRecorderStartRequest) =>
-    runtimeControlGateway.startTestKitVirtualRecorders(
-      parseConsoleRequest(runtimeTestKitVirtualRecorderStartRequestSchema, request)
-    )
-  );
-}
-
-export function useSessionTestKitAction(
-  action: "stop" | "pause" | "resume" | "delete"
+function useLabMutation<TVariables, TResult>(
+  mutationFn: (variables: TVariables) => Promise<TResult>
 ) {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useTestKitMutation((sessionID: string) => {
-    const request = testKitSessionSelectionRequest(sessionID);
-    switch (action) {
-      case "stop":
-        return runtimeControlGateway.stopTestKitVirtualRecorders(request);
-      case "pause":
-        return runtimeControlGateway.pauseTestKitVirtualRecorders(request);
-      case "resume":
-        return runtimeControlGateway.resumeTestKitVirtualRecorders(request);
-      case "delete":
-        return runtimeControlGateway.deleteTestKitVirtualRecorders(request);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({
+        queryKey: ["lab"]
+      });
+      queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.recorders
+      });
+      queryClient.invalidateQueries({
+        queryKey: consoleQueryKeys.beds
+      });
+      const sessionId = (response as { session?: { sessionId?: string } | null })
+        .session?.sessionId ??
+        (response as { recorder?: { sessionId?: string } | null }).recorder?.sessionId;
+      if (sessionId) {
+        queryClient.invalidateQueries({
+          queryKey: consoleQueryKeys.labSession(sessionId)
+        });
+      }
     }
   });
 }
 
-export function useRestartTestKitVirtualRecorders() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useTestKitMutation((request: RuntimeTestKitRestartRequest) =>
-    runtimeControlGateway.restartTestKitVirtualRecorders(
-      parseConsoleRequest(runtimeTestKitRestartRequestSchema, request)
-    )
-  );
-}
-
-export function useResetTestKitVirtualRecorders() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useTestKitMutation(() =>
-    runtimeControlGateway.resetTestKitVirtualRecorders()
-  );
-}
-
-export function useDeleteTestKitOrphanVRecorder() {
-  const runtimeControlGateway = useRuntimeControlGateway();
-  return useTestKitMutation((vrcode: string) =>
-    runtimeControlGateway.deleteTestKitOrphanVRecorder(
-      parseConsoleRequest(runtimeTestKitRecorderDeletionRequestSchema, { vrcode })
-    )
-  );
+function parseSessionId(sessionId: string): string {
+  return parseConsoleRequest(runtimeLabSessionIdSchema, sessionId);
 }
 
 function useBackupMutation(
@@ -404,26 +830,6 @@ function useBackupMutation(
           queryKey: consoleQueryKeys.runtimeDataBackups
         });
       }
-    }
-  });
-}
-
-function useTestKitMutation<TVariables, TResult>(
-  mutationFn: (variables: TVariables) => Promise<TResult>
-) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn,
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: consoleQueryKeys.testKitStatus
-      });
-      queryClient.invalidateQueries({
-        queryKey: consoleQueryKeys.recorders
-      });
-      queryClient.invalidateQueries({
-        queryKey: consoleQueryKeys.beds
-      });
     }
   });
 }

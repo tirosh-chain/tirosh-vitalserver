@@ -111,7 +111,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
     }
 
-    func testGuestReadinessFailureReconcilesGuestCompose() throws {
+    func testRuntimeReadinessFailureRestartsPlatformVMAndProxy() throws {
         let harness = WatchdogHarness(snapshots: [
             healthSnapshot(
                 vmLifecycle: runningLifecycle(),
@@ -125,14 +125,14 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         try harness.runner.run()
 
         XCTAssertEqual(harness.proxyLivenessPorts, [80])
-        XCTAssertEqual(harness.guestComposeReconcileCalls, 1)
-        XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
-        XCTAssertTrue(harness.restartedServices.isEmpty)
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 1)
+        XCTAssertEqual(harness.restartedServices, [.proxy])
         XCTAssertEqual(harness.sleepCalls, [watchdogRecoveryWaitSeconds])
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedStatuses.map(\.status), [.recovering, .healthy])
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [
             .recoveryPlanned,
+            .serviceRestartDispatched,
             .serviceRestartDispatched,
         ])
     }
@@ -195,13 +195,8 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
     }
 
-    func testInstallInitializationBootstrappingDeferralKeepsInitializingStatus() throws {
+    func testInstallInitializationBootstrappingDeferralUsesCurrentHealthDecision() throws {
         let harness = WatchdogHarness(
-            currentRuntimeStatus: .loaded(status(
-                level: .initializing,
-                operation: .install,
-                updatedAt: "2026-05-31T00:00:00Z"
-            )),
             snapshots: [
                 healthSnapshot(
                     vmLifecycle: RuntimeVMLifecycleDocument(
@@ -224,7 +219,42 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.proxyLivenessPorts, [])
         XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
         XCTAssertTrue(harness.restartedServices.isEmpty)
-        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.initializing])
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.degraded])
+        XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
+    }
+
+    func testReachableBootstrappingVMLifecycleIsMarkedRunningBeforeDeferredStatusWrite() throws {
+        let lifecycle = RuntimeVMLifecycleDocument(
+            state: .bootstrapping,
+            operation: .startServices,
+            startedAt: "2026-05-31T00:00:00Z",
+            updatedAt: "2026-05-31T00:00:01Z",
+            deadlineAt: "2999-01-01T00:00:00Z"
+        )
+        let harness = WatchdogHarness(snapshots: [
+            healthSnapshot(
+                vmLifecycle: lifecycle,
+                vmState: .starting,
+                failureReasons: [.guestServiceObservationReadFailed("guest-control-timeout")]
+            ),
+            healthSnapshot(
+                vmLifecycle: RuntimeVMLifecycleDocument(
+                    state: .running,
+                    operation: .startServices,
+                    startedAt: "2026-05-31T00:00:00Z",
+                    updatedAt: "2026-05-31T00:02:00Z"
+                ),
+                failureReasons: [.guestServiceObservationReadFailed("guest-control-timeout")]
+            ),
+        ])
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.healthCalls, 2)
+        XCTAssertEqual(harness.runningLifecycleStates, [.bootstrapping])
+        XCTAssertEqual(harness.lifecycleEvents.map(\.eventType), [.statusChanged])
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.degraded])
+        XCTAssertEqual(harness.observedStatuses.last?.snapshot.vmLifecycle?.state, .running)
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
     }
 
@@ -253,9 +283,9 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertTrue(harness.logs.contains { $0.contains("watchdog failed to mark VM lifecycle running") })
     }
 
-    func testGuestComposeReconcileFailureWritesCommandFailureAndStopsRecoverySequence() throws {
+    func testVMRestartFailureWritesCommandFailureAndStopsRecoverySequence() throws {
         let harness = WatchdogHarness(
-            guestComposeReconcileError: WatchdogTestError.guestComposeReconcileFailed,
+            vmRestartError: WatchdogTestError.vmRestartFailed,
             snapshots: [
                 healthSnapshot(
                     vmLifecycle: runningLifecycle(),
@@ -268,8 +298,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
 
         try harness.runner.run()
 
-        XCTAssertEqual(harness.guestComposeReconcileCalls, 1)
-        XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 1)
         XCTAssertTrue(harness.restartedServices.isEmpty)
         XCTAssertTrue(harness.sleepCalls.isEmpty)
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .critical])
@@ -281,7 +310,6 @@ private final class WatchdogHarness {
     var prepareLogCalls = 0
     var healthCalls = 0
     var proxyLivenessPorts: [Int?] = []
-    var guestComposeReconcileCalls = 0
     var vmRuntimeRestartCalls = 0
     var restartedServices: [RuntimeManagedService] = []
     var sleepCalls: [TimeInterval] = []
@@ -306,32 +334,26 @@ private final class WatchdogHarness {
     var collectGuestLogsResult: RuntimeBestEffortOperationResult = .completed
 
     private let activeOperation: RuntimeOperation?
-    private let currentRuntimeStatus: RuntimeStatusDocumentLoadResult
     private let automaticRecoveryEnabled: Bool
     private let automaticRecoveryReadError: Error?
     private let lifecycleMarkError: Error?
-    private let guestComposeReconcileError: Error?
     private let vmRestartError: Error?
     private let proxyRestartError: Error?
     private var snapshots: [RuntimeHealthSnapshot]
 
     init(
         activeOperation: RuntimeOperation? = nil,
-        currentRuntimeStatus: RuntimeStatusDocumentLoadResult = .missing,
         automaticRecoveryEnabled: Bool = true,
         automaticRecoveryReadError: Error? = nil,
         lifecycleMarkError: Error? = nil,
-        guestComposeReconcileError: Error? = nil,
         vmRestartError: Error? = nil,
         proxyRestartError: Error? = nil,
         snapshots: [RuntimeHealthSnapshot] = [healthSnapshot()]
     ) {
         self.activeOperation = activeOperation
-        self.currentRuntimeStatus = currentRuntimeStatus
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
         self.automaticRecoveryReadError = automaticRecoveryReadError
         self.lifecycleMarkError = lifecycleMarkError
-        self.guestComposeReconcileError = guestComposeReconcileError
         self.vmRestartError = vmRestartError
         self.proxyRestartError = proxyRestartError
         self.snapshots = snapshots
@@ -353,9 +375,6 @@ private final class WatchdogHarness {
                 activeManagedOperation: {
                     self.activeOperation
                 },
-                currentRuntimeStatus: {
-                    self.currentRuntimeStatus
-                },
                 healthSnapshot: {
                     self.healthCalls += 1
                     return self.snapshots.removeFirst()
@@ -369,12 +388,6 @@ private final class WatchdogHarness {
                         throw automaticRecoveryReadError
                     }
                     return self.automaticRecoveryEnabled
-                },
-                reconcileGuestCompose: {
-                    self.guestComposeReconcileCalls += 1
-                    if let guestComposeReconcileError = self.guestComposeReconcileError {
-                        throw guestComposeReconcileError
-                    }
                 },
                 restartVMRuntime: {
                     self.vmRuntimeRestartCalls += 1
@@ -436,7 +449,6 @@ private struct WatchdogHarnessRunner {
 private enum WatchdogTestError: Error {
     case configReadFailed
     case lifecycleWriteFailed
-    case guestComposeReconcileFailed
     case vmRestartFailed
 }
 
@@ -451,6 +463,7 @@ private func healthSnapshot(
     vmLifecycle: RuntimeVMLifecycleDocument? = nil,
     vmState: RuntimeVMState = .running,
     vmErrors: [RuntimeVMError] = [],
+    guestAddressRead: RuntimeGuestAddressReadResult? = nil,
     vmIP: String? = "192.168.64.2",
     proxyPort: Int? = 80,
     hostProxyHTTP: String = "200",
@@ -470,6 +483,8 @@ private func healthSnapshot(
         vmLifecycle: vmLifecycle,
         vmState: vmState,
         vmErrors: vmErrors,
+        guestAddressRead: guestAddressRead ?? vmIP.map { .loaded(address: $0, source: .platformAgent) }
+            ?? .missing("vm-ip file missing"),
         vmIP: vmIP,
         proxyPort: proxyPort,
         hostProxyHTTP: hostProxyHTTP,
@@ -485,35 +500,5 @@ private func runningLifecycle() -> RuntimeVMLifecycleDocument {
         state: .running,
         startedAt: "2026-05-31T00:00:00Z",
         updatedAt: "2026-05-31T00:00:01Z"
-    )
-}
-
-private func status(
-    level: RuntimeStatusLevel,
-    operation: RuntimeOperation,
-    updatedAt: String
-) -> RuntimeStatusDocument {
-    RuntimeStatusDocument(
-        product: "VitalServerHelper",
-        status: level,
-        operation: operation,
-        message: "status",
-        updatedAt: updatedAt,
-        productRoot: "/product",
-        runtimeHome: "/product/vm",
-        runtimeVersion: "0.1.0",
-        vmService: .loaded,
-        proxyService: .loaded,
-        watchdogService: .loaded,
-        vmIP: "192.168.64.2",
-        proxyPort: 80,
-        hostProxyHTTP: "200",
-        guestHTTP: "200",
-        redisUIHTTP: "200",
-        swaggerUIHTTP: "200",
-        rootfsBase: .present,
-        vmDisk: .present,
-        failureReasons: [],
-        latestBackup: nil
     )
 }

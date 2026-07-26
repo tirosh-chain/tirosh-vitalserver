@@ -7,7 +7,7 @@ import Errors
 
 final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
     func testActivationSkipsWhenManifestDoesNotContainGuestDeployArtifact() throws {
-        let harness = ActivationHarness(results: [])
+        let harness = ActivationHarness()
 
         try harness.workflow.activateIfNeeded(
             manifest: manifest(artifacts: [.appBundle]),
@@ -21,10 +21,7 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
     }
 
     func testActivationExecutesRequestStartsVMAndWaitsForCompletion() throws {
-        let harness = ActivationHarness(results: [
-            .missing,
-            .loaded(activationResult(status: .completed, requestId: "request-1", message: "activated")),
-        ])
+        let harness = ActivationHarness()
 
         try harness.workflow.activateIfNeeded(
             manifest: manifest(artifacts: [.guestDeploy]),
@@ -35,55 +32,33 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
         XCTAssertEqual(harness.events, [
             "log:guest update activation requested version=1.2.3",
             "capability",
-            "create:/guest/run",
-            "remove-result",
-            "request:request-1:2026-06-05T00:00:00Z:1.2.3",
             "vm-loaded",
             "start-vm",
-            "log:waiting for guest update activation result timeoutSeconds=6.0",
-            "load",
-            "log:waiting for guest update activation worker",
-            "status:recovering:activate-guest-update:waiting for guest update activation worker",
-            "sleep",
-            "load",
-            "log:guest update activation result completed message=activated",
+            "activate:request-1:1.2.3",
+            "log:guest update activation operation completed operationId=update-activation-1",
             "log:guest update activation completed version=1.2.3",
         ])
     }
 
-    func testActivationPreservesReadFailureAndTimeoutAsDistinctFailures() {
-        let readFailure = ActivationHarness(results: [.failed("permission denied")])
-        XCTAssertThrowsError(try readFailure.workflow.activateIfNeeded(
+    func testActivationPreservesGuestOperationFailure() {
+        let failure = ActivationHarness(
+            activationError: RuntimeGuestUpdateUseCaseError.operationFailed(
+                "guest update activation failed"
+            )
+        )
+        XCTAssertThrowsError(try failure.workflow.activateIfNeeded(
             manifest: manifest(artifacts: [.guestDeploy]),
-            context: readFailure.context,
-            actions: readFailure.operations
+            context: failure.context,
+            actions: failure.operations
         )) { error in
-            XCTAssertEqual(error as? RuntimeGuestUpdateUseCaseError, .operationFailed("runtime health check failed"))
+            XCTAssertEqual(error as? RuntimeGuestUpdateUseCaseError, .operationFailed("guest update activation failed"))
         }
-        XCTAssertTrue(readFailure.events.contains(
-            "log:guest update activation result failed message=failed to read guest update activation result: permission denied"
-        ))
-
-        let timeout = ActivationHarness(results: [.missing, .missing])
-        XCTAssertThrowsError(try timeout.workflow.activateIfNeeded(
-            manifest: manifest(artifacts: [.guestDeploy]),
-            context: timeout.context,
-            actions: timeout.operations
-        )) { error in
-            XCTAssertEqual(error as? RuntimeGuestUpdateUseCaseError, .operationFailed("runtime health check failed"))
-        }
-        XCTAssertFalse(timeout.events.contains { $0.contains("result failed") })
+        XCTAssertTrue(failure.events.contains("activate:request-1:1.2.3"))
     }
 
     func testShutdownExecutesRequestAndWaitsForReadyResult() throws {
-        let harness = ShutdownHarness(results: [
-            .missing,
-            .loaded(shutdownResult(
-                status: .ready,
-                phase: .poweroffRequested,
-                requestId: "request-1",
-                message: "ready"
-            )),
+        let harness = ShutdownHarness(operationReads: [
+            updateShutdownOperation(state: .completed, shutdownPhase: "poweroff-ready"),
         ])
 
         try harness.workflow.prepareForUpdate(
@@ -95,29 +70,22 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
         XCTAssertEqual(harness.events, [
             "log:guest update shutdown requested version=1.2.3",
             "capability",
-            "create:/guest/run",
-            "remove-result",
-            "request:request-1:2026-06-05T00:00:00Z:1.2.3",
+            "prepare:request-1:1.2.3",
             "log:waiting for guest update shutdown result timeoutSeconds=6.0",
-            "load",
-            "log:waiting for guest update shutdown worker",
-            "status:updating:apply-bundle:waiting for guest update shutdown worker",
+            "log:guest update shutdown operation running",
+            "status:updating:apply-bundle:guest update shutdown operation running",
             "sleep",
-            "load",
-            "log:guest update shutdown result ready message=ready",
+            "load-operation:update-shutdown-1",
+            "log:guest update shutdown operation completed operationId=update-shutdown-1",
+            "poweroff",
+            "log:guest poweroff requested operationId=guest-poweroff-1",
             "log:guest update shutdown ready version=1.2.3",
         ])
     }
 
     func testShutdownProgressUsesContextStatusAndOperation() throws {
-        let harness = ShutdownHarness(results: [
-            .missing,
-            .loaded(shutdownResult(
-                status: .ready,
-                phase: .poweroffRequested,
-                requestId: "request-1",
-                message: "ready"
-            )),
+        let harness = ShutdownHarness(operationReads: [
+            updateShutdownOperation(state: .completed, shutdownPhase: "poweroff-ready"),
         ])
         let context = RuntimeGuestShutdownWorkflowContext(
             guestRunDirectory: URL(fileURLWithPath: "/guest/run"),
@@ -133,39 +101,70 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
         )
 
         XCTAssertTrue(harness.events.contains(
-            "status:recovering:configure:waiting for guest update shutdown worker"
+            "status:recovering:configure:guest update shutdown operation running"
         ))
         XCTAssertFalse(harness.events.contains {
-            $0 == "status:updating:apply-bundle:waiting for guest update shutdown worker"
+            $0 == "status:updating:apply-bundle:guest update shutdown operation running"
         })
     }
 
-    func testShutdownPreservesGuestFailureReadFailureAndTimeoutMeanings() {
-        let guestFailure = ShutdownHarness(results: [
-            .loaded(shutdownResult(status: .failed, phase: nil, requestId: "request-1", message: "guest failed")),
-        ])
+    func testShutdownRejectsPoweroffReadyWithoutPostgresBackupReceipt() {
+        let completedWithoutPostgres = RuntimeGuestControlServiceOperation(
+            operationId: "update-shutdown-1",
+            service: "update-shutdown",
+            command: .updateShutdown,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            result: RuntimeGuestControlOperationResult(
+                shutdownPhase: "poweroff-ready",
+                redisBackupPath: "/mnt/tirosh/backups/redis/update.tar.gz"
+            )
+        )
+        let harness = ShutdownHarness(initialOperation: completedWithoutPostgres)
+
+        XCTAssertThrowsError(try harness.workflow.prepareForUpdate(
+            version: "1.2.3",
+            context: harness.context,
+            actions: harness.operations
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestUpdateUseCaseError,
+                .operationFailed(
+                    "guest update shutdown completed without PostgreSQL backup receipt operationId=update-shutdown-1"
+                )
+            )
+        }
+        XCTAssertFalse(harness.events.contains("poweroff"))
+    }
+
+    func testShutdownPreservesGuestFailureAndTimeoutMeanings() {
+        let guestFailure = ShutdownHarness(
+            initialOperation: updateShutdownOperation(
+                state: .failed,
+                failure: RuntimeGuestControlOperationFailure(
+                    kind: "guest-shutdown-failed",
+                    message: "guest failed"
+                )
+            )
+        )
         XCTAssertThrowsError(try guestFailure.workflow.prepareForUpdate(
             version: "1.2.3",
             context: guestFailure.context,
             actions: guestFailure.operations
         )) { error in
-            XCTAssertEqual(error as? RuntimeGuestUpdateUseCaseError, .operationFailed("guest failed"))
-        }
-        XCTAssertTrue(guestFailure.events.contains("log:guest update shutdown result failed message=guest failed"))
-
-        let readFailure = ShutdownHarness(results: [.failed("permission denied")])
-        XCTAssertThrowsError(try readFailure.workflow.prepareForUpdate(
-            version: "1.2.3",
-            context: readFailure.context,
-            actions: readFailure.operations
-        )) { error in
             XCTAssertEqual(
                 error as? RuntimeGuestUpdateUseCaseError,
-                .operationFailed("failed to read guest update shutdown result: permission denied")
+                .operationFailed(
+                    "guest update shutdown failed operationId=update-shutdown-1 kind=guest-shutdown-failed reason=guest failed"
+                )
             )
         }
 
-        let timeout = ShutdownHarness(results: [.missing, .missing])
+        let timeout = ShutdownHarness(operationReads: [
+            updateShutdownOperation(state: .running),
+            updateShutdownOperation(state: .running),
+        ])
         XCTAssertThrowsError(try timeout.workflow.prepareForUpdate(
             version: "1.2.3",
             context: timeout.context,
@@ -177,44 +176,38 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
 
     final class ActivationHarness {
         let workflow = RuntimeGuestActivationWorkflow()
-        let context = RuntimeGuestActivationWorkflowContext(
-            guestRunDirectory: URL(fileURLWithPath: "/guest/run"),
-            waitTimeoutSeconds: 6
-        )
+        let context = RuntimeGuestActivationWorkflowContext()
         var events: [String] = []
-        var results: [RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>]
+        var activationError: Error?
         var vmLoaded = false
 
         lazy var operations = RuntimeGuestActivationWorkflowActions(
             requireCapability: { [self] in events.append("capability") },
-            createGuestRunDirectory: { [self] directory in events.append("create:\(directory.path)") },
-            removeActivationResult: { [self] in events.append("remove-result") },
-            writeActivationRequest: { [self] request in
-                events.append("request:\(request.id):\(request.requestedAt):\(request.version)")
-            },
-            loadActivationResult: { [self] in
-                events.append("load")
-                guard !results.isEmpty else {
-                    return .missing
+            activateUpdate: { [self] requestID, version in
+                events.append("activate:\(requestID):\(version)")
+                if let activationError {
+                    throw activationError
                 }
-                return results.removeFirst()
+                return RuntimeGuestControlServiceOperation(
+                    operationId: "update-activation-1",
+                    service: "update-activation",
+                    command: .updateActivation,
+                    state: .completed,
+                    createdAt: "2026-07-01T00:00:00+00:00",
+                    updatedAt: "2026-07-01T00:00:01+00:00"
+                )
             },
             isVMServiceLoaded: { [self] in
                 events.append("vm-loaded")
                 return vmLoaded
             },
             startVMService: { [self] in events.append("start-vm") },
-            writeProgressStatus: { [self] status, operation, message in
-                events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
-            },
             requestID: { "request-1" },
-            timestamp: { "2026-06-05T00:00:00Z" },
-            sleep: { [self] in events.append("sleep") },
             log: { [self] message in events.append("log:\(message)") }
         )
 
-        init(results: [RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>]) {
-            self.results = results
+        init(activationError: Error? = nil) {
+            self.activationError = activationError
         }
     }
 
@@ -225,35 +218,69 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
             waitTimeoutSeconds: 6
         )
         var events: [String] = []
-        var results: [RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>]
+        var initialOperation: RuntimeGuestControlServiceOperation
+        var operationReads: [RuntimeGuestControlServiceOperation]
 
         lazy var operations = RuntimeGuestShutdownWorkflowActions(
             requireCapability: { [self] in events.append("capability") },
-            createGuestRunDirectory: { [self] directory in events.append("create:\(directory.path)") },
-            removeShutdownResult: { [self] in events.append("remove-result") },
-            writeShutdownRequest: { [self] request in
-                events.append("request:\(request.id):\(request.requestedAt):\(request.version)")
+            prepareUpdateShutdown: { [self] requestID, version in
+                events.append("prepare:\(requestID):\(version)")
+                return initialOperation
             },
-            loadShutdownResult: { [self] in
-                events.append("load")
-                guard !results.isEmpty else {
-                    return .missing
-                }
-                return results.removeFirst()
+            loadOperation: { [self] operationID in
+                events.append("load-operation:\(operationID)")
+                return operationReads.isEmpty ? initialOperation : operationReads.removeFirst()
+            },
+            requestGuestPoweroff: { [self] in
+                events.append("poweroff")
+                return RuntimeGuestControlServiceOperation(
+                    operationId: "guest-poweroff-1",
+                    service: "guest-poweroff",
+                    command: .requestGuestPoweroff,
+                    state: .completed,
+                    createdAt: "2026-07-01T00:00:00+00:00",
+                    updatedAt: "2026-07-01T00:00:01+00:00"
+                )
             },
             writeProgressStatus: { [self] status, operation, message in
                 events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
             },
             requestID: { "request-1" },
-            timestamp: { "2026-06-05T00:00:00Z" },
             sleep: { [self] in events.append("sleep") },
             log: { [self] message in events.append("log:\(message)") }
         )
 
-        init(results: [RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>]) {
-            self.results = results
+        init(
+            initialOperation: RuntimeGuestControlServiceOperation = updateShutdownOperation(state: .running),
+            operationReads: [RuntimeGuestControlServiceOperation] = []
+        ) {
+            self.initialOperation = initialOperation
+            self.operationReads = operationReads
         }
     }
+}
+
+private func updateShutdownOperation(
+    state: RuntimeGuestControlOperationState,
+    shutdownPhase: String? = nil,
+    failure: RuntimeGuestControlOperationFailure? = nil
+) -> RuntimeGuestControlServiceOperation {
+    RuntimeGuestControlServiceOperation(
+        operationId: "update-shutdown-1",
+        service: "update-shutdown",
+        command: .updateShutdown,
+        state: state,
+        createdAt: "2026-07-01T00:00:00+00:00",
+        updatedAt: "2026-07-01T00:00:01+00:00",
+        failure: failure,
+        result: shutdownPhase.map {
+            RuntimeGuestControlOperationResult(
+                shutdownPhase: $0,
+                redisBackupPath: "/mnt/tirosh/backups/redis/update.tar.gz",
+                postgresBackupPath: "/mnt/tirosh/backups/postgres/update.tar.gz"
+            )
+        }
+    )
 }
 
 private func manifest(artifacts: [UpdateBundleArtifactType]) -> UpdateBundleManifest {
@@ -269,37 +296,5 @@ private func manifest(artifacts: [UpdateBundleArtifactType]) -> UpdateBundleMani
             UpdateBundleArtifact(name: "\($0.rawValue).tar.gz", type: $0, sha256: "sha256", size: 1)
         },
         migrations: []
-    )
-}
-
-private func activationResult(
-    status: GuestActivationStatus,
-    requestId: String?,
-    message: String?
-) -> GuestUpdateActivationResultDocument {
-    GuestUpdateActivationResultDocument(
-        schemaVersion: 2,
-        requestId: requestId,
-        operation: .activateGuestUpdate,
-        status: status,
-        message: message,
-        updatedAt: "2026-06-05T00:00:01Z"
-    )
-}
-
-private func shutdownResult(
-    status: GuestShutdownStatus,
-    phase: GuestShutdownPhase?,
-    requestId: String?,
-    message: String?
-) -> GuestUpdateShutdownResultDocument {
-    GuestUpdateShutdownResultDocument(
-        schemaVersion: 1,
-        requestId: requestId,
-        operation: .prepareUpdateShutdown,
-        status: status,
-        shutdownPhase: phase,
-        message: message,
-        updatedAt: "2026-06-05T00:00:01Z"
     )
 }

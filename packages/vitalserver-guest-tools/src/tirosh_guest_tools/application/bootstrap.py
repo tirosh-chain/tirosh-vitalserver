@@ -23,7 +23,8 @@ class GuestBootstrapStep(StrEnum):
     REQUIRE_RUNTIME_PACKAGES = "require-runtime-packages"
     INSTALL_RUNTIME_FILES = "install-runtime-files"
     PREPARE_RUNTIME_DATA = "prepare-runtime-data"
-    WRITE_INITIAL_RUNTIME_STATE = "write-initial-runtime-state"
+    MIGRATE_CONTROL_STORE = "migrate-control-store"
+    WRITE_INITIAL_RUNTIME_OBSERVATION = "write-initial-runtime-observation"
     START_DOCKER = "start-docker"
     START_AVAHI = "start-avahi"
     START_GUEST_BACKGROUND_SERVICES = "start-guest-background-services"
@@ -31,13 +32,11 @@ class GuestBootstrapStep(StrEnum):
     LOAD_DOCKER_IMAGES = "load-docker-images"
     RUN_DOCKER_SMOKE = "run-docker-smoke"
     CLEANUP_DOCKER_CACHE = "cleanup-docker-cache"
-    BUILD_MISSING_IMAGES = "build-missing-images"
     START_COMPOSE = "start-compose"
     START_CONTAINER_LOGS = "start-container-logs"
     WAIT_EDGE_READY = "wait-edge-ready"
-    RESTART_RUNTIME_STATE = "restart-runtime-state"
+    RESTART_RUNTIME_OBSERVATION = "restart-runtime-observation"
     WRITE_COMPLETED_RESULT = "write-completed-result"
-    START_OPTIONAL_TESTKIT = "start-optional-testkit"
     RUN_RUNTIME_BOOT_SMOKE = "run-runtime-boot-smoke"
 
 
@@ -115,7 +114,8 @@ class GuestBootstrapOperations:
     missing_runtime_packages: Callable[[], list[str]]
     install_runtime_files: Callable[[GuestBootstrapContext], None]
     prepare_runtime_data: Callable[[], None]
-    write_initial_runtime_state: Callable[[], None]
+    migrate_control_store: Callable[[], None]
+    write_initial_runtime_observation: Callable[[], None]
     start_docker: Callable[[], None]
     start_avahi: Callable[[], None]
     start_guest_background_services: Callable[[], None]
@@ -123,14 +123,12 @@ class GuestBootstrapOperations:
     load_bundled_docker_images: Callable[[GuestBootstrapContext], None]
     run_docker_runtime_smoke: Callable[[str], DockerSmokeResult]
     cleanup_docker_cache: Callable[[], None]
-    build_missing_images: Callable[[], None]
     start_compose: Callable[[], None]
     start_container_logs: Callable[[], None]
     probe_edge_readiness: Callable[[str, float], EdgeReadinessProbeResult]
-    write_runtime_state_once: Callable[[], None]
+    write_runtime_observation_once: Callable[[], None]
     write_edge_diagnostics: Callable[[], None]
-    restart_runtime_state: Callable[[], None]
-    start_optional_testkit: Callable[[], None]
+    restart_runtime_observation: Callable[[], None]
     runtime_boot_smoke_enabled: Callable[[Path], bool]
     run_runtime_boot_smoke: Callable[[], None]
 
@@ -139,6 +137,7 @@ class GuestBootstrapOperations:
 class GuestBootstrapState:
     completed_steps: list[GuestBootstrapStep] = field(default_factory=list)
     result_terminal: bool = False
+    active_step: GuestBootstrapStep | None = None
 
     def complete(self, step: GuestBootstrapStep) -> None:
         self.completed_steps.append(step)
@@ -184,9 +183,15 @@ class GuestBootstrapWorkflow:
                 self.execute(step, action)
         except Exception:
             if not self.state.result_terminal:
+                failed_step = self.state.active_step
+                message = (
+                    "Guest bootstrap failed before completion."
+                    if failed_step is None
+                    else f"Guest bootstrap failed at step: {failed_step.value}."
+                )
                 self.write_bootstrap_result(
                     "failed",
-                    "Guest bootstrap failed before completion.",
+                    message,
                     ("guest-bootstrap-failed",),
                 )
             raise
@@ -207,10 +212,7 @@ class GuestBootstrapWorkflow:
             ),
             (GuestBootstrapStep.INSTALL_RUNTIME_FILES, self.install_runtime_files),
             (GuestBootstrapStep.PREPARE_RUNTIME_DATA, self.prepare_runtime_data),
-            (
-                GuestBootstrapStep.WRITE_INITIAL_RUNTIME_STATE,
-                self.operations.write_initial_runtime_state,
-            ),
+            (GuestBootstrapStep.MIGRATE_CONTROL_STORE, self.migrate_control_store),
             (GuestBootstrapStep.START_DOCKER, self.start_docker),
             (GuestBootstrapStep.START_AVAHI, self.operations.start_avahi),
             (
@@ -227,22 +229,18 @@ class GuestBootstrapWorkflow:
                 GuestBootstrapStep.CLEANUP_DOCKER_CACHE,
                 self.operations.cleanup_docker_cache,
             ),
-            (
-                GuestBootstrapStep.BUILD_MISSING_IMAGES,
-                self.operations.build_missing_images,
-            ),
             (GuestBootstrapStep.START_COMPOSE, self.start_compose),
+            (
+                GuestBootstrapStep.WRITE_INITIAL_RUNTIME_OBSERVATION,
+                self.write_initial_runtime_observation,
+            ),
             (GuestBootstrapStep.START_CONTAINER_LOGS, self.start_container_logs),
             (GuestBootstrapStep.WAIT_EDGE_READY, self.wait_for_vitalserver_edge),
             (
-                GuestBootstrapStep.RESTART_RUNTIME_STATE,
-                self.operations.restart_runtime_state,
+                GuestBootstrapStep.RESTART_RUNTIME_OBSERVATION,
+                self.operations.restart_runtime_observation,
             ),
             (GuestBootstrapStep.WRITE_COMPLETED_RESULT, self.write_completed_result),
-            (
-                GuestBootstrapStep.START_OPTIONAL_TESTKIT,
-                self.operations.start_optional_testkit,
-            ),
             (
                 GuestBootstrapStep.RUN_RUNTIME_BOOT_SMOKE,
                 self.run_runtime_boot_smoke_if_requested,
@@ -250,8 +248,21 @@ class GuestBootstrapWorkflow:
         ]
 
     def execute(self, step: GuestBootstrapStep, action: Callable[[], None]) -> None:
+        self.state.active_step = step
+        print(f"Guest bootstrap step started: {step.value}", flush=True)
+        if (
+            self.state.has_completed(GuestBootstrapStep.WRITE_RUNNING_RESULT)
+            and not self.state.result_terminal
+        ):
+            self.write_bootstrap_result(
+                "running",
+                f"Guest bootstrap step running: {step.value}.",
+                (),
+            )
         action()
         self.state.complete(step)
+        self.state.active_step = None
+        print(f"Guest bootstrap step completed: {step.value}", flush=True)
 
     def write_running_result(self) -> None:
         self.write_bootstrap_result("running", "Guest bootstrap is running.", ())
@@ -314,9 +325,16 @@ class GuestBootstrapWorkflow:
     def prepare_runtime_data(self) -> None:
         self.operations.prepare_runtime_data()
 
-    def start_docker(self) -> None:
+    def migrate_control_store(self) -> None:
         self.state.require_completed(
             GuestBootstrapStep.PREPARE_RUNTIME_DATA,
+            GuestBootstrapStep.MIGRATE_CONTROL_STORE,
+        )
+        self.operations.migrate_control_store()
+
+    def start_docker(self) -> None:
+        self.state.require_completed(
+            GuestBootstrapStep.MIGRATE_CONTROL_STORE,
             GuestBootstrapStep.START_DOCKER,
         )
         self.operations.start_docker()
@@ -348,8 +366,7 @@ class GuestBootstrapWorkflow:
         )
         if result.passed:
             print(
-                "Docker runtime smoke passed using "
-                f"{self.context.docker_smoke_image}."
+                f"Docker runtime smoke passed using {self.context.docker_smoke_image}."
             )
             return
         if result.missing_image:
@@ -372,6 +389,13 @@ class GuestBootstrapWorkflow:
             GuestBootstrapStep.START_COMPOSE,
         )
         self.operations.start_compose()
+
+    def write_initial_runtime_observation(self) -> None:
+        self.state.require_completed(
+            GuestBootstrapStep.START_COMPOSE,
+            GuestBootstrapStep.WRITE_INITIAL_RUNTIME_OBSERVATION,
+        )
+        self.operations.write_initial_runtime_observation()
 
     def start_container_logs(self) -> None:
         self.state.require_completed(
@@ -398,15 +422,13 @@ class GuestBootstrapWorkflow:
             )
             if result.ready:
                 print(f"VitalServer edge is ready: {result.status_code}")
-                self.operations.write_runtime_state_once()
+                self.operations.write_runtime_observation_once()
                 return
             last_failure = result.failure
             self.operations.sleep(self.context.edge_ready_poll_seconds)
         self.operations.write_edge_diagnostics()
         if last_failure:
-            raise RuntimeError(
-                "VitalServer edge did not become ready: " + last_failure
-            )
+            raise RuntimeError("VitalServer edge did not become ready: " + last_failure)
         raise RuntimeError("VitalServer edge did not become ready")
 
     def run_runtime_boot_smoke_if_requested(self) -> None:

@@ -1,14 +1,13 @@
 {
   "adminPassword": "admin",
-  "remoteConsoleURL": "",
-  "vitalServerURL": "",
-  "publicHost": "",
+  "remoteConsoleURL": "http://127.0.0.1:18321/",
+  "vitalServerURL": "http://127.0.0.1:80/",
+  "publicHost": "127.0.0.1",
   "publicPort": 80,
   "redisHost": "redis",
   "redisPort": 6379,
   "redisUiPort": 18081,
   "swaggerUiPort": 18082,
-  "testkitEnabled": true,
   "trustProxy": true,
   "vitalFilesDirectory": "/mnt/tirosh-vital-files",
   "vitalserverHttpPort": 18080

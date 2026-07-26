@@ -1,13 +1,27 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from pathlib import Path
 
+from tirosh_guest_tools.adapters.inbound.control_store_migration import (
+    migrate_control_store,
+)
+from tirosh_guest_tools.adapters.inbound.guest_control_api import (
+    DEFAULT_HOST as GUEST_CONTROL_API_DEFAULT_HOST,
+)
+from tirosh_guest_tools.adapters.inbound.guest_control_api import (
+    DEFAULT_PORT as GUEST_CONTROL_API_DEFAULT_PORT,
+)
+from tirosh_guest_tools.adapters.inbound.guest_control_api import (
+    serve_guest_control_api,
+)
 from tirosh_guest_tools.adapters.inbound.observability_daemon import (
     run_observability_daemon,
 )
-from tirosh_guest_tools.adapters.inbound.request_file_poller import (
-    run_request_file_poller,
+from tirosh_guest_tools.adapters.outbound.maintenance.postgres_backup import (
+    create_postgres_backup_archive,
 )
 from tirosh_guest_tools.adapters.outbound.observability.container_logs import (
     run_container_log_action,
@@ -17,8 +31,8 @@ from tirosh_guest_tools.adapters.outbound.runtime.config import (
     print_runtime_config_exports,
 )
 from tirosh_guest_tools.adapters.outbound.runtime.health import check_runtime_health
-from tirosh_guest_tools.adapters.outbound.runtime.state_writer import (
-    write_runtime_state,
+from tirosh_guest_tools.adapters.outbound.runtime.observation_writer import (
+    write_runtime_observation,
 )
 from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
 from tirosh_guest_tools.application.compose import run_compose_action
@@ -31,12 +45,6 @@ from tirosh_guest_tools.application.redis_backup import (
 from tirosh_guest_tools.application.redis_backup import (
     run_redis_backup,
 )
-from tirosh_guest_tools.application.reconcile_compose import (
-    LOG_FILE as RECONCILE_COMPOSE_LOG_FILE,
-)
-from tirosh_guest_tools.application.reconcile_compose import (
-    run_reconcile_compose,
-)
 from tirosh_guest_tools.application.redis_repair import (
     LOG_FILE as REDIS_REPAIR_LOG_FILE,
 )
@@ -47,12 +55,14 @@ from tirosh_guest_tools.application.redis_restore import (
     LOG_FILE as REDIS_RESTORE_LOG_FILE,
 )
 from tirosh_guest_tools.application.redis_restore import (
-    run_redis_restore,
+    restore_redis_archive,
 )
 from tirosh_guest_tools.application.rootfs_smoke import run_rootfs_smoke
 from tirosh_guest_tools.application.runtime_boot_smoke import run_runtime_boot_smoke
 from tirosh_guest_tools.application.runtime_data_prepare import prepare_runtime_data
-from tirosh_guest_tools.application.runtime_state import run_runtime_state_action
+from tirosh_guest_tools.application.runtime_observation import (
+    run_runtime_observation_action,
+)
 from tirosh_guest_tools.application.update_activation import (
     LOG_FILE as ACTIVATE_UPDATE_LOG_FILE,
 )
@@ -63,12 +73,13 @@ from tirosh_guest_tools.application.update_shutdown import (
     LOG_FILE as PREPARE_UPDATE_SHUTDOWN_LOG_FILE,
 )
 from tirosh_guest_tools.application.update_shutdown import (
-    run_prepare_update_shutdown,
+    run_prepare_update_shutdown_for_request,
 )
+from tirosh_guest_tools.domain.guest_control.models import GuestControlDependencyError
 from tirosh_guest_tools.domain.operations import (
     ComposeAction,
     ContainerLogAction,
-    RuntimeStateAction,
+    RuntimeObservationAction,
 )
 from tirosh_guest_tools.infrastructure.bootstrap_operations import (
     default_bootstrap_context,
@@ -144,16 +155,18 @@ def runtime_env() -> int:
     return 0
 
 
-def write_runtime_state_command() -> int:
-    parser = argparse.ArgumentParser(description="Write guest runtime state JSON.")
-    parser.add_argument("runtime_state", type=Path)
+def write_runtime_observation_command() -> int:
+    parser = argparse.ArgumentParser(
+        description="Write guest runtime observation artifact JSON."
+    )
+    parser.add_argument("runtime_observation", type=Path)
     parser.add_argument("guest_http", nargs="?")
     parser.add_argument("redis_ui_http", nargs="?")
     parser.add_argument("swagger_ui_http", nargs="?")
     args = parser.parse_args()
 
-    write_runtime_state(
-        args.runtime_state,
+    write_runtime_observation(
+        args.runtime_observation,
         guest_http=args.guest_http,
         redis_ui_http=args.redis_ui_http,
         swagger_ui_http=args.swagger_ui_http,
@@ -161,16 +174,18 @@ def write_runtime_state_command() -> int:
     return 0
 
 
-def runtime_state() -> int:
-    parser = argparse.ArgumentParser(description="Write or watch guest runtime state.")
+def runtime_observation() -> int:
+    parser = argparse.ArgumentParser(
+        description="Write or watch guest runtime observation outputs."
+    )
     parser.add_argument(
         "action",
         nargs="?",
-        choices=[action.value for action in RuntimeStateAction],
-        default=RuntimeStateAction.WATCH.value,
+        choices=[action.value for action in RuntimeObservationAction],
+        default=RuntimeObservationAction.WATCH.value,
     )
     args = parser.parse_args()
-    run_runtime_state_action(args.action)
+    run_runtime_observation_action(args.action)
     return 0
 
 
@@ -246,10 +261,26 @@ def vitalserver_runtime_data_prepare() -> int:
     return 0
 
 
-def vitalserver_command_poller() -> int:
-    parser = argparse.ArgumentParser(description="Dispatch guest command requests.")
-    parser.parse_args()
-    run_request_file_poller()
+def vitalserver_guest_control_api() -> int:
+    parser = argparse.ArgumentParser(description="Run the Guest Control API.")
+    parser.add_argument("--host", default=GUEST_CONTROL_API_DEFAULT_HOST)
+    parser.add_argument("--port", type=int, default=GUEST_CONTROL_API_DEFAULT_PORT)
+    parser.add_argument(
+        "--redis-relay-status-owner-socket",
+        type=Path,
+        default=(
+            Path(configured)
+            if (configured := os.environ.get("REDIS_RELAY_STATUS_OWNER_SOCKET"))
+            else None
+        ),
+    )
+    args = parser.parse_args()
+    configure_logging(SETTINGS.logging)
+    serve_guest_control_api(
+        host=args.host,
+        port=args.port,
+        redis_relay_status_owner_socket=args.redis_relay_status_owner_socket,
+    )
     return 0
 
 
@@ -263,17 +294,10 @@ def vitalserver_redis_backup() -> int:
 
 def vitalserver_redis_restore() -> int:
     parser = argparse.ArgumentParser(description="Restore the Redis Docker volume.")
-    parser.parse_args()
+    parser.add_argument("--archive", required=True)
+    args = parser.parse_args()
     configure_logging(SETTINGS.logging, log_file=REDIS_RESTORE_LOG_FILE)
-    run_redis_restore()
-    return 0
-
-
-def vitalserver_reconcile_compose() -> int:
-    parser = argparse.ArgumentParser(description="Reconcile VitalServer compose services.")
-    parser.parse_args()
-    configure_logging(SETTINGS.logging, log_file=RECONCILE_COMPOSE_LOG_FILE)
-    run_reconcile_compose()
+    restore_redis_archive(Path(args.archive))
     return 0
 
 
@@ -295,9 +319,15 @@ def vitalserver_activate_update() -> int:
 
 def vitalserver_prepare_update_shutdown() -> int:
     parser = argparse.ArgumentParser(description="Prepare guest for update shutdown.")
-    parser.parse_args()
+    parser.add_argument("--request-id", required=True)
+    parser.add_argument("--version", required=True)
+    args = parser.parse_args()
     configure_logging(SETTINGS.logging, log_file=PREPARE_UPDATE_SHUTDOWN_LOG_FILE)
-    run_prepare_update_shutdown()
+    run_prepare_update_shutdown_for_request(
+        request_id=args.request_id,
+        version=args.version,
+        create_postgres_backup=create_postgres_backup_archive,
+    )
     return 0
 
 
@@ -312,4 +342,26 @@ def guest_tools_install_config() -> int:
     parser = argparse.ArgumentParser(description="Install default guest tools config.")
     parser.parse_args()
     install_guest_tools_config()
+    return 0
+
+
+def guest_tools_migrate_control_store() -> int:
+    """Apply and verify the configured Guest Control SQLite schema explicitly."""
+
+    parser = argparse.ArgumentParser(
+        description="Apply and verify the Guest Control SQLite schema."
+    )
+    parser.parse_args()
+    try:
+        # The Guest Control API resolves this exact setting too.  This lifecycle
+        # command deliberately has no alternate data-root option: creating or
+        # migrating another ledger would leave the API's configured ledger
+        # unprepared.
+        proof = migrate_control_store(
+            SETTINGS.paths.control_state_dir,
+            control_store=SETTINGS.control_store,
+        )
+    except GuestControlDependencyError as error:
+        parser.exit(1, f"error: {error.kind}: {error.message}\n")
+    print(json.dumps(proof, sort_keys=True))
     return 0

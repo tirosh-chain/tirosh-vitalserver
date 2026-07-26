@@ -1,37 +1,23 @@
 import Contracts
-import Errors
 
 public struct RuntimeObservedStatusPublisher {
     public let writeStatus: (
-        RuntimeStatusLevel,
-        RuntimeOperation,
-        String,
-        RuntimeProgressDocument?
+        RuntimeStatusLevel
     ) throws -> RuntimeHealthSnapshot
-    public let projectObservation: (VitalDBObservationDocument) -> Void
 
     public init(
         writeStatus: @escaping (
-            RuntimeStatusLevel,
-            RuntimeOperation,
-            String,
-            RuntimeProgressDocument?
-        ) throws -> RuntimeHealthSnapshot,
-        projectObservation: @escaping (VitalDBObservationDocument) -> Void
+            RuntimeStatusLevel
+        ) throws -> RuntimeHealthSnapshot
     ) {
         self.writeStatus = writeStatus
-        self.projectObservation = projectObservation
     }
 
     public func publishStatus(
         _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,
-        message: String,
-        progress: RuntimeProgressDocument? = nil
+        message: String
     ) throws {
-        let snapshot = try writeStatus(status, operation, message, progress)
-        if let observation = snapshot.vitalDBObservation {
-            projectObservation(observation)
-        }
+        _ = try writeStatus(status)
     }
 }

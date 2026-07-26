@@ -8,8 +8,7 @@ describe("consoleRoutes", () => {
       "Status",
       "Recorders",
       "Beds",
-      "Observability",
-      "Logs",
+      "Lab",
       "Settings",
       "Update"
     ]);
@@ -17,7 +16,12 @@ describe("consoleRoutes", () => {
 
   it("keeps utility and overflow sections separate from primary tabs", () => {
     expect(labelsForGroup("utility")).toEqual(["Advanced"]);
-    expect(labelsForGroup("overflow")).toEqual(["Danger Zone", "Test"]);
+    expect(labelsForGroup("overflow")).toEqual([
+      "Observability",
+      "Logs",
+      "Info",
+      "Danger Zone"
+    ]);
   });
 });
 

@@ -2,17 +2,11 @@ import type { ZodType } from "zod";
 
 import type {
   RuntimeBackupRequest,
-  RuntimeTestKitCreateBedsRequest,
-  RuntimeTestKitDeleteBedsRequest,
-  RuntimeTestKitSessionSelectionRequest,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeBackupRequestSchema,
-  runtimeTestKitCreateBedsRequestSchema,
-  runtimeTestKitDeleteBedsRequestSchema,
-  runtimeTestKitSessionSelectionRequestSchema,
   runtimeUninstallRequestSchema,
   runtimeUpdateBundleRequestSchema
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlRequestSchemas";
@@ -39,35 +33,6 @@ export function backupRequest(path: string): RuntimeBackupRequest {
 export function uninstallRequest(clean: boolean): RuntimeUninstallRequest {
   return parseConsoleRequest(runtimeUninstallRequestSchema, {
     mode: clean ? "clean" : "standard"
-  });
-}
-
-export function testKitCreateBedsRequest(
-  count: number | null,
-  prefix: string,
-  roomNames: string[] = []
-): RuntimeTestKitCreateBedsRequest {
-  return parseConsoleRequest(runtimeTestKitCreateBedsRequestSchema, {
-    count,
-    roomNames,
-    prefix,
-    adminUserId: "admin"
-  });
-}
-
-export function testKitDeleteBedsRequest(
-  roomNames: string[]
-): RuntimeTestKitDeleteBedsRequest {
-  return parseConsoleRequest(runtimeTestKitDeleteBedsRequestSchema, {
-    roomNames
-  });
-}
-
-export function testKitSessionSelectionRequest(
-  sessionID: string
-): RuntimeTestKitSessionSelectionRequest {
-  return parseConsoleRequest(runtimeTestKitSessionSelectionRequestSchema, {
-    sessionID: sessionID.trim()
   });
 }
 

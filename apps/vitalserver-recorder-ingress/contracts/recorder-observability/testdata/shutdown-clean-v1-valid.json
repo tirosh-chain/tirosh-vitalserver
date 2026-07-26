@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v1",
+  "eventId": "vr-brmh-15:boot-b:boot-event:shutdown-clean",
+  "deviceId": "vr-brmh-15",
+  "siteId": "brmh",
+  "bootId": "boot-b",
+  "kind": "boot-event",
+  "eventType": "shutdown-clean",
+  "deviceObservedAt": "2026-07-23T03:04:05Z",
+  "ntpState": "synchronized",
+  "shutdown": {
+    "clean": true,
+    "shutdownAt": "2026-07-23T03:04:05Z",
+    "source": "systemd"
+  },
+  "readIssues": []
+}

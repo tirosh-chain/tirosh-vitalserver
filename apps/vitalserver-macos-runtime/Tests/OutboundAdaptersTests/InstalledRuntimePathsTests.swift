@@ -9,9 +9,11 @@ final class InstalledRuntimePathsTests: XCTestCase {
 
         XCTAssertEqual(paths.productRoot.path, "/Library/Application Support/VitalServerHelper")
         XCTAssertEqual(paths.runtimeHome.path, "/Library/Application Support/VitalServerHelper/vm")
+        XCTAssertEqual(paths.runtimeStateDatabase.path, "/Library/Application Support/VitalServerHelper/vm/runtime/runtime-state.sqlite")
+        XCTAssertEqual(paths.runtimeObservabilityDB.path, "/Library/Application Support/VitalServerHelper/status/runtime-observability.sqlite")
+        XCTAssertNotEqual(paths.runtimeStateDatabase, paths.runtimeObservabilityDB)
         XCTAssertEqual(paths.runtimeStatus.path, "/Library/Application Support/VitalServerHelper/status/runtime-status.json")
         XCTAssertEqual(paths.runtimeInstallState.path, "/private/tmp/tirosh-vitalserver-install-state.json")
-        XCTAssertEqual(paths.runtimeUninstallState.path, "/private/tmp/tirosh-vitalserver-uninstall-state.json")
         XCTAssertEqual(paths.hostRunDirectory.path, "/Library/Application Support/VitalServerHelper/vm/run")
         XCTAssertEqual(paths.guestRunDirectory.path, "/Library/Application Support/VitalServerHelper/vm/data/run")
         XCTAssertEqual(paths.pidFile.path, "/Library/Application Support/VitalServerHelper/vm/run/vitalserver-vm.pid")
@@ -27,20 +29,24 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.centralGuestObservabilityDirectory.path, "/Library/Application Support/VitalServerHelper/logs/guest/guest-observability")
         XCTAssertEqual(paths.logArchiveDirectory.path, "/Library/Application Support/VitalServerHelper/logs/archive")
         XCTAssertEqual(paths.vmIPFile.path, "/Library/Application Support/VitalServerHelper/vm/data/run/vm-ip")
-        XCTAssertEqual(paths.vmLifecycle.path, "/Library/Application Support/VitalServerHelper/vm/run/vm-lifecycle.json")
-        XCTAssertEqual(paths.runtimeState.path, "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-state.json")
+        XCTAssertEqual(paths.runtimeObservation.path, "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-observation.json")
         XCTAssertEqual(paths.bootstrapResult.path, "/Library/Application Support/VitalServerHelper/vm/data/run/bootstrap-result.json")
         XCTAssertEqual(paths.updateActivationLog.path, "/Library/Application Support/VitalServerHelper/vm/data/run/activate-update.log")
-        XCTAssertEqual(paths.updateActivationResult.path, "/Library/Application Support/VitalServerHelper/vm/data/run/activate-update-result.json")
         XCTAssertEqual(paths.centralUpdateActivationLog.path, "/Library/Application Support/VitalServerHelper/logs/guest/activate-update.log")
         XCTAssertEqual(paths.updateShutdownLog.path, "/Library/Application Support/VitalServerHelper/vm/data/run/prepare-update-shutdown.log")
-        XCTAssertEqual(paths.updateShutdownResult.path, "/Library/Application Support/VitalServerHelper/vm/data/run/prepare-update-shutdown-result.json")
         XCTAssertEqual(paths.centralUpdateShutdownLog.path, "/Library/Application Support/VitalServerHelper/logs/guest/prepare-update-shutdown.log")
-        XCTAssertEqual(paths.datastoreRepairResult.path, "/Library/Application Support/VitalServerHelper/vm/data/run/repair-datastore-result.json")
         XCTAssertEqual(paths.managerCommandLog.path, "/private/tmp/tirosh-vitalserver-manager-command.log")
         XCTAssertEqual(paths.managerHelperMessageLog.path, "/private/tmp/tirosh-vitalserver-helper-message.log")
         XCTAssertEqual(paths.centralCommandLog.path, "/Library/Application Support/VitalServerHelper/logs/command.log")
         XCTAssertEqual(paths.guestRuntimeSettings.path, "/Library/Application Support/VitalServerHelper/vm/data/deploy/runtime-settings.json")
+        XCTAssertEqual(
+            paths.standardUninstallRetainedDataRoot.path,
+            "/Library/Application Support/VitalServerHelper-retained-uninstall-data"
+        )
+        XCTAssertEqual(
+            paths.helperManagedDefaultVitalFilesDirectory.path,
+            "/Users/Shared/VitalServerHelper/vital-files"
+        )
     }
 
     func testRuntimeHomeInitializerDerivesProductRoot() {
@@ -50,5 +56,9 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.runtimeHome.path, "/tmp/product/vm")
         XCTAssertEqual(paths.backupsDirectory.path, "/tmp/product/backups")
         XCTAssertEqual(paths.runtimeStatus.path, "/tmp/product/status/runtime-status.json")
+        XCTAssertEqual(
+            paths.standardUninstallRetainedDataRoot.path,
+            "/tmp/product-retained-uninstall-data"
+        )
     }
 }

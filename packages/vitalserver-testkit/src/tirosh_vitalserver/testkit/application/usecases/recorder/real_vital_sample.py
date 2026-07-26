@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from tirosh_vitalserver.core.domain.vital_file import (
+    VitalFileFormatVersion,
+    VitalServerMonitorType,
+    VitalTrackKind,
+)
 from tirosh_vitalserver.testkit.types.json import JsonArray, JsonObject
 
 
@@ -26,6 +31,7 @@ class RealVitalTrackHeader:
     """Explicit source track state read from a `.vital` file header."""
 
     dtname: str
+    kind: VitalTrackKind
     dname: str
     name: str
     unit: str
@@ -40,6 +46,7 @@ class RealVitalFileHeader:
     """Explicit source file state needed to extract recorder samples."""
 
     path: Path
+    format_version: VitalFileFormatVersion
     dtstart: float
     dtend: float
     tracks: tuple[RealVitalTrackHeader, ...]
@@ -57,7 +64,7 @@ class RealVitalReaderPort:
         dtname: str,
         *,
         interval_seconds: float,
-    ) -> Sequence[float]:
+    ) -> Sequence[object]:
         raise NotImplementedError
 
 
@@ -114,6 +121,11 @@ def build_real_vital_recorder_payload(
     next_num_id = 2001
 
     for selected in selected_tracks:
+        if selected.header.kind is VitalTrackKind.STRING:
+            raise ValueError(
+                "real Vital File sample does not support string track: "
+                f"{selected.header.dtname}"
+            )
         track_id = next_wave_id if is_wave_track(selected.header) else next_num_id
         try:
             track = track_payload_from_source(
@@ -275,7 +287,7 @@ def real_vital_track_catalog(
                     unit=track.unit,
                     montype=track.montype,
                     srate=track.srate,
-                    track_type="wav" if is_wave_track(track) else "num",
+                    track_type=track_type_name(track),
                     files=0,
                 )
             catalog[track.dtname] = RealVitalTrackCatalogItem(
@@ -560,10 +572,11 @@ def selected_track(track: RealVitalTrackHeader) -> SelectedRealVitalTrack:
 def monitor_type_name(track: RealVitalTrackHeader) -> str:
     """Return a recorder montype name that preserves explicit source identity."""
 
-    return SOURCE_MONITOR_TYPE_NAMES.get(track.montype, str(track.montype))
+    monitor_type = VitalServerMonitorType.from_id(track.montype)
+    return monitor_type.name if monitor_type is not None else str(track.montype)
 
 
-def finite_wave_values(values: Sequence[float]) -> JsonArray:
+def finite_wave_values(values: Sequence[object]) -> JsonArray:
     """Return JSON waveform samples with finite gaps filled from track context."""
 
     cleaned: JsonArray = []
@@ -587,7 +600,7 @@ def finite_wave_values(values: Sequence[float]) -> JsonArray:
     return [first_finite if value is None else value for value in cleaned]
 
 
-def finite_value_at_or_before(values: Sequence[float], index: int) -> float | None:
+def finite_value_at_or_before(values: Sequence[object], index: int) -> float | None:
     """Return the nearest finite sample at or before one integer sample index."""
 
     cursor = min(index, len(values) - 1)
@@ -614,7 +627,17 @@ def finite_float(value: object) -> float | None:
 def is_wave_track(track: RealVitalTrackHeader) -> bool:
     """Return whether the source track should be emitted as waveform data."""
 
-    return track.srate > 1.0
+    return track.kind is VitalTrackKind.WAVEFORM
+
+
+def track_type_name(track: RealVitalTrackHeader) -> str:
+    """Return the recorder-facing name for an explicit Vital track kind."""
+
+    if track.kind is VitalTrackKind.WAVEFORM:
+        return "wav"
+    if track.kind is VitalTrackKind.NUMERIC:
+        return "num"
+    return "str"
 
 
 def require_tracks(
@@ -628,8 +651,7 @@ def require_tracks(
     missing = tuple(dtname for dtname in required_dtname if dtname not in by_dtname)
     if missing:
         raise ValueError(
-            f"{scenario.value} scenario requires source tracks: "
-            + ", ".join(missing)
+            f"{scenario.value} scenario requires source tracks: " + ", ".join(missing)
         )
 
 
@@ -740,43 +762,6 @@ BLOODBAG_TRACKS = (
     "Primus/ETCO2",
     "Primus/RR_CO2",
 )
-
-SOURCE_MONITOR_TYPE_NAMES = {
-    1: "ECG_WAV",
-    2: "ECG_HR",
-    4: "IABP_WAV",
-    5: "IABP_SBP",
-    6: "IABP_DBP",
-    7: "IABP_MBP",
-    8: "PLETH_WAV",
-    9: "PLETH_HR",
-    10: "PLETH_SPO2",
-    12: "CO2_RR",
-    13: "CO2_WAV",
-    15: "CO2_CONC",
-    16: "NIBP_SBP",
-    17: "NIBP_DBP",
-    18: "NIBP_MBP",
-    19: "BT",
-    21: "CVP",
-    23: "TV",
-    25: "PIP",
-    26: "GAS_AGENT",
-    27: "GAS_EXPIRED",
-    37: "AWP",
-    38: "PEEP",
-    39: "ST",
-    51: "PPV",
-    70: "PSI",
-    71: "PVI",
-    72: "SPHB",
-    73: "ORI",
-    82: "SEFL",
-    85: "NMT_T4_T1",
-    86: "NMT_TOF_CNT",
-    95: "EEG",
-}
-
 
 class SourceTrackHasNoFiniteSamplesError(ValueError):
     """Raised when a selected source track has no finite samples in the window."""

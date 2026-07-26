@@ -8,9 +8,11 @@ from tirosh_guest_tools.adapters.outbound.observability.container_logs import (
 def test_docker_compose_logs_command_targets_vitalserver_project() -> None:
     command = docker_compose_logs_command(["--tail", "10"])
 
-    assert command[:6] == [
+    assert command[:8] == [
         "docker",
         "compose",
+        "--env-file",
+        "/mnt/runtime/compose.env",
         "--project-name",
         "vitalserver",
         "-f",

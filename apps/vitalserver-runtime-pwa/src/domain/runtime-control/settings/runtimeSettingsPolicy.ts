@@ -1,5 +1,5 @@
 import type {
-  RuntimeControlCapabilities,
+  ControlCapabilities,
   RuntimeSettings
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
@@ -10,10 +10,10 @@ export type RuntimeSettingsValidationResult = {
 
 export type RuntimeSettingsActivationDecision = {
   vmRestartChanges: string[];
-  containerServiceChanges: string[];
+  guestStackChanges: string[];
   message: string;
   requiresVMRestart: boolean;
-  requiresContainerServicesReconcile: boolean;
+  requiresGuestStackReconcile: boolean;
   requiresActivation: boolean;
 };
 
@@ -82,7 +82,7 @@ const restartRequiredSettings: Array<{
   }
 ];
 
-const containerServiceReconcileSettings: Array<{
+const guestStackReconcileSettings: Array<{
   label: string;
   changed: (draft: RuntimeSettings, runtime: RuntimeSettings) => boolean;
 }> = [
@@ -315,23 +315,23 @@ export function runtimeSettingsActivationDecision(
   const vmRestartChanges = restartRequiredSettings
     .filter((setting) => setting.changed(draft, runtime))
     .map((setting) => setting.label);
-  const containerServiceChanges = containerServiceReconcileSettings
+  const guestStackChanges = guestStackReconcileSettings
     .filter((setting) => setting.changed(draft, runtime))
     .map((setting) => setting.label);
   const requiresVMRestart = vmRestartChanges.length > 0;
-  const requiresContainerServicesReconcile = containerServiceChanges.length > 0;
+  const requiresGuestStackReconcile = guestStackChanges.length > 0;
   const requiresActivation =
-    requiresVMRestart || requiresContainerServicesReconcile;
+    requiresVMRestart || requiresGuestStackReconcile;
 
   return {
     vmRestartChanges,
-    containerServiceChanges,
+    guestStackChanges,
     requiresVMRestart,
-    requiresContainerServicesReconcile,
+    requiresGuestStackReconcile,
     requiresActivation,
     message: activationMessage({
       vmRestartChanges,
-      containerServiceChanges,
+      guestStackChanges,
       restartAfterSave: draft.restartAfterSave
     })
   };
@@ -340,7 +340,7 @@ export function runtimeSettingsActivationDecision(
 export function startOnBootControlState(input: {
   startOnBootConfigurable: boolean;
   capabilityReadState: RuntimeCapabilityReadState;
-  capabilities: RuntimeControlCapabilities | undefined;
+  capabilities: ControlCapabilities | undefined;
 }): RuntimeSettingsControlState {
   if (!input.startOnBootConfigurable) {
     return {
@@ -443,23 +443,23 @@ function containerMemoryLimitPercent(valueMiB: number, vmMiB: number): number {
 
 function activationMessage(input: {
   vmRestartChanges: string[];
-  containerServiceChanges: string[];
+  guestStackChanges: string[];
   restartAfterSave: boolean;
 }): string {
-  const { vmRestartChanges, containerServiceChanges, restartAfterSave } = input;
-  if (!vmRestartChanges.length && !containerServiceChanges.length) {
+  const { vmRestartChanges, guestStackChanges, restartAfterSave } = input;
+  if (!vmRestartChanges.length && !guestStackChanges.length) {
     return "No runtime activation required for these changes.";
   }
 
   if (!vmRestartChanges.length) {
-    const requiredBy = containerServiceChanges.join(", ");
+    const requiredBy = guestStackChanges.join(", ");
     if (restartAfterSave) {
-      return `Container services will be reconciled after save. Required by: ${requiredBy}.`;
+      return `Guest stack will be reconciled after save. Required by: ${requiredBy}.`;
     }
-    return `Saved changes will not become active until container services are reconciled. Required by: ${requiredBy}.`;
+    return `Saved changes will not become active until the Guest stack is reconciled. Required by: ${requiredBy}.`;
   }
 
-  const requiredBy = [...vmRestartChanges, ...containerServiceChanges].join(
+  const requiredBy = [...vmRestartChanges, ...guestStackChanges].join(
     ", "
   );
   if (restartAfterSave) {

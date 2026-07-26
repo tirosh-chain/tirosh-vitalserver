@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "id": "vitalserver-linux-reference-update-handoff-supervisor",
+  "stagingDirectory": "/var/lib/vitalserver-runtime-platform/data/update-staging",
+  "handoffQueueDirectory": "/var/lib/vitalserver-runtime-platform/data/update-staging/handoff-queue",
+  "executionEvidenceDirectory": "/var/lib/vitalserver-runtime-platform/data/update-execution",
+  "layerEffectReceiptDirectory": "/var/lib/vitalserver-runtime-platform/data/update-layer-effects",
+  "hostLocalAdministrationDescriptorPath": "/opt/vitalserver-runtime-platform/control/host-agent.local.json",
+  "layerEffectTimeoutMilliseconds": 300000,
+  "completionTimeoutMilliseconds": 30000,
+  "servicePollIntervalMilliseconds": 1000
+}

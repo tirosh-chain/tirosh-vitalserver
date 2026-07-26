@@ -4,13 +4,16 @@ import type {
   SendDataRawArchiveExportJob,
   SendDataRawArchiveExportJobStorePort,
   SendDataRawArchiveExportStateDocument,
+  SendDataRawArchiveFinalizationRequest,
+  SendDataRawArchiveFinalizationTrigger,
 } from "./ports/outbound/send-data-raw-archive-export-job-store-port";
-import type { SendDataRawArchiveRecoveryExecutorPort } from "./ports/outbound/send-data-raw-archive-recovery-executor-port";
+import type { SendDataRawArchiveExporterPort } from "./ports/outbound/send-data-raw-archive-recovery-executor-port";
 
 "use strict";
 
 const crypto = require("crypto");
 const { decideSendDataRawArchiveFinalization } = require("../domain/send-data-raw-archive-finalization-policy");
+const { projectSendDataRawArchiveFinalizationProgress } = require("../domain/send-data-raw-archive-finalization-status");
 const {
   metricsSnapshot,
   recordSendDataRawArchiveAutoExportDecision,
@@ -21,12 +24,12 @@ const {
 
 function createSendDataRawArchiveExportWorker({
   config,
-  executor,
+  exporter,
   jobStore,
   metrics,
 }: {
   config: { rawArchive?: { autoExport?: Record<string, unknown>; path?: string } };
-  executor: SendDataRawArchiveRecoveryExecutorPort;
+  exporter: SendDataRawArchiveExporterPort;
   jobStore: SendDataRawArchiveExportJobStorePort;
   metrics: Record<string, unknown>;
 }): SendDataRawArchiveExportWorkerPort {
@@ -49,9 +52,127 @@ function createSendDataRawArchiveExportWorker({
 
     running = true;
     try {
-      return await runExportTick({ settings, executor, jobStore, metrics, trigger: options.trigger || "inactivity" });
+      return await runExportTick({
+        settings,
+        exporter,
+        jobStore,
+        metrics,
+        trigger: options.trigger || "inactivity",
+      });
     } finally {
       running = false;
+    }
+  }
+
+  async function requestFinalization(input) {
+    const vrcodes = normalizedVrcodes(input && input.vrcodes);
+    if (vrcodes.length === 0) {
+      return {
+        ok: false,
+        state: "rejected" as const,
+        reason: "invalid_vrcodes",
+        message: "raw archive finalization requires at least one non-empty vrcode",
+      };
+    }
+    if (input.reason !== "lab_session_finished") {
+      return {
+        ok: false,
+        state: "rejected" as const,
+        reason: "invalid_reason",
+        message: "raw archive finalization reason is invalid",
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    let state = jobStore.read();
+    if (state.activeJob && state.activeJob.state === "export_failed") {
+      return {
+        ok: false,
+        state: "rejected" as const,
+        reason: "job_failed",
+        message: "raw archive finalization is blocked by a terminal failed job",
+      };
+    }
+    const snapshot = metricsSnapshot(metrics);
+    const requestIds: string[] = [];
+    let enqueuedCount = 0;
+    const pending = [...state.pendingFinalizations];
+    for (const vrcode of vrcodes) {
+      const existing = pending.find((request) => request.vrcode === vrcode);
+      if (existing) {
+        requestIds.push(existing.requestId);
+        continue;
+      }
+      const recorder = (snapshot.recorders || []).find((candidate) => candidate.vrcode === vrcode);
+      if (!recorder || !recorder.rawArchive || !Number.isFinite(recorder.rawArchive.lastOffset)) {
+        return {
+          ok: false,
+          state: "rejected" as const,
+          reason: "recorder_archive_not_observed",
+          message: `raw archive finalization requires an observed recorder archive vrcode=${vrcode}`,
+        };
+      }
+      const checkpoint = state.checkpointsByVrcode[vrcode];
+      if (checkpoint
+        && checkpoint.archivePath === snapshot.rawArchive.path
+        && checkpoint.endOffset === recorder.rawArchive.lastOffset) {
+        requestIds.push(checkpoint.requestId || checkpoint.jobId);
+        continue;
+      }
+      const request: SendDataRawArchiveFinalizationRequest = {
+        requestId: crypto.randomUUID(),
+        vrcode,
+        reason: input.reason,
+        requestedAt: nowIso,
+      };
+      pending.push(request);
+      requestIds.push(request.requestId);
+      enqueuedCount += 1;
+    }
+    state = writeState(jobStore, {
+      ...state,
+      updatedAt: nowIso,
+      pendingFinalizations: pending,
+    });
+    // Finishing a Lab session is a durable request, not a synchronous export.
+    // Return after the request is persisted so callers can read its owner-side
+    // progress instead of waiting for recovery artifact generation.
+    scheduleExplicitFinalizationDrain(Math.max(enqueuedCount, 1));
+    return { ok: true, state: "accepted" as const, requestIds };
+  }
+
+  function finalizationStatus(requestIds: string[]) {
+    const normalized = normalizedRequestIds(requestIds);
+    if (normalized.length === 0) {
+      return {
+        ok: false,
+        state: "rejected" as const,
+        reason: "invalid_request_ids",
+        message: "raw archive finalization status requires at least one requestId",
+      };
+    }
+    return {
+      ok: true,
+      state: "loaded" as const,
+      finalization: projectSendDataRawArchiveFinalizationProgress(jobStore.read(), normalized),
+    };
+  }
+
+  function scheduleExplicitFinalizationDrain(maxJobs: number) {
+    void drainExplicitFinalizations(maxJobs).catch((error) => {
+      recordSendDataRawArchiveAutoExportFailed(
+        metrics,
+        null,
+        "explicit_finalization_worker_failed",
+        errorMessage(error),
+      );
+    });
+  }
+
+  async function drainExplicitFinalizations(maxJobs: number) {
+    for (let index = 0; index < maxJobs; index += 1) {
+      const result = await runOnce({ trigger: "explicit" });
+      if (result.state !== "exported") return;
     }
   }
 
@@ -70,14 +191,15 @@ function createSendDataRawArchiveExportWorker({
       timer = null;
     },
     runOnce,
+    requestFinalization,
+    finalizationStatus,
   };
 }
 
-async function runExportTick({ settings, executor, jobStore, metrics, trigger }) {
+async function runExportTick({ settings, exporter, jobStore, metrics, trigger }) {
   const snapshot = metricsSnapshot(metrics);
   const archive = snapshot.rawArchive || {};
   const archivePath = archive.path || "";
-  const archiveCursor = Number.isFinite(archive.lastOffset) ? archive.lastOffset : 0;
   const now = new Date();
   const nowIso = now.toISOString();
   let state = jobStore.read();
@@ -91,76 +213,104 @@ async function runExportTick({ settings, executor, jobStore, metrics, trigger })
     return { ok: true, state: "open" };
   }
 
-  const observedChanged = !state.lastObserved
-    || state.lastObserved.archivePath !== archivePath
-    || state.lastObserved.archiveCursor !== archiveCursor;
-  if (observedChanged) {
-    state = writeState(jobStore, {
-      ...state,
-      updatedAt: nowIso,
-      lastObserved: { archivePath, archiveCursor, observedAt: nowIso },
-    });
-  }
-
-  const stableForMs = state.lastObserved && state.lastObserved.archivePath === archivePath
-    && state.lastObserved.archiveCursor === archiveCursor
-    ? now.getTime() - Date.parse(state.lastObserved.observedAt)
-    : 0;
-  const archiveCursorStable = stableForMs >= settings.cursorStableMs;
-  const alreadyExported = Boolean(
-    state.checkpoint
-      && state.checkpoint.archivePath === archivePath
-      && state.checkpoint.archiveCursor === archiveCursor
-  );
-  const replayDrained = (snapshot.spool.pendingItems || 0) === 0
-    && (snapshot.replay.pendingItems || 0) === 0
-    && (snapshot.replay.inFlightItems || 0) === 0;
-
-  const decision = decideSendDataRawArchiveFinalization({
-    vrcode: "raw_archive",
-    trigger,
-    hasJoined: (snapshot.recorders || []).some((recorder) => (recorder.sendDataEventsObserved || 0) > 0),
-    rawArchiveRecords: archive.persistedEvents || 0,
-    activeConnections: snapshot.activeRecorderConnections || 0,
-    lastRawArchivedAt: archive.lastArchivedAt || null,
-    nowMs: now.getTime(),
-    quietWindowMs: settings.quietWindowMs,
-    archiveCursorStable,
-    realtimeReplayDrained: replayDrained,
-    alreadyExported,
-  });
-  recordSendDataRawArchiveAutoExportDecision(metrics, {
-    ...decision,
-    archivePath,
-    archiveCursor,
-    cursorStableForMs: stableForMs,
-  });
-
-  if (state.activeJob && state.activeJob.state === "retryable_failed") {
+  if (state.activeJob && state.activeJob.state === "export_retryable_failed") {
     const nextAttemptAt = state.activeJob.nextAttemptAt ? Date.parse(state.activeJob.nextAttemptAt) : NaN;
     if (Number.isFinite(nextAttemptAt) && nextAttemptAt > now.getTime()) {
-      return { ok: true, state: "retryable_failed", jobId: state.activeJob.jobId };
+      return { ok: true, state: "export_retryable_failed", jobId: state.activeJob.jobId };
     }
+    return await executeJob({ settings, exporter, jobStore, metrics, state, job: state.activeJob });
+  }
+  if (state.activeJob && state.activeJob.state === "export_failed") {
+    return { ok: false, state: "export_failed", reason: "job_failed", message: "raw archive export job is terminal", jobId: state.activeJob.jobId };
+  }
+  if (state.activeJob) {
+    return await executeJob({ settings, exporter, jobStore, metrics, state, job: state.activeJob });
   }
 
-  if (state.activeJob && state.activeJob.state === "failed") {
-    return { ok: false, state: "failed", reason: "job_failed", message: "raw archive export job is terminal", jobId: state.activeJob.jobId };
+  const candidates = candidateVrcodes(state, snapshot, trigger);
+  let firstDecision: Record<string, unknown> | null = null;
+  for (const candidate of candidates) {
+    const recorder = (snapshot.recorders || []).find((value) => value.vrcode === candidate.vrcode);
+    const recorderArchive = recorder && recorder.rawArchive ? recorder.rawArchive : {};
+    const endOffset = Number.isFinite(recorderArchive.lastOffset) ? recorderArchive.lastOffset : 0;
+    const observed = state.observedByVrcode[candidate.vrcode];
+    const observedChanged = !observed
+      || observed.archivePath !== archivePath
+      || observed.endOffset !== endOffset;
+    if (observedChanged) {
+      state = writeState(jobStore, {
+        ...state,
+        updatedAt: nowIso,
+        observedByVrcode: {
+          ...state.observedByVrcode,
+          [candidate.vrcode]: {
+            vrcode: candidate.vrcode,
+            archivePath,
+            endOffset,
+            observedAt: nowIso,
+          },
+        },
+      });
+    }
+    const currentObserved = state.observedByVrcode[candidate.vrcode];
+    const stableForMs = currentObserved
+      && currentObserved.archivePath === archivePath
+      && currentObserved.endOffset === endOffset
+      ? now.getTime() - Date.parse(currentObserved.observedAt)
+      : 0;
+    const checkpoint = state.checkpointsByVrcode[candidate.vrcode];
+    const startOffset = checkpoint && checkpoint.archivePath === archivePath
+      ? checkpoint.endOffset
+      : 0;
+    const replay = recorder && recorder.replay ? recorder.replay : {};
+    const spool = recorder && recorder.spool ? recorder.spool : {};
+    const decision = decideSendDataRawArchiveFinalization({
+      vrcode: candidate.vrcode,
+      trigger: candidate.trigger,
+      hasJoined: Boolean(recorder && (recorder.sendDataEventsObserved || 0) > 0),
+      rawArchiveRecords: recorderArchive.persistedEvents || 0,
+      activeConnections: recorder ? recorder.activeConnections || 0 : 0,
+      lastRawArchivedAt: recorderArchive.lastArchivedAt || null,
+      nowMs: now.getTime(),
+      quietWindowMs: settings.quietWindowMs,
+      archiveCursorStable: stableForMs >= settings.cursorStableMs,
+      realtimeReplayDrained: (spool.pendingItems || 0) === 0
+        && (replay.pendingItems || 0) === 0
+        && (replay.inFlightItems || 0) === 0,
+      alreadyExported: endOffset > 0 && startOffset === endOffset,
+    });
+    const decisionDocument = {
+      ...decision,
+      archivePath,
+      archiveCursor: endOffset,
+      cursorStableForMs: stableForMs,
+    };
+    recordSendDataRawArchiveAutoExportDecision(metrics, decisionDocument);
+    firstDecision = firstDecision || decisionDocument;
+    if (!decision.finalizable) continue;
+
+    const job = createJob({
+      archivePath,
+      startOffset,
+      endOffset,
+      settings,
+      nowIso,
+      vrcode: candidate.vrcode,
+      trigger: candidate.trigger,
+      requestId: candidate.requestId,
+    });
+    state = writeState(jobStore, { ...state, updatedAt: nowIso, activeJob: job });
+    return await executeJob({ settings, exporter, jobStore, metrics, state, job });
   }
 
-  if (!decision.finalizable && !state.activeJob) {
-    return { ok: true, state: decision.state };
-  }
-
-  const job = state.activeJob || createJob({ archivePath, archiveCursor, settings, nowIso });
-  state = writeState(jobStore, { ...state, updatedAt: nowIso, activeJob: job });
-  return await executeJob({ settings, executor, jobStore, metrics, state, job });
+  return { ok: true, state: firstDecision ? String(firstDecision.state) : "not_observed" };
 }
 
-async function executeJob({ settings, executor, jobStore, metrics, state, job }) {
+async function executeJob({ settings, exporter, jobStore, metrics, state, job }) {
   const startedAt = new Date().toISOString();
   const runningJob = {
     ...job,
-    state: "running",
+    state: "exporting" as const,
     attempts: job.attempts + 1,
     startedAt,
     updatedAt: startedAt,
@@ -169,48 +319,63 @@ async function executeJob({ settings, executor, jobStore, metrics, state, job })
   recordSendDataRawArchiveAutoExportStarted(metrics, runningJob);
   state = writeState(jobStore, { ...state, updatedAt: startedAt, activeJob: runningJob });
 
-  const result = await executor.recover({
+  const result = await exporter.export({
     rawArchivePath: runningJob.archivePath,
     outputDir: settings.outputDir,
-    vitalserverUrl: settings.vitalserverUrl,
-    endpoint: settings.uploadEndpoint,
     timeoutMs: settings.requestTimeoutMs,
+    vrcode: runningJob.vrcode,
+    startOffset: runningJob.startOffset,
+    endOffset: runningJob.endOffset,
   });
   const completedAt = new Date().toISOString();
 
   if (result.ok) {
-    const uploadedJob = {
+    const exportedJob = {
       ...runningJob,
-      state: "uploaded",
+      state: "exported" as const,
+      artifacts: result.artifacts,
       completedAt,
       updatedAt: completedAt,
       result: result.response,
     };
+    const pendingFinalizations = state.pendingFinalizations.filter(
+      (request) => request.requestId !== exportedJob.requestId
+    );
     writeState(jobStore, {
       ...state,
       updatedAt: completedAt,
-      checkpoint: {
-        archivePath: uploadedJob.archivePath,
-        archiveCursor: uploadedJob.archiveCursor,
-        jobId: uploadedJob.jobId,
-        completedAt,
+      checkpointsByVrcode: {
+        ...state.checkpointsByVrcode,
+        [exportedJob.vrcode]: {
+          origin: exportedJob.origin,
+          vrcode: exportedJob.vrcode,
+          archivePath: exportedJob.archivePath,
+          endOffset: exportedJob.endOffset,
+          jobId: exportedJob.jobId,
+          requestId: exportedJob.requestId,
+          completedAt,
+          artifactIds: exportedJob.artifacts.map((artifact) => artifact.artifactId),
+          publishState: exportedJob.publishState,
+        },
       },
+      pendingFinalizations,
       activeJob: null,
-      history: [uploadedJob, ...(state.history || [])].slice(0, settings.historyLimit),
+      history: [exportedJob, ...(state.history || [])].slice(0, settings.historyLimit),
     });
-    recordSendDataRawArchiveAutoExportSucceeded(metrics, uploadedJob, result.response);
-    return { ok: true, state: "uploaded", jobId: uploadedJob.jobId };
+    recordSendDataRawArchiveAutoExportSucceeded(metrics, exportedJob, result.response);
+    return { ok: true, state: "exported", jobId: exportedJob.jobId };
   }
 
   const canRetry = runningJob.attempts < runningJob.maxAttempts;
   const failure = {
+    stage: "export" as const,
     reason: result.reason,
     message: result.message,
     occurredAt: completedAt,
   };
   const failedJob = {
     ...runningJob,
-    state: canRetry ? "retryable_failed" : "failed",
+    state: canRetry ? "export_retryable_failed" as const : "export_failed" as const,
     updatedAt: completedAt,
     completedAt: canRetry ? null : completedAt,
     nextAttemptAt: canRetry ? new Date(Date.parse(completedAt) + settings.retryDelayMs).toISOString() : null,
@@ -228,13 +393,39 @@ async function executeJob({ settings, executor, jobStore, metrics, state, job })
   };
 }
 
-function createJob({ archivePath, archiveCursor, settings, nowIso }): SendDataRawArchiveExportJob {
+function candidateVrcodes(state, snapshot, trigger) {
+  const pending = state.pendingFinalizations.map((request) => ({
+    vrcode: request.vrcode,
+    trigger: "explicit" as SendDataRawArchiveFinalizationTrigger,
+    requestId: request.requestId,
+  }));
+  const pendingVrcodes = new Set(pending.map((candidate) => candidate.vrcode));
+  return [
+    ...pending,
+    ...(snapshot.recorders || [])
+      .filter((recorder) => !pendingVrcodes.has(recorder.vrcode))
+      .map((recorder) => ({
+        vrcode: recorder.vrcode,
+        trigger: trigger === "shutdown" ? "shutdown" : "inactivity" as SendDataRawArchiveFinalizationTrigger,
+        requestId: null,
+      })),
+  ];
+}
+
+function createJob({ archivePath, startOffset, endOffset, settings, nowIso, vrcode, trigger, requestId }): SendDataRawArchiveExportJob {
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     jobId: crypto.randomUUID(),
+    requestId,
+    trigger,
+    vrcode,
     archivePath,
-    archiveCursor,
-    state: "pending",
+    startOffset,
+    endOffset,
+    origin: "coldPathRecovery",
+    state: "export_pending",
+    publishState: "notRequested",
+    artifacts: [],
     attempts: 0,
     maxAttempts: settings.maxAttempts,
     createdAt: nowIso,
@@ -252,6 +443,16 @@ function writeState(jobStore, document): SendDataRawArchiveExportStateDocument {
   return document;
 }
 
+function normalizedVrcodes(value) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim())));
+}
+
+function normalizedRequestIds(value) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim())));
+}
+
 function normalizeSettings(raw) {
   return {
     enabled: Boolean(raw && raw.enabled),
@@ -262,8 +463,6 @@ function normalizeSettings(raw) {
     maxAttempts: positiveInteger(raw && raw.maxAttempts, 3),
     requestTimeoutMs: positiveInteger(raw && raw.requestTimeoutMs, 300000),
     outputDir: stringValue(raw && raw.outputDir, "/var/lib/vitalserver-recorder-ingress/recovery/vital-export"),
-    vitalserverUrl: stringValue(raw && raw.vitalserverUrl, "http://app:80"),
-    uploadEndpoint: stringValue(raw && raw.uploadEndpoint, "/upload"),
     historyLimit: positiveInteger(raw && raw.historyLimit, 20),
   };
 }

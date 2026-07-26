@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v1",
+  "state": "available",
+  "observedAt": "2026-07-17T00:00:00Z",
+  "value": {
+    "resourceId": "runtime-topology-main"
+  },
+  "sourceRevision": 3
+}

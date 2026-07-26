@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "v1",
+  "transport": "unix-domain-socket",
+  "address": "http://192.0.2.20:18280"
+}

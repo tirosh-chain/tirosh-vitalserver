@@ -19,36 +19,39 @@
 | Swift UI 화면 | PWA route | 상태 | 메모 |
 |---|---|---|---|
 | Status | `/` | `Implemented` | runtime summary, VitalServer URL, data directory stats, recorder summary, resource usage 제공 |
-| Settings | `/settings` | `Implemented` | VM resources, network exposure, storage/Redis, sleep prevention, validation 제공 |
-| Update | `/update` | `Needs review` | bundle selection/apply flow는 UI가 있으나 file picker/download affordance는 browser 제약 검토 필요 |
+| Settings | `/settings` | `Capability gated` | Platform Agent-owned Host settings와 Runtime Controller-owned Product settings를 별도 섹션/계약으로 제공; Host edit는 macOS만 지원 |
+| Update | `/update` | `Needs review` | 같은 bundle의 verify 완료 후에만 apply 가능; local file picker/download affordance는 browser 제약 검토 필요 |
 | Observability | `/observability` | `Implemented` | observation pipeline, runtime events period/type/limit filtering 제공 |
-| Recorders | `/recorders` | `Implemented` | VRecorder list/detail/activity chart/relationship history 제공 |
-| Beds | `/beds` | `Implemented` | bed list/detail/relationship history 제공 |
+| Recorders | `/recorders` | `Implemented` | VRecorder list/detail/activity window/relationship history와 Product Lab recorder 선택/detail 제공 |
+| Beds | `/beds` | `Implemented` | VitalDB bed list/detail/relationship history와 Product Lab bed 선택/detail 제공 |
+| Lab | `/lab` | `Implemented` | Product Lab scenario/session/`.vital` replay를 `/runtime/lab/*`로 제공 |
 | Logs | `/logs` | `Implemented` | source/line/live stream/read/export controls 제공 |
+| Info | `/info` | `Capability gated` | Platform release/install metadata와 bundled service 정보를 독립 조회; 미지원은 오류 상태로 표시 |
 | Advanced | `/advanced` | `Capability gated` | Swift Advanced 구조에 맞춰 diagnostics, VM health, service health, recovery operations, advanced network, admin operations 제공 |
 | Danger Zone | `/danger-zone` | `Capability gated` | Swift Danger Zone 구조에 맞춰 update backup 삭제, VitalServer backup 삭제, destructive operations 제공 |
-| Test | `/test` | `Capability gated` | TestKit capability가 있을 때만 virtual recorder controls 제공 |
 
 ## Function Parity
 
 | 기능 | PWA 상태 | SoT/API | 비고 |
 |---|---|---|---|
-| Runtime overview | `Implemented` | `/runtime/overview` | Status 첫 화면의 primary read model |
-| Runtime status stream | `Implemented` | `/runtime/overview/stream`, `/runtime/status/stream` | polling fallback은 query layer 책임 |
+| Platform status | `Implemented` | `/platform` | Platform Agent owner를 직접 조회 |
+| Product status | `Implemented` | `/runtime/stack`, `/runtime/services/*`, `/runtime/vitaldb/*` | Runtime Controller owner를 독립 조회 |
 | Runtime events | `Implemented` | `/runtime/events` | 최신순, period/type/limit filter |
 | Runtime settings read/apply | `Implemented` | `/runtime/settings` | domain policy로 validation |
-| Runtime service start/stop | `Capability gated` | `/runtime/services/start`, `/runtime/services/stop` | confirmation 필요 |
+| Platform settings read/apply | `Capability gated` | `/platform/settings` | macOS는 실제 Host owner를 조회/적용; Windows/Linux는 typed `501`로 미지원 보고 |
+| Runtime service start/stop | `Removed from PWA` | native Host CLI maintenance only | PWA controls product services through Guest service operations |
 | Runtime repair | `Capability gated` | `/runtime/services/repair-*` | Advanced에서 제공 |
-| Rollback backup list/delete | `Capability gated` | `/host/backups`, `DELETE /host/backups/update` | update backup 삭제는 Danger Zone에서 명시 action으로 제공 |
-| VitalServer backup list/create/restore/delete | `Capability gated` | `/runtime/data/backups`, `/host/backups/vitalserver-helper` | create/restore는 Advanced, delete는 Danger Zone에서 제공 |
-| Redis backup create/restore | `Capability gated` | `/runtime/redis/backups`, `/host/backups/redis` | restore는 command availability 확인 필요 |
-| Logs read/stream | `Implemented` | `/host/logs/read`, `/host/logs/stream` | host log path는 직접 열지 않음 |
+| Rollback backup list/delete | `Capability gated` | `/platform/backups`, `DELETE /platform/backups/update` | update backup 삭제는 Danger Zone에서 명시 action으로 제공 |
+| VitalServer backup list/create/restore/delete | `Capability gated` | `/platform/backups/runtime-data`, `/platform/backups/runtime-data` | create/restore는 Advanced, delete는 Danger Zone에서 제공 |
+| Redis backup create/restore | `Capability gated` | `/platform/backups/redis`, `/platform/backups/redis` | restore는 command availability 확인 필요 |
+| Logs read/stream | `Implemented` | `/platform/logs/read`, `/platform/logs/stream` | host log path는 직접 열지 않음 |
 | Logs export | `Host affordance` | host log export endpoint | browser download endpoint가 없으면 native와 동일 UX 불가 |
-| VRecorder history | `Implemented` | `/vitaldb/recorders` | identity는 `vrcode` |
-| VRecorder activity chart | `Needs migration` | `/vitaldb/recorders/{vrcode}/activity` | lazy 12-hour window query로 이동 필요 |
-| Bed history | `Implemented` | `/vitaldb/beds` | bed identity는 `bedID` |
-| Relationship history | `Implemented` | `/vitaldb/relationships` | recorder/bed detail에 assignments/events 최대 8개씩 표시 |
-| TestKit virtual recorder | `Capability gated` | `/dev/testkit/*` | test-enabled build only |
+| VRecorder history | `Implemented` | `/runtime/vitaldb/recorders` | identity는 `vrcode` |
+| VRecorder activity chart | `Implemented` | `/runtime/vitaldb/recorders/{vrcode}/activity` | bucket/period/page를 명시한 lazy server window 조회 |
+| Bed history | `Implemented` | `/runtime/vitaldb/beds` | bed identity는 `bedID` |
+| Relationship history | `Implemented` | `/runtime/vitaldb/relationships` | recorder/bed detail에 assignments/events 최대 8개씩 표시 |
+| Product Lab virtual recorder | `Implemented` | `/runtime/lab/*` | persisted session 선택, session/recorder start-stop, Lab recorder detail 제공; TestKit은 container implementation detail |
+| TestKit diagnostics | `Removed from product surface` | More/Advanced diagnostics only | `/dev/testkit/*` must not be a product route |
 | Authentication/session | `Deferred` | planned runtime auth/session contract | 별도 이슈에서 독립 진행 |
 | Online update | `Deferred` | planned update source contract | 인증/session 이후 재검토 |
 
@@ -88,5 +91,5 @@ PWA는 Swift에 없는 fallback state를 만들지 않습니다. Runtime setting
 - Swift UI에 보이는 runtime 정보가 PWA route에서도 같은 의미로 제공되는가?
 - unavailable 기능이 조용히 사라지지 않고 capability/host affordance로 설명되는가?
 - command는 confirmation과 result display를 갖는가?
-- TestKit 기능이 product route나 runtime status 의미를 오염시키지 않는가?
+- Product Lab 기능이 `/runtime/lab/*` 계약만 사용하고 TestKit implementation state를 product state로 승격하지 않는가?
 - PWA-only UX가 Runtime Control API 계약 밖의 임시 state에 의존하지 않는가?

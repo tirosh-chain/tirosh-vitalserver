@@ -2,8 +2,7 @@ import Contracts
 import Foundation
 
 public enum RuntimeVitalDBCurrentObservationSource: String, Equatable, Sendable {
-    case guestRuntimeState
-    case runtimeStatus
+    case guestControlAPI
 }
 
 public struct RuntimeVitalDBCurrentObservationRead: Equatable, Sendable {
@@ -143,7 +142,7 @@ public enum RuntimeVitalDBObservationSnapshotAssembler {
 public enum RuntimeVitalDBRecorderHistoryAssembler {
     public static func makeHistory(
         reads: RuntimeVitalDBRecorderProjectionReads,
-        containerObservation: RuntimeContainerObservation? = nil,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
         statusEvaluationTime: String? = nil
     ) -> RuntimeVitalRecorderHistory {
         var readErrors: [String] = []
@@ -192,13 +191,58 @@ public enum RuntimeVitalDBRecorderHistoryAssembler {
             activityBuckets: activityBuckets,
             activityHistory: activityHistory,
             readError: RuntimeObservabilityReadError.joined(readErrors),
-            containerObservation: containerObservation,
+            recorderIngressStatusRead: recorderIngressStatusRead,
             statusEvaluationTime: statusEvaluationTime
         )
     }
 }
 
 public enum RuntimeVitalDBRelationshipHistoryAssembler {
+    public static func makeHistory(
+        read: RuntimeGuestControlVitalDBRelationshipRead
+    ) -> RuntimeVitalRelationshipHistory {
+        guard read.eventLimit > 0,
+              read.events.count <= read.eventLimit,
+              read.events.count <= read.eventTotalCount else {
+            return .failed(
+                readError: "Guest VitalDB relationship event page metadata is invalid."
+            )
+        }
+        switch read.state {
+        case .loaded:
+            return RuntimeVitalRelationshipHistory(
+                assignments: read.assignments,
+                events: read.events,
+                eventTotalCount: read.eventTotalCount,
+                eventLimit: read.eventLimit,
+                state: .loaded,
+                readError: read.readError
+            )
+        case .partiallyLoaded:
+            return RuntimeVitalRelationshipHistory(
+                assignments: read.assignments,
+                events: read.events,
+                eventTotalCount: read.eventTotalCount,
+                eventLimit: read.eventLimit,
+                state: .partiallyLoaded,
+                readError: read.readError
+            )
+        case .readFailed:
+            return RuntimeVitalRelationshipHistory(
+                assignments: read.assignments,
+                events: read.events,
+                eventTotalCount: read.eventTotalCount,
+                eventLimit: read.eventLimit,
+                state: .readFailed,
+                readError: read.readError ?? "Guest VitalDB relationship read model failed."
+            )
+        case .unavailable, .failed:
+            return .failed(
+                readError: read.readError ?? "Guest VitalDB relationship read model is \(read.state.rawValue)."
+            )
+        }
+    }
+
     public static func makeHistory(
         reads: RuntimeVitalDBRelationshipProjectionReads
     ) -> RuntimeVitalRelationshipHistory {

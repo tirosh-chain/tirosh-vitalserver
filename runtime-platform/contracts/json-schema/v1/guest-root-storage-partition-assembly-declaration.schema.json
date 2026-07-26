@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-root-storage-partition-assembly-declaration",
+  "title": "GuestRootStoragePartitionAssemblyDeclaration",
+  "description": "C43 explicit Release-build declaration that accepts one C42 whole-disk ext4 root-storage output and assembles one MBR-partitioned raw root-storage base for C39. It is neither a Guest boot observation nor a C35 compilation result.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "assemblyId", "architecture", "sourceC42Receipt", "sourceRootStorage", "targetRootStorage"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "assemblyId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "architecture": { "const": "arm64" },
+    "sourceC42Receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receiptAbsolutePath", "receiptSHA256", "extractionId"],
+      "properties": {
+        "receiptAbsolutePath": { "type": "string", "minLength": 2, "maxLength": 4096, "pattern": "^/" },
+        "receiptSHA256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "extractionId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "sourceRootStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourceAbsolutePath", "sizeBytes", "sha256", "storageLayout", "filesystemType"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "sourceAbsolutePath": { "type": "string", "minLength": 2, "maxLength": 4096, "pattern": "^/" },
+        "sizeBytes": { "type": "integer", "minimum": 512, "multipleOf": 512 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "storageLayout": { "const": "whole-disk-ext4" },
+        "filesystemType": { "const": "ext4" }
+      }
+    },
+    "targetRootStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "outputRelativePath", "guestDiskDevicePath", "rootPartitionDevicePath", "rootPartitionIndex", "partitionTableType", "firstPartitionStartSector", "partitionTypeMbrHex", "filesystemType", "logicalSectorSizeBytes"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "outputRelativePath": { "type": "string", "minLength": 13, "maxLength": 1024, "pattern": "^storage/[A-Za-z0-9][A-Za-z0-9._-]*\\.raw$" },
+        "guestDiskDevicePath": { "const": "/dev/vda" },
+        "rootPartitionDevicePath": { "const": "/dev/vda1" },
+        "rootPartitionIndex": { "const": 1 },
+        "partitionTableType": { "const": "mbr" },
+        "firstPartitionStartSector": { "const": 2048 },
+        "partitionTypeMbrHex": { "const": "83" },
+        "filesystemType": { "const": "ext4" },
+        "logicalSectorSizeBytes": { "const": 512 }
+      }
+    }
+  }
+}

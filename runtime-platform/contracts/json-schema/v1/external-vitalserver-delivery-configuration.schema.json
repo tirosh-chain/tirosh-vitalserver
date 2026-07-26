@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:external-vitalserver-delivery-configuration",
+  "title": "ExternalVitalServerDeliveryConfiguration",
+  "description": "C46 Guest Product deployment-administrator configuration for one C44-selected external VitalServer target. It binds a declared external integration to explicit Socket.IO packet delivery, operator-declared HTTP observation, and indexed-library archive endpoints. It names an archive credential reference but never contains credential material. It is desired configuration, not a connection, authentication, packet-delivery, archive-export, index, or VitalServer clinical-state observation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "configurationId", "externalUpstreamIntegrationReference", "vitalServerDeliveryProvider", "vitalServerPacketDeliveryEndpoint", "vitalServerDeliveryAcknowledgementTimeoutMilliseconds", "vitalServerObservationEndpoint", "vitalServerArchiveProvider", "vitalServerIndexedLibraryEndpoint", "vitalServerArchiveCredentialReference", "vitalServerArchiveRequestTimeoutMilliseconds"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "configurationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "externalUpstreamIntegrationReference": {
+      "allOf": [
+        { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+        { "properties": { "resourceType": { "const": "external-upstream-integration" } }, "required": ["resourceType"] }
+      ]
+    },
+    "vitalServerDeliveryProvider": { "$ref": "#/$defs/VitalServerDeliveryProvider" },
+    "vitalServerPacketDeliveryEndpoint": { "$ref": "#/$defs/VitalServerPacketDeliveryEndpoint" },
+    "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 },
+    "vitalServerObservationEndpoint": { "$ref": "#/$defs/VitalServerObservationEndpoint" },
+    "vitalServerArchiveProvider": { "$ref": "#/$defs/VitalServerArchiveProvider" },
+    "vitalServerIndexedLibraryEndpoint": { "$ref": "#/$defs/VitalServerPacketDeliveryEndpoint" },
+    "vitalServerArchiveCredentialReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SecretReference" },
+    "vitalServerArchiveRequestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 }
+  },
+  "$defs": {
+    "HostOrAddressLiteral": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9:][A-Za-z0-9._:-]*$"
+    },
+    "Port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "VitalServerDeliveryProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision"],
+      "properties": {
+        "kind": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "VitalServerArchiveProvider": {
+      "description": "The distinct capability that uploads and verifies indexed .vital files. The C37 Archive Export provider must match this reference exactly; it is not inferred from Socket.IO delivery.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision"],
+      "properties": {
+        "kind": { "const": "vitalserver-indexed-library" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "VitalServerPacketDeliveryEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port"],
+      "properties": {
+        "scheme": { "enum": ["http", "https"] },
+        "host": { "$ref": "#/$defs/HostOrAddressLiteral" },
+        "port": { "$ref": "#/$defs/Port" }
+      }
+    },
+    "VitalServerObservationEndpoint": {
+      "description": "The exact unauthenticated-or-credential-free HTTP endpoint the external VitalServer administrator authorizes this product to probe. Redirects, an inferred health path, and a success range are deliberately not implied.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port", "path", "acceptedStatusCodes"],
+      "properties": {
+        "scheme": { "enum": ["http", "https"] },
+        "host": { "$ref": "#/$defs/HostOrAddressLiteral" },
+        "port": { "$ref": "#/$defs/Port" },
+        "path": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^/[^?#]*$" },
+        "acceptedStatusCodes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 100, "maximum": 599 }
+        }
+      }
+    }
+  }
+}

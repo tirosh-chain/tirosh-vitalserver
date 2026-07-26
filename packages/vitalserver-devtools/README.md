@@ -24,6 +24,7 @@ macos-package-clean
 macos-package-install
 macos-installed-status
 macos-installed-health
+macos-installed-smoke
 macos-runtime-build
 macos-runtime-sync-release
 macos-runtime-sign
@@ -141,19 +142,50 @@ The builder should emit one of two bundle kinds:
 
 | artifact | builder behavior | installed runtime apply behavior |
 |---|---|---|
-| `app-bundle.tar.gz` | copied into bundle when `--app-bundle` is provided | verified and used to replace the Helper app bundle |
-| `runtime-tools.tar.gz` | copied into bundle when `--runtime-tools` is provided | verified and used to replace Updater/Supervisor/VM Driver tools |
-| `nginx-bundle.tar.gz` | copied into bundle when `--nginx-bundle` is provided | verified and used to replace the host nginx bundle |
-| `guest-deploy.tar.gz` | copied into bundle when `--guest-deploy` is provided | verified, staged for the guest, and activated through the guest update flow |
-| `rootfs-base.raw.gz` | copied into bundle only when `--rootfs-base` is provided | verified, backed up, and used to replace installed rootfs base |
-| migrations | copied under `migrations/` | verified and executed if executable |
+| `app-bundle.tar.gz` | copied into bundle when `--app-bundle` is provided | integrity-checked and used to replace the Helper app bundle only on an authorized apply path |
+| `runtime-tools.tar.gz` | copied into bundle when `--runtime-tools` is provided | integrity-checked and used to replace Updater/Supervisor/VM Driver tools only on an authorized apply path |
+| `nginx-bundle.tar.gz` | copied into bundle when `--nginx-bundle` is provided | integrity-checked and used to replace the host nginx bundle only on an authorized apply path |
+| `guest-deploy.tar.gz` | copied into bundle when `--guest-deploy` is provided | integrity-checked, staged for the guest, and activated only on an authorized apply path |
+| `rootfs-base.raw.gz` | copied into bundle only when `--rootfs-base` is provided | integrity-checked, backed up, and used to replace installed rootfs base only on an authorized apply path |
+| migrations | copied under `migrations/` | integrity-checked and executed if executable only on an authorized apply path |
 
 Rootfs is intentionally optional. Product updates should omit `--rootfs-base`;
 VM Image updates should provide it explicitly and should be routed through a
 Danger Zone flow.
 
+`--requires-two-phase-update` is an explicit Updater bridge declaration and
+defaults to `false`. The release workflow forwards it unchanged; neither
+`vm-image-update` nor `--rootfs-base` implies a bridge. Set it to `true` only
+for a bridge Product Update that must upgrade the installed Updater before the
+next payload can be applied.
+
 `signature` is currently written as `unsigned`. It is a fixed bundle slot for
-release hardening, not an active cryptographic verification step yet.
+release hardening, not an active cryptographic verification step. The
+`verify-update-bundle` and `release-update-bundle-verify` commands check bundle
+structure, sizes, and checksums only; their success means integrity checked,
+publisher authenticity unverified.
+
+VitalServer Helper 0.2.1 contains update apply fail closed:
+
+- Stable and unknown installed launcher channels reject apply before lease
+  acquisition, workflow state persistence, or staging.
+- The native UI and Runtime Control API publish `canApplyBundle=false`; direct
+  `POST /platform/update-bundles/apply` returns
+  `501 updateApplyUnavailable`.
+- Only an installed `dev` launcher accepts the explicit local-development
+  command below. The flag is not accepted as a stable-channel override.
+
+  ```sh
+  sudo /usr/local/bin/vitalserver-vm runtime apply-bundle \
+    /path/to/update-bundle-dev-<kind>-<releaseLabel>.tar.gz \
+    --allow-unsigned-dev-bundle
+  ```
+
+- Dev `release-update-bundle-apply-smoke` supplies that flag. Stable
+  apply-smoke fails before invoking `sudo`, making the unsupported release
+  contract explicit.
+- `--requires-two-phase-update` is not a publisher-trust bypass. The existing
+  Updater bridge remains unavailable.
 
 This package is for build machines only. Installed Mac mini runtime logic stays in
 the Swift `vitalserver-vm` CLI.

@@ -43,9 +43,9 @@ enum RuntimeCommandFactory {
         settings: RuntimeSettings,
         adminPasswordFile: String? = nil,
         recorderIngressSettingsFile: String? = nil,
-        redisRelaySettingsFile: String? = nil
+        forceVMRuntimeRestart: Bool = false
     ) -> [String] {
-        var arguments = [
+        var arguments: [String] = [
             RuntimeControlClientConstants.RuntimeCommand.runtime,
             RuntimeControlClientConstants.RuntimeCommand.configure,
             RuntimeControlClientConstants.RuntimeCommand.optionCPU,
@@ -58,6 +58,8 @@ enum RuntimeCommandFactory {
             settings.networkMode.rawValue,
             RuntimeControlClientConstants.RuntimeCommand.optionProxyPort,
             String(settings.proxyPort),
+            RuntimeControlClientConstants.RuntimeCommand.optionRuntimeControlPort,
+            String(settings.runtimeControlPort),
             RuntimeControlClientConstants.RuntimeCommand.optionVitalFilesDirectory,
             settings.vitalFilesDirectory,
             RuntimeControlClientConstants.RuntimeCommand.optionPublicHost,
@@ -129,13 +131,9 @@ enum RuntimeCommandFactory {
                 recorderIngressSettingsFile,
             ]
         }
-        if let redisRelaySettingsFile {
-            arguments += [
-                RuntimeControlClientConstants.RuntimeCommand.optionRedisRelaySettingsFile,
-                redisRelaySettingsFile,
-            ]
-        }
-        if settings.restartAfterSave {
+        if forceVMRuntimeRestart {
+            arguments.append(RuntimeControlClientConstants.RuntimeCommand.optionRestartVMRuntime)
+        } else if settings.restartAfterSave {
             arguments.append(RuntimeControlClientConstants.RuntimeCommand.optionRestart)
         }
         return arguments
@@ -161,14 +159,15 @@ enum RuntimeCommandFactory {
         )
     }
 
-    static func testKitServiceCommand(action: RuntimeTestKitServiceAction) -> String {
-        shellCommand(
-            executable: RuntimeControlClientConstants.Paths.launcher,
-            arguments: [
-                RuntimeControlClientConstants.RuntimeCommand.runtime,
-                action.runtimeCommand,
-            ]
-        )
+    static func runtimeProviderCommand(action: RuntimeProviderCommandAction) -> String {
+        switch action {
+        case .start:
+            return runtimeServicesCommand(action: .start)
+        case .stop:
+            return runtimeServicesCommand(action: .stop)
+        case .restart:
+            return "\(runtimeServicesCommand(action: .stop)) && \(runtimeServicesCommand(action: .start))"
+        }
     }
 
     static func commandWithLog(_ shellCommand: String) -> String {
@@ -177,23 +176,6 @@ enum RuntimeCommandFactory {
 
     static func appleScriptEscaped(_ value: String) -> String {
         RuntimeShellCommandFactory.appleScriptEscaped(value)
-    }
-}
-
-enum RuntimeTestKitServiceAction {
-    case start
-    case stop
-    case restart
-
-    var runtimeCommand: String {
-        switch self {
-        case .start:
-            return RuntimeControlClientConstants.RuntimeCommand.startTestKit
-        case .stop:
-            return RuntimeControlClientConstants.RuntimeCommand.stopTestKit
-        case .restart:
-            return RuntimeControlClientConstants.RuntimeCommand.restartTestKit
-        }
     }
 }
 

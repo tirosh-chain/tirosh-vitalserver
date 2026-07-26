@@ -11,7 +11,11 @@ from tirosh_guest_tools.adapters.outbound.observability.commands import (
     run_command,
     run_shell,
 )
-from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
+from tirosh_guest_tools.contracts import (
+    RuntimeFileName,
+    RuntimeService,
+    RuntimeDiagnosticsArtifactFileName,
+)
 from tirosh_guest_tools.domain.observability import (
     DiagnosticCommandObservation,
     DockerObservation,
@@ -28,6 +32,7 @@ from tirosh_guest_tools.domain.observability import (
 )
 from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
+    RUNTIME_CONFIG_FILE,
     RUNTIME_DIR,
     VITAL_FILES_MOUNT_POINT,
 )
@@ -96,9 +101,10 @@ def collect_services() -> dict[str, str]:
         "dbus.service",
         "docker.service",
         "containerd.service",
-        RuntimeService.RUNTIME_STATE.value,
+        RuntimeService.RUNTIME_OBSERVATION.value,
         RuntimeService.COMPOSE.value,
         RuntimeService.CONTAINER_LOGS.value,
+        RuntimeService.GUEST_CONTROL_API.value,
     ]
     return {
         service: compact_output(run_command(["systemctl", "is-active", service]))
@@ -167,13 +173,9 @@ def collect_runtime_files(
     errors: list[ObservabilityCollectorError],
 ) -> dict[str, RuntimeFileObservation]:
     files = [
-        RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value,
-        RUNTIME_DIR / RuntimeFileName.BOOTSTRAP_RESULT.value,
-        RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value,
-        RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_RESULT.value,
-        RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value,
-        RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value,
-        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value,
+        RUNTIME_DIR / RuntimeDiagnosticsArtifactFileName.RUNTIME_OBSERVATION.value,
+        RUNTIME_DIR / RuntimeDiagnosticsArtifactFileName.BOOTSTRAP_RESULT.value,
+        RUNTIME_CONFIG_FILE,
     ]
     return {str(path): file_state(path, errors) for path in files}
 

@@ -6,6 +6,7 @@ export type SendDataRawArchiveAppendResult =
       archiveId: string;
       path: string;
       offset: number;
+      endOffset: number;
       bytes: number;
     }
   | {

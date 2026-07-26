@@ -27,6 +27,8 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
     assert_before(events, "mount-shares", "sync-clock")
     assert_before(events, "sync-clock", "result:running")
     assert_before(events, "prepare-runtime-data", "start-docker")
+    assert_before(events, "prepare-runtime-data", "migrate-control-store")
+    assert_before(events, "migrate-control-store", "start-docker")
     assert_before(
         events,
         "start-docker",
@@ -35,13 +37,51 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
     assert_before(
         events,
         "start-compose",
+        "write-runtime-observation",
+    )
+    assert_before(
+        events,
+        "write-runtime-observation",
         "start-container-logs",
     )
+    assert "build-missing-images" not in events
     result = json.loads(context.bootstrap_result.read_text(encoding="utf-8"))
     assert result["status"] == "completed"
 
 
-def test_guest_bootstrap_rejects_docker_start_before_runtime_data(
+def test_guest_bootstrap_reports_each_running_step_and_failed_step(
+    tmp_path: Path,
+) -> None:
+    context = bootstrap_context(tmp_path)
+    events: list[str] = []
+    operations = fake_operations(events)
+    operations = GuestBootstrapOperations(
+        **{
+            **operations.__dict__,
+            "prepare_runtime_data": lambda: (_ for _ in ()).throw(
+                RuntimeError("stop failed")
+            ),
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="stop failed"):
+        run_guest_bootstrap(context=context, operations=operations)
+
+    running_messages = [
+        event.removeprefix("result:running:")
+        for event in events
+        if event.startswith("result:running:")
+    ]
+    assert "Guest bootstrap is running." in running_messages
+    assert "Guest bootstrap step running: prepare-runtime-data." in running_messages
+    result = json.loads(context.bootstrap_result.read_text(encoding="utf-8"))
+    assert result["status"] == "failed"
+    assert result["message"] == (
+        "Guest bootstrap failed at step: prepare-runtime-data."
+    )
+
+
+def test_guest_bootstrap_rejects_docker_start_before_control_store_migration(
     tmp_path: Path,
 ) -> None:
     workflow = GuestBootstrapWorkflow(
@@ -51,7 +91,7 @@ def test_guest_bootstrap_rejects_docker_start_before_runtime_data(
 
     with pytest.raises(
         RuntimeError,
-        match="start-docker requires prepare-runtime-data",
+        match="start-docker requires migrate-control-store",
     ):
         workflow.start_docker()
 
@@ -69,6 +109,21 @@ def test_guest_bootstrap_rejects_container_logs_before_compose(
         match="start-container-logs requires start-compose",
     ):
         workflow.start_container_logs()
+
+
+def test_guest_bootstrap_rejects_initial_observation_before_compose(
+    tmp_path: Path,
+) -> None:
+    workflow = GuestBootstrapWorkflow(
+        context=bootstrap_context(tmp_path),
+        operations=fake_operations([]),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="write-initial-runtime-observation requires start-compose",
+    ):
+        workflow.write_initial_runtime_observation()
 
 
 def test_guest_bootstrap_cli_is_registered() -> None:
@@ -101,7 +156,7 @@ def bootstrap_context(tmp_path: Path) -> GuestBootstrapContext:
 
 def fake_operations(events: list[str]) -> GuestBootstrapOperations:
     def write_result(path: Path, document: BootstrapResultDocument) -> None:
-        events.append(f"result:{document.status}")
+        events.append(f"result:{document.status}:{document.message}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
@@ -131,7 +186,10 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         missing_runtime_packages=lambda: [],
         install_runtime_files=lambda _: events.append("install-runtime-files"),
         prepare_runtime_data=lambda: events.append("prepare-runtime-data"),
-        write_initial_runtime_state=lambda: events.append("write-runtime-state"),
+        migrate_control_store=lambda: events.append("migrate-control-store"),
+        write_initial_runtime_observation=lambda: events.append(
+            "write-runtime-observation"
+        ),
         start_docker=lambda: events.append("start-docker"),
         start_avahi=lambda: events.append("start-avahi"),
         start_guest_background_services=lambda: events.append(
@@ -143,22 +201,28 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         load_bundled_docker_images=lambda _: events.append("load-docker-images"),
         run_docker_runtime_smoke=lambda _: DockerSmokeResult(passed=True),
         cleanup_docker_cache=lambda: events.append("cleanup-docker-cache"),
-        build_missing_images=lambda: events.append("build-missing-images"),
         start_compose=lambda: events.append("start-compose"),
         start_container_logs=lambda: events.append("start-container-logs"),
         probe_edge_readiness=lambda _url, _timeout: EdgeReadinessProbeResult(
             status_code=200
         ),
-        write_runtime_state_once=lambda: events.append("write-runtime-state"),
+        write_runtime_observation_once=lambda: events.append(
+            "write-runtime-observation"
+        ),
         write_edge_diagnostics=lambda: events.append("write-edge-diagnostics"),
-        restart_runtime_state=lambda: events.append("restart-runtime-state"),
-        start_optional_testkit=lambda: events.append("start-optional-testkit"),
+        restart_runtime_observation=lambda: events.append(
+            "restart-runtime-observation"
+        ),
         runtime_boot_smoke_enabled=lambda _: False,
         run_runtime_boot_smoke=lambda: events.append("run-runtime-boot-smoke"),
     )
 
 
 def assert_before(events: list[str], first: str, second: str) -> None:
-    assert first in events
-    assert second in events
-    assert events.index(first) < events.index(second)
+    first_index = next(
+        index for index, event in enumerate(events) if event.startswith(first)
+    )
+    second_index = next(
+        index for index, event in enumerate(events) if event.startswith(second)
+    )
+    assert first_index < second_index

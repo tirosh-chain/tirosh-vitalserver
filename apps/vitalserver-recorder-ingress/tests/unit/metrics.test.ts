@@ -44,6 +44,33 @@ test("metrics snapshot reports failure log write failures distinctly", () => {
   assert.strictEqual(metricsSnapshot(metrics).failureLogWriteFailures, 2);
 });
 
+test("metrics snapshot exposes Recorder observability admission state", () => {
+  const metrics = createMetrics();
+  metrics.recorderObservability.requests = 3;
+  metrics.recorderObservability.accepted = 2;
+  metrics.recorderObservability.duplicates = 1;
+  metrics.recorderObservability.quarantined = 4;
+  metrics.recorderObservability.admissionFailures = 1;
+  metrics.recorderObservability.lastAdmittedAt = "2026-07-23T02:00:00.000Z";
+  metrics.recorderObservability.lastFailure = {
+    occurredAt: "2026-07-23T02:01:00.000Z",
+    reason: "durable_admission_failed",
+  };
+
+  assert.deepStrictEqual(metricsSnapshot(metrics).recorderObservability, {
+    requests: 3,
+    accepted: 2,
+    duplicates: 1,
+    quarantined: 4,
+    admissionFailures: 1,
+    lastAdmittedAt: "2026-07-23T02:00:00.000Z",
+    lastFailure: {
+      occurredAt: "2026-07-23T02:01:00.000Z",
+      reason: "durable_admission_failed",
+    },
+  });
+});
+
 test("metrics snapshot clears pending bytes when replay consumes final pending item", () => {
   const metrics = createMetrics();
   const item = {
@@ -83,6 +110,26 @@ test("metrics snapshot uses explicit spool depth for replay pending items", () =
 
   assert.strictEqual(snapshot.spool.pendingItems, 3);
   assert.strictEqual(snapshot.replay.pendingItems, 3);
+});
+
+test("metrics snapshot exposes observe_only with replay disabled", () => {
+  const metrics = createMetrics();
+  configureSendDataSpool(metrics, {
+    enabled: false,
+    mode: "observe_only",
+    storage: "redis_list",
+    replay: {
+      enabled: false,
+      batchSize: 1000,
+      maxBytesPerSecond: 20 * 1024 * 1024,
+    },
+  });
+
+  const snapshot = metricsSnapshot(metrics);
+
+  assert.strictEqual(snapshot.spool.mode, "observe_only");
+  assert.strictEqual(snapshot.spool.status, "disabled");
+  assert.strictEqual(snapshot.replay.status, "disabled");
 });
 
 test("metrics snapshot clears recorder pending when replay queue is explicitly drained", () => {
@@ -181,9 +228,11 @@ test("metrics snapshot reports raw archive status distinctly", () => {
 
   recordSendDataRawArchived(metrics, {
     payloadBytes: 7,
+    vrcode: "VR_A",
   }, {
     archiveId: "send-data-raw.jsonl",
     offset: 12,
+    endOffset: 19,
   });
   recordSendDataRawArchiveWriteFailed(metrics, "raw_archive_write_failed", "disk full");
 
@@ -195,6 +244,7 @@ test("metrics snapshot reports raw archive status distinctly", () => {
   assert.strictEqual(snapshot.rawArchive.persistedBytes, 7);
   assert.strictEqual(snapshot.rawArchive.writeFailures, 1);
   assert.strictEqual(snapshot.rawArchive.lastArchiveId, "send-data-raw.jsonl");
-  assert.strictEqual(snapshot.rawArchive.lastOffset, 12);
+  assert.strictEqual(snapshot.rawArchive.lastOffset, 19);
+  assert.strictEqual(snapshot.recorders[0].rawArchive.lastOffset, 19);
   assert.strictEqual(snapshot.rawArchive.lastFailure.reason, "raw_archive_write_failed");
 });

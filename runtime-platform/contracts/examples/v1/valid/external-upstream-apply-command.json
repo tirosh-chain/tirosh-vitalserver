@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "external-upstream-apply-1",
+  "integrationId": "external-upstream-primary",
+  "expectedResourceRevision": 0,
+  "spec": {
+    "provider": {
+      "kind": "external-vitalserver",
+      "id": "hospital-vitalserver",
+      "capabilityRevision": 3
+    },
+    "endpointReference": {
+      "resourceType": "upstream-endpoint",
+      "resourceId": "hospital-vitalserver-endpoint"
+    }
+  }
+}

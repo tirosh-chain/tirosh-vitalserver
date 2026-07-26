@@ -1,7 +1,7 @@
 {
   "channel": "dev",
-  "helperVersion": "0.1.17",
-  "releaseLabel": "0.1.17-dev",
+  "helperVersion": "0.2.1",
+  "releaseLabel": "0.2.1-dev",
   "minUpdaterVersion": "0.1.15",
   "targetPlatform": "macos-arm64",
   "distribution": {
@@ -9,9 +9,7 @@
     "audience": "internal"
   },
   "bundle": {
-    "optionalContainerServices": [
-      "testkit"
-    ]
+    "optionalContainerServices": []
   },
   "vitalServerVersion": "2.3.4",
   "services": {
@@ -20,35 +18,45 @@
       "image": "vitalserver:2.3.4",
       "version": "2.3.4"
     },
+    "postgresMigrator": {
+      "displayName": "PostgreSQL schema migrator",
+      "image": "vitalserver-postgres-migrator:0.2.0",
+      "version": "0.2.0"
+    },
     "recorderIngress": {
       "displayName": "Recorder ingress",
-      "image": "vitalserver-recorder-ingress:0.1.0",
-      "version": "0.1.0"
+      "image": "vitalserver-recorder-ingress:0.2.1",
+      "version": "0.2.1"
     },
     "recorderRecovery": {
       "displayName": "Recorder recovery",
-      "image": "vitalserver-recorder-recovery:0.1.0",
-      "version": "0.1.0"
+      "image": "vitalserver-recorder-recovery:0.2.0",
+      "version": "0.2.0"
     },
     "vitalDBObserver": {
       "displayName": "VitalDB observer",
-      "image": "vitaldb-observer:0.1.0",
-      "version": "0.1.0"
+      "image": "vitaldb-observer:0.2.0",
+      "version": "0.2.0"
     },
     "redisRelay": {
       "displayName": "Redis Relay",
-      "image": "vitalserver-redis-relay:0.1.0",
-      "version": "0.1.0"
+      "image": "vitalserver-redis-relay:0.2.0",
+      "version": "0.2.0"
     },
-    "testkit": {
-      "displayName": "TestKit",
-      "image": "vitalserver-testkit:0.1.1",
-      "version": "0.1.1"
+    "lab": {
+      "displayName": "Lab",
+      "image": "vitalserver-lab:0.2.0",
+      "version": "0.2.0"
     },
     "redis": {
       "displayName": "Redis",
       "image": "redis:3.2.12-alpine",
       "version": "3.2.12"
+    },
+    "postgres": {
+      "displayName": "Postgres",
+      "image": "postgres:16-alpine",
+      "version": "16"
     },
     "redisUI": {
       "displayName": "Redis UI",

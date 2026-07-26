@@ -1,0 +1,492 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-product-installation-manifest",
+  "title": "HostProductInstallationManifest",
+  "description": "C48 Release-process-owned declaration of one immutable Host product release slot, its activation link, required service registrations, and separately owned mutable stores. It is desired release content, not proof that an installer wrote, activated, or started it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "installationId",
+    "platform",
+    "release",
+    "package",
+    "immutablePayload",
+    "activation",
+    "operatorInterface",
+    "requiredServices",
+    "mutableStores"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "installationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "macos",
+        "windows",
+        "linux"
+      ]
+    },
+    "release": {
+      "$ref": "#/$defs/Release"
+    },
+    "package": {
+      "$ref": "#/$defs/PackageIdentity"
+    },
+    "immutablePayload": {
+      "$ref": "#/$defs/ImmutablePayload"
+    },
+    "activation": {
+      "$ref": "#/$defs/Activation"
+    },
+    "operatorInterface": {
+      "$ref": "#/$defs/OperatorInterface"
+    },
+    "requiredServices": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/RequiredService"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-agent"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-edge-proxy"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-update-handoff-supervisor"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "mutableStores": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/MutableStore"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "id": { "const": "installation-manager-journal" },
+              "owner": { "const": "host-installation-manager" },
+              "kind": { "const": "directory" },
+              "retention": { "const": "purge-only-by-explicit-command" }
+            },
+            "required": ["id", "owner", "kind", "retention"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "platform": { "const": "macos" } },
+        "required": ["platform"]
+      },
+      "then": {
+        "properties": {
+          "activation": {
+            "properties": { "referenceKind": { "const": "symbolic-link" } },
+            "required": ["referenceKind"]
+          },
+          "operatorInterface": {
+            "required": [
+              "applicationBundlePath",
+              "applicationBundleTreeSha256",
+              "applicationBundleEntrypointRelativePath"
+            ]
+          },
+          "requiredServices": {
+            "items": {
+              "properties": { "manager": { "const": "launchd" } },
+              "required": ["manager"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "platform": { "const": "linux" } },
+        "required": ["platform"]
+      },
+      "then": {
+        "properties": {
+          "activation": {
+            "properties": { "referenceKind": { "const": "symbolic-link" } },
+            "required": ["referenceKind"]
+          },
+          "requiredServices": {
+            "items": {
+              "properties": { "manager": { "const": "systemd" } },
+              "required": ["manager"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "platform": { "const": "windows" } },
+        "required": ["platform"]
+      },
+      "then": {
+        "properties": {
+          "activation": {
+            "properties": { "referenceKind": { "const": "directory-junction" } },
+            "required": ["referenceKind"]
+          },
+          "requiredServices": {
+            "items": {
+              "properties": { "manager": { "const": "windows-scm" } },
+              "required": ["manager"]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "HostAbsolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "anyOf": [
+        {
+          "pattern": "^/[^\\\\]*$",
+          "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+        },
+        {
+          "pattern": "^[A-Za-z]:[\\\\/][^\\u0000]*$",
+          "not": { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" }
+        }
+      ]
+    },
+    "RelativePayloadPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+          },
+          {
+            "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)"
+          }
+        ]
+      }
+    },
+    "Release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "productVersion",
+        "runtimeVersion"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "runtimeVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "PackageIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identifier",
+        "productVersion"
+      ],
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$"
+        },
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "packageManagerIdentifier": {
+          "description": "Optional OS package-manager identity. Windows C48 declarations use the MSI ProductCode including braces; the Host Installation Manager rejects a Windows declaration that omits it.",
+          "type": "string",
+          "pattern": "^\\{[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}\\}$"
+        }
+      }
+    },
+    "ImmutablePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseCatalogPath",
+        "releaseRootPath",
+        "manifestPath",
+        "entries"
+      ],
+      "properties": {
+        "releaseCatalogPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "releaseRootPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "manifestPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ImmutablePayloadEntry"
+          }
+        }
+      }
+    },
+    "ImmutablePayloadEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relativePath",
+        "sha256",
+        "executable"
+      ],
+      "properties": {
+        "relativePath": {
+          "$ref": "#/$defs/RelativePayloadPath"
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "executable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currentReleaseLinkPath",
+        "referenceKind",
+        "expectedReleaseRootPath"
+      ],
+      "properties": {
+        "currentReleaseLinkPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "referenceKind": {
+          "type": "string",
+          "enum": [
+            "symbolic-link",
+            "directory-junction"
+          ],
+          "description": "The explicitly selected Host activation reference mechanism. macOS and Linux use symbolic-link; Windows uses directory-junction."
+        },
+        "expectedReleaseRootPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        }
+      }
+    },
+    "OperatorInterface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrapConfigurationPath", "bootstrapConfigurationSha256"],
+      "properties": {
+        "bootstrapConfigurationPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "bootstrapConfigurationSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "applicationBundlePath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "applicationBundleTreeSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "applicationBundleEntrypointRelativePath": {
+          "$ref": "#/$defs/RelativePayloadPath"
+        }
+      }
+    },
+    "RequiredService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "manager",
+        "name",
+        "definitionPath",
+        "definitionSha256"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "host-agent",
+            "host-edge-proxy",
+            "host-update-handoff-supervisor"
+          ]
+        },
+        "manager": {
+          "type": "string",
+          "enum": [
+            "launchd",
+            "windows-scm",
+            "systemd"
+          ]
+        },
+        "name": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "definitionPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "definitionSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "windowsScmRegistration": {
+          "$ref": "#/$defs/WindowsScmRegistration"
+        }
+      }
+    },
+    "WindowsScmRegistration": {
+      "description": "Exact SCM registration desired by a Windows C48 declaration. It is not a process-health claim.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executablePath",
+        "arguments",
+        "startMode",
+        "account"
+      ],
+      "properties": {
+        "executablePath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "arguments": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "not": { "pattern": "\\u0000" }
+          }
+        },
+        "startMode": {
+          "type": "string",
+          "const": "automatic"
+        },
+        "account": {
+          "type": "string",
+          "const": "LocalSystem"
+        }
+      }
+    },
+    "MutableStore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "kind",
+        "owner",
+        "retention"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "path": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "kind": {
+          "type": "string",
+          "const": "directory"
+        },
+        "owner": {
+          "type": "string",
+          "enum": [
+            "host-agent",
+            "macos-virtual-machine-supervisor",
+            "native-platform-provider",
+            "host-installation-manager",
+            "host-update-handoff-supervisor"
+          ]
+        },
+        "retention": {
+          "type": "string",
+          "enum": [
+            "preserve-by-default",
+            "purge-only-by-explicit-command"
+          ]
+        }
+      }
+    }
+  }
+}

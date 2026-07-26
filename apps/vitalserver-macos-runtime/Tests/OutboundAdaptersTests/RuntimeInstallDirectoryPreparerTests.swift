@@ -11,19 +11,13 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
         let guestRunDirectory = URL(fileURLWithPath: "/product/run/guest")
         let logsDirectory = URL(fileURLWithPath: "/product/logs")
         let vmIPFile = URL(fileURLWithPath: "/product/run/guest/vm-ip")
-        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-state.json")
+        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-observation.json")
         let bootstrapResult = URL(fileURLWithPath: "/product/run/guest/bootstrap-result.json")
-        let updateActivationResult = URL(fileURLWithPath: "/product/run/guest/update-activation-result.json")
-        let updateShutdownResult = URL(fileURLWithPath: "/product/run/guest/update-shutdown-result.json")
-        let datastoreRepairResult = URL(fileURLWithPath: "/product/run/guest/datastore-repair-result.json")
         var createdDirectories: [URL] = []
         var pathStates: [URL: RuntimePathState] = [
             vmIPFile: .file,
             runtimeState: .file,
             bootstrapResult: .file,
-            updateActivationResult: .file,
-            updateShutdownResult: .file,
-            datastoreRepairResult: .file,
         ]
         var removed: [URL] = []
         let preparer = RuntimeInstallDirectoryPreparer<TestInstallDirectorySettings>(
@@ -38,9 +32,6 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
                     vmIPFile,
                     runtimeState,
                     bootstrapResult,
-                    updateActivationResult,
-                    updateShutdownResult,
-                    datastoreRepairResult,
                 ],
                 vitalFilesDirectory: { settings in
                     URL(fileURLWithPath: settings.vitalFilesDirectory)
@@ -73,14 +64,11 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
             vmIPFile,
             runtimeState,
             bootstrapResult,
-            updateActivationResult,
-            updateShutdownResult,
-            datastoreRepairResult,
         ])
     }
 
     func testPrepareFailsWhenStaleGuestDocumentInspectionFails() {
-        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-state.json")
+        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-observation.json")
         let preparer = RuntimeInstallDirectoryPreparer<TestInstallDirectorySettings>(
             context: RuntimeInstallDirectoryPreparationContext(
                 fixedDirectories: [],
@@ -105,7 +93,7 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
     }
 
     func testPrepareFailsWhenStaleGuestDocumentPathIsDirectory() {
-        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-state.json")
+        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-observation.json")
         let preparer = RuntimeInstallDirectoryPreparer<TestInstallDirectorySettings>(
             context: RuntimeInstallDirectoryPreparationContext(
                 fixedDirectories: [],

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "v1",
+  "items": [
+    {
+      "schemaVersion": "v1",
+      "recorderId": "recorder-lab-0001",
+      "resourceRevision": 3,
+      "supportState": "supported",
+      "expectationState": "expected",
+      "reportState": "current",
+      "readState": "available",
+      "latestObservationReference": {
+        "resourceType": "catalog-observation",
+        "resourceId": "catalog-observation-1"
+      },
+      "latestBootId": "boot-0001",
+      "latestSequence": 42,
+      "latestOccurredAt": "2026-07-17T00:00:00Z",
+      "latestReceivedAt": "2026-07-17T00:00:02Z",
+      "latestPersistedAt": "2026-07-17T00:00:02Z",
+      "updatedAt": "2026-07-17T00:00:02Z"
+    }
+  ],
+  "nextCursor": "eyJyZWNvcmRlcklkIjoicmVjb3JkZXItbGFiLTAwMDEifQ"
+}

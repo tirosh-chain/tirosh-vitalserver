@@ -38,19 +38,23 @@ Browser / VRecorder
 
 | 상황 | 실행/확인 |
 |---|---|
-| 개발용 제품 설치 파일을 만들고 싶다 | `make dist/dmg/dev` |
+| 현장 전달용 개발 설치 파일을 만들고 싶다 | `make dist/dmg/dev` |
+| 반복 개발용 DMG를 전체 golden cache로 가장 빠르게 만들고 싶다 | `make dist/dmg/dev/cached` |
+| mutable rootfs를 새로 만드는 compile 단계만 확인하고 싶다 | `make dist/dmg/dev/compile` |
+| 이미 만든 DMG와 golden rootfs proof만 다시 확인하고 싶다 | `make dist/dmg/dev/verify` |
 | release 제품 설치 파일을 만들고 싶다 | `make dist/dmg/release` |
 | 개발용 `.pkg`만 만들고 싶다 | `make dist/pkg/dev` |
 | air-gapped 현장 업데이트 bundle을 만들고 싶다 | `make dist/update/release` |
 | 만든 update bundle을 검증하고 싶다 | `make dist/update/verify/release` |
 | 개발용 package를 현재 Mac에 설치해 보고 싶다 | `make dist/install/dev` |
-| repo 기반 개발 설치 runtime 상태를 확인하고 싶다 | `make dist/installed/health` |
+| repo 기반 설치의 app/files/jobs와 guest/host HTTP를 확인하고 싶다 | `make dist/installed/health` |
+| 설치된 CLI가 제공하는 runtime health 계약까지 확인하고 싶다 | `make dist/installed/smoke` |
 | 권한/update/observability 실패 주입 시나리오를 빠르게 확인하고 싶다 | `make runtime/chaos` |
 | 권한/update/observability 실패 주입 시나리오를 반복 확인하고 싶다 | `make runtime/chaos/loop` |
 | 개발용 설치물을 지우고 싶다 | `make dist/uninstall/dev` |
 | VM을 직접 띄워 PoC를 확인하고 싶다 | `make runtime/up` |
 
-세부 문서는 [macOS Runtime Overview](../../docs/macos-runtime/overview.md)를 진입점으로 봅니다.
+세부 문서는 [macOS Runtime Overview](../../docs/runtime/macos/overview.md)를 진입점으로 봅니다.
 
 ## 관측 SoT
 
@@ -58,18 +62,17 @@ runtime 상태와 VitalDB 관측값은 아래 흐름으로 정규화합니다.
 
 ```text
 vitaldb-observer
-  -> guest runtime-state.json
-  -> watchdog/runtime
-  -> runtime-status.json
-  -> runtime-events.jsonl
-  -> runtime-observability.sqlite
-  -> Runtime Control API /runtime/*, /vitaldb/*
+  -> Guest/Postgres VitalDB read model
+  -> Guest Control API /runtime/vitaldb/*
+  -> Runtime Control API /runtime/*, /runtime/vitaldb/*
 ```
 
 `vitaldb-observer`는 Redis와 proxy/access log를 읽는 stateless collector입니다. 최종 observation
-source of truth는 watchdog/runtime이 관리하는 `runtime-observability.sqlite`입니다. UI와 Runtime
-Control API는 observer container를 직접 조회하지 않고 runtime read model을 기준으로 응답합니다.
-전체 owner map은 [Runtime observability model](../../docs/macos-runtime/observability.md#source-of-truth-map)을
+source of truth는 Guest/Postgres read model입니다. Host `runtime-status.json`과
+`runtime-observability.sqlite`는 Host runtime state, event index, diagnostics evidence에만
+사용하고 product VitalDB read source로 승격하지 않습니다. UI와 Runtime Control API는 observer
+container를 직접 조회하지 않고 Guest Control API read model을 기준으로 응답합니다.
+전체 owner map은 [Runtime observability model](../../docs/runtime/macos/observability.md#source-of-truth-map)을
 봅니다.
 
 ## 사용자 시나리오
@@ -96,13 +99,55 @@ Install VitalServer Helper.pkg
 
 이 package는 Helper app, Swift runtime CLI, host proxy, Linux VM runtime asset, golden rootfs, Docker image bundle, LaunchDaemon을 설치합니다. target Mac은 설치 시점에 인터넷이 없어도 됩니다.
 
+Product image는 build Mac의 Host compile에서만 만들고 Guest는 검증된 bundle을 load해 Compose를 `--pull never --no-build`로 시작합니다. Guest가 image를 다시 pull/build하지 않으며, Compose 환경은 개발 Mac `.env`가 아니라 Guest runtime contract에서 `/mnt/runtime/compose.env`로 생성합니다.
+
 package에 들어가는 golden rootfs base는 설치 파일 효율과 air-gapped package 준비 여유를 함께 고려해 기본 8 GiB로 만듭니다. 실제 설치된 VM disk는 wizard 기본값 32 GiB로 확장되며, 설치 후에는 증가만 허용합니다.
 
-반복 개발 중에는 cache를 재사용합니다. release 검증처럼 clean golden rootfs부터 다시 만들려면:
+반복 개발 중에는 receipt와 fingerprint가 모두 맞는 cache만 재사용합니다. cache miss는 이전 golden disk를 이어 쓰지 않고 새 base disk에서 다시 compile합니다. release 현장 전달 gate처럼 clean golden rootfs부터 다시 만들려면:
 
 ```sh
 make dist/dmg/release
 ```
+
+### DMG build profile과 cache 경계
+
+| 명령 | 전체 golden rootfs cache | APT-prepared cache | review / artifact verify / runtime smoke |
+|---|---|---|---|
+| `make dist/dmg/dev` | 사용하지 않고 clean compile | 유효하면 사용 | 모두 실행 |
+| `make dist/dmg/dev/cached` | source fingerprint와 receipt가 맞으면 사용 | 전체 cache miss로 compile할 때 유효하면 사용 | 실행하지 않음 |
+| `make dist/dmg/dev/compile` | 사용하지 않고 clean compile | 유효하면 사용 | 실행하지 않음 |
+| `make dist/dmg/dev/verify` | 기존 cache를 요구하며 stale이면 실패 | 사용하지 않음 | artifact verify와 runtime smoke 실행 |
+| `make dist/dmg/release` | 사용하지 않고 clean compile | 유효하면 사용 | release guard를 포함해 모두 실행 |
+
+여기서 clean compile은 기존 mutable `vm-disk.img`를 폐기하고 새 disk를
+조립한다는 의미입니다. 매번 APT 네트워크를 사용한다는 의미는 아닙니다.
+
+APT cache hit은 다음 세 계층의 proof가 모두 맞아야 합니다.
+
+1. Host의 APT/rootfs contract fingerprint
+2. `apt-prepared-rootfs.raw.gz.sha256`
+3. Guest의 snapshot, 필수 package/version, `dpkg --audit` proof
+
+통과하면 Host preflight는 APT source를 `verified-cache`로 명시하고 snapshot
+endpoint를 probe하지 않습니다. Guest도 `apt-get update`와 `apt-get install`
+대신 cache 내부 proof와 실제 package 상태를 다시 검증합니다. 하나라도 맞지
+않으면 cache hit으로 처리하지 않고 Ubuntu base의 네트워크 APT 경로를 실행합니다.
+
+로컬 artifact 위치:
+
+```text
+.tmp/vitalserver-vm-pkg/
+  apt-prepared-rootfs.raw.gz
+  apt-prepared-rootfs.raw.gz.sha256
+  apt-prepared-rootfs.contract
+  rootfs-base.raw.gz
+  rootfs-base.contract
+```
+
+APT package 추가·삭제는
+`Support/Guest/rootfs-apt-packages.txt`에서 수행합니다. snapshot source,
+install mode, upgrade/package proof 의미가 바뀌면
+`Support/Guest/rootfs-apt-cache-contract.txt`도 함께 갱신해야 합니다.
 
 ### 2. 이미 설치된 현장에 offline update bundle 제공
 
@@ -151,9 +196,21 @@ update bundle 생성 시에도 artifact 압축은 필요합니다. 기본 Produc
 make dist/pkg/dev
 make dist/install/dev
 make dist/installed/health
+make dist/installed/smoke
 ```
 
 설치 후 `/Applications/VitalServer Helper.app`을 열어 상태를 확인합니다. VitalServer 접속 URL은 Helper app Status 탭의 `VitalServer URL`을 사용합니다.
+
+`dist/installed/health`는 Helper app과 main executable, 설치 runtime executable,
+필수 launchd job과 VM IP, Guest HTTP, Host proxy HTTP를 확인합니다.
+`dist/installed/smoke`는 이 결과에 더해 설치된
+`/usr/local/bin/vitalserver-vm runtime health`가 성공해야 통과합니다. 이 명령은
+자동으로 권한을 상승시키지 않고 호출자의 identity로 실행합니다. 현재 health command는
+root-owned Host state를 읽고 상태 artifact를 쓸 수 있으므로, 권한이 없는 호출에서 발생한
+read/write failure는 smoke 실패로 그대로 보존됩니다.
+
+Package receipt/version과 recorder ingress → Redis → VitalServer data path는 이 두
+명령이 추정하지 않으며 별도의 privileged installed acceptance가 소유합니다.
 
 개발용 설치물을 지울 때:
 
@@ -188,7 +245,17 @@ make devtools/start
 
 ### 5. 패키징 시간이 너무 오래 걸릴 때
 
-rootfs gzip 압축은 시간이 오래 걸릴 수 있습니다. build machine에 `pigz`가 있으면 병렬 gzip을 사용합니다.
+먼저 작업 목적에 맞는 profile을 선택합니다.
+
+```sh
+make dist/dmg/dev/cached   # 전체 golden cache가 맞는 반복 패키징
+make dist/dmg/dev/compile  # 새 mutable rootfs가 필요한 compile 진단
+make dist/dmg/dev          # 현장 전달 proof가 필요한 전체 gate
+```
+
+`compile`과 전체 gate도 유효한 APT-prepared cache가 있으면 APT 네트워크를
+건너뜁니다. rootfs gzip 압축은 여전히 시간이 걸릴 수 있습니다. build machine에
+`pigz`가 있으면 병렬 gzip을 사용합니다.
 
 ```sh
 command -v pigz
@@ -207,7 +274,7 @@ apps/vitalserver-macos-runtime/release.json
 apps/vitalserver-macos-runtime/release-dev.json
 ```
 
-`release.json`은 stable channel SoT이고, `release-dev.json`은 내부 dev channel SoT입니다. `*-release` target은 `release.json`을 사용하고 현재 repository branch가 `main`일 때만 실행됩니다. `*-dev` target은 `release-dev.json`을 사용하며 branch 제약을 두지 않습니다. Manifest field 정책과 dev/test exposure 정책은 [packaging 문서](../../docs/macos-runtime/packaging.md#버전-source-of-truth)를 기준으로 관리합니다.
+`release.json`은 stable channel SoT이고, `release-dev.json`은 내부 dev channel SoT입니다. `*-release` target은 `release.json`을 사용하고 현재 repository branch가 `main`일 때만 실행됩니다. `*-dev` target은 `release-dev.json`을 사용하며 branch 제약을 두지 않습니다. Manifest field 정책과 dev/test exposure 정책은 [packaging 문서](../../docs/runtime/macos/packaging.md#버전-source-of-truth)를 기준으로 관리합니다.
 
 `VitalServer Helper`는 최상위 product release입니다. 플랫폼별 UI/VM provider 구현은 같은 Helper release 아래의 variant로 보고, 세부 변경 범위는 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
@@ -215,7 +282,7 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 
 `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
 
-`make devtools/build`, `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`는 이 값을 읽어 app bundle version, package version, update bundle version, target platform, update compatibility, bundled service image/version/name 표시에 반영합니다. 버전, target platform, Helper UI의 service 표시명, 배포 profile, optional container service 포함 정책을 바꿀 때는 이 파일을 수정합니다.
+`make devtools/release-contract`, `make devtools/build`, `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`는 이 값을 읽어 app bundle version, package version, update bundle version, target platform, update compatibility, bundled service image/version/name 표시에 반영합니다. `release-contract`는 Docker export와 rootfs cache 판단 전에 manifest image를 Guest Compose와 VM Docker plan에 대조하며, 불일치를 고치지 않고 실패로 보고합니다. 따라서 service image를 바꿀 때는 release manifest, `Support/Guest/compose.yaml`, `config/vm-build.toml`을 같은 변경에서 명시적으로 맞춥니다. Swift `Generated*.swift`만 파생 source로 생성됩니다.
 
 ## 주요 명령
 
@@ -223,9 +290,12 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 |---|---|
 | `make devtools/app` | Helper app bundle 생성 |
 | `make dist/pkg/dev` | release-dev.json 기반 개발 검증용 `.pkg` 생성 |
-| `make dist/dmg/dev` | release-dev.json 기반 개발 검증용 `.dmg` 생성 |
+| `make dist/dmg/dev` | 현장 전달 표준 gate: review, clean compile, artifact verify, golden runtime smoke를 거친 release-dev.json 기반 `.dmg` 생성 |
+| `make dist/dmg/dev/cached` | 전체 source fingerprint와 receipt가 일치하는 golden rootfs를 재사용하는 반복 개발용 `.dmg` 생성. 현장 전달 검증은 수행하지 않음 |
+| `make dist/dmg/dev/compile` | 기존 mutable disk를 폐기하고 dev DMG를 clean compile. 검증된 APT-prepared seed는 재사용할 수 있으며 현장 전달 proof는 아님 |
+| `make dist/dmg/dev/verify` | compile 없이 기존 dev DMG readback과 verified golden rootfs runtime smoke 수행. cache가 없거나 stale이면 실패 |
 | `make dist/pkg/release` | release.json 기반 release `.pkg` 생성 |
-| `make dist/dmg/release` | release.json 기반 release `.dmg` 생성 |
+| `make dist/dmg/release` | release.json 기반 release 현장 전달 gate: review, clean compile, artifact verify, golden runtime smoke를 거친 `.dmg` 생성 |
 | `make dist/update/dev` | release-dev.json 기반 Product Update bundle 생성 |
 | `make dist/update/release` | release.json 기반 Product Update bundle 생성 |
 | `make dist/image-update/dev` | release-dev.json 기반 VM Image Update bundle 생성 |
@@ -233,7 +303,8 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | `make dist/update/verify/dev` | dev product update bundle checksum/manifest 검증 |
 | `make dist/update/verify/release` | release product update bundle checksum/manifest 검증 |
 | `make dist/install/dev` | 현재 Mac에 개발용 package 설치 |
-| `make dist/installed/health` | repo 기반 개발 설치의 launchd VM/proxy 상태 확인 |
+| `make dist/installed/health` | Helper app/main executable, 설치 runtime executable, 필수 launchd job, VM IP와 guest/host HTTP 확인 |
+| `make dist/installed/smoke` | installed health에 설치된 `vitalserver-vm runtime health` 결과를 추가로 요구 |
 | `make dist/uninstall/dev` | 개발용 설치물 제거 |
 | `make runtime/up` | 개발 VM start + host proxy 연결 |
 | `make runtime/health` | 개발 VM health 확인 |
@@ -277,11 +348,11 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 
 | 문서 | 볼 때 |
 |---|---|
-| [macOS Runtime Overview](../../docs/macos-runtime/overview.md) | 문서군 전체 지도와 시나리오 |
-| [Architecture](../../docs/macos-runtime/architecture.md) | As-is/To-be 구조와 책임 경계 |
-| [Runtime Control API](../../docs/macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
-| [Runtime Observability](../../docs/macos-runtime/observability.md) | runtime status/event/VitalDB observation SoT와 SQLite read model |
-| [Packaging and Update](../../docs/macos-runtime/packaging.md) | PKG/DMG/update bundle 계약 |
-| [Runtime](../../docs/macos-runtime/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
+| [macOS Runtime Overview](../../docs/runtime/macos/overview.md) | 문서군 전체 지도와 시나리오 |
+| [Architecture](../../docs/runtime/macos/architecture.md) | As-is/To-be 구조와 책임 경계 |
+| [Runtime Control API](../../docs/runtime/macos/runtime-control-api.md) | Runtime Control API 계약, OpenAPI, local server 경계 |
+| [Runtime Observability](../../docs/runtime/macos/observability.md) | runtime status/event, Guest/Postgres read model, diagnostics 경계 |
+| [Packaging and Update](../../docs/runtime/macos/packaging.md) | PKG/DMG/update bundle 계약 |
+| [Runtime](../../docs/runtime/macos/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
 | [Troubleshooting](../../docs/troubleshooting.md) | 502, stale pid, disk full, update failure, install cleanup 등 |
 | [macOS host proxy ADR](../../docs/adr/0001-macos-host-proxy-for-vrecorder-ip.md) | host proxy가 필요한 이유 |

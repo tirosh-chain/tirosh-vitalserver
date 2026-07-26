@@ -89,19 +89,19 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
         self.uptimeSeconds = try container.decodeIfPresent(Int.self, forKey: .uptimeSeconds)
-        self.activeWebSockets = try container.decodeIfPresent(Int.self, forKey: .activeWebSockets) ?? 0
-        self.activeRecorderConnections = try container.decodeIfPresent(Int.self, forKey: .activeRecorderConnections) ?? 0
-        self.recorders = try container.decodeIfPresent([RuntimeRecorderConnectionObservation].self, forKey: .recorders) ?? []
-        self.httpRequests = try container.decodeIfPresent(Int.self, forKey: .httpRequests) ?? 0
-        self.socketIoEventsSeen = try container.decodeIfPresent(Int.self, forKey: .socketIoEventsSeen) ?? 0
-        self.socketIoParseFailures = try container.decodeIfPresent(Int.self, forKey: .socketIoParseFailures) ?? 0
-        self.auditWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditWriteFailures) ?? 0
-        self.auditFileWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditFileWriteFailures) ?? 0
-        self.auditStdoutWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditStdoutWriteFailures) ?? 0
-        self.failureLogWriteFailures = try container.decodeIfPresent(Int.self, forKey: .failureLogWriteFailures) ?? 0
-        self.redisIpWriteFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpWriteFailures) ?? 0
-        self.redisIpVerifyFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyFailures) ?? 0
-        self.redisIpVerifyMismatches = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyMismatches) ?? 0
+        self.activeWebSockets = try container.decode(Int.self, forKey: .activeWebSockets)
+        self.activeRecorderConnections = try container.decode(Int.self, forKey: .activeRecorderConnections)
+        self.recorders = try container.decode([RuntimeRecorderConnectionObservation].self, forKey: .recorders)
+        self.httpRequests = try container.decode(Int.self, forKey: .httpRequests)
+        self.socketIoEventsSeen = try container.decode(Int.self, forKey: .socketIoEventsSeen)
+        self.socketIoParseFailures = try container.decode(Int.self, forKey: .socketIoParseFailures)
+        self.auditWriteFailures = try container.decode(Int.self, forKey: .auditWriteFailures)
+        self.auditFileWriteFailures = try container.decode(Int.self, forKey: .auditFileWriteFailures)
+        self.auditStdoutWriteFailures = try container.decode(Int.self, forKey: .auditStdoutWriteFailures)
+        self.failureLogWriteFailures = try container.decode(Int.self, forKey: .failureLogWriteFailures)
+        self.redisIpWriteFailures = try container.decode(Int.self, forKey: .redisIpWriteFailures)
+        self.redisIpVerifyFailures = try container.decode(Int.self, forKey: .redisIpVerifyFailures)
+        self.redisIpVerifyMismatches = try container.decode(Int.self, forKey: .redisIpVerifyMismatches)
         self.throughput = try container.decodeIfPresent(
             RuntimeRecorderIngressThroughputStatus.self,
             forKey: .throughput
@@ -135,6 +135,16 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         try container.encodeIfPresent(rawArchive, forKey: .rawArchive)
         try container.encodeIfPresent(spool, forKey: .spool)
         try container.encodeIfPresent(replay, forKey: .replay)
+    }
+}
+
+private extension KeyedEncodingContainer {
+    mutating func encodeExplicitOptional<T: Encodable>(_ value: T?, forKey key: Key) throws {
+        if let value {
+            try encode(value, forKey: key)
+        } else {
+            try encodeNil(forKey: key)
+        }
     }
 }
 
@@ -206,9 +216,9 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportStatus: Codable, Equatab
     public let cursorStableForMs: Int?
     public let lastDecisionAt: String?
     public let activeJob: RuntimeRecorderIngressRawArchiveAutoExportJob?
-    public let uploadedJobs: Int?
+    public let exportedJobs: Int?
     public let failedJobs: Int?
-    public let lastResult: RuntimeRecorderIngressRawArchiveAutoExportResult?
+    public let lastExportResult: RuntimeRecorderIngressRawArchiveAutoExportResult?
     public let lastFailure: RuntimeRecorderIngressFailureObservation?
 
     public init(
@@ -220,9 +230,9 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportStatus: Codable, Equatab
         cursorStableForMs: Int? = nil,
         lastDecisionAt: String? = nil,
         activeJob: RuntimeRecorderIngressRawArchiveAutoExportJob? = nil,
-        uploadedJobs: Int? = nil,
+        exportedJobs: Int? = nil,
         failedJobs: Int? = nil,
-        lastResult: RuntimeRecorderIngressRawArchiveAutoExportResult? = nil,
+        lastExportResult: RuntimeRecorderIngressRawArchiveAutoExportResult? = nil,
         lastFailure: RuntimeRecorderIngressFailureObservation? = nil
     ) {
         self.status = status
@@ -233,18 +243,25 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportStatus: Codable, Equatab
         self.cursorStableForMs = cursorStableForMs
         self.lastDecisionAt = lastDecisionAt
         self.activeJob = activeJob
-        self.uploadedJobs = uploadedJobs
+        self.exportedJobs = exportedJobs
         self.failedJobs = failedJobs
-        self.lastResult = lastResult
+        self.lastExportResult = lastExportResult
         self.lastFailure = lastFailure
     }
 }
 
 public struct RuntimeRecorderIngressRawArchiveAutoExportJob: Codable, Equatable, Sendable {
     public let jobId: String?
+    public let requestId: String?
+    public let trigger: String?
+    public let origin: String?
+    public let vrcode: String?
     public let archivePath: String?
-    public let archiveCursor: Int?
+    public let startOffset: Int?
+    public let endOffset: Int?
     public let state: String?
+    public let publishState: String?
+    public let artifactIds: [String]?
     public let attempts: Int?
     public let maxAttempts: Int?
     public let createdAt: String?
@@ -256,9 +273,16 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportJob: Codable, Equatable,
 
     public init(
         jobId: String? = nil,
+        requestId: String? = nil,
+        trigger: String? = nil,
+        origin: String? = nil,
+        vrcode: String? = nil,
         archivePath: String? = nil,
-        archiveCursor: Int? = nil,
+        startOffset: Int? = nil,
+        endOffset: Int? = nil,
         state: String? = nil,
+        publishState: String? = nil,
+        artifactIds: [String]? = nil,
         attempts: Int? = nil,
         maxAttempts: Int? = nil,
         createdAt: String? = nil,
@@ -269,9 +293,16 @@ public struct RuntimeRecorderIngressRawArchiveAutoExportJob: Codable, Equatable,
         lastFailure: RuntimeRecorderIngressFailureObservation? = nil
     ) {
         self.jobId = jobId
+        self.requestId = requestId
+        self.trigger = trigger
+        self.origin = origin
+        self.vrcode = vrcode
         self.archivePath = archivePath
-        self.archiveCursor = archiveCursor
+        self.startOffset = startOffset
+        self.endOffset = endOffset
         self.state = state
+        self.publishState = publishState
+        self.artifactIds = artifactIds
         self.attempts = attempts
         self.maxAttempts = maxAttempts
         self.createdAt = createdAt
@@ -565,6 +596,43 @@ public struct RuntimeRecorderRedisIPSyncObservation: Codable, Equatable, Sendabl
         self.lastVerifiedAt = lastVerifiedAt
         self.lastFailure = lastFailure
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case redisKey
+        case selectedIp
+        case ipSource
+        case redisValue
+        case lastWriteAt
+        case lastVerifiedAt
+        case lastFailure
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            status: try container.decode(RuntimeRecorderRedisIPSyncStatus.self, forKey: .status),
+            redisKey: try container.decodeIfPresent(String.self, forKey: .redisKey),
+            selectedIp: try container.decodeIfPresent(String.self, forKey: .selectedIp),
+            ipSource: try container.decodeIfPresent(String.self, forKey: .ipSource),
+            redisValue: try container.decodeIfPresent(String.self, forKey: .redisValue),
+            lastWriteAt: try container.decodeIfPresent(String.self, forKey: .lastWriteAt),
+            lastVerifiedAt: try container.decodeIfPresent(String.self, forKey: .lastVerifiedAt),
+            lastFailure: try container.decodeIfPresent(String.self, forKey: .lastFailure)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(status, forKey: .status)
+        try container.encodeExplicitOptional(redisKey, forKey: .redisKey)
+        try container.encodeExplicitOptional(selectedIp, forKey: .selectedIp)
+        try container.encodeExplicitOptional(ipSource, forKey: .ipSource)
+        try container.encodeExplicitOptional(redisValue, forKey: .redisValue)
+        try container.encodeExplicitOptional(lastWriteAt, forKey: .lastWriteAt)
+        try container.encodeExplicitOptional(lastVerifiedAt, forKey: .lastVerifiedAt)
+        try container.encodeExplicitOptional(lastFailure, forKey: .lastFailure)
+    }
 }
 
 public struct RuntimeRecorderConnectionObservation: Codable, Equatable, Sendable {
@@ -595,233 +663,5 @@ public struct RuntimeRecorderConnectionObservation: Codable, Equatable, Sendable
         self.redisIpSync = redisIpSync
         self.spool = spool
         self.replay = replay
-    }
-}
-
-public struct RuntimeContainerServiceObservation: Codable, Equatable, Sendable {
-    public let service: String
-    public let containerID: String?
-    public let name: String?
-    public let state: String?
-    public let health: String?
-    public let exitCode: Int?
-    public let error: String?
-    public let finishedAt: String?
-    public let memoryUsedBytes: Int?
-    public let memoryLimitBytes: Int?
-    public let oomKilled: Bool?
-    public let restartCount: Int?
-    public let startedAt: String?
-    public let uptimeSeconds: Int?
-
-    public init(
-        service: String,
-        containerID: String? = nil,
-        name: String? = nil,
-        state: String? = nil,
-        health: String? = nil,
-        exitCode: Int? = nil,
-        error: String? = nil,
-        finishedAt: String? = nil,
-        memoryUsedBytes: Int? = nil,
-        memoryLimitBytes: Int? = nil,
-        oomKilled: Bool? = nil,
-        restartCount: Int? = nil,
-        startedAt: String? = nil,
-        uptimeSeconds: Int? = nil
-    ) {
-        self.service = service
-        self.containerID = containerID
-        self.name = name
-        self.state = state
-        self.health = health
-        self.exitCode = exitCode
-        self.error = error
-        self.finishedAt = finishedAt
-        self.memoryUsedBytes = memoryUsedBytes
-        self.memoryLimitBytes = memoryLimitBytes
-        self.oomKilled = oomKilled
-        self.restartCount = restartCount
-        self.startedAt = startedAt
-        self.uptimeSeconds = uptimeSeconds
-    }
-}
-
-public enum RuntimeContainerServicesReadState: String, Codable, Equatable, Sendable {
-    case loaded
-    case missing
-    case invalid
-    case stale
-    case readFailed = "read-failed"
-}
-
-public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
-    public let recorderIngressHTTP: String
-    public let recorderIngressStatus: RuntimeRecorderIngressStatusDocument?
-    public let recorderIngressStatusReadState: RuntimeRecorderIngressStatusReadState
-    public let recorderIngressStatusReadError: String?
-    public let runtimeStateUpdatedAt: String?
-    public let runtimeStateFileUpdatedAt: String?
-    public let runtimeStateFileMetadataReadState: RuntimeFileMetadataReadState
-    public let runtimeStateFileMetadataError: String?
-    public let containerLogsPresent: Bool
-    public let containerLogsBytes: UInt64?
-    public let containerLogsUpdatedAt: String?
-    public let containerLogsMetadataError: String?
-    public let composeServicesReadState: RuntimeContainerServicesReadState
-    public let composeServices: [RuntimeContainerServiceObservation]
-    public let composeServicesReadError: String?
-
-    public init(
-        recorderIngressHTTP: String,
-        recorderIngressStatus: RuntimeRecorderIngressStatusDocument?,
-        recorderIngressStatusReadState: RuntimeRecorderIngressStatusReadState? = nil,
-        recorderIngressStatusReadError: String? = nil,
-        runtimeStateUpdatedAt: String? = nil,
-        runtimeStateFileUpdatedAt: String? = nil,
-        runtimeStateFileMetadataReadState: RuntimeFileMetadataReadState? = nil,
-        runtimeStateFileMetadataError: String? = nil,
-        containerLogsPresent: Bool,
-        containerLogsBytes: UInt64?,
-        containerLogsUpdatedAt: String? = nil,
-        containerLogsMetadataError: String? = nil,
-        composeServicesReadState: RuntimeContainerServicesReadState? = nil,
-        composeServices: [RuntimeContainerServiceObservation] = [],
-        composeServicesReadError: String? = nil
-    ) {
-        self.recorderIngressHTTP = recorderIngressHTTP
-        self.recorderIngressStatus = recorderIngressStatus
-        self.recorderIngressStatusReadState = recorderIngressStatusReadState
-            ?? RuntimeRecorderIngressStatusReadResult(
-                httpStatus: recorderIngressHTTP,
-                document: recorderIngressStatus,
-                readError: recorderIngressStatusReadError
-            ).readState
-        self.recorderIngressStatusReadError = recorderIngressStatusReadError
-        self.runtimeStateUpdatedAt = runtimeStateUpdatedAt
-        self.runtimeStateFileUpdatedAt = runtimeStateFileUpdatedAt
-        self.runtimeStateFileMetadataReadState = runtimeStateFileMetadataReadState
-            ?? RuntimeContainerObservation.metadataReadState(
-                updatedAt: runtimeStateFileUpdatedAt,
-                readError: runtimeStateFileMetadataError
-            )
-        self.runtimeStateFileMetadataError = runtimeStateFileMetadataError
-        self.containerLogsPresent = containerLogsPresent
-        self.containerLogsBytes = containerLogsBytes
-        self.containerLogsUpdatedAt = containerLogsUpdatedAt
-        self.containerLogsMetadataError = containerLogsMetadataError
-        self.composeServicesReadState = RuntimeContainerObservation.composeServicesReadState(
-            explicitState: composeServicesReadState,
-            readError: composeServicesReadError
-        )
-        self.composeServices = composeServices
-        self.composeServicesReadError = composeServicesReadError
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case recorderIngressHTTP
-        case recorderIngressStatus
-        case recorderIngressStatusReadState
-        case recorderIngressStatusReadError
-        case runtimeStateUpdatedAt
-        case runtimeStateFileUpdatedAt
-        case runtimeStateFileMetadataReadState
-        case runtimeStateFileMetadataError
-        case containerLogsPresent
-        case containerLogsBytes
-        case containerLogsUpdatedAt
-        case containerLogsMetadataError
-        case composeServicesReadState
-        case composeServices
-        case composeServicesReadError
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let composeServicesReadError = try container.decodeIfPresent(
-            String.self,
-            forKey: .composeServicesReadError
-        )
-        let composeServices = try container.decodeIfPresent(
-            [RuntimeContainerServiceObservation].self,
-            forKey: .composeServices
-        )
-        self.recorderIngressHTTP = try container.decode(String.self, forKey: .recorderIngressHTTP)
-        self.recorderIngressStatus = try container.decodeIfPresent(
-            RuntimeRecorderIngressStatusDocument.self,
-            forKey: .recorderIngressStatus
-        )
-        self.recorderIngressStatusReadError = try container.decodeIfPresent(
-            String.self,
-            forKey: .recorderIngressStatusReadError
-        )
-        self.recorderIngressStatusReadState = try container.decodeIfPresent(
-            RuntimeRecorderIngressStatusReadState.self,
-            forKey: .recorderIngressStatusReadState
-        ) ?? RuntimeRecorderIngressStatusReadResult(
-            httpStatus: recorderIngressHTTP,
-            document: recorderIngressStatus,
-            readError: recorderIngressStatusReadError
-        ).readState
-        self.runtimeStateUpdatedAt = try container.decodeIfPresent(String.self, forKey: .runtimeStateUpdatedAt)
-        self.runtimeStateFileUpdatedAt = try container.decodeIfPresent(String.self, forKey: .runtimeStateFileUpdatedAt)
-        self.runtimeStateFileMetadataError = try container.decodeIfPresent(
-            String.self,
-            forKey: .runtimeStateFileMetadataError
-        )
-        self.runtimeStateFileMetadataReadState = try container.decodeIfPresent(
-            RuntimeFileMetadataReadState.self,
-            forKey: .runtimeStateFileMetadataReadState
-        ) ?? RuntimeContainerObservation.metadataReadState(
-            updatedAt: runtimeStateFileUpdatedAt,
-            readError: runtimeStateFileMetadataError
-        )
-        self.containerLogsPresent = try container.decode(Bool.self, forKey: .containerLogsPresent)
-        self.containerLogsBytes = try container.decodeIfPresent(UInt64.self, forKey: .containerLogsBytes)
-        self.containerLogsUpdatedAt = try container.decodeIfPresent(String.self, forKey: .containerLogsUpdatedAt)
-        self.containerLogsMetadataError = try container.decodeIfPresent(
-            String.self,
-            forKey: .containerLogsMetadataError
-        )
-        self.composeServicesReadState = RuntimeContainerObservation.composeServicesReadState(
-            explicitState: try container.decodeIfPresent(
-                RuntimeContainerServicesReadState.self,
-                forKey: .composeServicesReadState
-            ),
-            readError: composeServicesReadError,
-            servicesKeyPresent: container.contains(.composeServices)
-        )
-        self.composeServices = composeServices ?? []
-        self.composeServicesReadError = composeServicesReadError
-    }
-
-    private static func composeServicesReadState(
-        explicitState: RuntimeContainerServicesReadState?,
-        readError: String?,
-        servicesKeyPresent: Bool = true
-    ) -> RuntimeContainerServicesReadState {
-        if let explicitState {
-            return explicitState
-        }
-        if let readError, !readError.isEmpty {
-            return .readFailed
-        }
-        if servicesKeyPresent {
-            return .loaded
-        }
-        return .missing
-    }
-
-    private static func metadataReadState(
-        updatedAt: String?,
-        readError: String?
-    ) -> RuntimeFileMetadataReadState {
-        if readError != nil {
-            return .readFailed
-        }
-        if updatedAt != nil {
-            return .loaded
-        }
-        return .notRead
     }
 }

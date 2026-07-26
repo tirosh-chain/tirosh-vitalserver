@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "v1",
+  "transport": "windows-named-pipe",
+  "address": "\\\\.\\pipe\\VitalServerRuntimePlatform.HostAgent"
+}

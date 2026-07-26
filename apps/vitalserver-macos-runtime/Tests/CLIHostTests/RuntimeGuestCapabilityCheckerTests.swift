@@ -8,90 +8,111 @@ final class RuntimeGuestCapabilityCheckerTests: XCTestCase {
     func testRequirePassesWhenCapabilityIsSupported() throws {
         try RuntimeGuestCapabilityCheckerComposition.require(
             .prepareUpdateShutdown,
-            guestGateway: RuntimeGuestCapabilityGatewaySpy(result: .loaded(supportedState()))
+            guestControlGateway: RuntimeGuestCapabilityGatewaySpy(result: .loaded(supportedCapabilities()))
         )
     }
 
-    func testRequireFailsWhenCapabilityIsMissingFromState() {
+    func testRequireFailsWhenCapabilityIsMissingFromGuestControlCapabilities() {
         let gateway = RuntimeGuestCapabilityGatewaySpy(
-            result: .loaded(GuestRuntimeStateDocument(
-                vmIP: "192.168.64.2",
-                guestHTTP: nil,
-                redisUIHTTP: nil,
-                swaggerUIHTTP: nil
+            result: .loaded(RuntimeGuestControlCapabilities(
+                schemaVersion: 1,
+                capabilities: ["services:list"]
             ))
         )
 
         XCTAssertThrowsError(try RuntimeGuestCapabilityCheckerComposition.require(
             .prepareUpdateShutdown,
-            guestGateway: gateway
+            guestControlGateway: gateway
         )) { error in
             XCTAssertEqual(String(describing: error), "guest capability missing: prepare-update-shutdown")
         }
     }
 
-    func testRequireFailsWhenRuntimeStateCannotBeLoaded() {
+    func testRequireFailsWhenGuestControlCapabilitiesCannotBeLoaded() {
         XCTAssertThrowsError(try RuntimeGuestCapabilityCheckerComposition.require(
             .activateUpdate,
-            guestGateway: RuntimeGuestCapabilityGatewaySpy(result: .loaded(GuestRuntimeStateDocument(
-                capabilities: nil,
-                vmIP: "192.168.64.2",
-                guestHTTP: nil,
-                redisUIHTTP: nil,
-                swaggerUIHTTP: nil
-            ))
-        ))) { error in
-            XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
-        }
-
-        XCTAssertThrowsError(try RuntimeGuestCapabilityCheckerComposition.require(
-            .activateUpdate,
-            guestGateway: RuntimeGuestCapabilityGatewaySpy(result: .failed("permission denied"))
+            guestControlGateway: RuntimeGuestCapabilityGatewaySpy(result: .failed("permission denied"))
         )) { error in
             XCTAssertEqual(
                 String(describing: error),
-                "failed to read guest runtime state for guest capability activate-update: permission denied"
+                "failed to read guest capabilities for activate-update: permission denied"
             )
         }
     }
 }
 
-private func supportedState() -> GuestRuntimeStateDocument {
-    GuestRuntimeStateDocument(
-        capabilities: GuestRuntimeCapabilities(
-            prepareUpdateShutdown: true,
-            activateUpdate: true,
-            redisBackup: true,
-            redisRestore: true,
-            repairDatastore: true
-        ),
-        vmIP: "192.168.64.2",
-        guestHTTP: nil,
-        redisUIHTTP: nil,
-        swaggerUIHTTP: nil
+private func supportedCapabilities() -> RuntimeGuestControlCapabilities {
+    RuntimeGuestControlCapabilities(
+        schemaVersion: 1,
+        capabilities: [
+            "maintenance:update-shutdown:create",
+            "maintenance:update-activation:create",
+            "maintenance:redis-backup:create",
+            "maintenance:redis-restore:create",
+            "maintenance:datastore-repair:create",
+        ]
     )
 }
 
-private final class RuntimeGuestCapabilityGatewaySpy: RuntimeGuestGateway {
-    let result: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>
+private final class RuntimeGuestCapabilityGatewaySpy: RuntimeGuestControlGateway {
+    let result: RuntimeGuestCapabilityReadResult
 
-    init(result: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>) {
+    init(result: RuntimeGuestCapabilityReadResult) {
         self.result = result
     }
 
-    func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
-        result
+    func capabilities() throws -> RuntimeGuestControlCapabilities {
+        switch result {
+        case .loaded(let capabilities):
+            return capabilities
+        case .failed(let message):
+            throw RuntimeGuestCapabilityGatewayError(message)
+        }
     }
 
-    func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> { .missing }
-    func removeUpdateActivationResult() throws {}
-    func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
-    func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
-    func removeUpdateShutdownResult() throws {}
-    func clearUpdateShutdownPreparation() throws {}
-    func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
-    func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> { .missing }
-    func removeDatastoreRepairResult() throws {}
-    func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
-    func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
+    func listServices() throws -> RuntimeGuestControlServiceList {
+        throw RuntimeGuestCapabilityGatewayError("unexpected listServices")
+    }
+
+    func stackStatus() throws -> RuntimeGuestControlStackStatus {
+        throw RuntimeGuestCapabilityGatewayError("unexpected stackStatus")
+    }
+
+    func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {
+        throw RuntimeGuestCapabilityGatewayError("unexpected serviceStatus \(service)")
+    }
+
+    func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestCapabilityGatewayError("unexpected startService \(service)")
+    }
+
+    func stopService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestCapabilityGatewayError("unexpected stopService \(service)")
+    }
+
+    func restartService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestCapabilityGatewayError("unexpected restartService \(service)")
+    }
+
+    func reconcileServices() throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestCapabilityGatewayError("unexpected reconcileServices")
+    }
+
+    func operation(_ operationId: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeGuestCapabilityGatewayError("unexpected operation \(operationId)")
+    }
+
+    func latestVitalDBObservation() throws -> RuntimeGuestControlVitalDBObservationRead {
+        throw RuntimeGuestCapabilityGatewayError("unexpected latestVitalDBObservation")
+    }
+}
+
+private struct RuntimeGuestCapabilityGatewayError: Error, CustomStringConvertible {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
+    }
+
+    var description: String { message }
 }

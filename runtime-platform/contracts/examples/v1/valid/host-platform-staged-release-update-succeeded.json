@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v1",
+  "operationId": "update-030-host-platform-apply",
+  "updateId": "update-030",
+  "operation": "apply",
+  "transition": {
+    "expectedActiveReleaseId": "runtime-platform-020",
+    "targetReleaseId": "runtime-platform-030"
+  },
+  "artifact": {
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sizeBytes": 1048576,
+    "mediaType": "application/vnd.tirosh.vitalserver.host-platform-release+tar+gzip"
+  },
+  "state": "succeeded",
+  "observedAt": "2026-07-20T00:00:00Z"
+}

@@ -5,6 +5,7 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case network
     case bridgedInterface
     case proxyPort
+    case runtimeControlPort
     case vitalFilesDirectory
     case vitalServerURL
     case remoteConsoleURL
@@ -28,8 +29,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case backupRetention
     case logArchiveRetentionDays
     case logArchiveMaximumGiB
-    case redisRelaySettingsFile
     case restart
+    case restartVMRuntime
     case unknown(String)
 
     public init(rawValue: String) {
@@ -46,6 +47,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .bridgedInterface
         case "--proxy-port":
             self = .proxyPort
+        case "--runtime-control-port":
+            self = .runtimeControlPort
         case "--vital-files-dir":
             self = .vitalFilesDirectory
         case "--vitalserver-url":
@@ -92,10 +95,10 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .logArchiveRetentionDays
         case "--log-archive-maximum-gib":
             self = .logArchiveMaximumGiB
-        case "--redis-relay-settings-file":
-            self = .redisRelaySettingsFile
         case "--restart":
             self = .restart
+        case "--restart-vm-runtime":
+            self = .restartVMRuntime
         default:
             self = .unknown(rawValue)
         }
@@ -115,6 +118,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--bridged-interface"
         case .proxyPort:
             return "--proxy-port"
+        case .runtimeControlPort:
+            return "--runtime-control-port"
         case .vitalFilesDirectory:
             return "--vital-files-dir"
         case .vitalServerURL:
@@ -161,17 +166,17 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--log-archive-retention-days"
         case .logArchiveMaximumGiB:
             return "--log-archive-maximum-gib"
-        case .redisRelaySettingsFile:
-            return "--redis-relay-settings-file"
         case .restart:
             return "--restart"
+        case .restartVMRuntime:
+            return "--restart-vm-runtime"
         case .unknown(let value):
             return value
         }
     }
 
     public var requiresValue: Bool {
-        self != .restart
+        self != .restart && self != .restartVMRuntime
     }
 }
 

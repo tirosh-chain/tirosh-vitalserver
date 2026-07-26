@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "relay-target-apply-1",
+  "targetId": "relay-target-audit",
+  "expectedResourceRevision": 0,
+  "spec": {
+    "provider": {
+      "kind": "redis-relay",
+      "id": "audit-relay",
+      "capabilityRevision": 1
+    },
+    "endpointReference": {
+      "resourceType": "relay-endpoint",
+      "resourceId": "audit-relay-endpoint"
+    }
+  }
+}

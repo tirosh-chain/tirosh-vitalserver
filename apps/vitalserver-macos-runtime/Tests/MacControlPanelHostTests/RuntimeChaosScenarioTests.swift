@@ -29,9 +29,9 @@ final class RuntimeChaosScenarioTests: XCTestCase {
 
     func testObservabilityReadChaosReturnsReadErrorInsteadOfEmptySuccess() {
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
-                runtimeEvents: "/dev/null/\(RuntimeFileNames.runtimeEvents)",
-                runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)"
+            paths: RuntimeObservabilityPaths(
+                runtimeEvents: "/dev/null/\(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)",
+                runtimeObservabilityDB: "/dev/null/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)"
             )
         )
 
@@ -47,8 +47,8 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         let root = try temporaryDirectory()
         defer { cleanup(root) }
         let statusDirectory = root.appendingPathComponent("status", isDirectory: true)
-        let events = root.appendingPathComponent(RuntimeFileNames.runtimeEvents)
-        let database = statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let events = root.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
+        let database = statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         let event = RuntimeEventDocument(
             id: "jsonl-event",
             eventType: .statusChanged,
@@ -60,14 +60,13 @@ final class RuntimeChaosScenarioTests: XCTestCase {
             message: "ready",
             runtimeVersion: "1.2.3",
             failureReasons: [],
-            containerObservation: nil,
             progress: nil
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try (encoder.encode(event) + Data("\n".utf8)).write(to: events)
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
+            paths: RuntimeObservabilityPaths(
                 runtimeEvents: events.path,
                 runtimeObservabilityDB: database.path
             )
@@ -79,20 +78,19 @@ final class RuntimeChaosScenarioTests: XCTestCase {
 
         XCTAssertEqual(eventHistory.events.map(\.id), ["jsonl-event"])
         XCTAssertNotNil(eventHistory.readError)
-        XCTAssertEqual(recorderHistory.activityHistory.source, .unavailable)
+        XCTAssertEqual(recorderHistory.activityHistory.source, .notProvided)
         XCTAssertNotNil(recorderHistory.readError)
-        XCTAssertNotNil(recorderHistory.activityHistory.readError)
-        XCTAssertNotNil(relationships.readError)
+        XCTAssertNil(recorderHistory.activityHistory.readError)
+        XCTAssertTrue(relationships.readError?.contains("guestControl=") == true)
+        XCTAssertFalse(relationships.readError?.contains("sqlite") == true)
         XCTAssertFalse(FileManager.default.fileExists(atPath: statusDirectory.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: database.path))
     }
 
     func testObservabilitySnapshotChaosReturnsFailedStateInsteadOfUnavailableDefault() {
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
-                runtimeState: "/dev/null/\(RuntimeFileNames.runtimeState)",
-                runtimeStatus: "/dev/null/\(RuntimeFileNames.runtimeStatus)",
-                runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)"
+            paths: RuntimeObservabilityPaths(
+                runtimeObservabilityDB: "/dev/null/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)"
             )
         )
 
@@ -104,17 +102,17 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertFalse(snapshot.readError?.isEmpty == true)
     }
 
-    func testObservabilityRelationshipChaosPreservesBothReadFailures() {
+    func testObservabilityRelationshipReadDoesNotUseHostSQLiteProjection() {
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(runtimeObservabilityDB: "/dev/null/\(RuntimeFileNames.runtimeObservabilityDB)")
+            paths: RuntimeObservabilityPaths(runtimeObservabilityDB: "/dev/null/\(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)")
         )
 
         let history = reader.loadVitalDBRelationships()
 
         XCTAssertEqual(history.assignments, [])
         XCTAssertEqual(history.events, [])
-        XCTAssertTrue(history.readError?.contains("assignments=") == true)
-        XCTAssertTrue(history.readError?.contains("events=") == true)
+        XCTAssertTrue(history.readError?.contains("guestControl=") == true)
+        XCTAssertFalse(history.readError?.contains("sqlite") == true)
     }
 
     func testLogExportChaosRecordsCollectionAndSupplementalIssuesInManifest() async throws {
@@ -167,12 +165,10 @@ final class RuntimeChaosScenarioTests: XCTestCase {
     func testObservabilityCorruptionChaosReturnsReadErrorInsteadOfEmptySuccess() throws {
         let root = try temporaryDirectory()
         defer { cleanup(root) }
-        let database = root.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        let database = root.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         try "not a sqlite database".write(to: database, atomically: true, encoding: .utf8)
         let reader = SystemRuntimeObservabilityReader.live(
-            paths: RuntimePaths(
-                runtimeState: root.appendingPathComponent(RuntimeFileNames.runtimeState).path,
-                runtimeStatus: root.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+            paths: RuntimeObservabilityPaths(
                 runtimeObservabilityDB: database.path
             )
         )
@@ -184,8 +180,8 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         XCTAssertNotNil(snapshot.readError)
         XCTAssertEqual(relationships.assignments, [])
         XCTAssertEqual(relationships.events, [])
-        XCTAssertTrue(relationships.readError?.contains("assignments=") == true)
-        XCTAssertTrue(relationships.readError?.contains("events=") == true)
+        XCTAssertTrue(relationships.readError?.contains("guestControl=") == true)
+        XCTAssertFalse(relationships.readError?.contains("sqlite") == true)
     }
 
     func testInstalledPermissionChaosPropagatesBackupReadDeniedInsteadOfEmptyList() {
@@ -204,7 +200,8 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: runner,
             actionEnvironment: ChaosActionEnvironment(executablePaths: []),
-            logExporter: ChaosNoopLogExporter()
+            logExporter: ChaosNoopLogExporter(),
+            guestAddressProvider: ChaosGuestAddressProvider()
         )
 
         do {
@@ -401,10 +398,6 @@ private struct ChaosActionEnvironment: RuntimeActionEnvironment {
         URL(fileURLWithPath: "/tmp/recorder-ingress-settings.json")
     }
 
-    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
-        URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
-    }
-
     func removeItem(at url: URL) throws {}
 
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
@@ -415,5 +408,11 @@ private struct ChaosActionEnvironment: RuntimeActionEnvironment {
 private struct ChaosNoopLogExporter: RuntimeLogExporting {
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         RuntimeLogExportResult(destination: destination)
+    }
+}
+
+private struct ChaosGuestAddressProvider: RuntimeGuestAddressProvider {
+    func readGuestAddress() -> RuntimeGuestAddressReadResult {
+        .loaded(address: "192.168.64.2", source: .platformAgent)
     }
 }

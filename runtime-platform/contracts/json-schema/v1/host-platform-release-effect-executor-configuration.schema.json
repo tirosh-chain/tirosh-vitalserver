@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-platform-release-effect-executor-configuration",
+  "title": "HostPlatformReleaseEffectExecutorConfiguration",
+  "description": "C67 immutable release-owned desired input for the C26 Host Platform layer effect executor. It selects the already-installed Host Installation Manager and current-slot C48 manifest at fixed platform paths, then declares a compare-and-swap release transition. The staged Host updater verifies this document but never decodes it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "effectExecutorId", "hostInstallationManager", "apply"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "effectExecutorId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "hostInstallationManager": { "$ref": "#/$defs/HostInstallationManagerEndpoint" },
+    "apply": { "$ref": "#/$defs/ReleaseTransitionIntent" },
+    "rollback": { "$ref": "#/$defs/ReleaseTransitionIntent" }
+  },
+  "$defs": {
+    "HostInstallationManagerEndpoint": {
+      "description": "The fixed stable executable and current-slot C48 manifest paths of the active Host Installation Manager. C68 operation evidence and candidate staging belong to that active C48 mutable store, never to an unadmitted target archive. It is not a generic command hook and has no network fallback.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "executablePath", "activeReleaseManifestPath", "requestTimeoutMilliseconds"],
+      "properties": {
+        "platform": { "type": "string", "enum": ["macos", "windows", "linux"] },
+        "executablePath": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "activeReleaseManifestPath": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 900000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "platform": { "const": "macos" } }, "required": ["platform"] },
+          "then": { "properties": { "executablePath": { "const": "/Library/Application Support/VitalServerRuntimePlatform/current/bin/host-installation-manager" }, "activeReleaseManifestPath": { "const": "/Library/Application Support/VitalServerRuntimePlatform/current/installation-manifest.json" } } }
+        },
+        {
+          "if": { "properties": { "platform": { "const": "windows" } }, "required": ["platform"] },
+          "then": { "properties": { "executablePath": { "const": "C:\\Program Files\\VitalServerRuntimePlatform\\current\\bin\\host-installation-manager.exe" }, "activeReleaseManifestPath": { "const": "C:\\Program Files\\VitalServerRuntimePlatform\\current\\installation-manifest.json" } } }
+        },
+        {
+          "if": { "properties": { "platform": { "const": "linux" } }, "required": ["platform"] },
+          "then": { "properties": { "executablePath": { "const": "/opt/vitalserver-runtime-platform/current/bin/host-installation-manager" }, "activeReleaseManifestPath": { "const": "/opt/vitalserver-runtime-platform/current/installation-manifest.json" } } }
+        }
+      ]
+    },
+    "ReleaseTransitionIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedActiveReleaseId", "targetReleaseId"],
+      "properties": {
+        "expectedActiveReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "targetReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    }
+  }
+}

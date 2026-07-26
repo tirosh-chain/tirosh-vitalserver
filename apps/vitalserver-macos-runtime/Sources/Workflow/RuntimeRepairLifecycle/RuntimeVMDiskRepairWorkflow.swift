@@ -36,7 +36,7 @@ public struct RuntimeVMDiskRepairOperations {
     public let moveItem: (URL, URL) throws -> Void
     public let requireFreeSpace: (URL, UInt64, String) throws -> Void
     public let createReplacementVMDisk: (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void
-    public let createRedisBackup: () -> RuntimeBestEffortOperationResult
+    public let createVitalServerBackup: () -> RuntimeBestEffortOperationResult
     public let stopRuntimeServicesForVMDiskReplacement: () -> RuntimeBestEffortOperationResult
     public let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
@@ -52,7 +52,7 @@ public struct RuntimeVMDiskRepairOperations {
         moveItem: @escaping (URL, URL) throws -> Void,
         requireFreeSpace: @escaping (URL, UInt64, String) throws -> Void,
         createReplacementVMDisk: @escaping (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void,
-        createRedisBackup: @escaping () -> RuntimeBestEffortOperationResult,
+        createVitalServerBackup: @escaping () -> RuntimeBestEffortOperationResult,
         stopRuntimeServicesForVMDiskReplacement: @escaping () -> RuntimeBestEffortOperationResult,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
@@ -67,7 +67,7 @@ public struct RuntimeVMDiskRepairOperations {
         self.moveItem = moveItem
         self.requireFreeSpace = requireFreeSpace
         self.createReplacementVMDisk = createReplacementVMDisk
-        self.createRedisBackup = createRedisBackup
+        self.createVitalServerBackup = createVitalServerBackup
         self.stopRuntimeServicesForVMDiskReplacement = stopRuntimeServicesForVMDiskReplacement
         self.startRuntimeServices = startRuntimeServices
         self.waitForHealth = waitForHealth
@@ -140,7 +140,7 @@ public struct RuntimeVMDiskRepairWorkflow {
         var archivedDiskPath: String?
 
         try report(useCase.requestedPlan(), operations: operations)
-        try createRedisBackupBestEffort(useCase: useCase, operations: operations)
+        try createVitalServerBackupBestEffort(useCase: useCase, operations: operations)
         try operations.createDirectory(buildPlan.vmDiskDirectory, true)
         try operations.createDirectory(buildPlan.backupsDirectory, true)
         switch operations.pathState(buildPlan.temporaryDisk) {
@@ -223,17 +223,17 @@ public struct RuntimeVMDiskRepairWorkflow {
         ))
     }
 
-    private func createRedisBackupBestEffort(
+    private func createVitalServerBackupBestEffort(
         useCase: RuntimeVMDiskRepairUseCase,
         operations: RuntimeVMDiskRepairOperations
     ) throws {
-        try writeStatus(useCase.redisBackupStartedStatusPlan(), operations: operations)
-        switch operations.createRedisBackup() {
+        try writeStatus(useCase.vitalServerBackupStartedStatusPlan(), operations: operations)
+        switch operations.createVitalServerBackup() {
         case .completed:
-            try report(useCase.redisBackupCompletedPlan(), operations: operations)
+            try report(useCase.vitalServerBackupCompletedPlan(), operations: operations)
         case .failed(let reason):
             try report(
-                useCase.redisBackupFailedPlan(reason: reason),
+                useCase.vitalServerBackupFailedPlan(reason: reason),
                 operations: operations
             )
         }

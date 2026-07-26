@@ -1,22 +1,291 @@
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
+import importlib.util
 import json
 import shutil
+import stat
+import subprocess
+import sys
 import tomllib
 import zipfile
 from email.message import Message
+from fnmatch import fnmatchcase
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import TypedDict
 
 from tirosh_vitalserver.devtools.core.guest_services import (
     IGNORED_NAMES,
     GuestDeployPlan,
     GuestPythonWheelProject,
     RootfsInputMetadataPlan,
+    rootfs_input_material_document,
     rootfs_input_metadata_document,
 )
+
+GUEST_DEPLOY_MATERIAL_DIGEST_VERSION = 2
+ROOTFS_INPUT_METADATA_RELATIVE_PATH = "build-metadata/rootfs-input.json"
+GUEST_LOCAL_RUNTIME_DEPENDENCIES = {
+    "tirosh-vitalserver-core": Path("../vitalserver-core"),
+}
+GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS = frozenset(
+    {
+        "host-time.json",
+    }
+)
+GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS = GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS | {
+    ROOTFS_INPUT_METADATA_RELATIVE_PATH
+}
+
+
+def stage_materialized_guest_deploy(source: Path, destination: Path) -> None:
+    """Stage the exact deploy material compiled into a golden rootfs.
+
+    Host time and rootfs input metadata are intentionally not carried forward.
+    The caller owns fresh contracts for its own run.
+    """
+
+    guest_deploy_material_sha256(source)
+    resolved_source = source.resolve()
+    resolved_destination = destination.resolve(strict=False)
+    if (
+        resolved_source == resolved_destination
+        or resolved_source.is_relative_to(resolved_destination)
+        or resolved_destination.is_relative_to(resolved_source)
+    ):
+        raise SystemExit(
+            "error: compiled Guest deploy source and destination must not overlap: "
+            f"source={source} destination={destination}"
+        )
+    if destination.is_symlink():
+        raise SystemExit(
+            "error: compiled Guest deploy destination must not be a symlink: "
+            f"{destination}"
+        )
+    if destination.exists() and not destination.is_dir():
+        raise SystemExit(
+            "error: compiled Guest deploy destination is not a directory: "
+            f"{destination}"
+        )
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(
+        source,
+        destination,
+        ignore=shutil.ignore_patterns(*IGNORED_NAMES),
+    )
+    for relative_path in GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS:
+        volatile_contract = destination / relative_path
+        if volatile_contract.exists():
+            if not volatile_contract.is_file() or volatile_contract.is_symlink():
+                raise SystemExit(
+                    "error: staged volatile Guest deploy contract is unsafe: "
+                    f"{volatile_contract}"
+                )
+            volatile_contract.unlink()
+    metadata_dir = destination / "build-metadata"
+    if metadata_dir.exists() and not any(metadata_dir.iterdir()):
+        metadata_dir.rmdir()
+
+
+def guest_deploy_material_sha256(deploy_dir: Path) -> str:
+    """Return a stable digest for Guest deploy material, excluding volatile contracts.
+
+    The deploy directory is a release input, not an arbitrary archive. Symlinks,
+    special files, and a missing rootfs input contract are rejected instead of
+    being ignored or followed.
+    """
+
+    require_guest_deploy_directory(deploy_dir)
+    rootfs_input_material = require_rootfs_input_metadata(deploy_dir)
+    try:
+        entries = sorted(
+            deploy_dir.rglob("*"),
+            key=lambda path: path.relative_to(deploy_dir).as_posix(),
+        )
+    except OSError as error:
+        raise SystemExit(
+            f"error: Guest deploy material is unreadable: {deploy_dir}: {error}"
+        ) from error
+
+    digest = hashlib.sha256()
+    digest.update(
+        f"vitalserver-guest-deploy-material-v{GUEST_DEPLOY_MATERIAL_DIGEST_VERSION}\n".encode()
+    )
+    for path in entries:
+        relative = path.relative_to(deploy_dir)
+        if guest_deploy_path_is_ignored(relative):
+            continue
+        relative_path = relative.as_posix()
+        require_safe_guest_deploy_relative_path(relative_path, deploy_dir)
+        try:
+            file_status = path.lstat()
+        except OSError as error:
+            raise SystemExit(
+                f"error: Guest deploy material entry is unreadable: {path}: {error}"
+            ) from error
+        if stat.S_ISLNK(file_status.st_mode):
+            raise SystemExit(
+                f"error: Guest deploy material must not contain symlinks: {path}"
+            )
+        if relative_path == ROOTFS_INPUT_METADATA_RELATIVE_PATH:
+            if not stat.S_ISREG(file_status.st_mode):
+                raise SystemExit(
+                    "error: Guest deploy rootfs input metadata is not a regular file: "
+                    f"{path}"
+                )
+            digest_guest_deploy_entry(
+                digest,
+                {
+                    "contract": rootfs_input_material,
+                    "path": relative_path,
+                    "type": "rootfs-input-metadata",
+                },
+            )
+            continue
+        if relative_path in GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS:
+            if not stat.S_ISREG(file_status.st_mode):
+                raise SystemExit(
+                    "error: volatile Guest deploy contract is not a regular file: "
+                    f"{path}"
+                )
+            continue
+        if stat.S_ISDIR(file_status.st_mode):
+            digest_guest_deploy_entry(
+                digest,
+                {
+                    "mode": stat.S_IMODE(file_status.st_mode),
+                    "path": relative_path,
+                    "type": "directory",
+                },
+            )
+            continue
+        if stat.S_ISREG(file_status.st_mode):
+            digest_guest_deploy_entry(
+                digest,
+                {
+                    "bytes": file_status.st_size,
+                    "mode": stat.S_IMODE(file_status.st_mode),
+                    "path": relative_path,
+                    "sha256": sha256_file(path),
+                    "type": "file",
+                },
+            )
+            continue
+        raise SystemExit(
+            "error: Guest deploy material must contain only regular files and "
+            f"directories: {path}"
+        )
+    return digest.hexdigest()
+
+
+def guest_deploy_path_is_ignored(relative_path: Path) -> bool:
+    return any(
+        fnmatchcase(part, pattern)
+        for part in relative_path.parts
+        for pattern in IGNORED_NAMES
+    )
+
+
+def require_guest_deploy_directory(deploy_dir: Path) -> None:
+    try:
+        status = deploy_dir.lstat()
+    except FileNotFoundError as error:
+        raise SystemExit(
+            f"error: Guest deploy material is missing: {deploy_dir}"
+        ) from error
+    except OSError as error:
+        raise SystemExit(
+            f"error: Guest deploy material is unreadable: {deploy_dir}: {error}"
+        ) from error
+    if stat.S_ISLNK(status.st_mode):
+        raise SystemExit(
+            f"error: Guest deploy material must not be a symlink: {deploy_dir}"
+        )
+    if not stat.S_ISDIR(status.st_mode):
+        raise SystemExit(
+            f"error: Guest deploy material is not a directory: {deploy_dir}"
+        )
+
+
+def require_rootfs_input_metadata(deploy_dir: Path) -> dict[str, object]:
+    metadata = deploy_dir / ROOTFS_INPUT_METADATA_RELATIVE_PATH
+    try:
+        status = metadata.lstat()
+    except FileNotFoundError as error:
+        raise SystemExit(
+            f"error: Guest deploy material is missing rootfs input metadata: {metadata}"
+        ) from error
+    except OSError as error:
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata is unreadable: "
+            f"{metadata}: {error}"
+        ) from error
+    if stat.S_ISLNK(status.st_mode) or not stat.S_ISREG(status.st_mode):
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata is not a regular file: "
+            f"{metadata}"
+        )
+    try:
+        document = json.loads(metadata.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata is unreadable: "
+            f"{metadata}: {error}"
+        ) from error
+    except json.JSONDecodeError as error:
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata is invalid JSON: "
+            f"{metadata}: {error}"
+        ) from error
+    if not isinstance(document, dict):
+        raise SystemExit(
+            f"error: Guest deploy rootfs input metadata must be an object: {metadata}"
+        )
+    try:
+        return rootfs_input_material_document(document)
+    except ValueError as error:
+        raise SystemExit(
+            "error: Guest deploy rootfs input metadata has invalid material "
+            f"contract: {metadata}: {error}"
+        ) from error
+
+
+def require_safe_guest_deploy_relative_path(
+    relative_path: str,
+    deploy_dir: Path,
+) -> None:
+    parts = relative_path.split("/")
+    if not relative_path or any(part in {"", ".", ".."} for part in parts):
+        raise SystemExit(
+            "error: Guest deploy material contains an unsafe relative path: "
+            f"{deploy_dir / relative_path}"
+        )
+
+
+def digest_guest_deploy_entry(
+    digest: hashlib._Hash,
+    entry: dict[str, object],
+) -> None:
+    digest.update(
+        json.dumps(entry, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n"
+    )
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        raise SystemExit(
+            f"error: Guest deploy material file is unreadable: {path}: {error}"
+        ) from error
+    return digest.hexdigest()
 
 
 def stage_guest_deploy(plan: GuestDeployPlan) -> None:
@@ -79,12 +348,373 @@ def copy_file(source: Path, destination: Path) -> None:
 
 
 def stage_python_wheel(project: GuestPythonWheelProject) -> None:
-    wheel = build_pure_python_wheel(project.source)
-    project.destination_directory.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(wheel, project.destination_directory / wheel.name)
+    with TemporaryDirectory(prefix="tirosh-guest-wheel-") as temporary:
+        wheel = build_pure_python_wheel(project.source, Path(temporary))
+        if project_runtime_dependencies(project.source):
+            stage_guest_python_wheelhouse(
+                project.source,
+                project.destination_directory,
+                wheel=wheel,
+            )
+            return
+        project.destination_directory.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(wheel, project.destination_directory / wheel.name)
 
 
-def build_pure_python_wheel(project: Path) -> Path:
+class GuestRuntimeTarget(TypedDict):
+    platforms: tuple[str, ...]
+    python_version: str
+    implementation: str
+    abi: str
+
+
+GUEST_RUNTIME_TARGETS: dict[str, GuestRuntimeTarget] = {
+    "linux-aarch64": {
+        "platforms": (
+            "manylinux_2_28_aarch64",
+            "manylinux2014_aarch64",
+        ),
+        "python_version": "312",
+        "implementation": "cp",
+        "abi": "cp312",
+    },
+    "linux-amd64": {
+        "platforms": ("manylinux2014_x86_64",),
+        "python_version": "312",
+        "implementation": "cp",
+        "abi": "cp312",
+    },
+}
+
+
+def stage_guest_python_wheelhouse(
+    project: Path,
+    destination: Path,
+    *,
+    targets: tuple[str, ...] = ("linux-aarch64", "linux-amd64"),
+    wheel: Path | None = None,
+) -> None:
+    if not project_runtime_dependencies(project):
+        raise SystemExit(
+            "error: Guest Python runtime wheelhouse requires project dependencies: "
+            f"{project}"
+        )
+    if not targets:
+        raise SystemExit("error: Guest Python runtime wheelhouse requires a target")
+
+    if wheel is None:
+        with TemporaryDirectory(prefix="tirosh-guest-wheel-") as temporary:
+            built_wheel = build_pure_python_wheel(project, Path(temporary))
+            stage_guest_python_wheelhouse(
+                project,
+                destination,
+                targets=targets,
+                wheel=built_wheel,
+            )
+        return
+    built_wheel = wheel
+    guest_tools_directory = destination / "guest-tools"
+    reset_generated_wheel_directory(guest_tools_directory)
+    staged_guest_wheel = guest_tools_directory / built_wheel.name
+    shutil.copy2(built_wheel, staged_guest_wheel)
+    guest_wheel_identity = file_identity(staged_guest_wheel)
+    local_dependency_wheels = stage_guest_local_dependency_wheels(
+        project,
+        guest_tools_directory,
+    )
+
+    target_configs: list[tuple[str, GuestRuntimeTarget]] = []
+    for target in targets:
+        target_config = GUEST_RUNTIME_TARGETS.get(target)
+        if target_config is None:
+            raise SystemExit(
+                f"error: unsupported Guest Python runtime target: {target}"
+            )
+        target_configs.append((target, target_config))
+    for python_version in sorted(
+        {target["python_version"] for _, target in target_configs}
+    ):
+        validate_guest_python_wheel_syntax(
+            staged_guest_wheel,
+            python_version=python_version,
+        )
+        for dependency_wheel, _ in local_dependency_wheels:
+            validate_guest_python_wheel_syntax(
+                dependency_wheel,
+                python_version=python_version,
+            )
+
+    target_documents: dict[str, object] = {}
+    for target, target_config in target_configs:
+        lock = project / "requirements" / f"guest-runtime-{target}.txt"
+        if not lock.is_file():
+            raise SystemExit(f"error: missing Guest runtime dependency lock: {lock}")
+        target_directory = destination / target
+        reset_generated_wheel_directory(target_directory)
+        download_guest_runtime_wheels(lock, target_directory, target_config)
+        ensure_only_wheels(target_directory)
+        requirements = target_directory / "requirements.txt"
+        requirements.write_text(
+            "../guest-tools/"
+            + staged_guest_wheel.name
+            + " --hash=sha256:"
+            + str(guest_wheel_identity["sha256"])
+            + "\n"
+            + "".join(
+                "../guest-tools/"
+                + wheel.name
+                + " --hash=sha256:"
+                + str(identity["sha256"])
+                + "\n"
+                for wheel, identity in local_dependency_wheels
+            )
+            + lock.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        validate_guest_runtime_wheelhouse(
+            requirements=requirements,
+            target_directory=target_directory,
+            guest_tools_directory=guest_tools_directory,
+            target=target_config,
+        )
+        target_documents[target] = {
+            "requirementsPath": requirements.relative_to(destination).as_posix(),
+            "requirementsSHA256": file_identity(requirements)["sha256"],
+            "wheels": [
+                {
+                    "path": item.name,
+                    **file_identity(item),
+                }
+                for item in sorted(target_directory.glob("*.whl"))
+            ],
+        }
+
+    manifest = {
+        "schemaVersion": 1,
+        "guestPython": {"major": 3, "minor": 12},
+        "guestTools": {
+            "path": staged_guest_wheel.relative_to(destination).as_posix(),
+            **guest_wheel_identity,
+        },
+        "localDependencies": [
+            {
+                "path": wheel.relative_to(destination).as_posix(),
+                **identity,
+            }
+            for wheel, identity in local_dependency_wheels
+        ],
+        "targets": target_documents,
+    }
+    (destination / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def stage_guest_local_dependency_wheels(
+    project: Path,
+    destination: Path,
+) -> list[tuple[Path, dict[str, object]]]:
+    dependency_names = {
+        normalize_distribution_name(requirement_name(requirement))
+        for requirement in project_runtime_dependencies(project)
+    }
+    wheels: list[tuple[Path, dict[str, object]]] = []
+    for dependency_name, relative_path in GUEST_LOCAL_RUNTIME_DEPENDENCIES.items():
+        if normalize_distribution_name(dependency_name) not in dependency_names:
+            continue
+        dependency_project = (project / relative_path).resolve()
+        wheel = build_pure_python_wheel(dependency_project, destination)
+        wheels.append((wheel, file_identity(wheel)))
+    return wheels
+
+
+def requirement_name(requirement: str) -> str:
+    name = requirement.split("[", maxsplit=1)[0]
+    for separator in (" ", "<", ">", "=", "!", "~", ";"):
+        name = name.split(separator, maxsplit=1)[0]
+    if not name:
+        raise SystemExit(f"error: invalid Python runtime dependency: {requirement!r}")
+    return name
+
+
+def validate_guest_python_wheel_syntax(
+    wheel: Path,
+    *,
+    python_version: str,
+) -> None:
+    if len(python_version) < 2 or not python_version.isdigit():
+        raise SystemExit(
+            f"error: Guest Python runtime target version is invalid: {python_version}"
+        )
+    feature_version = (int(python_version[0]), int(python_version[1:]))
+    version_label = f"{feature_version[0]}.{feature_version[1]}"
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            python_modules = sorted(
+                name for name in archive.namelist() if name.endswith(".py")
+            )
+            if not python_modules:
+                raise SystemExit(
+                    f"error: Guest Tools wheel contains no Python modules: {wheel}"
+                )
+            for module in python_modules:
+                source = archive.read(module)
+                try:
+                    ast.parse(
+                        source,
+                        filename=module,
+                        feature_version=feature_version,
+                    )
+                except (SyntaxError, UnicodeDecodeError) as error:
+                    line = getattr(error, "lineno", None)
+                    line_detail = f" line={line}" if line is not None else ""
+                    raise SystemExit(
+                        "error: Guest Tools wheel is not compatible with "
+                        f"CPython {version_label}: wheel={wheel} module={module}"
+                        f"{line_detail} reason={error}"
+                    ) from error
+    except (OSError, zipfile.BadZipFile) as error:
+        raise SystemExit(
+            f"error: Guest Tools wheel is unreadable: {wheel}: {error}"
+        ) from error
+
+
+def download_guest_runtime_wheels(
+    lock: Path,
+    destination: Path,
+    target: GuestRuntimeTarget,
+) -> None:
+    command = [
+        *host_pip_command(),
+        "download",
+        "--dest",
+        str(destination),
+        "--only-binary=:all:",
+        "--require-hashes",
+        *guest_runtime_pip_target_arguments(target),
+        "-r",
+        str(lock),
+    ]
+    try:
+        subprocess.run(command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as error:
+        output = "\n".join(
+            item for item in (error.stdout, error.stderr) if item
+        ).strip()
+        suffix = f"\n{output}" if output else ""
+        raise SystemExit(
+            "error: failed to stage Guest Python runtime wheelhouse "
+            f"lock={lock}{suffix}"
+        ) from error
+
+
+def validate_guest_runtime_wheelhouse(
+    *,
+    requirements: Path,
+    target_directory: Path,
+    guest_tools_directory: Path,
+    target: GuestRuntimeTarget,
+) -> None:
+    with TemporaryDirectory(prefix="tirosh-guest-wheel-validation-") as temporary:
+        command = [
+            *host_pip_command(),
+            "download",
+            "--dest",
+            temporary,
+            "--no-index",
+            "--find-links",
+            str(target_directory),
+            "--find-links",
+            str(guest_tools_directory),
+            "--only-binary=:all:",
+            "--require-hashes",
+            *guest_runtime_pip_target_arguments(target),
+            "-r",
+            str(requirements),
+        ]
+        try:
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=requirements.parent,
+            )
+        except subprocess.CalledProcessError as error:
+            output = "\n".join(
+                item for item in (error.stdout, error.stderr) if item
+            ).strip()
+            suffix = f": {output}" if output else ""
+            raise SystemExit(
+                "error: Guest Python runtime wheelhouse dependency closure is "
+                f"invalid: requirements={requirements} "
+                f"platforms={','.join(target['platforms'])}{suffix}"
+            ) from error
+
+
+def guest_runtime_pip_target_arguments(target: GuestRuntimeTarget) -> list[str]:
+    platform_arguments = [
+        argument
+        for platform in target["platforms"]
+        for argument in ("--platform", platform)
+    ]
+    return [
+        *platform_arguments,
+        "--python-version",
+        target["python_version"],
+        "--implementation",
+        target["implementation"],
+        "--abi",
+        target["abi"],
+    ]
+
+
+def host_pip_command() -> list[str]:
+    if importlib.util.find_spec("pip") is not None:
+        return [sys.executable, "-m", "pip"]
+    for executable in ("pip3", "pip"):
+        path = shutil.which(executable)
+        if path is not None:
+            return [path]
+    raise SystemExit(
+        "error: Guest Python runtime wheelhouse staging requires a pip executable"
+    )
+
+
+def ensure_only_wheels(directory: Path) -> None:
+    entries = sorted(item for item in directory.iterdir() if item.is_file())
+    if not entries or any(item.suffix != ".whl" for item in entries):
+        raise SystemExit(
+            "error: Guest Python runtime wheelhouse must contain only wheels: "
+            f"{directory}"
+        )
+
+
+def reset_generated_wheel_directory(directory: Path) -> None:
+    if directory.exists():
+        if not directory.is_dir() or directory.is_symlink():
+            raise SystemExit(
+                "error: Guest Python runtime wheelhouse path is not a directory: "
+                f"{directory}"
+            )
+        shutil.rmtree(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+
+
+def project_runtime_dependencies(project: Path) -> list[str]:
+    metadata = project_metadata(project)
+    dependencies = metadata.get("dependencies", [])
+    if not isinstance(dependencies, list) or not all(
+        isinstance(item, str) and item for item in dependencies
+    ):
+        raise SystemExit(
+            f"error: invalid project.dependencies: {project / 'pyproject.toml'}"
+        )
+    return dependencies
+
+
+def build_pure_python_wheel(project: Path, output_directory: Path) -> Path:
     pyproject = project / "pyproject.toml"
     package_root = project / "src"
     if not pyproject.is_file():
@@ -92,15 +722,13 @@ def build_pure_python_wheel(project: Path) -> Path:
     if not package_root.is_dir():
         raise SystemExit(f"error: missing Python package src directory: {package_root}")
 
-    with pyproject.open("rb") as handle:
-        metadata = tomllib.load(handle)
-    project_metadata = metadata.get("project")
-    if not isinstance(project_metadata, dict):
-        raise SystemExit(f"error: missing [project] metadata: {pyproject}")
-    name = required_metadata(project_metadata, "name", pyproject)
-    version = required_metadata(project_metadata, "version", pyproject)
-    description = str(project_metadata.get("description", ""))
-    scripts = project_metadata.get("scripts", {})
+    metadata = project_metadata(project)
+    name = required_metadata(metadata, "name", pyproject)
+    version = required_metadata(metadata, "version", pyproject)
+    description = str(metadata.get("description", ""))
+    requires_python = required_metadata(metadata, "requires-python", pyproject)
+    dependencies = project_runtime_dependencies(project)
+    scripts = metadata.get("scripts", {})
     if not isinstance(scripts, dict):
         raise SystemExit(f"error: invalid [project.scripts] metadata: {pyproject}")
 
@@ -124,6 +752,8 @@ def build_pure_python_wheel(project: Path) -> Path:
                     name=name,
                     version=version,
                     description=description,
+                    requires_python=requires_python,
+                    dependencies=dependencies,
                 ).encode(),
             )
             write_archive_file(
@@ -142,10 +772,20 @@ def build_pure_python_wheel(project: Path) -> Path:
                 )
             record_path = f"{dist_info}/RECORD"
             archive.writestr(record_path, record_contents(records, record_path))
-        output = project / "dist" / wheel_name
+        output = output_directory / wheel_name
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(wheel, output)
         return output
+
+
+def project_metadata(project: Path) -> dict[object, object]:
+    pyproject = project / "pyproject.toml"
+    with pyproject.open("rb") as handle:
+        metadata = tomllib.load(handle)
+    value = metadata.get("project")
+    if not isinstance(value, dict):
+        raise SystemExit(f"error: missing [project] metadata: {pyproject}")
+    return value
 
 
 def write_archive_file(
@@ -154,7 +794,11 @@ def write_archive_file(
     path: str,
     content: bytes,
 ) -> None:
-    archive.writestr(path, content)
+    info = zipfile.ZipInfo(path, date_time=(1980, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.create_system = 3
+    info.external_attr = 0o100644 << 16
+    archive.writestr(info, content)
     digest = base64.urlsafe_b64encode(hashlib.sha256(content).digest()).rstrip(b"=")
     records.append((path, f"sha256={digest.decode()}", str(len(content))))
 
@@ -184,14 +828,31 @@ def normalize_distribution_name(name: str) -> str:
     return name.replace("-", "_").replace(".", "_")
 
 
-def package_metadata(*, name: str, version: str, description: str) -> str:
+def package_metadata(
+    *,
+    name: str,
+    version: str,
+    description: str,
+    requires_python: str,
+    dependencies: list[str],
+) -> str:
     message = Message()
     message["Metadata-Version"] = "2.1"
     message["Name"] = name
     message["Version"] = version
+    message["Requires-Python"] = requires_python
+    for dependency in dependencies:
+        message["Requires-Dist"] = dependency
     if description:
         message["Summary"] = description
     return message.as_string()
+
+
+def file_identity(path: Path) -> dict[str, object]:
+    return {
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "bytes": path.stat().st_size,
+    }
 
 
 def entry_points(scripts: dict[object, object]) -> str:

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v1",
+  "operationId": "restore-operation-20260724-1",
+  "targetReference": {
+    "resourceType": "guest-restore-target",
+    "resourceId": "empty-target-20260724-1"
+  },
+  "sqliteTarget": {
+    "state": "absent"
+  },
+  "postgresqlTarget": {
+    "state": "empty",
+    "ownerSchemaCount": 0,
+    "alembicVersionTablePresent": false
+  },
+  "provedAt": "2026-07-24T20:00:00Z"
+}

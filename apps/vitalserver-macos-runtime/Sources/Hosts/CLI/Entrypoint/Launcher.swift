@@ -118,16 +118,73 @@ struct Launcher {
     // Build the VM configuration, start it, then keep the process alive.
     func start(paths: LauncherPaths) throws {
         let fileStore = SystemRuntimeFileStore()
-        let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
+        let settingsRepository = SQLiteRuntimeHostSettingsRepository(
+            databaseURL: paths.installed.runtimeStateDatabase,
+            transitionDecider: RuntimeHostSettingsActivationUseCase()
+        )
+        let settings: RuntimeHostSettingsRecord
+        switch settingsRepository.loadHostSettings() {
+        case .loaded(let record):
+            settings = record
+        case .missing:
+            throw LauncherError.runtimeOperationFailed("Host settings SQLite state is missing")
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
+        guard settings.materializedRevision == settings.revision else {
+            let materializedRevisionText = settings.materializedRevision.map(String.init) ?? "missing"
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings revision is not materialized revision=\(settings.revision) materializedRevision=\(materializedRevisionText)"
+            )
+        }
+        let materializedPayload = RuntimeHostSettingsPayload(
+            vmConfigJSON: try fileStore.readData(paths.config),
+            guestRuntimeConfigJSON: try fileStore.readData(paths.installed.guestRuntimeConfig),
+            guestRuntimeSettingsJSON: try fileStore.readData(paths.installed.guestRuntimeSettings)
+        )
+        guard materializedPayload == settings.payload else {
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings boot materialization does not match SQLite revision=\(settings.revision)"
+            )
+        }
+        let config = try JSONDecoder().decode(VMRuntimeConfig.self, from: settings.payload.vmConfigJSON)
         try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)
-        let lifecycleStore = RuntimeVMLifecycleStore(url: paths.installed.vmLifecycle, fileStore: fileStore)
-        try lifecycleStore.write(
+        try RuntimeVMLifecycleProcessExitReconciler.reconcileBeforeServiceStart(
+            paths: paths,
+            fileStore: fileStore,
+            log: { print($0) }
+        )
+        try RuntimeHostTimeContractWriter(
+            destination: paths.installed.hostTime,
+            fileStore: fileStore,
+            now: Date.init,
+            log: { print($0) }
+        ).write()
+        let lifecycleWriter = SQLiteRuntimeVMLifecycleResourceStore(
+            databaseURL: paths.installed.runtimeStateDatabase,
+            transitionDecider: RuntimeVMLifecycleTransitionUseCase()
+        )
+        let lifecycleState = try lifecycleWriter.writeVMLifecycleResource(
             state: .starting,
             operation: .startServices,
+            terminalReason: nil,
             message: "VM process start requested",
             bootWindowSeconds: Constants.Runtime.vmBootLifecycleDeadlineSeconds
         )
-        try removeStaleRuntimeState(paths: paths, fileStore: fileStore)
+        guard lifecycleState.state == .loaded,
+              let lifecycle = lifecycleState.document,
+              let runID = lifecycle.bootID,
+              !runID.isEmpty else {
+            throw LauncherError.runtimeOperationFailed(
+                "VM lifecycle start did not return an explicit run ID"
+            )
+        }
+        _ = try settingsRepository.recordHostSettingsBoot(
+            revision: settings.revision,
+            runID: runID,
+            startedAt: lifecycle.startedAt
+        )
+        try removeStaleGuestBootstrapArtifacts(paths: paths, fileStore: fileStore)
         try ProcessState.writeCurrentPid(pidFile: paths.pidFile, fileStore: fileStore)
 
         let configurationFactory = VMConfigurationFactory.hostCLI(fileStore: fileStore)
@@ -164,13 +221,13 @@ struct Launcher {
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
         let delegate = VirtualMachineDelegate.hostCLI(
             pidFile: paths.pidFile,
-            lifecycleStore: lifecycleStore,
+            lifecycleWriter: lifecycleWriter,
             fileStore: fileStore
         )
         let terminationHandler = VirtualMachineTerminationHandler.hostCLI(
             virtualMachine: virtualMachine,
             pidFile: paths.pidFile,
-            lifecycleStore: lifecycleStore,
+            lifecycleWriter: lifecycleWriter,
             fileStore: fileStore
         )
         virtualMachine.delegate = delegate
@@ -181,10 +238,10 @@ struct Launcher {
             switch result {
             case .success:
                 do {
-                    try writeAppliedVMConfig(config, to: paths.installed.appliedVMConfig, fileStore: fileStore)
-                    try lifecycleStore.write(
+                    try lifecycleWriter.writeVMLifecycleResource(
                         state: .bootstrapping,
                         operation: .startServices,
+                        terminalReason: nil,
                         message: "VM process started; waiting for guest runtime",
                         bootWindowSeconds: Constants.Runtime.vmBootLifecycleDeadlineSeconds
                     )
@@ -195,11 +252,12 @@ struct Launcher {
             case let .failure(error):
                 ProcessState.removePidFile(paths.pidFile, fileStore: fileStore)
                 do {
-                    try lifecycleStore.write(
+                    try lifecycleWriter.writeVMLifecycleResource(
                         state: .failed,
                         operation: .startServices,
                         terminalReason: vmStartFailureReason(error),
-                        message: error.localizedDescription
+                        message: error.localizedDescription,
+                        bootWindowSeconds: nil
                     )
                 } catch {
                     fputs("failed to write VM lifecycle failed state: \(error)\n", stderr)
@@ -216,25 +274,14 @@ struct Launcher {
         _ = terminationHandler
     }
 
-    private func writeAppliedVMConfig(
-        _ config: VMRuntimeConfig,
-        to url: URL,
-        fileStore: RuntimeFileWriting
-    ) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try fileStore.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try fileStore.writeData(try encoder.encode(config), to: url, options: .atomic)
-    }
-
-    private func removeStaleRuntimeState(
+    private func removeStaleGuestBootstrapArtifacts(
         paths: LauncherPaths,
         fileStore: RuntimeFileReading & RuntimeFileWriting
     ) throws {
-        for url in [paths.installed.runtimeState, paths.installed.vmIPFile] {
+        for url in [paths.installed.runtimeObservation, paths.installed.vmIPFile] {
             if fileStore.fileExists(url) {
                 try fileStore.removeItem(at: url)
-                print("removed stale runtime state: \(url.path)")
+                print("removed stale guest bootstrap artifact: \(url.path)")
             }
         }
     }
@@ -428,7 +475,7 @@ struct Launcher {
               vitalserver-vm runtime watchdog
               vitalserver-vm runtime verify-bundle <bundle.tar.gz>
               vitalserver-vm runtime stage-bundle <bundle.tar.gz>
-              vitalserver-vm runtime apply-bundle <bundle.tar.gz>
+              vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
               vitalserver-vm runtime rollback [backup-dir]
               vitalserver-vm clean
               vitalserver-vm version

@@ -22,7 +22,10 @@ final class RuntimeFreshInstallPreflightPolicyTests: XCTestCase {
                 RuntimeManagedService.vm.label: .loaded,
             ]),
             packageReceiptStates: [
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
             ],
             proxyPortState: .occupied(port: 80, listeners: "nginx/123")
         ))
@@ -110,7 +113,7 @@ final class RuntimeFreshInstallPreflightPolicyTests: XCTestCase {
 private func freshInstallServiceStates(
     overrides: [String: RuntimeServiceState] = [:]
 ) -> [RuntimeFreshInstallServiceState] {
-    RuntimeManagedService.stopOrder.map { service in
+    RuntimeManagedService.uninstallOrder.map { service in
         RuntimeFreshInstallServiceState(
             label: service.label,
             state: overrides[service.label] ?? .notLoaded

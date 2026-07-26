@@ -8,6 +8,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
     control_runtime,
     force_stop_runtime,
     prepare_runtime_data_disk,
+    print_runtime_guest_address_proxy_upstream,
     print_runtime_ip,
     require_bridged_codesign_identity,
     require_no_running_runtime,
@@ -30,6 +31,7 @@ from tirosh_vitalserver.devtools.application.inputs import (
     RuntimeBootSmokeRunInput,
     RuntimeBuildInput,
     RuntimeControlInput,
+    RuntimeGuestAddressOwnerInput,
     RuntimeHealthInput,
     RuntimeSignInput,
     RuntimeSyncReleaseInput,
@@ -92,6 +94,10 @@ def prepare_runtime_data(input: RuntimeVmHomeInput) -> int:
 
 def print_ip(input: RuntimeVmHomeInput) -> int:
     return print_runtime_ip(input)
+
+
+def print_guest_address_proxy_upstream(input: RuntimeGuestAddressOwnerInput) -> int:
+    return print_runtime_guest_address_proxy_upstream(input)
 
 
 def wait_ip(input: RuntimeWaitInput) -> int:

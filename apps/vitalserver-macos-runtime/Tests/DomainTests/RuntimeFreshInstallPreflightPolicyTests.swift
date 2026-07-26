@@ -85,7 +85,7 @@ final class DomainRuntimeFreshInstallPreflightPolicyTests: XCTestCase {
 private func freshInstallServiceStates(
     overrides: [String: RuntimeServiceState] = [:]
 ) -> [RuntimeFreshInstallServiceState] {
-    RuntimeManagedService.stopOrder.map { service in
+    RuntimeManagedService.uninstallOrder.map { service in
         RuntimeFreshInstallServiceState(
             label: service.label,
             state: overrides[service.label] ?? .notLoaded

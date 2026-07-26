@@ -10,7 +10,7 @@ DOCS_PORT_MAX ?= 8100
 
 COMPOSE_ENV_FILE ?=
 TESTKIT_CONFIG ?= config/testkit.toml
-TESTKIT_VERSION ?= 0.1.1
+TESTKIT_VERSION ?= 0.2.0
 TESTKIT_RELEASE_TAG ?= testkit-v$(TESTKIT_VERSION)
 TESTKIT_RELEASE_DIR ?= .tmp/testkit-release
 
@@ -27,10 +27,13 @@ VITALSERVER_TRUST_PROXY ?= 1
 COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),))
 TESTKIT_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python scripts/test_vitalserver.py,$(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi))
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
+PYTEST_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python -m pytest,$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- pytest)
 E2E_LOOP_COUNT ?= 0
 E2E_LOOP_INTERVAL ?= 10
 CHAOS_LOOP_COUNT ?= 5
 CHAOS_LOOP_INTERVAL ?= 0
+RUNTIME_V2_CONFORMANCE_BASE_URL ?= http://127.0.0.1:18321
+RUNTIME_V2_CONFORMANCE_ARGS ?=
 
 include make/submodule.mk
 include make/proxy.mk
@@ -39,24 +42,25 @@ include make/compose.mk
 include make/testkit.mk
 include make/python.mk
 include make/pwa.mk
+include make/platform-agent.mk
 include make/vm.mk
 
 .PHONY: \
 	dist/dmg/release dist/pkg/release dist/update/release \
 	dist/update/verify/release dist/update/release/smoke dist/update/release/apply-smoke dist/image-update/release \
-	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/all dist/dmg/dev/compile dist/dmg/dev/verify \
-	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/review dist/pkg/dev/runtime-smoke dist/pkg/dev/verify dist/pkg/verify/dev \
-	dist/dmg/release/review dist/dmg/release/verify dist/pkg/release/review dist/pkg/release/verify \
+	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/cached dist/dmg/dev/compile dist/dmg/dev/verify \
+	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/review dist/pkg/dev/runtime-smoke dist/pkg/dev/verify \
+	dist/dmg/release/review dist/pkg/release/review dist/pkg/release/verify \
 	dist/update/dev dist/update/verify/dev dist/update/dev/smoke dist/update/dev/apply-smoke \
 	dist/image-update/dev dist/image-update/verify/dev dist/image-update/dev/smoke dist/image-update/dev/apply-smoke \
 	dist/troubleshooting/dev dist/troubleshooting/dev/verify dist/troubleshooting/release dist/troubleshooting/release/verify \
 	dist/install/dev dist/install/dev/verified dist/installed/health dist/installed/smoke dist/uninstall/dev \
 	runtime/up runtime/up-bridged runtime/down runtime/status runtime/health \
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
-	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke \
-	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop \
+	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke runtime/conformance runtime/proof/conformance runtime/proof/smoke runtime/proof/postgres-restore runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/review runtime/proof/acceptance \
+	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop product/scenarios/check \
 	docs/build docs/serve \
-	devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
+	devtools/release-contract devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
 	devtools/docker/images devtools/sign devtools/sign/bridged devtools/bridged/preflight \
 	devtools/init devtools/download devtools/cloud-init devtools/stage \
 	devtools/airgap-rootfs devtools/golden-rootfs devtools/golden-rootfs/compile devtools/golden-rootfs/runtime-smoke devtools/start devtools/start/detached \
@@ -74,7 +78,7 @@ dist/image-update/verify/release: internal/vm/image-update/verify/release
 dist/image-update/release/smoke: internal/vm/image-update/smoke/release
 dist/image-update/release/apply-smoke: internal/vm/image-update/apply-smoke/release
 dist/dmg/dev: internal/vm/dmg/dev
-dist/dmg/dev/all: internal/vm/dmg/dev/all
+dist/dmg/dev/cached: internal/vm/dmg/dev/cached
 dist/dmg/dev/compile: internal/vm/dmg/dev/compile
 dist/dmg/dev/verify: internal/vm/dmg/dev/verify
 dist/pkg/dev: internal/vm/pkg/dev
@@ -82,9 +86,7 @@ dist/pkg/dev/compile: internal/vm/pkg/dev/compile
 dist/pkg/dev/review: internal/vm/pkg/dev/review
 dist/pkg/dev/runtime-smoke: internal/vm/pkg/dev/runtime-smoke
 dist/pkg/dev/verify: internal/vm/pkg/dev/verify
-dist/pkg/verify/dev: internal/vm/pkg/dev/verify
 dist/dmg/release/review: internal/vm/dmg/release/review
-dist/dmg/release/verify: internal/vm/dmg/release/verify
 dist/pkg/release/review: internal/vm/pkg/release/review
 dist/pkg/release/verify: internal/vm/pkg/release/verify
 dist/update/dev: internal/vm/update/dev
@@ -122,6 +124,40 @@ runtime/interfaces: internal/vm/interfaces
 runtime/network/shared: internal/vm/network/shared
 runtime/network/bridged: internal/vm/network/bridged
 runtime/e2e/smoke: internal/vm/e2e/smoke
+runtime/proof/smoke:
+	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
+runtime/proof/postgres-restore:
+	DOCKER_COMPOSE="$(DOCKER_COMPOSE)" bash scripts/postgres_restore_compose_proof.sh
+runtime/proof/no-v1-service-state:
+	$(PYTHON) scripts/runtime_no_v1_service_state.py
+runtime/proof/python-focused:
+	$(PYTEST_RUNNER) apps/vitalserver-lab/tests \
+		packages/vitalserver-guest-tools/tests/test_guest_control_api.py \
+		packages/vitalserver-guest-tools/tests/test_guest_control_usecases.py \
+		packages/vitalserver-guest-tools/tests/test_guest_control_domain.py \
+		packages/vitalserver-guest-tools/tests/test_guest_control_sqlite_repository.py \
+		packages/vitalserver-guest-tools/tests/test_vitaldb_read_model_repository.py \
+		packages/vitalserver-guest-tools/tests/test_product_lab_service_adapter.py \
+		packages/vitalserver-guest-tools/tests/test_recorder_ingress_status_adapter.py \
+		packages/vitalserver-guest-tools/tests/test_redis_backup_maintenance_adapter.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_release_plans.py \
+		packages/vitalserver-devtools/tests/unit/test_release_manifest.py \
+		packages/vitalserver-devtools/tests/unit/test_guest_image_usecases.py \
+		packages/vitalserver-devtools/tests/unit/test_rootfs_base.py \
+		packages/vitalserver-devtools/tests/unit/test_runtime_lifecycle_wait.py
+runtime/proof/conformance:
+	$(PYTEST_RUNNER) \
+		packages/vitalserver-devtools/tests/unit/test_runtime_v2_conformance.py \
+		packages/vitalserver-devtools/tests/unit/test_runtime_v2_route_manifest.py
+runtime/conformance:
+	$(PYTHON) scripts/runtime_v2_conformance.py --base-url "$(RUNTIME_V2_CONFORMANCE_BASE_URL)" $(RUNTIME_V2_CONFORMANCE_ARGS)
+runtime/proof/swift-focused:
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --package-path "$(VM_SWIFT_PACKAGE_DIR)" --filter "$(VM_RUNTIME_PROOF_SWIFT_FOCUSED_FILTER)"
+runtime/proof/http-e2e: runtime/e2e/smoke
+runtime/proof/review: runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/conformance platform-agent/proof pwa/check pwa/test pwa/build
+product/scenarios/check:
+	$(PYTHON) scripts/validate_user_scenarios.py
+runtime/proof/acceptance: runtime/proof/review runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/smoke
 runtime/permission/audit:
 	$(PYTHON) scripts/runtime_permission_audit.py $(RUNTIME_PERMISSION_AUDIT_ARGS)
 runtime/chaos:
@@ -161,6 +197,7 @@ e2e/local/loop:
 		sleep "$(E2E_LOOP_INTERVAL)"; \
 	done
 
+devtools/release-contract: internal/vm/release-contract
 devtools/version-source: internal/vm/version-source
 devtools/build: internal/vm/build
 devtools/app: internal/vm/app
@@ -197,14 +234,14 @@ help:
 	@printf "COMMON TARGETS\n"
 	@printf "  dev/doctor      Check local developer tools and repository setup\n"
 	@printf "  dev/bootstrap   Prepare .env, submodules, proxy config, and optional Python env\n"
-	@printf "  compose/up      Start the Compose productization sandbox through host proxy\n"
+	@printf "  compose/up      Start the Compose development sandbox through host proxy\n"
 	@printf "  compose/open    Open VitalServer in browser\n"
-	@printf "  testkit/smoke   Run bounded productization smoke scenario\n"
+	@printf "  testkit/smoke   Run bounded dev verification smoke scenario\n"
 	@printf "  runtime/up      Start local macOS VM runtime and host proxy\n"
 	@printf "  runtime/health  Check runtime IP, guest HTTP, and host proxy reachability\n"
 	@printf "  pwa/check       Typecheck Runtime Control PWA\n"
-	@printf "  dist/pkg/dev/verify\n"
-	@printf "                  Run review, dev pkg build, and runtime smoke\n"
+	@printf "  dist/dmg/dev\n"
+	@printf "                  Run the standard field-delivery DMG gate\n"
 	@printf "  docs/serve      Serve MkDocs site with automatic port fallback\n"
 	@printf "\n"
 	@printf "HELP TOPICS\n"
@@ -226,7 +263,7 @@ help:
 
 help/compose:
 	@printf "NAME\n"
-	@printf "  tirosh-vitalserver-compose - Compose productization sandbox, Swagger, and testkit targets\n"
+	@printf "  tirosh-vitalserver-compose - Compose development sandbox, Swagger, and dev testkit targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make compose/{up|open|ps|logs|shell|restart|down|rebuild|build|config|clean/volumes|clean}\n"
@@ -250,7 +287,7 @@ help/compose:
 	@printf "  compose/clean          Remove proxy runtime, containers, volumes, orphans, and local images\n"
 	@printf "\n"
 	@printf "VERIFY TARGETS\n"
-	@printf "  testkit/smoke          Run bounded productization smoke scenario\n"
+	@printf "  testkit/smoke          Run bounded dev verification smoke scenario\n"
 	@printf "  testkit/verify         Send sample data and verify UI-visible state\n"
 	@printf "  testkit/health         Check VitalServer health with testkit\n"
 	@printf "  testkit/load           Run finite load scenario\n"
@@ -268,12 +305,15 @@ help/dist:
 	@printf "  tirosh-vitalserver-dist - distribution package, install, and update targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
-	@printf "  make dist/{pkg|dmg}/dev/verify\n"
+	@printf "  make dist/pkg/dev/verify\n"
+	@printf "  make dist/dmg/dev\n"
+	@printf "  make dist/dmg/dev/cached\n"
 	@printf "  make dist/install/dev/verified\n"
-	@printf "  make dist/{pkg|dmg}/release/verify\n"
+	@printf "  make dist/dmg/release\n"
+	@printf "  make dist/pkg/release/verify\n"
 	@printf "  make dist/{update|image-update}/verify/{dev|release}\n"
-	@printf "  make dist/{pkg|dmg}/dev/compile\n"
-	@printf "  make dist/dmg/dev/all\n"
+	@printf "  make dist/dmg/{dev|release}  # standard field-delivery gates\n"
+	@printf "  make dist/dmg/dev/{cached|compile|verify}  # local/diagnostic phases only\n"
 	@printf "  make dist/{pkg|dmg|update|image-update}/{dev|release} [VM_RELEASE_BRANCH=main]\n"
 	@printf "  make dist/{update|image-update}/{dev|release}/smoke\n"
 	@printf "  make dist/troubleshooting/{dev|release}/verify\n"
@@ -282,11 +322,10 @@ help/dist:
 	@printf "\n"
 	@printf "VERIFY TARGETS\n"
 	@printf "  dist/pkg/dev/verify           Run package/PWA review, build dev pkg from clean rootfs, and run runtime smoke\n"
-	@printf "  dist/pkg/verify/dev           Alias for dist/pkg/dev/verify\n"
-	@printf "  dist/dmg/dev/verify           Verify existing dev DMG artifact and run golden runtime smoke\n"
-	@printf "  dist/dmg/dev/all              Run dev DMG review, clean compile, artifact verify, and runtime smoke\n"
+	@printf "  dist/dmg/dev                  Standard field-delivery DMG gate: review, environment preflight, clean compile, artifact verify, runtime smoke\n"
+	@printf "  dist/dmg/dev/verify           Existing-artifact diagnostic: readback plus verified cached golden runtime smoke\n"
 	@printf "  dist/pkg/release/verify       Run review, build release pkg, and run runtime smoke\n"
-	@printf "  dist/dmg/release/verify       Run review, build release dmg, and run runtime smoke\n"
+	@printf "  dist/dmg/release              Standard release DMG gate: review, environment preflight, clean compile, artifact verify, runtime smoke\n"
 	@printf "  dist/update/verify/dev        Verify development product update bundle\n"
 	@printf "  dist/update/verify/release    Verify release product update bundle\n"
 	@printf "  dist/image-update/verify/dev  Verify development VM image/rootfs update bundle\n"
@@ -300,20 +339,20 @@ help/dist:
 	@printf "DEV INSTALL TARGETS\n"
 	@printf "  dist/install/dev/verified     Verify dev pkg, install it, then check installed health\n"
 	@printf "  dist/install/dev              Install the selected pkg on this Mac with sudo\n"
-	@printf "  dist/installed/health         Check repo-driven dev install runtime and host proxy\n"
-	@printf "  dist/installed/smoke          Run repo-driven dev install runtime smoke checks\n"
+	@printf "  dist/installed/health         Check installed app/files/jobs plus guest and host proxy HTTP\n"
+	@printf "  dist/installed/smoke          Add the installed runtime CLI health contract to installed health\n"
 	@printf "  dist/uninstall/dev            Remove development runtime install\n"
 	@printf "\n"
 	@printf "BUILD TARGETS\n"
 	@printf "  dist/pkg/dev                  Build development pkg\n"
 	@printf "  dist/pkg/dev/compile          Build development pkg and recompile the VM golden rootfs\n"
 	@printf "  dist/pkg/dev/review           Run the shared development review gate\n"
-	@printf "  dist/pkg/dev/runtime-smoke    Validate golden runtime boot contract for dev pkg\n"
+	@printf "  dist/pkg/dev/runtime-smoke    Validate an existing verified golden runtime boot contract for dev pkg\n"
 	@printf "  dist/pkg/release              Build release pkg from clean golden rootfs\n"
 	@printf "  dist/pkg/release/review       Run the shared release review gate\n"
-	@printf "  dist/dmg/dev                  Build development installer dmg with reusable rootfs cache\n"
+	@printf "  dist/dmg/dev/cached           Reuse only a source-contract/receipt-matched local golden cache; not a field-delivery gate\n"
 	@printf "  dist/dmg/dev/compile          Build development dmg from clean rootfs\n"
-	@printf "  dist/dmg/release              Build release installer dmg from clean golden rootfs\n"
+	@printf "  dist/dmg/release              Build and verify release installer DMG through the full field gate\n"
 	@printf "  dist/dmg/release/review       Run the shared release review gate\n"
 	@printf "  dist/update/dev               Build development product update bundle\n"
 	@printf "  dist/update/release           Build release product update bundle\n"
@@ -345,14 +384,14 @@ help/dist:
 	@printf "                                Required before guarded update apply smoke can run\n"
 	@printf "\n"
 	@printf "PROFILE TARGETS\n"
-	@printf "  Use dist/{pkg|dmg}/dev/compile for VM compile builds.\n"
+	@printf "  Use dist/dmg/{dev|release} for field delivery. cached and phase targets are not delivery proof.\n"
 
 help/runtime:
 	@printf "NAME\n"
 	@printf "  tirosh-vitalserver-runtime - direct local macOS VM runtime lifecycle targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
-	@printf "  make runtime/{up|status|health|down|ip|prepare|up-bridged|clean|e2e/smoke|coverage}\n"
+	@printf "  make runtime/{up|status|health|down|ip|prepare|up-bridged|clean|e2e/smoke|v2/smoke|v2/no-v1-service-state|v2/python-focused|v2/swift-focused|v2/http-e2e|v2/review|v2/acceptance|coverage}\n"
 	@printf "  make runtime/{interfaces|network/shared|network/bridged}\n"
 	@printf "  make runtime/{proxy/start|chaos|chaos/loop|permission/audit}\n"
 	@printf "\n"
@@ -365,6 +404,18 @@ help/runtime:
 	@printf "  runtime/prepare               Download assets and stage guest deployment bundle\n"
 	@printf "  runtime/proxy/start           Start host proxy for a runtime endpoint\n"
 	@printf "  runtime/e2e/smoke             Run local Runtime Control HTTP smoke test\n"
+	@printf "  runtime/proof/smoke              Build dev golden runtime and prove Guest Control/Product Lab boot smoke\n"
+	@printf "  runtime/proof/postgres-restore   Restore a real Compose PostgreSQL dump and compare representative reads\n"
+	@printf "  runtime/proof/no-v1-service-state\n"
+	@printf "                                Static proof that product service state does not use v1 files\n"
+	@printf "  runtime/proof/python-focused     Run focused Python Runtime v2 product/package tests\n"
+	@printf "  runtime/proof/conformance        Test the OS-neutral Platform/Runtime conformance rules\n"
+	@printf "  platform-agent/proof             Test and offline cross-build Linux/Windows Platform Agents\n"
+	@printf "  runtime/conformance              Validate a live implementation at RUNTIME_V2_CONFORMANCE_BASE_URL\n"
+	@printf "  runtime/proof/swift-focused      Run focused Swift Host-side Runtime v2 acceptance tests\n"
+	@printf "  runtime/proof/http-e2e           Run Runtime Control HTTP E2E smoke test\n"
+	@printf "  runtime/proof/review             Run static, Python, and PWA Runtime v2 review gates\n"
+	@printf "  runtime/proof/acceptance         Run review, Swift focused, HTTP E2E, and VM smoke Runtime v2 gates\n"
 	@printf "  runtime/up-bridged            Prepare and start local runtime on bridged LAN\n"
 	@printf "  runtime/clean                 Remove runtime state, keep shared data\n"
 	@printf "  runtime/chaos                 Run deterministic macOS runtime chaos scenarios\n"
@@ -384,7 +435,7 @@ help/devtools:
 	@printf "SYNOPSIS\n"
 	@printf "  make devtools/{golden-rootfs/compile|golden-rootfs/runtime-smoke|golden-rootfs|golden-rootfs/negative}\n"
 	@printf "  make devtools/{start|start/detached|wait/ip|wait/http|init|download|cloud-init|stage|airgap-rootfs}\n"
-	@printf "  make devtools/{version-source|build|app}\n"
+	@printf "  make devtools/{release-contract|version-source|build|app}\n"
 	@printf "  make devtools/nginx/{artifact|bundle}\n"
 	@printf "  make devtools/docker/images\n"
 	@printf "  make devtools/{sign|sign/bridged|bridged/preflight|package/clean}\n"
@@ -393,13 +444,14 @@ help/devtools:
 	@printf "  devtools/golden-rootfs/compile\n"
 	@printf "                                Recompile package golden rootfs cache from scratch\n"
 	@printf "  devtools/golden-rootfs/runtime-smoke\n"
-	@printf "                                Validate golden runtime boot contract\n"
+	@printf "                                Validate an existing verified golden runtime boot contract\n"
 	@printf "  devtools/golden-rootfs        Build package golden rootfs cache\n"
 	@printf "  devtools/golden-rootfs/negative\n"
 	@printf "                                Run golden rootfs negative proof scenarios\n"
 	@printf "\n"
 	@printf "BUILD TARGETS\n"
-	@printf "  devtools/version-source       Write release version source\n"
+	@printf "  devtools/release-contract     Validate immutable release inputs and generate Swift sources\n"
+	@printf "  devtools/version-source       Alias for release-contract\n"
 	@printf "  devtools/build                Build Apple Virtualization runtime launcher\n"
 	@printf "  devtools/app                  Build macOS Helper app\n"
 	@printf "  devtools/nginx/bundle         Build self-contained nginx bundle for dist pkg\n"
@@ -423,7 +475,7 @@ help/devtools:
 	@printf "\n"
 	@printf "VARIABLES\n"
 	@printf "  VM_COMPRESSION_THREADS=N      Use pigz with N compression threads when available\n"
-	@printf "  VM_ROOTFS_READY_TIMEOUT=600   Diagnostic wait timeout for rootfs compile proof\n"
+	@printf "  VM_ROOTFS_READY_TIMEOUT=600   Inactivity timeout for rootfs compile proof\n"
 	@printf "  VM_ROOTFS_SMOKE_FAIL_STAGE=x  Diagnostic fault injection for golden rootfs negative tests\n"
 
 help/proxy:
@@ -515,10 +567,12 @@ help/docs:
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make docs/{serve|build} [DOCS_PORT=8000] [DOCS_PORT_MAX=8100]\n"
+	@printf "  make product/scenarios/check\n"
 	@printf "\n"
 	@printf "DOCS TARGETS\n"
 	@printf "  docs/serve                    Serve MkDocs site, choosing the first free port\n"
 	@printf "  docs/build                    Build MkDocs site into site/\n"
+	@printf "  product/scenarios/check       Validate catalog and Gherkin scenario traceability\n"
 	@printf "\n"
 	@printf "VARIABLES\n"
 	@printf "  DOCS_HOST=%s\n" "$(DOCS_HOST)"

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-artifact-compilation-receipt",
+  "title": "GuestArtifactCompilationReceipt",
+  "description": "C35 successful GuestArtifactCompiler result. It records the exact builder executable, declared input identities, architecture, and the emitted C34 arm64/macOS or C65 amd64/native manifest identity. It proves compilation input/output correlation only; Guest boot and clean-Host installation require separate evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "compilationId", "artifactSetId", "architecture", "compilationCommandSHA256", "buildEnvironment", "consumedInputArtifacts", "completedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "compilationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "artifactSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "architecture": { "enum": ["arm64", "amd64"] },
+    "compilationCommandSHA256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "buildEnvironment": { "$ref": "#/$defs/BuildEnvironmentReceipt" },
+    "consumedInputArtifacts": {
+      "type": "array",
+      "minItems": 5,
+      "items": { "$ref": "#/$defs/ConsumedInputArtifact" }
+    },
+    "macOSGuestArtifactManifest": { "$ref": "#/$defs/MacOSOutputArtifact" },
+    "nativeGuestArtifactManifest": { "$ref": "#/$defs/NativeOutputArtifact" },
+    "completedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "$defs": {
+    "BuildEnvironmentReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "builderExecutableSizeBytes", "builderExecutableSHA256"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "builderExecutableSizeBytes": { "type": "integer", "minimum": 1 },
+        "builderExecutableSHA256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "ConsumedInputArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "MacOSOutputArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "sizeBytes", "sha256"],
+      "properties": {
+        "relativePath": { "const": "macos-guest-artifact-manifest.json" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "NativeOutputArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "sizeBytes", "sha256"],
+      "properties": {
+        "relativePath": { "const": "native-guest-artifact-manifest.json" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "architecture": { "const": "arm64" } }, "required": ["architecture"] },
+      "then": { "required": ["macOSGuestArtifactManifest"], "not": { "required": ["nativeGuestArtifactManifest"] } }
+    },
+    {
+      "if": { "properties": { "architecture": { "const": "amd64" } }, "required": ["architecture"] },
+      "then": { "required": ["nativeGuestArtifactManifest"], "not": { "required": ["macOSGuestArtifactManifest"] } }
+    }
+  ]
+}

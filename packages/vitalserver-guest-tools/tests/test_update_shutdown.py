@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -8,39 +7,48 @@ from typing import Any
 import pytest
 
 from tirosh_guest_tools.application import update_shutdown
-from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
+from tirosh_guest_tools.application.contexts import (
+    PostgresBackupOutcome,
+    PrepareUpdateShutdownContext,
+)
 from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
-from tirosh_guest_tools.domain.operations import ComposeAction, ShutdownPhase
+from tirosh_guest_tools.domain.operations import ComposeAction
 
 
-def test_prepare_update_shutdown_writes_poweroff_ready_phase_before_request(
-    tmp_path: Path,
+def test_prepare_update_shutdown_for_request_uses_explicit_context(
     monkeypatch: Any,
 ) -> None:
-    request_file = tmp_path / "prepare-update-shutdown.request"
-    result_file = tmp_path / "prepare-update-shutdown-result.json"
-    request_file.write_text(
-        json.dumps({"requestId": "req-1", "version": "1.2.3"}),
-        encoding="utf-8",
-    )
     events: list[str] = []
-    write_result = update_shutdown.write_result
 
-    monkeypatch.setattr(update_shutdown, "REQUEST_FILE", request_file)
-    monkeypatch.setattr(update_shutdown, "RESULT_FILE", result_file)
-    monkeypatch.setattr(update_shutdown, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(update_shutdown, "utc_now", lambda: "2026-06-01T00:00:00Z")
     monkeypatch.setattr(
         update_shutdown,
-        "write_result",
-        lambda *args, **kwargs: _record_write_result(
-            write_result,
-            events,
-            *args,
-            **kwargs,
+        "mount_runtime_share",
+        lambda: events.append("mount"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "run_prepare",
+        lambda context, *, create_postgres_backup: events.append(
+            f"prepare:{context.request_id}:{context.version}"
         ),
     )
+
+    update_shutdown.run_prepare_update_shutdown_for_request(
+        request_id="req-1",
+        version="1.2.3",
+        create_postgres_backup=_postgres_backup_outcome,
+    )
+
+    assert events == ["mount", "prepare:req-1:1.2.3"]
+
+
+def test_run_prepare_records_poweroff_ready_before_poweroff(
+    monkeypatch: Any,
+) -> None:
+    events: list[str] = []
+    context = PrepareUpdateShutdownContext(request_id="req-1", version="1.2.3")
+
     monkeypatch.setattr(
         update_shutdown,
         "collect_guest_observability",
@@ -49,7 +57,12 @@ def test_prepare_update_shutdown_writes_poweroff_ready_phase_before_request(
     monkeypatch.setattr(
         update_shutdown,
         "backup_redis",
-        lambda context: _record_backup(context, events),
+        lambda context: _record_redis_backup(context, events),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "backup_postgres",
+        lambda context, *, create_backup: _record_postgres_backup(context, events),
     )
     monkeypatch.setattr(
         update_shutdown,
@@ -77,58 +90,34 @@ def test_prepare_update_shutdown_writes_poweroff_ready_phase_before_request(
         lambda: events.append("poweroff"),
     )
 
-    update_shutdown.run_prepare_update_shutdown()
+    update_shutdown.run_prepare(
+        context,
+        create_postgres_backup=_postgres_backup_outcome,
+        on_poweroff_ready=lambda ready_context: events.append(
+            f"ready:{ready_context.redis_backup_path}"
+        ),
+    )
 
-    document = json.loads(result_file.read_text(encoding="utf-8"))
-    assert document["schemaVersion"] == 2
-    assert document["status"] == "ready"
-    assert document["shutdownPhase"] == ShutdownPhase.POWEROFF_READY.value
-    assert document["redisBackupPath"] == "/tmp/redis.tar.gz"
-    assert not request_file.exists()
     assert events == [
-        "write:running:starting",
         "observe:shutdown-pre-stop",
         "quiesce",
-        "backup",
-        "write:running:redis-backup",
-        "write:running:guest-services-stop",
+        "redis-backup",
+        "postgres-backup",
         "stop-services",
         "observe:shutdown-post-sync",
-        "write:running:prepared",
         "sync",
-        "write:ready:poweroff-ready",
+        "ready:/tmp/redis.tar.gz",
         "poweroff",
         "observe:shutdown-poweroff-requested",
     ]
 
 
 def test_prepare_update_shutdown_reports_poweroff_request_failure_after_ready_handoff(
-    tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
-    request_file = tmp_path / "prepare-update-shutdown.request"
-    result_file = tmp_path / "prepare-update-shutdown-result.json"
-    request_file.write_text(
-        json.dumps({"requestId": "req-1", "version": "1.2.3"}),
-        encoding="utf-8",
-    )
     events: list[str] = []
-    write_result = update_shutdown.write_result
+    context = PrepareUpdateShutdownContext(request_id="req-1", version="1.2.3")
 
-    monkeypatch.setattr(update_shutdown, "REQUEST_FILE", request_file)
-    monkeypatch.setattr(update_shutdown, "RESULT_FILE", result_file)
-    monkeypatch.setattr(update_shutdown, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(update_shutdown, "utc_now", lambda: "2026-06-01T00:00:00Z")
-    monkeypatch.setattr(
-        update_shutdown,
-        "write_result",
-        lambda *args, **kwargs: _record_write_result(
-            write_result,
-            events,
-            *args,
-            **kwargs,
-        ),
-    )
     monkeypatch.setattr(
         update_shutdown,
         "collect_guest_observability",
@@ -137,7 +126,12 @@ def test_prepare_update_shutdown_reports_poweroff_request_failure_after_ready_ha
     monkeypatch.setattr(
         update_shutdown,
         "backup_redis",
-        lambda context: _record_backup(context, events),
+        lambda context: _record_redis_backup(context, events),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "backup_postgres",
+        lambda context, *, create_backup: _record_postgres_backup(context, events),
     )
     monkeypatch.setattr(
         update_shutdown,
@@ -166,43 +160,24 @@ def test_prepare_update_shutdown_reports_poweroff_request_failure_after_ready_ha
     )
 
     with pytest.raises(update_shutdown.GuestPoweroffRequestError):
-        update_shutdown.run_prepare_update_shutdown()
+        update_shutdown.run_prepare(
+            context,
+            create_postgres_backup=_postgres_backup_outcome,
+            on_poweroff_ready=lambda ready_context: events.append(
+                f"ready:{ready_context.redis_backup_path}"
+            ),
+        )
 
-    document = json.loads(result_file.read_text(encoding="utf-8"))
-    assert document["status"] == "failed"
-    assert document["shutdownPhase"] == ShutdownPhase.POWEROFF_FAILED.value
-    assert "systemctl poweroff failed" in document["message"]
-    assert "write:ready:poweroff-ready" in events
-    assert not request_file.exists()
+    assert "ready:/tmp/redis.tar.gz" in events
+    assert "observe:shutdown-poweroff-requested" not in events
 
 
-def test_prepare_update_shutdown_consumes_request_before_guest_side_effects(
-    tmp_path: Path,
+def test_run_prepare_until_poweroff_ready_stops_before_sync_on_backup_failure(
     monkeypatch: Any,
 ) -> None:
-    request_file = tmp_path / "prepare-update-shutdown.request"
-    result_file = tmp_path / "prepare-update-shutdown-result.json"
-    request_file.write_text(
-        json.dumps({"requestId": "req-1", "version": "1.2.3"}),
-        encoding="utf-8",
-    )
     events: list[str] = []
-    write_result = update_shutdown.write_result
+    context = PrepareUpdateShutdownContext(request_id="req-1", version="1.2.3")
 
-    monkeypatch.setattr(update_shutdown, "REQUEST_FILE", request_file)
-    monkeypatch.setattr(update_shutdown, "RESULT_FILE", result_file)
-    monkeypatch.setattr(update_shutdown, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(update_shutdown, "utc_now", lambda: "2026-06-01T00:00:00Z")
-    monkeypatch.setattr(
-        update_shutdown,
-        "write_result",
-        lambda *args, **kwargs: _record_write_result(
-            write_result,
-            events,
-            *args,
-            **kwargs,
-        ),
-    )
     monkeypatch.setattr(
         update_shutdown,
         "collect_guest_observability",
@@ -211,7 +186,7 @@ def test_prepare_update_shutdown_consumes_request_before_guest_side_effects(
     monkeypatch.setattr(
         update_shutdown,
         "quiesce_shutdown_sidecars",
-        lambda: events.append(f"quiesce:requestExists={request_file.exists()}"),
+        lambda: events.append("quiesce"),
     )
     monkeypatch.setattr(
         update_shutdown,
@@ -220,32 +195,36 @@ def test_prepare_update_shutdown_consumes_request_before_guest_side_effects(
             GuestDependencyError("backup failed", code="redis-backup-failed")
         ),
     )
+    monkeypatch.setattr(
+        update_shutdown,
+        "backup_postgres",
+        lambda context, *, create_backup: events.append("postgres-backup"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "stop_runtime_services",
+        lambda: events.append("stop-services"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "run",
+        lambda command, **kwargs: events.append(":".join(command)),
+    )
 
     with pytest.raises(GuestDependencyError):
-        update_shutdown.run_prepare_update_shutdown()
+        update_shutdown.run_prepare_until_poweroff_ready(
+            context,
+            create_postgres_backup=_postgres_backup_outcome,
+        )
 
-    document = json.loads(result_file.read_text(encoding="utf-8"))
-    assert document["status"] == "failed"
-    assert document["requestId"] == "req-1"
-    assert not request_file.exists()
-    assert events[:3] == [
-        "write:running:starting",
+    assert events == [
         "observe:shutdown-pre-stop",
-        "quiesce:requestExists=False",
+        "quiesce",
     ]
 
 
 def test_prepare_update_shutdown_reports_ordered_stop_failure_details(
-    tmp_path: Path,
-    monkeypatch: Any,
 ) -> None:
-    request_file = tmp_path / "prepare-update-shutdown.request"
-    result_file = tmp_path / "prepare-update-shutdown-result.json"
-    request_file.write_text(
-        json.dumps({"requestId": "req-1", "version": "1.2.3"}),
-        encoding="utf-8",
-    )
-
     stop_error = GuestDependencyError(
         "docker compose stop timed out while stopping app after 100s",
         code="compose-stop-timeout",
@@ -264,46 +243,21 @@ def test_prepare_update_shutdown_reports_ordered_stop_failure_details(
         ],
     }
 
-    monkeypatch.setattr(update_shutdown, "REQUEST_FILE", request_file)
-    monkeypatch.setattr(update_shutdown, "RESULT_FILE", result_file)
-    monkeypatch.setattr(update_shutdown, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(update_shutdown, "utc_now", lambda: "2026-06-01T00:00:00Z")
-    monkeypatch.setattr(update_shutdown, "quiesce_shutdown_sidecars", lambda: None)
-    monkeypatch.setattr(
-        update_shutdown,
-        "backup_redis",
-        lambda context: _record_backup(context, []),
-    )
-    snapshot_path = (
-        "/mnt/tirosh/run/guest-observability/shutdown-failure.latest.json"
-    )
-    monkeypatch.setattr(
-        update_shutdown,
-        "collect_guest_observability",
-        lambda phase: snapshot_path,
-    )
-    monkeypatch.setattr(
-        update_shutdown,
-        "stop_runtime_services",
-        lambda: (_ for _ in ()).throw(stop_error),
-    )
-
-    with pytest.raises(GuestDependencyError):
-        update_shutdown.run_prepare_update_shutdown()
-
-    document = json.loads(result_file.read_text(encoding="utf-8"))
-    assert document["status"] == "failed"
-    assert document["message"] == (
+    assert update_shutdown.shutdown_failure_message(stop_error) == (
         "Guest update shutdown failed at guest-services-stop: "
         "service app did not stop; remaining services: app, redis"
     )
-    assert document["details"]["stopAction"] == "ordered-compose-stop"
-    assert document["details"]["failedService"] == "app"
-    assert document["details"]["remainingServices"] == ["app", "redis"]
-    assert document["details"]["failureSnapshotPath"] == snapshot_path
+    assert update_shutdown.failure_details(stop_error)["stopAction"] == (
+        "ordered-compose-stop"
+    )
+    assert update_shutdown.failure_details(stop_error)["failedService"] == "app"
+    assert update_shutdown.failure_details(stop_error)["remainingServices"] == [
+        "app",
+        "redis",
+    ]
 
 
-def test_quiesce_shutdown_sidecars_stops_dispatchers_and_waits_for_redis_backup(
+def test_quiesce_shutdown_sidecars_stops_runtime_observation_and_container_logs(
     monkeypatch: Any,
 ) -> None:
     events: list[str] = []
@@ -326,17 +280,14 @@ def test_quiesce_shutdown_sidecars_stops_dispatchers_and_waits_for_redis_backup(
     update_shutdown.quiesce_shutdown_sidecars()
 
     assert events == [
-        f"systemctl:stop:{RuntimeService.COMMAND_POLLER.value}",
-        f"state:{RuntimeService.COMMAND_POLLER.value}:inactive",
-        f"systemctl:stop:{RuntimeService.RUNTIME_STATE.value}",
-        f"state:{RuntimeService.RUNTIME_STATE.value}:inactive",
+        f"systemctl:stop:{RuntimeService.RUNTIME_OBSERVATION.value}",
+        f"state:{RuntimeService.RUNTIME_OBSERVATION.value}:inactive",
         f"systemctl:stop:{RuntimeService.CONTAINER_LOGS.value}",
         f"state:{RuntimeService.CONTAINER_LOGS.value}:inactive",
-        f"state:{RuntimeService.REDIS_BACKUP.value}:inactive",
     ]
 
 
-def test_quiesce_shutdown_sidecars_fails_when_sidecar_remains_active(
+def test_quiesce_shutdown_sidecars_fails_when_observation_sidecar_remains_active(
     monkeypatch: Any,
 ) -> None:
     events: list[str] = []
@@ -353,7 +304,7 @@ def test_quiesce_shutdown_sidecars_fails_when_sidecar_remains_active(
         lambda command, **kwargs: _record_service_state(
             events,
             command,
-            {RuntimeService.COMMAND_POLLER.value: "active"},
+            {RuntimeService.RUNTIME_OBSERVATION.value: "active"},
         ),
     )
 
@@ -364,50 +315,8 @@ def test_quiesce_shutdown_sidecars_fails_when_sidecar_remains_active(
         update_shutdown.quiesce_shutdown_sidecars()
 
     assert events == [
-        f"systemctl:stop:{RuntimeService.COMMAND_POLLER.value}",
-        f"state:{RuntimeService.COMMAND_POLLER.value}:active",
-    ]
-
-
-def test_quiesce_shutdown_sidecars_waits_for_existing_redis_backup(
-    monkeypatch: Any,
-) -> None:
-    events: list[str] = []
-
-    monkeypatch.setattr(
-        update_shutdown,
-        "REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS",
-        0.0,
-    )
-    monkeypatch.setattr(
-        update_shutdown,
-        "systemctl",
-        lambda *args, **kwargs: _record_systemctl(events, *args),
-    )
-    monkeypatch.setattr(
-        update_shutdown.subprocess,
-        "run",
-        lambda command, **kwargs: _record_service_state(
-            events,
-            command,
-            {RuntimeService.REDIS_BACKUP.value: "active"},
-        ),
-    )
-
-    with pytest.raises(
-        GuestDependencyError,
-        match="guest systemd unit did not become inactive",
-    ):
-        update_shutdown.quiesce_shutdown_sidecars()
-
-    assert events == [
-        f"systemctl:stop:{RuntimeService.COMMAND_POLLER.value}",
-        f"state:{RuntimeService.COMMAND_POLLER.value}:inactive",
-        f"systemctl:stop:{RuntimeService.RUNTIME_STATE.value}",
-        f"state:{RuntimeService.RUNTIME_STATE.value}:inactive",
-        f"systemctl:stop:{RuntimeService.CONTAINER_LOGS.value}",
-        f"state:{RuntimeService.CONTAINER_LOGS.value}:inactive",
-        f"state:{RuntimeService.REDIS_BACKUP.value}:active",
+        f"systemctl:stop:{RuntimeService.RUNTIME_OBSERVATION.value}",
+        f"state:{RuntimeService.RUNTIME_OBSERVATION.value}:active",
     ]
 
 
@@ -425,24 +334,27 @@ def test_stop_runtime_services_stops_compose_stack(monkeypatch: Any) -> None:
     assert events == ["compose:stop"]
 
 
-def _record_write_result(
-    write_result: Any,
-    events: list[str],
-    *args: Any,
-    **kwargs: Any,
-) -> None:
-    status = args[1]
-    step = kwargs.get("step", "")
-    events.append(f"write:{status.value}:{step}")
-    write_result(*args, **kwargs)
-
-
-def _record_backup(
+def _record_redis_backup(
     context: PrepareUpdateShutdownContext,
     events: list[str],
 ) -> None:
     context.redis_backup_path = "/tmp/redis.tar.gz"
-    events.append("backup")
+    events.append("redis-backup")
+
+
+def _record_postgres_backup(
+    context: PrepareUpdateShutdownContext,
+    events: list[str],
+) -> None:
+    context.postgres_backup_path = "/tmp/postgres.tar.gz"
+    events.append("postgres-backup")
+
+
+def _postgres_backup_outcome() -> PostgresBackupOutcome:
+    return PostgresBackupOutcome(
+        archive=Path("/tmp/postgres.tar.gz"),
+        alembic_revision="revision-1",
+    )
 
 
 def _record_systemctl(

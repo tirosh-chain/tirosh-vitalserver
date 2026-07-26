@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:runtime-console-desktop-artifact-receipt",
+  "title": "RuntimeConsoleDesktopArtifactReceipt",
+  "description": "C71 Runtime Console packager-owned immutable identity for one desktop installer artifact. It is a build result, not proof that the Console or Host product was installed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "artifact",
+    "runtimeConsoleVersion",
+    "localControlBootstrapContract"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "artifact": {
+      "$ref": "#/$defs/RuntimeConsoleDesktopArtifact"
+    },
+    "runtimeConsoleVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-]*$"
+    },
+    "localControlBootstrapContract": {
+      "$ref": "#/$defs/LocalControlBootstrapContract"
+    }
+  },
+  "$defs": {
+    "SafeArtifactFileName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[^/\\\\\u0000]+$",
+      "not": {
+        "enum": [".", ".."]
+      }
+    },
+    "ArtifactKind": {
+      "type": "string",
+      "enum": ["dmg", "nsis-exe", "appimage", "deb"]
+    },
+    "RuntimeConsoleDesktopArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "kind", "fileName", "sha256", "sizeBytes"],
+      "properties": {
+        "platform": {
+          "type": "string",
+          "enum": ["macos", "windows", "linux"]
+        },
+        "kind": {
+          "$ref": "#/$defs/ArtifactKind"
+        },
+        "fileName": {
+          "$ref": "#/$defs/SafeArtifactFileName"
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "platform": { "const": "macos" } }, "required": ["platform"] },
+          "then": { "properties": { "kind": { "const": "dmg" } }, "required": ["kind"] }
+        },
+        {
+          "if": { "properties": { "platform": { "const": "windows" } }, "required": ["platform"] },
+          "then": { "properties": { "kind": { "const": "nsis-exe" } }, "required": ["kind"] }
+        },
+        {
+          "if": { "properties": { "platform": { "const": "linux" } }, "required": ["platform"] },
+          "then": { "properties": { "kind": { "enum": ["appimage", "deb"] } }, "required": ["kind"] }
+        }
+      ]
+    },
+    "LocalControlBootstrapContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractId", "schemaVersion"],
+      "properties": {
+        "contractId": { "const": "C53" },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        }
+      }
+    }
+  }
+}

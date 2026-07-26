@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:clock-quality",
+  "title": "ClockQuality",
+  "description": "A Time Authority-owned clock quality observation. A timestamp alone is not evidence of synchronization.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "node",
+    "state",
+    "observedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "node": {
+      "$ref": "#/$defs/NodeReference"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "configured",
+        "synchronizing",
+        "synchronized",
+        "unsynchronized",
+        "stale",
+        "unsupported",
+        "failed"
+      ]
+    },
+    "source": {
+      "$ref": "#/$defs/TimeSource"
+    },
+    "stratum": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16
+    },
+    "offsetMs": {
+      "type": "number"
+    },
+    "uncertaintyMs": {
+      "type": "number",
+      "minimum": 0
+    },
+    "lastSyncAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "configured",
+              "synchronizing",
+              "synchronized"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "source"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "synchronized"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "source",
+          "stratum",
+          "offsetMs",
+          "uncertaintyMs",
+          "lastSyncAt"
+        ],
+        "not": {
+          "required": [
+            "issue"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "enum": [
+              "unsynchronized",
+              "stale",
+              "unsupported",
+              "failed"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "issue"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "NodeReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "host",
+            "guest",
+            "recorder"
+          ]
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    },
+    "TimeSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "sourceId"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "enum": [
+            "enterprise-ntp",
+            "helper-ntp"
+          ]
+        },
+        "sourceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    }
+  }
+}

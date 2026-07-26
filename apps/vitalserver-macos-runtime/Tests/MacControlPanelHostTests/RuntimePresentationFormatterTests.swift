@@ -113,111 +113,89 @@ final class RuntimePresentationFormatterTests: XCTestCase {
     }
 
     func testStatusDisplayMessageIncludesFailureReasons() {
-        let status = RuntimeStatus(
-            statusMessage: "runtime is degraded",
+        let status = platformState(
             failureReasons: [.hostProxyHTTP("503"), .guestHTTP("000")]
         )
 
         XCTAssertEqual(
             formatter.statusDisplayMessage(status),
-            "runtime is degraded\nFailure reasons: Host proxy HTTP 503 (Restart host proxy service), Guest HTTP 000 (Wait for guest readiness)"
+            "Failure reasons: Host proxy HTTP 503 (Restart host proxy service), Guest HTTP 000 (Wait for guest readiness)"
         )
     }
 
-    func testProgressDisplayMessageUsesTypedStepAndStatus() {
-        let progress = RuntimeProgressDocument(
-            operation: .applyBundle,
-            phase: .running,
-            step: .replaceRootfsBase,
-            stepStatus: .started,
-            message: "replacing rootfs",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-05-23T09:00:00Z"
-        )
-        let status = RuntimeStatus(progress: progress)
-
-        XCTAssertEqual(formatter.progressDisplayMessage(status), "Running: Replace Rootfs Base")
-    }
-
-    func testUpdateOperationDisplayMessageRestoresFileBackedUpdateProgress() {
-        let progress = RuntimeProgressDocument(
-            operation: .applyBundle,
-            phase: .running,
-            step: .startRuntimeServices,
-            stepStatus: .started,
-            message: "starting runtime services",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-05-27T01:36:00Z"
-        )
-        let status = RuntimeStatus(
-            runtimeState: .updating,
-            operation: .applyBundle,
-            progress: progress
+    func testUpdateOperationDisplayMessageUsesOperationStateWhenStatusProgressExists() {
+        let status = platformState(runtimeState: .updating)
+        let operationState = PlatformOperationState(
+            activeOperation: .applyBundle,
+            install: .unavailable()
         )
 
-        XCTAssertTrue(formatter.updateOperationInProgress(status))
-        XCTAssertEqual(formatter.updateOperationDisplayMessage(status), "Running: Start Runtime Services")
+        XCTAssertTrue(formatter.updateOperationInProgress(operationState))
+        XCTAssertEqual(
+            formatter.updateOperationDisplayMessage(status, operationState: operationState),
+            "Apply Bundle in progress"
+        )
     }
 
     func testCompletedUpdateProgressIsNotRestoredAsActive() {
-        let progress = RuntimeProgressDocument(
-            operation: .activateGuestUpdate,
-            phase: .completed,
-            step: nil,
-            stepStatus: nil,
-            message: "completed",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-05-27T01:37:33Z"
-        )
-        let status = RuntimeStatus(
-            runtimeState: .healthy,
-            operation: .activateGuestUpdate,
-            progress: progress
+        let status = platformState(runtimeState: .healthy)
+
+        let operationState = PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable()
         )
 
-        XCTAssertFalse(formatter.updateOperationInProgress(status))
-        XCTAssertNil(formatter.updateOperationDisplayMessage(status))
+        XCTAssertFalse(formatter.updateOperationInProgress(operationState))
+        XCTAssertNil(formatter.updateOperationDisplayMessage(status, operationState: operationState))
     }
 
-    func testActiveOperationTextUsesNonTerminalProgressOperation() {
-        let progress = RuntimeProgressDocument(
-            operation: .install,
-            phase: .running,
-            step: nil,
-            stepStatus: nil,
-            message: "installing",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-06-08T00:00:00Z"
-        )
-        let status = RuntimeStatus(
-            operation: .status,
-            progress: progress
+    func testUpdateOperationDisplayMessageUsesOperationStateResource() {
+        let status = platformState(runtimeState: .healthy)
+        let operationState = PlatformOperationState(
+            activeOperation: .applyBundle,
+            install: .unavailable()
         )
 
-        XCTAssertEqual(formatter.activeOperationText(status), "Install")
+        XCTAssertTrue(formatter.updateOperationInProgress(operationState))
+        XCTAssertEqual(
+            formatter.updateOperationDisplayMessage(status, operationState: operationState),
+            "Apply Bundle in progress"
+        )
     }
 
-    func testActiveOperationTextIgnoresTerminalProgressOperation() {
-        let progress = RuntimeProgressDocument(
-            operation: .install,
-            phase: .completed,
-            step: nil,
-            stepStatus: nil,
-            message: "completed",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-06-08T00:00:00Z"
+    func testUpdateOperationDisplayMessageDoesNotInferFromLegacyStatusOperation() {
+        let status = platformState(
+            runtimeState: .updating
         )
-        let status = RuntimeStatus(
-            operation: .status,
-            progress: progress
+        let operationState = PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable()
         )
 
-        XCTAssertEqual(formatter.activeOperationText(status), "Status")
+        XCTAssertFalse(formatter.updateOperationInProgress(operationState))
+        XCTAssertNil(formatter.updateOperationDisplayMessage(status, operationState: operationState))
+    }
+
+    func testActiveOperationTextUsesOperationStateResource() {
+        let operationState = PlatformOperationState(
+            activeOperation: .applyBundle,
+            install: .unavailable()
+        )
+
+        XCTAssertEqual(formatter.activeOperationText(operationState), "Apply Bundle")
+    }
+
+    func testActiveOperationTextUsesInstallOperationState() {
+        let operationState = PlatformOperationState(
+            activeOperation: nil,
+            install: .loaded(RuntimeInstallStateDocument(
+                state: .stepStarted,
+                mode: .full,
+                updatedAt: "2026-07-08T00:00:00Z"
+            ))
+        )
+
+        XCTAssertEqual(formatter.activeOperationText(operationState), "Unknown")
     }
 
     func testRuntimeStateAndOperationTextUseStandardDisplayVocabulary() {
@@ -262,5 +240,19 @@ final class RuntimePresentationFormatterTests: XCTestCase {
             formatter.systemTimeText("not-a-date", timeZone: TimeZone(secondsFromGMT: 0)!),
             "not-a-date"
         )
+    }
+
+    func testSystemTimeAgeTextReturnsOnlyRelativeAgeForRecorderColumn() {
+        let now = Date(timeIntervalSince1970: 1_779_000_000)
+        let observedAt = ISO8601DateFormatter().string(
+            from: now.addingTimeInterval(-3_600)
+        )
+
+        XCTAssertEqual(
+            formatter.systemTimeAgeText(observedAt, now: now),
+            "1h ago"
+        )
+        XCTAssertEqual(formatter.systemTimeAgeText(nil, now: now), "Unknown")
+        XCTAssertEqual(formatter.systemTimeAgeText("not-a-date", now: now), "not-a-date")
     }
 }

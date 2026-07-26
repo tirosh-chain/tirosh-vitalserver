@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:time-authority",
+  "title": "TimeAuthority",
+  "description": "A node-local Time Authority resource. Each Host or Guest owns only its own NTP profile and ClockQuality observation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "resourceRevision",
+    "node",
+    "spec",
+    "clockQuality",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "resourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "node": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:clock-quality#/$defs/NodeReference"
+    },
+    "spec": {
+      "$ref": "#/$defs/TimeAuthoritySpec"
+    },
+    "clockQuality": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:clock-quality"
+    },
+    "createdAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "updatedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "$defs": {
+    "TimeAuthoritySpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "source"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "enum": [
+            "enterprise-ntp",
+            "helper-ntp"
+          ]
+        },
+        "source": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:clock-quality#/$defs/TimeSource"
+        }
+      }
+    }
+  }
+}

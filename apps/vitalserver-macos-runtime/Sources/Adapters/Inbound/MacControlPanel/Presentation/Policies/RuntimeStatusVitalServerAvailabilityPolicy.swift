@@ -27,72 +27,60 @@ public struct RuntimeStatusVitalServerAvailabilityValue: Equatable, Sendable {
 }
 
 public struct RuntimeStatusVitalServerAvailabilityPolicy {
-    private let appComposeService = "app"
     private let reachabilityPolicy = RuntimeStatusReachabilityPolicy()
     private let labelPolicy: RuntimeStatusReachabilityLabelPolicy
-    private let composeServiceValuePolicy: RuntimeStatusComposeServiceValuePolicy
     private let vocabulary: any RuntimeStatusVitalServerAvailabilityVocabulary
 
     public init(vocabulary: any RuntimeStatusVitalServerAvailabilityVocabulary) {
         self.vocabulary = vocabulary
         self.labelPolicy = RuntimeStatusReachabilityLabelPolicy(vocabulary: vocabulary)
-        self.composeServiceValuePolicy = RuntimeStatusComposeServiceValuePolicy(
-            vocabulary: RuntimeStatusVitalServerAvailabilityComposeVocabulary()
-        )
     }
 
     public func availability(
-        status: RuntimeStatus,
-        observation: RuntimeContainerObservation?,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         now: Date
     ) -> RuntimeStatusVitalServerAvailabilityValue {
         let text: String
-        if RuntimeActiveOperationPolicy.isInstallInProgress(status) {
+        if let operation = operationState.operationForPresentation,
+           RuntimeActiveOperationPolicy.isInstallOperation(operation) {
             text = vocabulary.installingText
         } else if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
             text = vocabulary.initializingText
-        } else if RuntimeActiveOperationPolicy.isRecoveryInProgress(status) {
+        } else if let operation = operationState.operationForPresentation,
+                  RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation) {
             text = vocabulary.recoveringText
-        } else if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+        } else if let operation = operationState.operationForPresentation,
+                  RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation) {
             text = vocabulary.updatingText
-        } else if !status.effectiveRuntimeInstallationState.isExecutable {
+        } else if !status.runtimeInstallationState.isExecutable {
             text = vocabulary.unavailableText
         } else {
-            text = labelPolicy.serviceReachabilityLabel(status.hostProxyHTTP)
+            text = labelPolicy.serviceReachabilityLabel(status.publicProxyHTTP)
         }
         return RuntimeStatusVitalServerAvailabilityValue(
             text: text,
-            severity: availabilitySeverity(status),
-            uptimeText: composeServiceValuePolicy.uptimeText(
-                service: appComposeService,
-                observation: observation,
-                now: now
-            )
+            severity: availabilitySeverity(status, operationState: operationState),
+            uptimeText: nil
         )
     }
 
-    private func availabilitySeverity(_ status: RuntimeStatus) -> RuntimeStatusReachabilityPolicy.Severity {
-        if RuntimeActiveOperationPolicy.isInstallInProgress(status) ||
-            RuntimeActiveOperationPolicy.isInitializationInProgress(status) ||
-            RuntimeActiveOperationPolicy.isRecoveryInProgress(status) ||
-            RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+    private func availabilitySeverity(
+        _ status: PlatformState,
+        operationState: PlatformOperationState
+    ) -> RuntimeStatusReachabilityPolicy.Severity {
+        if let operation = operationState.operationForPresentation,
+           RuntimeActiveOperationPolicy.isInstallOperation(operation) ||
+            RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation) ||
+            RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation) {
             return .warning
         }
-        if !status.effectiveRuntimeInstallationState.isExecutable {
+        if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
+            return .warning
+        }
+        if !status.runtimeInstallationState.isExecutable {
             return .critical
         }
-        return reachabilityPolicy.httpSeverity(status.hostProxyHTTP)
-    }
-}
-
-private struct RuntimeStatusVitalServerAvailabilityComposeVocabulary: RuntimeStatusComposeServiceValueVocabulary {
-    var notReportedText: String { "" }
-
-    func containerHealthText(_ health: String) -> String {
-        health
-    }
-
-    func containerStateText(_ state: String) -> String {
-        state
+        return reachabilityPolicy.httpSeverity(status.publicProxyHTTP)
     }
 }

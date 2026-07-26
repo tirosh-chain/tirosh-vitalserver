@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-trust-store",
+  "title": "HostUpdateTrustStore",
+  "description": "C58 release-process-owned public verification keys for C25 update bootstrap envelopes. It contains public keys only; private signing material never enters a Host package or Host runtime state store.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "keys"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/TrustedUpdateKey" }
+    }
+  },
+  "$defs": {
+    "TrustedUpdateKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "algorithm", "publicKey"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "algorithm": { "const": "ed25519" },
+        "publicKey": {
+          "type": "string",
+          "minLength": 44,
+          "maxLength": 44,
+          "pattern": "^[A-Za-z0-9+/]{43}=$"
+        }
+      }
+    }
+  }
+}

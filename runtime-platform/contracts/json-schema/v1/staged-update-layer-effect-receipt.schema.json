@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:staged-update-layer-effect-receipt",
+  "title": "StagedUpdateLayerEffectReceipt",
+  "description": "C55 typed outcome written by one C26-declared layer effect executor. The staged next updater verifies correlation and aggregates these receipts into C28; a process exit, log, or missing receipt is not an outcome.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "updateId", "layer", "effectExecutorId", "operation", "artifactSha256", "state", "observedAt", "evidence"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "layer": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/UpdateLayer" },
+    "effectExecutorId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "operation": { "type": "string", "enum": ["apply", "rollback"] },
+    "artifactSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "state": { "type": "string", "enum": ["succeeded", "failed", "unavailable", "unsupported"] },
+    "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "evidence": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference" },
+    "issue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
+      "then": { "not": { "required": ["issue"] } },
+      "else": { "required": ["issue"] }
+    }
+  ]
+}

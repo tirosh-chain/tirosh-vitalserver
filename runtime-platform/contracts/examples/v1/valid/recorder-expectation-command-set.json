@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "recorder-expectation-set-1",
+  "expectedResourceRevision": 0,
+  "action": "set",
+  "expectationState": "expected",
+  "supportState": "unsupported",
+  "source": "deployment-profile",
+  "reason": "Certified legacy Recorder does not publish v1 health observations",
+  "evidence": {
+    "profileId": "legacy-recorder-v1"
+  }
+}

@@ -1,5 +1,15 @@
-import { useRuntimeOverview } from "@/console/hooks";
-import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import {
+  usePlatformState,
+  useRuntimePlatformSettings,
+  useRuntimeProductSettings,
+  useRuntimeStack,
+  useVitalDBRecorders
+} from "@/console/hooks";
+import type {
+  PlatformState,
+  RuntimeProductSettings,
+  VitalDBRecorders
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import {
   formatHTTPStatus,
@@ -16,7 +26,8 @@ import {
 } from "@/domain/runtime-control/formatting/time";
 import {
   formatVitalRecorderConnectionMetric,
-  formatVitalRecorderObservationMetric
+  formatVitalRecorderObservationMetric,
+  vitalRecorderSummaryFromHistory
 } from "@/domain/runtime-control/formatting/vitalRecorder";
 import { formatRecorderIngressStatusReadState } from "@/domain/runtime-control/formatting/recorderIngress";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
@@ -25,10 +36,11 @@ import { KeyValueRows } from "@/components/KeyValueRows";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 
-type RuntimeStatus = NonNullable<RuntimeControlOverview["status"]>;
-type RuntimeContainerObservation = NonNullable<RuntimeStatus["containerObservation"]>;
+type RuntimeRecorderIngressStatusRead = NonNullable<
+  VitalDBRecorders["recorderIngressStatusRead"]
+>;
 type RuntimeRecorderIngressStatus = NonNullable<
-  RuntimeContainerObservation["recorderIngressStatus"]
+  RuntimeRecorderIngressStatusRead["document"]
 >;
 type RuntimeRecorderIngressSpool = RuntimeRecorderIngressStatus["spool"];
 type RuntimeRecorderIngressReplay = RuntimeRecorderIngressStatus["replay"];
@@ -40,34 +52,53 @@ type RuntimeRecorderIngressFailure = {
 };
 
 export function StatusPage() {
-  const overviewQuery = useRuntimeOverview();
+  const platformStateQuery = usePlatformState();
 
-  if (overviewQuery.isPending) {
-    return <Panel title="Status">Loading runtime overview...</Panel>;
+  if (platformStateQuery.isPending) {
+    return <Panel title="Status">Loading platform state...</Panel>;
   }
 
-  if (overviewQuery.isError) {
+  if (platformStateQuery.isError) {
     return (
       <Panel title="Status">
-        <ErrorState error={overviewQuery.error} />
+        <ErrorState error={platformStateQuery.error} />
       </Panel>
     );
   }
 
-  return <StatusOverview overview={overviewQuery.data} />;
+  return <StatusOverview platformState={platformStateQuery.data} />;
 }
 
-function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
-  const status = overview.status;
-  const state = status?.runtimeState;
+function StatusOverview({
+  platformState
+}: {
+  platformState: PlatformState;
+}) {
+  const status = platformState;
+  const runtimeStackQuery = useRuntimeStack();
+  const runtimeStack = runtimeStackQuery.data;
+  const state = status?.platformHealth;
   const stats = status?.dataDirectoryStats;
-  const containerObservation = status?.containerObservation;
-  const recorderIngressStatus = containerObservation?.recorderIngressStatus;
-  const vitalRecorder = overview.vitalRecorder;
+  const recordersQuery = useVitalDBRecorders();
+  const platformSettingsQuery = useRuntimePlatformSettings();
+  const platformSettingsRead = platformSettingsQuery.data;
+  const runtimeSettingsQuery = useRuntimeProductSettings();
+  const runtimeSettings =
+    runtimeSettingsQuery.data?.state === "loaded"
+      ? runtimeSettingsQuery.data.settings ?? undefined
+      : undefined;
+  const recorderIngressStatusRead =
+    recordersQuery.data?.recorderIngressStatusRead ?? null;
+  const recorderIngressStatus = recorderIngressStatusRead?.document ?? null;
+  const vitalRecorder = vitalRecorderSummaryFromHistory(recordersQuery.data);
   const browserHostname = currentBrowserHostname();
-  const vitalServerURL = advertisedVitalServerURL(overview, browserHostname);
-  const remoteConsoleURL = advertisedRemoteConsoleURL(overview, browserHostname);
+  const vitalServerURL = advertisedVitalServerURL(runtimeSettings, browserHostname);
+  const remoteConsoleURL = advertisedRemoteConsoleURL(runtimeSettings, browserHostname);
   const recorderIngressDetailRows = recorderIngressDetails(recorderIngressStatus);
+  const dataDirectory = dataDirectoryPresentation(
+    platformSettingsQuery,
+    platformSettingsRead
+  );
 
   return (
     <div className="page-stack">
@@ -75,31 +106,13 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
         <KeyValueRows
           rows={[
             {
-              label: "Overall health",
+              label: "Platform health",
               value: (
                 <StatusBadge tone={runtimeStateTone(state)}>
                   {formatRuntimeState(state)}
                 </StatusBadge>
               )
             },
-            ...(status?.statusDocumentError
-              ? [
-                  {
-                    label: "Status document",
-                    value: "Read failed",
-                    detail: status.statusDocumentError
-                  }
-                ]
-              : []),
-            ...(status?.guestRuntimeStateError
-              ? [
-                  {
-                    label: "Guest runtime state",
-                    value: "Read failed",
-                    detail: status.guestRuntimeStateError
-                  }
-                ]
-              : []),
             {
               label: "VitalServer",
               value: vitalServerURL ? (
@@ -110,8 +123,8 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                 NOT_REPORTED
               ),
               detail: serviceStatusDetail(
-                status?.hostProxyHTTP,
-                status?.startedAt
+                status?.publicProxyHTTP,
+                status?.platformAPIStartedAt
               )
             },
             {
@@ -124,16 +137,19 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
                 NOT_REPORTED
               ),
               detail: serviceStatusDetail(
-                status?.runtimeControlHTTP,
-                status?.runtimeControlStartedAt
+                status?.platformAPIHTTP,
+                status?.platformAPIStartedAt
               )
             },
             {
               label: "Data directory",
-              value: overview.settings?.vitalFilesDirectory ?? NOT_REPORTED,
-              detail: formatDataDirectoryStats(
-                stats,
-                status?.dataDirectoryStatsError
+              value: dataDirectory.value,
+              detail: joinDetails(
+                dataDirectory.detail,
+                formatDataDirectoryStats(
+                  stats,
+                  status?.dataDirectoryStatsError
+                )
               )
             },
             {
@@ -153,7 +169,7 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             },
             {
               label: "Recorder ingress queue",
-              value: recorderIngressQueueStatus(containerObservation)
+              value: recorderIngressQueueStatus(recorderIngressStatusRead)
             },
             {
               label: "Known recorders",
@@ -206,34 +222,28 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             {
               label: "CPU",
               value:
-                status?.cpuUsagePercent === null ||
-                status?.cpuUsagePercent === undefined
+                runtimeStack?.cpuUsagePercent === null ||
+                runtimeStack?.cpuUsagePercent === undefined
                   ? NOT_REPORTED
-                  : `${Math.round(status.cpuUsagePercent)}%`
+                  : `${Math.round(runtimeStack.cpuUsagePercent)}%`
             },
             {
               label: "Memory available to VM",
-              value: formatResourceUsage(status?.memory)
-            },
-            {
-              label: "VitalServer memory",
-              value: formatContainerMemory(containerObservation, "app")
-            },
-            {
-              label: "Recorder ingress memory",
-              value: formatContainerMemory(containerObservation, "recorder-ingress")
-            },
-            {
-              label: "Redis memory",
-              value: formatContainerMemory(containerObservation, "redis")
+              value: formatResourceUsage(runtimeStack?.memory)
             },
             {
               label: "VM disk",
-              value: formatResourceUsage(status?.systemDisk)
+              value: formatResourceUsage(runtimeStack?.systemDisk)
             },
             {
               label: "Data storage",
               value: formatResourceUsage(status?.dataStorage)
+            },
+            {
+              label: "Runtime stack resource",
+              value: runtimeStackQuery.isError
+                ? runtimeStackQuery.error.message
+                : runtimeStack?.state ?? NOT_REPORTED
             }
           ]}
         />
@@ -242,44 +252,68 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
   );
 }
 
+function dataDirectoryPresentation(
+  query: ReturnType<typeof useRuntimePlatformSettings>,
+  read: ReturnType<typeof useRuntimePlatformSettings>["data"]
+): { value: string; detail?: string } {
+  if (query.isError) {
+    return { value: "Read failed", detail: query.error.message };
+  }
+  if (!read) {
+    return { value: NOT_REPORTED };
+  }
+  if (read.state === "failed") {
+    return { value: "Read failed", detail: read.readError ?? undefined };
+  }
+  if (read.state === "unavailable") {
+    return { value: "Unavailable", detail: read.readError ?? undefined };
+  }
+  if (!read.settings) {
+    return {
+      value: "Invalid settings state",
+      detail: "Platform settings are loaded without a settings document."
+    };
+  }
+  return { value: read.settings.vitalFilesDirectory };
+}
+
+function joinDetails(...details: Array<string | undefined>): string | undefined {
+  const values = details.filter((value): value is string => Boolean(value));
+  return values.length > 0 ? values.join(" · ") : undefined;
+}
+
 function advertisedVitalServerURL(
-  overview: RuntimeControlOverview,
+  settings: RuntimeProductSettings | undefined,
   browserHostname: string | undefined
 ): string | null {
-  const advertised = overview.settings?.vitalServerURL?.trim();
+  const advertised = settings?.vitalServerURL?.trim();
   if (advertised) {
     return advertised;
   }
-  if (!overview.settings) {
+  if (!settings) {
     return null;
   }
-  if (!overview.settings.publicHost.trim()) {
+  if (!settings.publicHost.trim()) {
     return sameHostRuntimeURL({
       hostname: browserHostname,
-      port: overview.settings.publicPort
+      port: settings.publicPort
     });
   }
   return runtimeURL({
-    host: overview.settings.publicHost,
-    port: overview.settings.publicPort
+    host: settings.publicHost,
+    port: settings.publicPort
   });
 }
 
 function advertisedRemoteConsoleURL(
-  overview: RuntimeControlOverview,
-  browserHostname: string | undefined
+  settings: RuntimeProductSettings | undefined,
+  _browserHostname: string | undefined
 ): string | null {
-  const advertised = overview.settings?.remoteConsoleURL?.trim();
+  const advertised = settings?.remoteConsoleURL?.trim();
   if (advertised) {
     return advertised;
   }
-  if (typeof overview.settings?.runtimeControlPort !== "number") {
-    return null;
-  }
-  return sameHostRuntimeURL({
-    hostname: browserHostname,
-    port: overview.settings.runtimeControlPort
-  });
+  return null;
 }
 
 function currentBrowserHostname(): string | undefined {
@@ -409,15 +443,17 @@ function recorderIngressDetails(status: RuntimeRecorderIngressStatus | null | un
 }
 
 export function recorderIngressQueueStatus(
-  observation: RuntimeContainerObservation | null | undefined
+  read: RuntimeRecorderIngressStatusRead | null | undefined
 ): string {
-  if (!observation) {
+  if (!read) {
     return NOT_REPORTED;
   }
-  if (observation.recorderIngressStatusReadState !== "loaded") {
-    return formatRecorderIngressStatusReadState(observation.recorderIngressStatusReadState);
+  if (read.readState !== "loaded") {
+    return formatRecorderIngressStatusReadState(
+      read.readState
+    );
   }
-  const status = observation.recorderIngressStatus;
+  const status = read.document;
   if (!status) {
     return NOT_REPORTED;
   }
@@ -547,8 +583,8 @@ function formatRecorderIngressRawArchiveAutoExport(
   if (autoExport.finalizable === true) {
     parts.push("finalizable");
   }
-  if (autoExport.uploadedJobs !== null && autoExport.uploadedJobs !== undefined) {
-    parts.push(`${autoExport.uploadedJobs} uploaded`);
+  if (autoExport.exportedJobs !== null && autoExport.exportedJobs !== undefined) {
+    parts.push(`${autoExport.exportedJobs} exported`);
   }
   if (autoExport.failedJobs !== null && autoExport.failedJobs !== undefined) {
     parts.push(`${autoExport.failedJobs} failed`);
@@ -619,32 +655,6 @@ function formatRecorderIngressFailure(
     return `${failure.reason}: ${failure.message}`;
   }
   return failure.reason ?? failure.message ?? null;
-}
-
-function formatContainerMemory(
-  observation: RuntimeContainerObservation | null | undefined,
-  service: string
-): string {
-  const container = observation?.composeServices.find(
-    (candidate) => candidate.service === service
-  );
-  if (!container) {
-    return NOT_REPORTED;
-  }
-  if (
-    container.memoryUsedBytes !== null &&
-    container.memoryUsedBytes !== undefined &&
-    container.memoryLimitBytes !== null &&
-    container.memoryLimitBytes !== undefined
-  ) {
-    return `${formatBytes(container.memoryUsedBytes)} / ${formatBytes(
-      container.memoryLimitBytes
-    )}`;
-  }
-  if (container.memoryUsedBytes !== null && container.memoryUsedBytes !== undefined) {
-    return `${formatBytes(container.memoryUsedBytes)} / unknown limit`;
-  }
-  return NOT_REPORTED;
 }
 
 function formatDurationSeconds(value: number | null | undefined): string {

@@ -91,8 +91,8 @@ public struct RuntimeInstallSettings: Equatable, Sendable {
         self.sshAuthorizedKeys = []
         self.vitalServerURL = Self.defaultVitalServerURL(proxyPort: defaults.proxyPort)
         self.remoteConsoleURL = Self.defaultRemoteConsoleURL(port: defaults.remoteConsolePort)
-        self.publicHost = ""
-        self.publicPort = defaults.publicPort
+        self.publicHost = "127.0.0.1"
+        self.publicPort = defaults.proxyPort
         self.startAfterInstall = true
         self.startOnBoot = true
         self.preventSystemSleep = true

@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:macos-release-package-assembly-declaration",
+  "title": "MacOSReleasePackageAssemblyDeclaration",
+  "description": "C47 Release process desired input for one macOS product-package assembly. It selects the already-declared C41 Guest input assembly, Host artifacts including one user-visible operator application bundle, deployment documents, signing inputs, PKG output, package verification command, and a new C47 receipt destination. It does not prove that a package exists, that it installed, or that a Guest started.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "assemblyId",
+    "releaseDeliveryPlan",
+    "guestArtifactCompilationInputAssembly",
+    "guestArtifactCompilation",
+    "hostArtifacts",
+    "deploymentDocuments",
+    "macOSPackage",
+    "macOSPackageVerification",
+    "assemblyReceipt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "assemblyId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "releaseDeliveryPlan": {
+      "$ref": "#/$defs/ReleaseDeliveryPlanSelection"
+    },
+    "guestArtifactCompilationInputAssembly": {
+      "$ref": "#/$defs/GuestArtifactCompilationInputAssemblyExecution"
+    },
+    "guestArtifactCompilation": {
+      "$ref": "#/$defs/GuestArtifactCompilationExecution"
+    },
+    "hostArtifacts": {
+      "$ref": "#/$defs/HostArtifacts"
+    },
+    "deploymentDocuments": {
+      "$ref": "#/$defs/DeploymentDocuments"
+    },
+    "macOSPackage": {
+      "$ref": "#/$defs/MacOSPackageComposition"
+    },
+    "macOSPackageVerification": {
+      "$ref": "#/$defs/MacOSPackageVerification"
+    },
+    "assemblyReceipt": {
+      "$ref": "#/$defs/AssemblyReceiptDestination"
+    }
+  },
+  "$defs": {
+    "AbsoluteHostPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/"
+    },
+    "AbsoluteMacOSPayloadPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "pattern": "^/"
+    },
+    "ReleaseDeliveryPlanSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "documentAbsolutePath",
+        "id"
+      ],
+      "properties": {
+        "documentAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    },
+    "GuestArtifactCompilationInputAssemblyExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "declarationAbsolutePath",
+        "assembledInputRootAbsolutePath"
+      ],
+      "properties": {
+        "declarationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "assembledInputRootAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        }
+      }
+    },
+    "GuestArtifactCompilationExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outputDirectoryAbsolutePath",
+        "builderTimeoutSeconds"
+      ],
+      "properties": {
+        "outputDirectoryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "builderTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        }
+      }
+    },
+    "HostArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostAgentBinaryAbsolutePath",
+        "hostEdgeProxyBinaryAbsolutePath",
+        "hostInstallationManagerBinaryAbsolutePath",
+        "hostUpdateHandoffSupervisorBinaryAbsolutePath",
+        "platformctlBinaryAbsolutePath",
+        "macOSVirtualMachineSupervisorBinaryAbsolutePath",
+        "operatorApplicationBundleAbsolutePath",
+        "guestProductProcessSupervisorArtifactAbsolutePath"
+      ],
+      "properties": {
+        "hostAgentBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostEdgeProxyBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostInstallationManagerBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostUpdateHandoffSupervisorBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "platformctlBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "macOSVirtualMachineSupervisorBinaryAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "operatorApplicationBundleAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "guestProductProcessSupervisorArtifactAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        }
+      }
+    },
+    "DeploymentDocuments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostAgentDeploymentConfigurationAbsolutePath",
+        "operatorInterfaceBootstrapConfigurationAbsolutePath",
+        "hostEdgeProxyDeploymentConfigurationAbsolutePath",
+        "hostUpdateHandoffSupervisorConfigurationAbsolutePath",
+        "hostUpdateTrustStoreAbsolutePath",
+        "macOSVirtualMachineConfigurationAbsolutePath",
+        "guestProductProcessDeploymentConfigurationAbsolutePath",
+        "guestProductServiceManagerDeploymentConfigurationAbsolutePath",
+        "guestProductBootstrapConfigurationAbsolutePath",
+        "guestProductVitalServerTopologyDeploymentAbsolutePath"
+      ],
+      "properties": {
+        "hostAgentDeploymentConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "operatorInterfaceBootstrapConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostEdgeProxyDeploymentConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostUpdateHandoffSupervisorConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "hostUpdateTrustStoreAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "macOSVirtualMachineConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "guestProductProcessDeploymentConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "guestProductServiceManagerDeploymentConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "guestProductBootstrapConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "guestProductVitalServerTopologyDeploymentAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "externalVitalServerDeliveryConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "guestBundledUpstreamImageSetManagerConfigurationAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        }
+      }
+    },
+    "MacOSPackageComposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payloadBasePath",
+        "outputPackageAbsolutePath",
+        "pkgbuildExecutableAbsolutePath",
+        "installerPackageSigning",
+        "virtualMachineSupervisorCodeSigning"
+      ],
+      "properties": {
+        "payloadBasePath": {
+          "$ref": "#/$defs/AbsoluteMacOSPayloadPath"
+        },
+        "outputPackageAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "pkgbuildExecutableAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "installerPackageSigning": {
+          "$ref": "#/$defs/MacOSInstallerPackageSigning"
+        },
+        "virtualMachineSupervisorCodeSigning": {
+          "$ref": "#/$defs/VirtualMachineSupervisorCodeSigning"
+        }
+      }
+    },
+    "MacOSInstallerPackageSigning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "unsigned",
+            "developer-id"
+          ]
+        },
+        "identity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "productsignExecutableAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "developer-id"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "identity",
+              "productsignExecutableAbsolutePath"
+            ],
+            "properties": {
+              "identity": {
+                "type": "string",
+                "pattern": "^Developer ID Installer: .+$"
+              }
+            }
+          },
+          "else": {
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "identity"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "productsignExecutableAbsolutePath"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "VirtualMachineSupervisorCodeSigning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "unsigned",
+            "ad-hoc",
+            "developer-id"
+          ]
+        },
+        "identity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "codesignExecutableAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        },
+        "virtualizationEntitlementsAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "developer-id"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "identity",
+              "codesignExecutableAbsolutePath",
+              "virtualizationEntitlementsAbsolutePath"
+            ],
+            "properties": {
+              "identity": {
+                "type": "string",
+                "pattern": "^Developer ID Application: .+$"
+              }
+            }
+          },
+          "else": {
+            "if": {
+              "properties": {
+                "mode": {
+                  "const": "ad-hoc"
+                }
+              },
+              "required": [
+                "mode"
+              ]
+            },
+            "then": {
+              "required": [
+                "codesignExecutableAbsolutePath",
+                "virtualizationEntitlementsAbsolutePath"
+              ],
+              "not": {
+                "required": [
+                  "identity"
+                ]
+              }
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "identity"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "codesignExecutableAbsolutePath"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "virtualizationEntitlementsAbsolutePath"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "MacOSPackageVerification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pkgutilExecutableAbsolutePath"
+      ],
+      "properties": {
+        "pkgutilExecutableAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        }
+      }
+    },
+    "AssemblyReceiptDestination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outputAbsolutePath"
+      ],
+      "properties": {
+        "outputAbsolutePath": {
+          "$ref": "#/$defs/AbsoluteHostPath"
+        }
+      }
+    }
+  }
+}

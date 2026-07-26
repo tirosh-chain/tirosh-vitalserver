@@ -43,7 +43,8 @@ tail -n 200 "/private/tmp/tirosh-vitalserver-manager-command.log"
 tail -n 200 "/Library/Application Support/VitalServerHelper/vm/data/run/guest-request-file-poller.log"
 ls -l "/Library/Application Support/VitalServerHelper/vm/data/run/prepare-update-shutdown-result.json"
 ls -l "/Library/Application Support/VitalServerHelper/vm/data/run/prepare-update-shutdown.log"
-cat "/Library/Application Support/VitalServerHelper/status/runtime-operation-lease.json"
+curl -fsS -H "X-Runtime-Control-Token: ${RUNTIME_CONTROL_TOKEN}" \
+  "http://127.0.0.1:${RUNTIME_CONTROL_PORT:-18321}/platform/operations" | jq .
 tail -n 200 "/Library/Application Support/VitalServerHelper/logs/runtime/launchd.out.log"
 ```
 
@@ -51,14 +52,14 @@ tail -n 200 "/Library/Application Support/VitalServerHelper/logs/runtime/launchd
 
 - `guest-request-file-poller.log`에 같은 request가 반복 schedule되는지
 - `prepare-update-shutdown-result.json`이 `failed`인지, missing인지
-- operation lease의 `expiresAt`이 있는지
+- Runtime Control operation-state에 active operation lease와 `expiresAt`이 있는지
 - launchd log의 kernel panic이 timeout 이후 rollback/stop 시점인지
 
 ## Actions
 
 최신 runtime에서는 poller가 prepare-update-shutdown unit failure 또는 dispatch failure를 `prepare-update-shutdown-result.json`에 `status=failed`로 기록합니다. Host는 이 명시 실패를 받으면 timeout까지 기다리지 않고 update 실패로 전환합니다.
 
-이미 이전 버전에서 이 상태가 발생한 설치본은 먼저 update를 반복하지 않습니다. runtime operation lease와 runtime status를 확인하고, VM process와 launchd state가 남아 있으면 clean uninstall 또는 VM disk repair 절차 중 데이터 보존 요구에 맞는 쪽을 선택합니다.
+이미 이전 버전에서 이 상태가 발생한 설치본은 먼저 update를 반복하지 않습니다. Runtime Control operation-state와 runtime status를 확인하고, VM process와 launchd state가 남아 있으면 clean uninstall 또는 VM disk repair 절차 중 데이터 보존 요구에 맞는 쪽을 선택합니다.
 
 ## Prevention
 

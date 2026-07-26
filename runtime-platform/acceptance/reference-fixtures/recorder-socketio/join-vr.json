@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v1",
+  "fixtureKind": "socketio-frame-observation",
+  "protocol": {
+    "family": "socket.io",
+    "eventName": "join_vr",
+    "framePrefix": "42",
+    "packetKind": "event"
+  },
+  "sanitizedFrame": {
+    "shape": "42[\"join_vr\",\"<recorder-code>\"]",
+    "rawFrameRetained": false
+  },
+  "expectedFact": {
+    "recorderCodeObserved": true,
+    "sessionJoined": true
+  }
+}

@@ -30,6 +30,8 @@ def docker_image_bundle_build_plan(
         platform=platform or docker_config.platform,
         images=docker_config.images,
         app_dockerfile=docker_config.app_dockerfile,
+        postgres_migrator_image=docker_config.postgres_migrator_image,
+        postgres_migrator_dockerfile=docker_config.postgres_migrator_dockerfile,
         recorder_ingress_image=docker_config.recorder_ingress_image,
         recorder_ingress_dockerfile=docker_config.recorder_ingress_dockerfile,
         recorder_recovery_image=docker_config.recorder_recovery_image,
@@ -38,8 +40,8 @@ def docker_image_bundle_build_plan(
         vitaldb_observer_dockerfile=docker_config.vitaldb_observer_dockerfile,
         redis_relay_image=docker_config.redis_relay_image,
         redis_relay_dockerfile=docker_config.redis_relay_dockerfile,
-        testkit_image=docker_config.testkit_image,
-        testkit_dockerfile=docker_config.testkit_dockerfile,
+        lab_image=docker_config.lab_image,
+        lab_dockerfile=docker_config.lab_dockerfile,
     )
     return DockerImageBundleBuildPlan(
         image_plan=image_plan,

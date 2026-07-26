@@ -1,0 +1,35 @@
+# Local editor and OS metadata
+.DS_Store
+._*
+.git/
+.idea/
+.vscode/
+
+# Local environments and caches
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.tox/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+node_modules/
+
+# Build artifacts
+.tmp/
+tmp/
+dist/
+site/
+.build/
+apps/vitalserver-macos-runtime/.build-runtime-check/
+apps/vitalserver-runtime-pwa/dist/
+apps/vitalserver-lab/tests/
+
+# Private recorder data and local samples
+*.vital
+data/
+packages/vitalserver-testkit/src/tirosh_vitalserver/testkit/fixtures/
+
+# Logs
+*.log

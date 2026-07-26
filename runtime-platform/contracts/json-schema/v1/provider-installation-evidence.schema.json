@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:provider-installation-evidence",
+  "title": "ProviderInstallationEvidence",
+  "description": "Platform-provider-owned evidence for the selected VM and Host service integration. It reports component facts independently and is not an installation-success inference by Host or UI.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "providerKind",
+    "providerId",
+    "hostPlatform",
+    "observedAt",
+    "installation",
+    "virtualMachine",
+    "service",
+    "capabilities"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "providerKind": {
+      "type": "string",
+      "enum": [
+        "macos-virtualization",
+        "windows-hyperv-scm",
+        "linux-kvm-libvirt-systemd"
+      ]
+    },
+    "providerId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "hostPlatform": {
+      "type": "string",
+      "enum": [
+        "macos",
+        "windows",
+        "linux",
+        "unknown"
+      ]
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "installation": {
+      "$ref": "#/$defs/InstallationObservation"
+    },
+    "virtualMachine": {
+      "$ref": "#/$defs/ComponentObservation"
+    },
+    "service": {
+      "$ref": "#/$defs/ServiceObservation"
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "$ref": "#/$defs/CapabilityObservation"
+      }
+    }
+  },
+  "$defs": {
+    "InstallationObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "installed",
+            "unavailable",
+            "failed"
+          ]
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ComponentObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "running",
+            "stopped",
+            "unavailable",
+            "failed"
+          ]
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ServiceObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manager",
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "manager": {
+          "type": "string",
+          "enum": [
+            "launchd",
+            "windows-scm",
+            "systemd"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "running",
+            "stopped",
+            "unavailable",
+            "failed"
+          ]
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "CapabilityObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": [
+            "guest-vm-lifecycle",
+            "host-service-lifecycle"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "available",
+            "unavailable",
+            "failed",
+            "unsupported"
+          ]
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed",
+                  "unsupported"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -15,7 +15,7 @@ final class FreshInstallPreflightUseCaseTests: XCTestCase {
                 [.absent(path: "/usr/local/bin/vitalserver-vm")]
             },
             serviceStates: {
-                RuntimeManagedService.stopOrder.map {
+                RuntimeManagedService.uninstallOrder.map {
                     RuntimeFreshInstallServiceState(label: $0.label, state: .notLoaded)
                 }
             },
@@ -48,7 +48,7 @@ final class FreshInstallPreflightUseCaseTests: XCTestCase {
                 [.absent(path: "/usr/local/bin/vitalserver-vm")]
             },
             serviceStates: {
-                RuntimeManagedService.stopOrder.map {
+                RuntimeManagedService.uninstallOrder.map {
                     RuntimeFreshInstallServiceState(label: $0.label, state: .notLoaded)
                 }
             },
@@ -80,7 +80,7 @@ final class FreshInstallPreflightUseCaseTests: XCTestCase {
                 [.present(path: "/usr/local/bin/vitalserver-vm")]
             },
             serviceStates: {
-                RuntimeManagedService.stopOrder.map { service in
+                RuntimeManagedService.uninstallOrder.map { service in
                     RuntimeFreshInstallServiceState(
                         label: service.label,
                         state: service == .proxy ? .readFailed("exitCode=1 stderr=denied") : .notLoaded
@@ -113,7 +113,7 @@ final class FreshInstallPreflightUseCaseTests: XCTestCase {
                 [.absent(path: "/usr/local/bin/vitalserver-vm")]
             },
             serviceStates: {
-                RuntimeManagedService.stopOrder.map {
+                RuntimeManagedService.uninstallOrder.map {
                     RuntimeFreshInstallServiceState(label: $0.label, state: .notLoaded)
                 }
             },

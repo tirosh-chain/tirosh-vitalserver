@@ -1,241 +1,142 @@
+import Application
 import Foundation
 import InboundAdapters
+import MacPlatformAgent
 import OutboundAdapters
 import RuntimeControl
-import Errors
 
 @MainActor
 final class MacRuntimeControlEnvironment: ObservableObject {
     let viewModel: RuntimeViewModel
-    private let client: MacRuntimeControlClient
-    private let readWorker: MacRuntimeControlReadWorker
-    private let testKitController: any RuntimeTestKitControlling
-    private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
-    private let servesTestTools: Bool
-    private var apiServer: RuntimeControlLocalHTTPServer?
-    private var restartAPIServerTask: Task<Void, Never>?
-    private var retryAPIServerTask: Task<Void, Never>?
-    private var relaunchHelperTask: Task<Void, Never>?
-    private var terminateHelperTask: Task<Void, Never>?
-    private(set) var apiServerError: Error?
-    private var apiServerGeneration = 0
-    private var apiServerRetryAttempt = 0
 
-    init(
-        viewModel: RuntimeViewModel,
-        client: MacRuntimeControlClient,
-        readWorker: MacRuntimeControlReadWorker,
-        testKitController: any RuntimeTestKitControlling,
-        localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
-        servesTestTools: Bool
-    ) {
+    init(viewModel: RuntimeViewModel) {
         self.viewModel = viewModel
-        self.client = client
-        self.readWorker = readWorker
-        self.testKitController = testKitController
-        self.localAPISettings = localAPISettings
-        self.servesTestTools = servesTestTools
-        self.localAPISettings.onPortChanged = { [weak self] port in
-            self?.scheduleAPIServerRestart(port: port)
-        }
-        startAPIServer(port: localAPISettings.runtimeControlPort)
-    }
-
-    deinit {
-        restartAPIServerTask?.cancel()
-        retryAPIServerTask?.cancel()
-        relaunchHelperTask?.cancel()
-        terminateHelperTask?.cancel()
-        apiServer?.stop()
     }
 
     static func live() -> MacRuntimeControlEnvironment {
-        let readWorker = MacRuntimeControlReadWorker(releaseInfo: .generated)
-        let commandWorker = MacRuntimeControlCommandWorker()
-        let client = MacRuntimeControlClient(releaseInfo: .generated, commandWorker: commandWorker)
-        let localAPISettings = RuntimeControlLocalAPISettingsCoordinator(
-            store: UserDefaultsRuntimeControlLocalAPISettingsStore.shared
+        let apiDependencies = localPlatformAPIDependencies()
+        let readWorker = MacRuntimeControlReadWorker(
+            releaseInfo: .generated,
+            platformStateReader: apiDependencies.platformStateReader,
+            operationLeaseReader: apiDependencies.operationLeaseReader,
+            guestAddressProvider: apiDependencies.guestAddressProvider,
+            settingsReader: apiDependencies.settingsReader
         )
-        let testKitController = MacTestKitController(
-            configuration: MacTestKitControllerConfiguration(
-                enabled: GeneratedRelease.testEnabled && GeneratedRelease.testkitContainerIncluded
-            ),
-            statusProvider: {
-                await readWorker.loadStatus(settings: RuntimeSettings())
-            }
+        let commandWorker = MacRuntimeControlCommandWorker(
+            guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
+            guestMaintenanceController: RuntimeGuestMaintenanceControlUseCase(),
+            guestAddressProvider: apiDependencies.guestAddressProvider
+        )
+        let client = MacRuntimeControlClient(
+            releaseInfo: .generated,
+            platformStateReader: apiDependencies.platformStateReader,
+            operationLeaseReader: apiDependencies.operationLeaseReader,
+            guestAddressProvider: apiDependencies.guestAddressProvider,
+            settingsReader: apiDependencies.settingsReader,
+            commandWorker: commandWorker
         )
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            testKitController: testKitController,
             snapshotReader: readWorker,
-            localAPISettings: localAPISettings,
             healthNotifications: HealthNotificationCenter(),
             nativeShell: SystemRuntimeNativeShell(),
             helperMessageLog: FileRuntimeHelperMessageLog()
         )
-        return MacRuntimeControlEnvironment(
-            viewModel: viewModel,
-            client: client,
-            readWorker: readWorker,
-            testKitController: testKitController,
-            localAPISettings: localAPISettings,
-            servesTestTools: GeneratedRelease.testEnabled
-        )
+        return MacRuntimeControlEnvironment(viewModel: viewModel)
+    }
+
+    private static func localPlatformAPIDependencies() -> LocalPlatformAPIDependencies {
+        do {
+            let baseURL = try RuntimeControlAPIAutomationEndpoint().baseURL()
+            let httpClient = RuntimeControlAPILocalSessionHTTPClient()
+            let localSessionTokenPlaceholder = "local-loopback-session"
+            let operationLeaseReader = try RuntimeControlAPIOperationLeaseOwner(
+                baseURL: baseURL,
+                token: localSessionTokenPlaceholder,
+                httpClient: httpClient
+            )
+            let guestAddressProvider = RuntimeControlAPIGuestAddressProvider {
+                try RuntimeControlAPIGuestAddressOwner(
+                    baseURL: baseURL,
+                    token: localSessionTokenPlaceholder,
+                    httpClient: httpClient
+                )
+            }
+            let settingsReader = try RuntimeControlAPIPlatformSettingsReader(
+                baseURL: baseURL,
+                httpClient: httpClient
+            )
+            let platformStateReader = try RuntimeControlAPIPlatformStateReader(
+                baseURL: baseURL,
+                httpClient: httpClient
+            )
+            return LocalPlatformAPIDependencies(
+                platformStateReader: platformStateReader,
+                operationLeaseReader: operationLeaseReader,
+                guestAddressProvider: guestAddressProvider,
+                settingsReader: settingsReader
+            )
+        } catch {
+            let reason = "Platform Agent API dependency initialization failed: \(error)"
+            return LocalPlatformAPIDependencies(
+                platformStateReader: FailedPlatformStateReader(reason: reason),
+                operationLeaseReader: FailedOperationLeaseReader(reason: reason),
+                guestAddressProvider: UnavailableRuntimeGuestAddressProvider(reason: reason),
+                settingsReader: FailedRuntimeSettingsReader(reason: reason)
+            )
+        }
     }
 
     static func shouldStartRuntimeControlAPIServer() -> Bool {
-        true
+        false
     }
 
-    static func shouldServeRuntimeControlTestTools(testEnabled: Bool) -> Bool {
+    static func shouldServeRuntimeControlDevConsole(testEnabled: Bool) -> Bool {
         testEnabled
     }
+}
 
-    private func startAPIServer(port: Int) {
-        retryAPIServerTask?.cancel()
-        retryAPIServerTask = nil
-        apiServerGeneration += 1
-        let generation = apiServerGeneration
-        let startedAt = Date()
-        let nextServer = makeAPIServer(port: port, generation: generation, startedAt: startedAt)
-        do {
-            try nextServer.start()
-            apiServer = nextServer
-            apiServerError = nil
-        } catch {
-            apiServerError = error
-            viewModel.updateRemoteConsoleStatus(RuntimeControlLocalAPIStatusRead.failed())
-            scheduleAPIServerRetry(port: port)
-        }
+private struct LocalPlatformAPIDependencies {
+    let platformStateReader: any PlatformStateReading
+    let operationLeaseReader: any RuntimeOperationLeaseReading
+    let guestAddressProvider: any RuntimeGuestAddressProvider
+    let settingsReader: any RuntimeSettingsReading
+}
+
+private struct FailedPlatformStateReader: PlatformStateReading {
+    let reason: String
+
+    func loadPlatformState(settings _: RuntimeSettings) -> PlatformState {
+        failedState(source: "platformState")
     }
 
-    private func scheduleAPIServerRestart(port: Int) {
-        restartAPIServerTask?.cancel()
-        retryAPIServerTask?.cancel()
-        retryAPIServerTask = nil
-        apiServerRetryAttempt = 0
-        restartAPIServerTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            self?.restartAPIServer(port: port)
-        }
+    func loadHealthStatus(settings _: RuntimeSettings) async -> PlatformState {
+        failedState(source: "platformHealth")
     }
 
-    private func restartAPIServer(port: Int) {
-        retryAPIServerTask?.cancel()
-        retryAPIServerTask = nil
-        let previousServer = apiServer
-        apiServerGeneration += 1
-        let generation = apiServerGeneration
-        let startedAt = Date()
-        let nextServer = makeAPIServer(port: port, generation: generation, startedAt: startedAt)
-        do {
-            try nextServer.start()
-            apiServer = nextServer
-            previousServer?.stop()
-            apiServerError = nil
-        } catch {
-            apiServerError = error
-            viewModel.updateRemoteConsoleStatus(RuntimeControlLocalAPIStatusRead.failed())
-        }
-    }
-
-    private func makeAPIServer(
-        port: Int,
-        generation: Int,
-        startedAt: Date
-    ) -> RuntimeControlLocalHTTPServer {
-        MacRuntimeControlLocalAPI.make(
-            client: client,
-            readWorker: readWorker,
-            testKitController: testKitController,
-            port: port,
-            localAPISettings: localAPISettings,
-            servesTestTools: servesTestTools,
-            startedAt: startedAt,
-            stateHandler: { [weak self] state in
-                Task { @MainActor [weak self] in
-                    self?.handleAPIServerState(
-                        state,
-                        port: port,
-                        generation: generation,
-                        startedAt: startedAt
-                    )
-                }
-            },
-            scheduleHelperRelaunch: { [weak self] in
-                self?.scheduleHelperRelaunch()
-            },
-            scheduleHelperTermination: { [weak self] in
-                self?.scheduleHelperTermination()
-            }
+    private func failedState(source: String) -> PlatformState {
+        PlatformState(
+            runtimeInstallationState: .inspectFailed(reason),
+            readIssues: [PlatformStateReadIssue(source: source, message: reason)]
         )
     }
+}
 
-    private func handleAPIServerState(
-        _ state: RuntimeControlLocalHTTPServerState,
-        port: Int,
-        generation: Int,
-        startedAt: Date
-    ) {
-        guard generation == apiServerGeneration else {
-            return
-        }
+private struct FailedOperationLeaseReader: RuntimeOperationLeaseReading {
+    let reason: String
 
-        switch state {
-        case .ready:
-            retryAPIServerTask?.cancel()
-            retryAPIServerTask = nil
-            apiServerRetryAttempt = 0
-            apiServerError = nil
-            viewModel.updateRemoteConsoleStatus(
-                RuntimeControlLocalAPIStatusRead.reachable(startedAt: Self.timestamp(startedAt))
-            )
-        case .failed(let reason):
-            apiServer = nil
-            apiServerError = RuntimeControlLocalAPIServerLifecycleError.failedToListen(
-                port: port,
-                reason: reason
-            )
-            viewModel.updateRemoteConsoleStatus(RuntimeControlLocalAPIStatusRead.failed())
-            scheduleAPIServerRetry(port: port)
-        case .stopped:
-            break
-        }
+    func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
+        .failed(reason)
     }
+}
 
-    private func scheduleAPIServerRetry(port: Int) {
-        retryAPIServerTask?.cancel()
-        apiServerRetryAttempt += 1
-        let delayNanoseconds = UInt64(min(apiServerRetryAttempt, 5)) * 1_000_000_000
-        retryAPIServerTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: delayNanoseconds)
-            guard !Task.isCancelled else {
-                return
-            }
-            self?.startAPIServer(port: port)
-        }
-    }
+private struct FailedRuntimeSettingsReader: RuntimeSettingsReading {
+    let reason: String
 
-    private func scheduleHelperRelaunch() {
-        relaunchHelperTask?.cancel()
-        relaunchHelperTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            self?.viewModel.relaunchHelper()
-        }
-    }
-
-    private func scheduleHelperTermination() {
-        terminateHelperTask?.cancel()
-        terminateHelperTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            self?.viewModel.terminateHelper()
-        }
-    }
-
-    private static func timestamp(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: date)
+    func load() -> RuntimeSettings {
+        RuntimeSettings(readIssues: [
+            RuntimeSettingsReadIssue(source: "platformSettings", message: reason)
+        ])
     }
 }

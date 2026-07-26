@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 from tirosh_guest_tools.contracts import RuntimeCommand
-from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.infrastructure.settings import (
     DEFAULT_SETTINGS_PATH,
     SETTINGS,
@@ -22,8 +21,8 @@ COMMANDS = [
     RuntimeCommand.GUEST_CONTAINER_LOGS,
     RuntimeCommand.GUEST_DIAGNOSTICS,
     RuntimeCommand.RUNTIME_ENV,
-    RuntimeCommand.WRITE_RUNTIME_STATE,
-    RuntimeCommand.RUNTIME_STATE,
+    RuntimeCommand.WRITE_RUNTIME_OBSERVATION,
+    RuntimeCommand.RUNTIME_OBSERVATION,
     RuntimeCommand.VITALSERVER_HEALTH,
     RuntimeCommand.VITALSERVER_COMPOSE,
     RuntimeCommand.VITALSERVER_SYNC_HOST_TIME,
@@ -32,8 +31,7 @@ COMMANDS = [
     RuntimeCommand.VITALSERVER_RUNTIME_BOOT_SMOKE,
     RuntimeCommand.VITALSERVER_RUNTIME_DATA_PREPARE,
     RuntimeCommand.VITALSERVER_REDIS_RESTORE,
-    RuntimeCommand.VITALSERVER_RECONCILE_COMPOSE,
-    RuntimeCommand.VITALSERVER_COMMAND_POLLER,
+    RuntimeCommand.VITALSERVER_GUEST_CONTROL_API,
     RuntimeCommand.VITALSERVER_REDIS_BACKUP,
     RuntimeCommand.VITALSERVER_REPAIR_DATASTORE,
     RuntimeCommand.VITALSERVER_ACTIVATE_UPDATE,
@@ -48,25 +46,15 @@ COMPATIBILITY_LINKS = {
 
 
 def install_guest_tools_runtime() -> None:
-    wheel = latest_guest_tools_wheel()
-    GUEST_TOOLS_HOME.mkdir(parents=True, exist_ok=True)
-    if running_inside_guest_tools_venv():
-        install_python = GUEST_TOOLS_VENV / "bin" / "python"
-    else:
-        subprocess.run(
-            [sys.executable, "-m", "venv", "--clear", str(GUEST_TOOLS_VENV)],
-            check=True,
-        )
-        install_python = GUEST_TOOLS_VENV / "bin" / "python"
+    installer = guest_tools_runtime_installer(PYTHON_WHEEL_DIR)
     subprocess.run(
         [
-            str(install_python),
-            "-m",
-            "pip",
-            "install",
-            "--no-index",
-            "--no-deps",
-            str(wheel),
+            sys.executable,
+            str(installer),
+            "--wheel-dir",
+            str(PYTHON_WHEEL_DIR),
+            "--guest-tools-home",
+            str(GUEST_TOOLS_HOME),
         ],
         check=True,
     )
@@ -76,27 +64,25 @@ def install_guest_tools_runtime() -> None:
         link_command(compatibility_name.value, target_name.value)
 
 
+def migrate_guest_control_store() -> None:
+    """Run the configured control store's explicit migration command."""
+
+    subprocess.run(
+        [
+            str(GUEST_TOOLS_VENV / "bin" / "tirosh-guest-tools-migrate-control-store"),
+        ],
+        check=True,
+    )
+
+
+def guest_tools_runtime_installer(python_wheel_dir: Path) -> Path:
+    """The installer and wheelhouse are one versioned delivery unit."""
+
+    return python_wheel_dir.parent / "install-guest-tools-runtime.py"
+
+
 def install_guest_tools_config() -> None:
     install_default_settings(DEFAULT_SETTINGS_PATH)
-
-
-def latest_guest_tools_wheel() -> Path:
-    wheels = sorted(PYTHON_WHEEL_DIR.glob("tirosh_vitalserver_guest_tools-*.whl"))
-    if not wheels:
-        raise GuestDependencyError(
-            f"missing guest tools wheel under {PYTHON_WHEEL_DIR}",
-            code="guest-tools-wheel-missing",
-        )
-    return wheels[-1]
-
-
-def running_inside_guest_tools_venv() -> bool:
-    executable = Path(sys.executable).resolve()
-    try:
-        executable.relative_to(GUEST_TOOLS_VENV.resolve())
-        return True
-    except ValueError:
-        return False
 
 
 def link_command(name: str, target_name: str) -> None:

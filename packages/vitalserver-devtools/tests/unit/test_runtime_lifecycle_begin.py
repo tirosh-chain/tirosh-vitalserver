@@ -129,10 +129,14 @@ def test_begin_golden_rootfs_run_records_runtime_data_disk_contract(
     stale_ready.write_text("stale", encoding="utf-8")
     vm_config = vm_home / "runtime/vm-config.json"
     vm_config.parent.mkdir(parents=True)
-    vm_config.write_text(
-        json.dumps({"kernelPath": "/runtime/Image"}),
-        encoding="utf-8",
+    vm_config_text = json.dumps(
+        {
+            "kernelPath": "/runtime/Image",
+            "runtimeDataDiskPath": str(vm_home / "runtime/runtime-data.img"),
+        },
+        separators=(",", ":"),
     )
+    vm_config.write_text(vm_config_text, encoding="utf-8")
 
     monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -175,10 +179,7 @@ def test_begin_golden_rootfs_run_records_runtime_data_disk_contract(
         "containerdRoot": "/mnt/runtime/containerd",
         "removedStaleDisk": False,
     }
-    updated_vm_config = json.loads(vm_config.read_text(encoding="utf-8"))
-    assert updated_vm_config["runtimeDataDiskPath"] == str(
-        vm_home / "runtime/runtime-data.img"
-    )
+    assert vm_config.read_text(encoding="utf-8") == vm_config_text
 
 
 def test_begin_golden_rootfs_run_requires_initialized_vm_config(
@@ -224,7 +225,7 @@ def test_begin_golden_rootfs_run_requires_initialized_vm_config(
     assert stale_ready.read_text(encoding="utf-8") == "stale"
 
 
-def test_prepare_runtime_data_disk_records_vm_config_path(
+def test_prepare_runtime_data_disk_preserves_materialized_vm_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -232,10 +233,14 @@ def test_prepare_runtime_data_disk_records_vm_config_path(
     vm_home = tmp_path / "vm"
     vm_config = vm_home / "runtime/vm-config.json"
     vm_config.parent.mkdir(parents=True)
-    vm_config.write_text(
-        json.dumps({"kernelPath": "/runtime/Image"}),
-        encoding="utf-8",
+    vm_config_text = json.dumps(
+        {
+            "kernelPath": "/runtime/Image",
+            "runtimeDataDiskPath": str(vm_home / "runtime/runtime-data.img"),
+        },
+        separators=(",", ":"),
     )
+    vm_config.write_text(vm_config_text, encoding="utf-8")
 
     monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(
@@ -261,11 +266,51 @@ def test_prepare_runtime_data_disk_records_vm_config_path(
     )
 
     assert result == 0
-    updated_vm_config = json.loads(vm_config.read_text(encoding="utf-8"))
-    assert updated_vm_config["runtimeDataDiskPath"] == str(
-        vm_home / "runtime/runtime-data.img"
-    )
+    assert vm_config.read_text(encoding="utf-8") == vm_config_text
     assert not (vm_home / "run/golden-rootfs-run.json").exists()
+
+
+def test_prepare_runtime_data_disk_rejects_vm_config_path_mismatch_before_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_build_config(tmp_path / "config/vm-build.toml")
+    vm_home = tmp_path / "vm"
+    vm_config = vm_home / "runtime/vm-config.json"
+    vm_config.parent.mkdir(parents=True)
+    vm_config_text = json.dumps(
+        {
+            "kernelPath": "/runtime/Image",
+            "runtimeDataDiskPath": "/unexpected/runtime-data.img",
+        },
+        separators=(",", ":"),
+    )
+    vm_config.write_text(vm_config_text, encoding="utf-8")
+    prepared = False
+
+    monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
+
+    def prepare(_plan):
+        nonlocal prepared
+        prepared = True
+        raise AssertionError("runtime data disk must not be prepared after contract mismatch")
+
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "prepare_ephemeral_runtime_data_disk",
+        prepare,
+    )
+
+    with pytest.raises(SystemExit, match="runtime data disk path does not match"):
+        runtime_lifecycle.prepare_runtime_data_disk(
+            RuntimeVmHomeInput(
+                config=Path("config/vm-build.toml"),
+                vm_home=Path("vm"),
+            )
+        )
+
+    assert prepared is False
+    assert vm_config.read_text(encoding="utf-8") == vm_config_text
 
 
 def test_golden_rootfs_preflight_rejects_unavailable_apt_snapshot(
@@ -365,6 +410,52 @@ def test_apt_snapshot_probe_preserves_unavailable_after_retries(
     assert "attempt=2" in check.detail
 
 
+def test_apt_snapshot_probe_default_tolerates_short_cdn_error_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    delays: list[int] = []
+
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def getcode(self) -> int:
+            return 200
+
+        def read(self, size: int) -> bytes:
+            assert size == 1
+            return b"x"
+
+    def urlopen(_: object, *, timeout: int) -> Response:
+        nonlocal calls
+        assert timeout == runtime_lifecycle.APT_SNAPSHOT_PROBE_TIMEOUT_SECONDS
+        calls += 1
+        if calls < runtime_lifecycle.APT_SNAPSHOT_PROBE_ATTEMPTS:
+            raise runtime_lifecycle.urllib.error.HTTPError(
+                "https://snapshot.example/InRelease",
+                503,
+                "Service Unavailable",
+                {},
+                None,
+            )
+        return Response()
+
+    monkeypatch.setattr(runtime_lifecycle.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(runtime_lifecycle.time, "sleep", delays.append)
+
+    check = runtime_lifecycle.probe_apt_snapshot_url(
+        "https://snapshot.example/InRelease"
+    )
+
+    assert check.status == runtime_lifecycle.PreflightStatus.PASSED
+    assert calls == 4
+    assert delays == [3, 3, 3]
+
+
 def test_golden_rootfs_preflight_rejects_invalid_rootfs_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -460,6 +551,42 @@ def test_golden_rootfs_preflight_accepts_explicit_inputs(
     )
 
     assert report.passed
+
+
+def test_golden_rootfs_preflight_does_not_probe_network_for_verified_apt_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vm_home = tmp_path / "vm"
+    write_rootfs_input(vm_home, run_id="run-test")
+    write_run_context(vm_home, run_id="run-test")
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "running_vm_processes_for_home",
+        lambda _: [],
+    )
+
+    def unexpected_network_probe(_: str) -> list[runtime_lifecycle.PreflightCheck]:
+        raise AssertionError("verified APT cache must not probe the snapshot network")
+
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "check_apt_snapshot_available",
+        unexpected_network_probe,
+    )
+
+    report = runtime_lifecycle.golden_rootfs_preflight_report(
+        vm_home=vm_home,
+        expected_run_id="run-test",
+        apt_source="verified-cache",
+    )
+
+    assert report.passed
+    assert any(
+        check.name == "apt-source"
+        and check.status == runtime_lifecycle.PreflightStatus.PASSED
+        for check in report.checks
+    )
 
 
 def write_build_config(path: Path) -> None:

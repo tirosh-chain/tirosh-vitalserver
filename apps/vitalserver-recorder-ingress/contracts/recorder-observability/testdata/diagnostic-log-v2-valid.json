@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v2",
+  "eventId": "vr-brmh-15:boot-b:journal:s=abc123;i=7;b=deadbeef",
+  "deviceId": "vr-brmh-15",
+  "bootId": "boot-b",
+  "kind": "diagnostic-log",
+  "source": "chrony",
+  "deviceObservedAt": "2026-07-23T01:02:03Z",
+  "ntpState": "host-clock-only",
+  "monotonicTimestampMicroseconds": 82500000,
+  "priority": "4",
+  "category": "time",
+  "code": "chrony_reference_changed",
+  "message": "chrony selected local reference while external sources are unavailable"
+}

@@ -18,23 +18,23 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
         XCTAssertEqual(repair.stopServices, RuntimeManagedService.stopOrder)
         XCTAssertEqual(repair.requiredStartedServices, [.vm, .guestLogSync, .proxy, .watchdog])
         XCTAssertEqual(repair.requiredStoppedServices, RuntimeManagedService.stopOrder)
-        XCTAssertEqual(repair.requestedLogMessage, "runtime services repair requested")
+        XCTAssertEqual(repair.requestedLogMessage, "host runtime services repair requested")
         XCTAssertEqual(
             repair.requestedStatusPlan,
             RuntimeServiceControlStatusPlan(
-                logMessage: "runtime services repair requested",
+                logMessage: "host runtime services repair requested",
                 status: .recovering,
                 operation: .repairServices,
-                statusMessage: "runtime services repair requested"
+                statusMessage: "host runtime services repair requested"
             )
         )
         XCTAssertEqual(
             repair.completedStatusPlan,
             RuntimeServiceControlStatusPlan(
-                logMessage: "runtime services repaired",
+                logMessage: "host runtime services repaired",
                 status: .healthy,
                 operation: .repairServices,
-                statusMessage: "runtime services repaired"
+                statusMessage: "host runtime services repaired"
             )
         )
 
@@ -76,23 +76,23 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
         XCTAssertEqual(start.stopServices, [])
         XCTAssertEqual(start.requiredStartedServices, [.vm, .guestLogSync, .proxy, .watchdog])
         XCTAssertEqual(start.requiredStoppedServices, [])
-        XCTAssertEqual(start.requestedLogMessage, "runtime services start requested")
+        XCTAssertEqual(start.requestedLogMessage, "host runtime services start requested")
         XCTAssertEqual(
             start.requestedStatusPlan,
             RuntimeServiceControlStatusPlan(
-                logMessage: "runtime services start requested",
+                logMessage: "host runtime services start requested",
                 status: .recovering,
                 operation: .startServices,
-                statusMessage: "runtime services start requested"
+                statusMessage: "host runtime services start requested"
             )
         )
         XCTAssertEqual(
             start.completedStatusPlan,
             RuntimeServiceControlStatusPlan(
-                logMessage: "runtime services started",
+                logMessage: "host runtime services started",
                 status: .healthy,
                 operation: .startServices,
-                statusMessage: "runtime services started"
+                statusMessage: "host runtime services started"
             )
         )
 
@@ -101,15 +101,15 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
         XCTAssertEqual(stop.stopServices, RuntimeManagedService.stopOrder)
         XCTAssertEqual(stop.requiredStartedServices, [])
         XCTAssertEqual(stop.requiredStoppedServices, RuntimeManagedService.stopOrder)
-        XCTAssertEqual(stop.requestedLogMessage, "runtime services stop requested")
+        XCTAssertEqual(stop.requestedLogMessage, "host runtime services stop requested")
         XCTAssertNil(stop.requestedStatusPlan)
         XCTAssertEqual(
             stop.completedStatusPlan,
             RuntimeServiceControlStatusPlan(
-                logMessage: "runtime services stopped",
+                logMessage: "host runtime services stopped",
                 status: .degraded,
                 operation: .stopServices,
-                statusMessage: "runtime services stopped"
+                statusMessage: "host runtime services stopped"
             )
         )
     }

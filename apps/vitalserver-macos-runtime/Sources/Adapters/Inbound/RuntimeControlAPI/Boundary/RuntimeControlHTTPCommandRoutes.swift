@@ -1,3 +1,5 @@
+import Foundation
+import Contracts
 import RuntimeControl
 
 @MainActor
@@ -9,25 +11,160 @@ struct RuntimeControlHTTPCommandRoutes {
         request: RuntimeControlHTTPRequest
     ) async throws -> RuntimeControlHTTPResponse? {
         switch endpoint {
+        case .applyPlatformSettings:
+            let settingsRequest = try request.decodedBody(RuntimeApplyPlatformSettingsRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.applyRuntimePlatformSettings(settingsRequest.settings)
+            )
+        case .startRuntimeProvider, .stopRuntimeProvider, .restartRuntimeProvider:
+            let action: RuntimeProviderCommandAction
+            switch endpoint {
+            case .startRuntimeProvider:
+                action = .start
+            case .stopRuntimeProvider:
+                action = .stop
+            case .restartRuntimeProvider:
+                action = .restart
+            default:
+                preconditionFailure("unreachable Runtime Provider command endpoint")
+            }
+            let result = try await handler.controlRuntimeProvider(action)
+            return try RuntimeControlHTTPResponseFactory.json(
+                result,
+                status: result.state == .completed ? .ok : .serviceUnavailable
+            )
         case .applySettings:
-            let settingsRequest = try request.decodedBody(RuntimeApplySettingsRequest.self)
-            return try await RuntimeControlHTTPResponseFactory.json(handler.applySettings(settingsRequest.settings))
-        case .startServices:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.startRuntimeServices())
-        case .stopServices:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.stopRuntimeServices())
-        case .startTestKitService:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.startTestKitService())
-        case .stopTestKitService:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.stopTestKitService())
-        case .restartTestKitService:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.restartTestKitService())
+            let settingsRequest = try request.decodedBody(RuntimeApplyProductSettingsRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.applyRuntimeProductSettings(settingsRequest.settings),
+                status: .accepted
+            )
+        case .applyAdminPassword:
+            let adminRequest = try request.decodedBody(RuntimeAdminPasswordRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.applyRuntimeAdminPassword(adminRequest.password),
+                status: .accepted
+            )
+        case .applyRedisRelaySettings:
+            let relayRequest = try request.decodedBody(RuntimeRedisRelaySettingsApplyRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.applyRuntimeRedisRelaySettings(relayRequest),
+                status: .accepted
+            )
+        case .createLabSession:
+            let createRequest = try request.decodedBody(RuntimeLabSessionCreateRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.createLabSession(createRequest))
+        case .createLabBeds:
+            let createRequest = try request.decodedBody(RuntimeLabBedCreateRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.createLabBeds(createRequest))
+        case .deleteLabBeds:
+            let deleteRequest = try request.decodedBody(RuntimeLabBedDeleteRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.deleteLabBeds(deleteRequest))
+        case .resetLabBeds:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.resetLabBeds())
+        case .createLabRecorders:
+            let createRequest = try request.decodedBody(RuntimeLabRecorderCreateRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.createLabRecorders(createRequest))
+        case .deleteLabRecorders:
+            let deleteRequest = try request.decodedBody(RuntimeLabRecorderDeleteRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.deleteLabRecorders(deleteRequest))
+        case .resetLabRecorders:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.resetLabRecorders())
+        case .hideVitalDBRecorders:
+            let request = try request.decodedBody(RuntimeVitalDBRecorderVisibilityRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.hideVitalDBRecorders(request))
+        case .applyRecorderObservabilityExpectation:
+            let command = try request.decodedBody(
+                RuntimeRecorderObservabilityExpectationCommand.self
+            )
+            let requestedVrcode = try request.recorderObservabilityExpectationCode()
+            guard command.vrcode == requestedVrcode else {
+                throw RuntimeControlHTTPQueryError.invalidBody(
+                    "Recorder expectation command VRCODE must match the requested recorder."
+                )
+            }
+            let receipt = try await handler.applyRecorderObservabilityExpectation(command)
+            let status: RuntimeControlHTTPStatus
+            switch receipt.state {
+            case .accepted, .idempotent:
+                status = .ok
+            case .revisionConflict:
+                status = .conflict
+            case .rejected:
+                status = .unprocessableEntity
+            }
+            return try RuntimeControlHTTPResponseFactory.json(receipt, status: status)
+        case .unhideVitalDBRecorders:
+            let request = try request.decodedBody(RuntimeVitalDBRecorderVisibilityRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.unhideVitalDBRecorders(request))
+        case .deleteVitalDBRecorders:
+            let request = try request.decodedBody(RuntimeVitalDBRecorderVisibilityRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.deleteVitalDBRecorders(request))
+        case .hideVitalDBBeds:
+            let request = try request.decodedBody(RuntimeVitalDBBedVisibilityRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.hideVitalDBBeds(request))
+        case .unhideVitalDBBeds:
+            let request = try request.decodedBody(RuntimeVitalDBBedVisibilityRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.unhideVitalDBBeds(request))
+        case .deleteVitalDBBeds:
+            let request = try request.decodedBody(RuntimeVitalDBBedVisibilityRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.deleteVitalDBBeds(request))
+        case .startLabSession:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.startLabSession(sessionId: try request.runtimeLabSessionID())
+            )
+        case .stopLabSession:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.stopLabSession(sessionId: try request.runtimeLabSessionID())
+            )
+        case .finishLabSession:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.finishLabSession(sessionId: try request.runtimeLabSessionID())
+            )
+        case .startLabRecorder:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.startLabRecorder(
+                    sessionId: try request.runtimeLabSessionID(),
+                    recorderId: try request.runtimeLabRecorderID()
+                )
+            )
+        case .stopLabRecorder:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.stopLabRecorder(
+                    sessionId: try request.runtimeLabSessionID(),
+                    recorderId: try request.runtimeLabRecorderID()
+                )
+            )
+        case .replayLabVitalFile:
+            let replayRequest = try request.decodedBody(RuntimeLabVitalFileReplayRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.replayLabVitalFile(replayRequest))
+        case .uploadLabVitalFile:
+            let sources = try request.decodedVitalFileUploads()
+            return try await RuntimeControlHTTPResponseFactory.json(handler.uploadLabVitalFiles(sources))
+        case .startGuestService:
+            let controlRequest = RuntimeGuestServiceControlRequest(
+                service: try request.runtimeGuestServiceName()
+            )
+            return try await RuntimeControlHTTPResponseFactory.json(handler.startGuestService(controlRequest))
+        case .stopGuestService:
+            let controlRequest = RuntimeGuestServiceControlRequest(
+                service: try request.runtimeGuestServiceName()
+            )
+            return try await RuntimeControlHTTPResponseFactory.json(handler.stopGuestService(controlRequest))
+        case .restartGuestService:
+            let restartRequest = RuntimeGuestServiceRestartRequest(
+                service: try request.runtimeGuestServiceName()
+            )
+            return try await RuntimeControlHTTPResponseFactory.json(handler.restartGuestService(restartRequest))
         case .repairRuntimeServices:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairRuntimeServices())
         case .repairProxy:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairProxy())
         case .repairDatastore:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.repairDatastore())
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.repairDatastore(),
+                status: .accepted
+            )
         case .repairVMDisk:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairVMDisk())
         case .createRedisBackup:
@@ -41,13 +178,22 @@ struct RuntimeControlHTTPCommandRoutes {
             )
         case .verifyUpdateBundle:
             let bundleRequest = try request.decodedBody(RuntimeUpdateBundleRequest.self)
-            return try await RuntimeControlHTTPResponseFactory.json(
-                handler.verifyUpdateBundle(bundle: bundleRequest.bundle)
+            let response = try await handler.verifyUpdateBundle(bundle: bundleRequest.bundle)
+            return try RuntimeControlHTTPResponseFactory.json(
+                platformWorkflowOperation(response.result, kind: .updateVerify),
+                status: .accepted
             )
         case .applyUpdateBundle:
             let bundleRequest = try request.decodedBody(RuntimeUpdateBundleRequest.self)
+            let response = try await handler.applyUpdateBundle(bundle: bundleRequest.bundle)
+            return try RuntimeControlHTTPResponseFactory.json(
+                platformWorkflowOperation(response.result, kind: .updateApply),
+                status: .accepted
+            )
+        case .rollbackRelease:
             return try await RuntimeControlHTTPResponseFactory.json(
-                handler.applyUpdateBundle(bundle: bundleRequest.bundle)
+                handler.rollbackRelease(),
+                status: .accepted
             )
         case .rollbackBackup:
             let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
@@ -68,30 +214,81 @@ struct RuntimeControlHTTPCommandRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.exportLogs(destination: exportRequest.destination)
             )
+        case .createSupportExport:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.createPlatformSupportExport(),
+                status: .accepted
+            )
+        case .acquireOperationLease:
+            let acquireRequest = try request.decodedBody(RuntimeOperationLeaseAcquireRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.acquireOperationLease(acquireRequest)
+            )
+        case .heartbeatOperationLease:
+            let heartbeatRequest = try request.decodedBody(RuntimeOperationLeaseHeartbeatRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.heartbeatOperationLease(heartbeatRequest)
+            )
+        case .releaseOperationLease:
+            let releaseRequest = try request.decodedBody(RuntimeOperationLeaseReleaseRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.releaseOperationLease(releaseRequest)
+            )
+        case .putGuestAddress:
+            let guestAddressRequest = try request.decodedBody(RuntimeGuestAddressPutRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.putGuestAddressResource(guestAddressRequest)
+            )
+        case .putVMLifecycle:
+            let lifecycleRequest = try request.decodedBody(RuntimeVMLifecyclePutRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.putVMLifecycleResource(lifecycleRequest)
+            )
         case .uninstall:
             let uninstallRequest = try request.decodedBody(RuntimeUninstallRequest.self)
-            return try await RuntimeControlHTTPResponseFactory.json(
-                handler.uninstallRuntime(mode: uninstallRequest.mode)
+            let response = try await handler.uninstallRuntime(mode: uninstallRequest.mode)
+            return try RuntimeControlHTTPResponseFactory.json(
+                platformWorkflowOperation(response.result, kind: .uninstall),
+                status: .accepted
             )
-        case .capabilities,
-             .overview,
-             .overviewStream,
-             .status,
-             .statusStream,
+        case .platformCapabilities,
+             .runtimeCapabilities,
+             .platformState,
+             .platformStateStream,
+             .operationState,
+             .platformWorkflow,
+             .guestAddress,
+             .vmLifecycle,
              .events,
-             .eventStream,
              .vitalDBObservation,
              .vitalDBObservationStream,
              .vitalDBRecorders,
              .vitalDBRecorder,
              .vitalDBRecorderActivity,
+             .vitalDBRecorderVitalFiles,
+             .vitalDBRecorderObservability,
+             .vitalDBRecorderObservabilityTimeline,
+             .vitalDBRecorderObservabilityIncidents,
              .vitalDBBeds,
              .vitalDBBed,
              .vitalDBRelationships,
              .health,
+             .platformSettings,
              .settings,
+             .labScenarios,
+             .labVitalFiles,
+             .labBeds,
+             .labRecorders,
+             .labSessions,
+             .labSession,
              .release,
              .installInfo,
+             .guestStackStatus,
+             .guestServices,
+             .guestServiceStatus,
+             .guestServiceResource,
+             .redisRelayStatus,
+             .redisRelaySettings,
              .logText,
              .logStream,
              .backups,
@@ -99,5 +296,47 @@ struct RuntimeControlHTTPCommandRoutes {
              .runtimeDataBackups:
             return nil
         }
+    }
+
+    private func platformWorkflowOperation(
+        _ result: RuntimeCommandResult,
+        kind: PlatformWorkflowKind
+    ) -> PlatformWorkflowOperation {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let succeeded = result.exitCode == 0
+            && result.executionIssue == nil
+            && result.outputIssues.isEmpty
+        let failureKind: String
+        switch kind {
+        case .updateVerify:
+            failureKind = "updateVerifyFailed"
+        case .updateApply:
+            failureKind = "updateApplyFailed"
+        case .rollback:
+            failureKind = "rollbackFailed"
+        case .uninstall:
+            failureKind = "uninstallFailed"
+        case .supportExport:
+            failureKind = "supportExportFailed"
+        }
+        let failure = succeeded ? nil : PlatformWorkflowFailure(
+            kind: failureKind,
+            message: RuntimeProcessFailureMessageFormatter.message(
+                exitCode: result.exitCode,
+                stdout: result.stdout,
+                stderr: result.stderr,
+                outputIssues: result.outputIssues,
+                executionIssue: result.executionIssue
+            )
+        )
+        return PlatformWorkflowOperation(
+            operationId: UUID().uuidString.lowercased(),
+            kind: kind,
+            state: succeeded ? .completed : .failed,
+            startedAt: timestamp,
+            updatedAt: timestamp,
+            release: nil,
+            failure: failure
+        )
     }
 }

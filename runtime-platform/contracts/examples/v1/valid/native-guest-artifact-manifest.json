@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "v1",
+  "artifactSetId": "vitalserver-guest-amd64-0.2.0",
+  "architecture": "amd64",
+  "storageDevices": [
+    {
+      "id": "guest-root",
+      "role": "guest-root-storage",
+      "storageImageFormat": "raw",
+      "sizeBytes": 4294967296,
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "id": "guest-product-bootstrap",
+      "role": "guest-product-bootstrap-volume",
+      "storageImageFormat": "raw",
+      "guestVolumeFileSystem": "iso9660",
+      "sizeBytes": 104857600,
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ]
+}

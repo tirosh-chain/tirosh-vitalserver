@@ -75,94 +75,10 @@ public struct RuntimeGuestActivationUseCase {
         )
     }
 
-    public func request(
-        plan: RuntimeGuestActivationPlan,
-        requestID: String,
-        requestedAt: String
-    ) -> RuntimeGuestActivationRequest? {
-        guard plan.requiresActivation else {
-            return nil
-        }
-        return RuntimeGuestActivationRequest(
-            id: requestID,
-            requestedAt: requestedAt,
-            version: plan.version
-        )
-    }
-
-    public func request(
-        version: String,
-        requestID: String,
-        requestedAt: String
-    ) -> RuntimeGuestActivationRequest {
-        RuntimeGuestActivationRequest(
-            id: requestID,
-            requestedAt: requestedAt,
-            version: version
-        )
-    }
-
     public func vmStartPlan(
         isVMServiceLoaded: Bool
     ) -> RuntimeGuestActivationVMStartPlan {
         isVMServiceLoaded ? .alreadyLoaded : .startService
     }
 
-    public func waitStartedLogMessage(timeoutSeconds: Double) -> String {
-        "waiting for guest update activation result timeoutSeconds=\(timeoutSeconds)"
-    }
-
-    public func waitConfiguration(timeoutSeconds: Double) throws -> GuestActivationWaitConfiguration {
-        guard timeoutSeconds.isFinite, timeoutSeconds > 0 else {
-            throw RuntimeGuestUpdateUseCaseError.operationFailed(
-                "invalid guest activation wait configuration: timeoutSeconds must be positive"
-            )
-        }
-        return GuestActivationWaitConfiguration(
-            maxAttempts: Int(ceil(timeoutSeconds / 3.0)),
-            progressEveryAttempts: 5
-        )
-    }
-
-    public func requiredRequestMissingFailureMessage() -> String {
-        "guest activation request missing for required activation"
-    }
-
-    public func waitResultPlan(
-        _ result: GuestActivationWaitResult
-    ) -> RuntimeGuestWaitResultPlan {
-        switch result {
-        case .completed(let message):
-            return RuntimeGuestWaitResultPlan(
-                logMessage: "guest update activation result completed message=\(message)",
-                failureMessage: nil
-            )
-        case .failed(let message):
-            return RuntimeGuestWaitResultPlan(
-                logMessage: "guest update activation result failed message=\(message)",
-                failureMessage: "runtime health check failed"
-            )
-        case .timedOut:
-            return RuntimeGuestWaitResultPlan(
-                logMessage: nil,
-                failureMessage: "runtime health check failed"
-            )
-        }
-    }
-
-    public func waitResultExecutionPlan(
-        _ result: GuestActivationWaitResult
-    ) -> RuntimeGuestWaitResultExecutionPlan {
-        switch result {
-        case .completed(let message):
-            return .completed(logMessage: "guest update activation result completed message=\(message)")
-        case .failed(let message):
-            return .failed(
-                logMessage: "guest update activation result failed message=\(message)",
-                failureMessage: "runtime health check failed"
-            )
-        case .timedOut:
-            return .failedWithoutLog(failureMessage: "runtime health check failed")
-        }
-    }
 }

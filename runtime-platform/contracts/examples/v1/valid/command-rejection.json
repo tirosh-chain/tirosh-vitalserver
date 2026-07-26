@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v1",
+  "state": "rejected",
+  "requestId": "request-topology-0001",
+  "rejectedAt": "2026-07-17T00:00:00Z",
+  "issue": {
+    "code": "expected-revision-required",
+    "retryable": false
+  }
+}

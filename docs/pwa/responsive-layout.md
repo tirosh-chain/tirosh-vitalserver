@@ -42,6 +42,10 @@ PWA는 특정 제품명보다 viewport width를 기준으로 설계합니다.
 
 - Desktop: recorder table + selected details.
 - Mobile: recorder card list + selected details.
+- Recorder detail은 명시적으로 선택한 VRecorder에 대해서만 열고, 선택 대상이 필터나 hide 결과로 사라졌을 때 다른 VRecorder로 자동 전환하지 않습니다.
+- `Hide from list`는 VRecorder data를 삭제하거나 연결을 중지하지 않고 기본 목록 포함 여부만 변경합니다. Visible 기본 상태는 강조하지 않고 hidden 상태만 badge로 표시합니다.
+- Hide 성공 결과는 `Undo`를 제공하고, destructive delete는 hidden recorder의 `Data management`로 분리합니다.
+- Detail은 하나의 container 안에서 Overview, Activity, Network access, Relationship history를 section divider로 구분합니다.
 - Activity chart는 period selector를 유지하고, x/y axis label이 잘리지 않아야 합니다.
 - VRecorder identity는 `vrcode`입니다. IP는 표시 정보일 뿐 identity가 아닙니다.
 
@@ -74,11 +78,11 @@ PWA는 특정 제품명보다 viewport width를 기준으로 설계합니다.
 - Capability가 없는 command는 숨기기보다 비활성화와 이유 표시를 우선합니다.
 - Dangerous command는 confirmation 없이 실행하지 않습니다.
 
-### TestKit
+### Lab
 
-- TestKit은 product route가 아니라 test-enabled route입니다.
-- Mobile에서는 조작성이 떨어지므로 핵심 create/start/pause/stop/delete flow가 우선입니다.
-- Bed setup과 virtual recorder session control은 한 화면 안에서 관계가 드러나야 합니다.
+- Lab은 product route입니다.
+- Mobile에서는 scenario 선택, session create/start/stop, `.vital` replay flow가 우선입니다.
+- TestKit container controls나 implementation diagnostics는 Lab primary flow와 섞지 않고 More/Diagnostics 성격으로 분리합니다.
 
 ## Verification Checklist
 

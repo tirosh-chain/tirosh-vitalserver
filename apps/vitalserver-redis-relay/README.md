@@ -115,8 +115,18 @@ usually `192.168.64.1`.
 
 ## Status
 
-The relay writes JSON status to `/run/tirosh/status/redis-relay-status.json`.
-The status never includes the target password.
+The relay writes JSON status to `/run/tirosh/status/redis-relay-status.json`
+as a diagnostics artifact and publishes the same document to the Guest Control
+`PUT /runtime/redis-relay/status` owner mutation. `REDIS_RELAY_STATUS_OWNER_URL` is a
+required VM-runtime transport contract; Linux Native instead provides the same
+owner mutation through `REDIS_RELAY_STATUS_OWNER_SOCKET`. Exactly one transport
+must be configured, and the relay refuses to start when both or neither are
+configured. Linux mounts the root-owned socket directory read-only into the
+relay container, so the container can publish only its status mutation without
+opening the Runtime Controller's loopback API on a bridge or LAN address.
+Product consumers read the Guest/Postgres owner snapshot through
+`GET /runtime/redis-relay/status`; they do not read the status file directly. The
+status never includes the target password.
 
 - `enabled` and `state` describe the relay process contract.
 - `settingsFingerprint` changes when the password-free connection/scope contract changes.
@@ -136,9 +146,10 @@ The status never includes the target password.
 | `source_dump_failed` | `source_dump` | Source Redis key metadata or `DUMP` failed. |
 | `target_publish_failed` | `target_publish` | Atomic target `RESTORE`/fingerprint/dedupe/event publish failed. |
 
-Docker health checks use this status file to report relay process liveness.
-Target Redis authentication, network, or publish failures are reported in the
-status payload instead of making the container disappear from service liveness.
+Docker health checks verify that the relay is configured with a status owner URL;
+they do not read the diagnostics status file as product liveness. Target Redis
+authentication, network, or publish failures are reported in the status owner
+snapshot instead of making the container disappear from service liveness.
 Transient target disconnects are retried inside the active batch with bounded
 backoff; persistent failures remain visible as `target_publish_failed` samples.
 Longer target outages do not stop the relay container. The next successful

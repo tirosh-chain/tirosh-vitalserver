@@ -19,13 +19,13 @@ Vital Server Helper는 병원 내부망 가까이에 설치된 VitalServer를 �
 | 질문 | 문서군 | 독자 |
 |---|---|---|
 | release 전에 무엇을 확인할 수 있고, 아직 무엇이 범위 밖인가? | [Release](release/index.md) | 도입 검토자, 운영 검토자, 연구 과제 관계자 |
-| 이 repository는 어떤 구조와 검증 기준으로 움직이는가? | [Dev](dev/index.md) | 개발자, 기술 검토자, runtime/API/testkit 유지보수자 |
+| 이 repository는 어떤 구조와 검증 기준으로 움직이는가? | [Dev](dev/index.md) | 개발자, 기술 검토자, runtime/API/Product Lab/dev testkit 유지보수자 |
 
 ## 2. 현재 상태
 
 | 항목 | 현재 상태 |
 |---|---|
-| repository | macOS runtime, Runtime Control PWA, observer, recorder ingress, testkit 포함 |
+| repository | macOS runtime, Runtime Control PWA, Product Lab, observer, recorder ingress, dev testkit 포함 |
 | release 문서 | preview 검증과 도입 검토 기준 |
 | 안정 release | 아직 확정되지 않음 |
 | VitalServer와의 관계 | VitalServer 공식 배포와 별도의 Helper project |

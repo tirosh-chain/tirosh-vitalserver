@@ -1,1140 +1,726 @@
 import { useEffect, useState } from "react";
 
 import {
-  useApplyRuntimeSettings,
-  useRuntimeCapabilities,
-  useRuntimeSettings
+  useApplyRuntimeAdminPassword,
+  useApplyRuntimePlatformSettings,
+  useApplyRuntimeRedisRelaySettings,
+  useApplyRuntimeProductSettings,
+  useControlCapabilities,
+  useRuntimeProductSettings,
+  useRuntimePlatformSettings,
+  useRuntimeRedisRelaySettings
 } from "@/console/hooks";
-import { canApplyRuntimeSettings } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import {
-  draftToRuntimeSettings,
-  parseOptionalNumber,
-  runtimeSettingsToDraft,
-  type RuntimeSettingsDraft,
-  usesCustomAdvertisedURL
-} from "@/pages/settings/runtimeSettingsForm";
-import {
-  containerMemoryLimitRanges,
-  runtimeSettingsActivationDecision,
-  startOnBootControlState,
-  validateRuntimeSettings,
-  type RuntimeCapabilityReadState
-} from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
-import { sameHostRuntimeURL } from "@/domain/runtime-control/formatting/http";
+  canApplyRuntimeProductSettings,
+  canApplyRuntimeAdminPassword,
+  canApplyRuntimeRedisRelaySettings
+} from "@/domain/runtime-control/capabilities/runtimeCapabilities";
+import type {
+  RuntimeProductSettings,
+  RuntimePlatformSettings,
+  RuntimeRedisRelaySettingsApplyRequest
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { ConfirmButton } from "@/components/ConfirmButton";
+import { CommandResult } from "@/components/CommandResult";
 import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";
 
+type Draft = {
+  settings: RuntimeProductSettings;
+  recorderIngressJSON: string;
+  backupScheduleText: string;
+};
+
+type RedisRelayDraft = RuntimeRedisRelaySettingsApplyRequest;
+
 export function SettingsPage() {
-  const settings = useRuntimeSettings();
-  const capabilities = useRuntimeCapabilities();
-  const applySettings = useApplyRuntimeSettings();
-  const [draft, setDraft] = useState<RuntimeSettingsDraft | null>(null);
-  const [customAdvertisedURL, setCustomAdvertisedURL] = useState(false);
-  const [changedRuntimeControlPort, setChangedRuntimeControlPort] =
-    useState<number | null>(null);
+  const read = useRuntimeProductSettings();
+  const apply = useApplyRuntimeProductSettings();
+  const applyAdminPassword = useApplyRuntimeAdminPassword();
+  const relayRead = useRuntimeRedisRelaySettings();
+  const applyRelay = useApplyRuntimeRedisRelaySettings();
+  const capabilities = useControlCapabilities();
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [relayDraft, setRelayDraft] = useState<RedisRelayDraft | null>(null);
 
   useEffect(() => {
-    if (settings.data) {
-      setDraft(
-        normalizeContainerMemoryLimitDraft(
-          runtimeSettingsToDraft(settings.data),
-          settings.data.memoryGiB * 1024
-        )
-      );
-      setCustomAdvertisedURL(usesCustomAdvertisedURL(settings.data));
-    } else {
-      setDraft(null);
-      setCustomAdvertisedURL(false);
-    }
-  }, [settings.data]);
+    const settings = read.data?.state === "loaded" ? read.data.settings : null;
+    setDraft(settings ? toDraft(settings) : null);
+  }, [read.data]);
 
-  const updateField = (
-    field: keyof RuntimeSettingsDraft,
-    value: string | boolean
-  ) => {
-    setDraft((current) => {
-      if (!current) {
-        return current;
-      }
-      const next = { ...current, [field]: value };
-      const normalized = normalizeContainerMemoryLimitDraft(
-        next,
-        draftMemoryMiB(next, settings.data?.memoryGiB ?? 0)
-      );
-      if (
-        field !== "restartAfterSave" &&
-        settings.data &&
-        customAdvertisedURL !== undefined
-      ) {
-        return enableContainerReconcileActivationWhenNeeded(
-          normalized,
-          settings.data,
-          customAdvertisedURL
-        );
-      }
-      return normalized;
-    });
-  };
-
-  const apply = () => {
-    if (!settings.data || !draft) {
-      return;
-    }
-    const runtimeSettings = draftToRuntimeSettings(
-      draft,
-      settings.data,
-      customAdvertisedURL
+  useEffect(() => {
+    const settings = relayRead.data?.state === "loaded" ? relayRead.data.settings : null;
+    setRelayDraft(
+      settings
+        ? {
+            ...settings,
+            target: {
+              url: settings.target.url,
+              username: settings.target.username,
+              password: "",
+              clearPassword: false,
+              tls: settings.target.tls
+            }
+          }
+        : null
     );
-    const validation = validateRuntimeSettings(runtimeSettings);
-    if (!validation.valid) {
-      return;
-    }
-    applySettings.mutate(
-      { settings: runtimeSettings },
-      {
-        onSuccess: () => {
-          setChangedRuntimeControlPort(
-            changedRuntimeControlPortValue(runtimeSettings.runtimeControlPort)
-          );
-        }
-      }
-    );
-  };
+  }, [relayRead.data]);
 
-  const runtimeSettings = settings.data && draft
-    ? draftToRuntimeSettings(draft, settings.data, customAdvertisedURL)
-    : null;
-  const validation = runtimeSettings
-    ? validateRuntimeSettings(runtimeSettings)
-    : { valid: false, errors: ["Runtime settings are not loaded."] };
-  const canApply =
-    runtimeSettings !== null &&
-    canApplyRuntimeSettings(capabilities.data) &&
-    validation.valid &&
-    !settings.isLoading &&
-    !applySettings.isPending;
-  const canEditVMResources = capabilities.data?.canEditVMResources === true;
-  const canEditNetworkExposure =
-    capabilities.data?.canEditNetworkExposure === true;
-  const canEditLocalFiles = capabilities.data?.canOpenLocalFiles === true;
-  const canControlServices =
-    capabilities.data?.canControlRuntimeServices === true;
-  const systemTimeZone =
-    Intl.DateTimeFormat().resolvedOptions().timeZone || "system local time";
-  const capabilityReadState: RuntimeCapabilityReadState = capabilities.isPending
-    ? "loading"
-    : capabilities.isError
-      ? "failed"
-      : capabilities.data
-        ? "available"
-        : "missing";
-
-  if (!settings.data || !draft) {
+  if (read.isPending) {
     return (
       <div className="page-stack">
-        <Panel
-          title="VM resources"
-          actions={
-            <ConfirmButton
-              confirmMessage="Apply runtime settings? This may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
-              onClick={apply}
-              disabled
-            >
-              Apply
-            </ConfirmButton>
-          }
-        >
-          {settings.isPending ? (
-            <p className="empty-state">Loading runtime settings...</p>
-          ) : null}
-          {settings.isError ? (
-            <ErrorState title="Failed to read settings" error={settings.error} />
-          ) : null}
-          {!settings.isPending && !settings.isError && !settings.data ? (
-            <ErrorState
-              title="Settings response is incomplete"
-              error={
-                new Error("Runtime Control API did not return settings data.")
-              }
-            />
-          ) : null}
-          {settings.data && !draft ? (
-            <p className="empty-state">Preparing settings form...</p>
-          ) : null}
+        <PlatformSettingsPanel />
+        <Panel title="Runtime product settings">Loading runtime settings...</Panel>
+      </div>
+    );
+  }
+  if (read.isError) {
+    return (
+      <div className="page-stack">
+        <PlatformSettingsPanel />
+        <Panel title="Runtime product settings">
+          <ErrorState title="Failed to read runtime settings" error={read.error} />
+        </Panel>
+      </div>
+    );
+  }
+  if (read.data?.state !== "loaded" || !read.data.settings || !draft) {
+    return (
+      <div className="page-stack">
+        <PlatformSettingsPanel />
+        <Panel title="Runtime product settings">
+          <ErrorState
+            title="Runtime settings are unavailable"
+            error={new Error(read.data?.readError ?? "Runtime settings were not reported.")}
+          />
         </Panel>
       </div>
     );
   }
 
-  const proxyPort = parseOptionalNumber(draft.proxyPort);
-  const runtimeControlPort = parseOptionalNumber(draft.runtimeControlPort);
-  const browserHostname = currentBrowserHostname();
-  const sameHostVitalServerURL = sameHostRuntimeURL({
-    hostname: browserHostname,
-    port: proxyPort
-  });
-  const sameHostRemoteConsoleURL = sameHostRuntimeURL({
-    hostname: browserHostname,
-    port: runtimeControlPort
-  });
-  const runtimeControlURLPreview =
-    runtimeControlPort === undefined
-      ? "Remote Console port is not available."
-      : sameHostRemoteConsoleURL ?? "Browser host is not available.";
-  const defaultAdvertisedURLPreview =
-    proxyPort === undefined
-      ? "Proxy port is not available."
-      : sameHostVitalServerURL ?? "Browser host is not available.";
-  const advertisedPort = parseOptionalNumber(draft.publicPort);
-  const customAdvertisedURLPreview =
-    draft.publicHost.trim() && advertisedPort !== undefined
-      ? `http://${draft.publicHost.trim()}:${advertisedPort}/`
-      : "Custom advertised URL is not available.";
-  const vitalServerURLPreview = customAdvertisedURL
-    ? customAdvertisedURLPreview
-    : defaultAdvertisedURLPreview;
-  const startOnBootControl = startOnBootControlState({
-    startOnBootConfigurable: settings.data.startOnBootConfigurable,
-    capabilityReadState,
-    capabilities: capabilities.data
-  });
-  const backupAppliedState = runtimeSettings
-    ? backupAppliedSettingsSummary(settings.data, runtimeSettings, systemTimeZone)
-    : "";
-  const logArchiveAppliedState = runtimeSettings
-    ? logArchiveAppliedSettingsSummary(settings.data, runtimeSettings)
-    : "";
-  const containerMemoryLimitVMMaxMiB =
-    (runtimeSettings?.memoryGiB ?? settings.data.memoryGiB) * 1024;
-  const containerMemoryLimitTotalPercent = runtimeSettings
-    ? runtimeContainerLimitTotalPercent(runtimeSettings)
-    : 0;
-  const updateReplayThroughput = (value: string) => {
-    updateField("recorderIngressSendDataReplayMaxMiBPerSecond", value);
-  };
-  const normalizeReplayThroughput = () => {
-    updateField(
-      "recorderIngressSendDataReplayMaxMiBPerSecond",
-      normalizeReplayThroughputValue(draft.recorderIngressSendDataReplayMaxMiBPerSecond)
+  const parsed = parsedSettings(draft);
+  const validationError = parsed instanceof Error ? parsed.message : null;
+  const canApplyProductSettings = canApplyRuntimeProductSettings(
+    capabilities.data
+  );
+  const update = <K extends keyof RuntimeProductSettings>(
+    field: K,
+    value: RuntimeProductSettings[K]
+  ) => {
+    setDraft((current) =>
+      current
+        ? { ...current, settings: { ...current.settings, [field]: value } }
+        : current
     );
   };
-  const updateContainerMemoryLimitPercent = (
-    field:
-      | "vitalServerContainerMemoryLimitMiB"
-      | "recorderIngressContainerMemoryLimitMiB"
-      | "redisContainerMemoryLimitMiB",
-    nextPercent: number,
-    range: { minMiB: number; maxMiB: number }
-  ) => {
-    setDraft((current) => {
-      if (!current) {
-        return current;
-      }
-      const vmMiB = draftMemoryMiB(current, settings.data.memoryGiB);
-      const otherPercent =
-        containerMemoryLimitDraftTotalPercent(current, vmMiB) -
-        containerMemoryLimitPercent(current[field], vmMiB);
-      const percentRange = containerMemoryLimitPercentRange(
-        range,
-        vmMiB
-      );
-      const allowedUpper = Math.max(
-        percentRange.min,
-        Math.min(
-          percentRange.max,
-          containerMemoryLimitRanges.maxCombinedPercent - otherPercent
-        )
-      );
-      const percent = Math.min(
-        Math.max(Math.round(nextPercent), percentRange.min),
-        allowedUpper
-      );
-      return enableContainerReconcileActivationWhenNeeded(normalizeContainerMemoryLimitDraft({
-        ...current,
-        [field]: String(containerMemoryLimitMiB(percent, range, vmMiB))
-      }, vmMiB), settings.data, customAdvertisedURL);
-    });
-  };
-  const backupSettingsPending = runtimeSettings
-    ? backupSettingsChanged(settings.data, runtimeSettings)
-    : false;
-  const logArchiveSettingsPending = runtimeSettings
-    ? logArchiveSettingsChanged(settings.data, runtimeSettings)
-    : false;
-  const activationDecision = runtimeSettings
-    ? runtimeSettingsActivationDecision(runtimeSettings, settings.data)
-    : null;
 
   return (
     <div className="page-stack">
+      <PlatformSettingsPanel />
       <Panel
-        title="VM resources"
+        title="Runtime product settings"
         actions={
           <ConfirmButton
-            confirmMessage="Apply runtime settings? This may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
-            onClick={apply}
-            disabled={!canApply}
+            confirmMessage="Apply product runtime settings and reconcile the Compose stack?"
+            disabled={
+              !canApplyProductSettings ||
+              parsed instanceof Error ||
+              apply.isPending
+            }
+            onClick={() => {
+              if (canApplyProductSettings && !(parsed instanceof Error)) {
+                apply.mutate({ settings: parsed });
+              }
+            }}
           >
             Apply
           </ConfirmButton>
         }
       >
-        {settings.isError ? (
-          <ErrorState title="Failed to read settings" error={settings.error} />
-        ) : null}
-        {settings.data?.readIssues?.length ? (
-          <div className="warning-list">
-            <strong>Settings read issues</strong>
-            {settings.data.readIssues.map((issue) => (
-              <div key={issue.source}>
-                {issue.source}: {issue.message}
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="settings-grid">
-          <label>
-            CPU cores
-            <input
-              type="number"
-              min="1"
-              value={draft.cpuCount}
-              disabled={!canEditVMResources}
-              onChange={(event) => updateField("cpuCount", event.target.value)}
-            />
-          </label>
-          <label>
-            Memory GiB
-            <input
-              type="number"
-              min="1"
-              step="0.5"
-              value={draft.memoryGiB}
-              disabled={!canEditVMResources}
-              onChange={(event) => updateField("memoryGiB", event.target.value)}
-            />
-          </label>
-          <label>
-            VM disk GiB
-            <input
-              type="number"
-              min={settings.data.minimumDiskGiB}
-              value={draft.diskGiB}
-              disabled={!canEditVMResources}
-              onChange={(event) => updateField("diskGiB", event.target.value)}
-            />
-          </label>
-        </div>
         <p className="muted">
-          VM disk can only be increased. Minimum for this install is{" "}
-          {settings.data.minimumDiskGiB} GiB.
+          These settings belong to the Runtime Controller and are identical on
+          macOS, Windows, and Linux. VM, OS service, proxy-listener, and local
+          filesystem settings belong to the Platform Agent.
         </p>
+        {read.data.readError ? (
+          <ErrorState title="Runtime settings read issue" error={new Error(read.data.readError)} />
+        ) : null}
+        {apply.error ? (
+          <ErrorState title="Runtime settings apply failed" error={apply.error} />
+        ) : null}
+        {validationError ? <p className="form-error">{validationError}</p> : null}
       </Panel>
 
-      <Panel title="Network exposure">
+      <Panel title="Advertised product endpoints">
         <div className="settings-grid">
-          <label>
-            VitalServer listen port
-            <input
-              type="number"
-              min="1"
-              max="65535"
-              value={draft.proxyPort}
-              disabled={!canEditNetworkExposure}
-              onChange={(event) => updateField("proxyPort", event.target.value)}
-            />
-          </label>
-          <label>
-            Remote Console port
-            <input
-              type="number"
-              min="1"
-              max="65535"
-              value={draft.runtimeControlPort}
-              disabled={!canEditNetworkExposure}
-              onChange={(event) =>
-                updateField("runtimeControlPort", event.target.value)
-              }
-            />
-          </label>
-        </div>
-        <p className="muted">
-          VitalServer URL: {vitalServerURLPreview}
-        </p>
-        <p className="muted">Remote Console: {runtimeControlURLPreview}</p>
-        <label className="checkbox-label block-checkbox">
-          <input
-            type="checkbox"
-            checked={customAdvertisedURL}
-            disabled={!canEditNetworkExposure}
-            onChange={(event) => setCustomAdvertisedURL(event.target.checked)}
+          <TextField
+            label="VitalServer URL"
+            value={draft.settings.vitalServerURL}
+            onChange={(value) => update("vitalServerURL", value)}
           />
-          Custom advertised URL
-        </label>
-        <p className="muted">
-          Enable this only when clients must connect through a different host or
-          port than the Mac listener, such as an external reverse proxy.
-        </p>
-        {customAdvertisedURL ? (
-          <div className="settings-grid">
-            <label>
-              Custom advertised host
-              <input
-                type="text"
-                value={draft.publicHost}
-                disabled={!canEditNetworkExposure}
-                onChange={(event) => updateField("publicHost", event.target.value)}
-              />
-            </label>
-            <label>
-              Advertised port
-              <input
-                type="number"
-                min="1"
-                max="65535"
-                value={draft.publicPort}
-                disabled={!canEditNetworkExposure}
-                onChange={(event) => updateField("publicPort", event.target.value)}
-              />
-            </label>
-          </div>
-        ) : (
-          <p className="muted">
-            Default advertised URL: {defaultAdvertisedURLPreview}
-          </p>
-        )}
+          <TextField
+            label="Remote Console URL"
+            value={draft.settings.remoteConsoleURL}
+            onChange={(value) => update("remoteConsoleURL", value)}
+          />
+          <TextField
+            label="Advertised host"
+            value={draft.settings.publicHost}
+            onChange={(value) => update("publicHost", value)}
+          />
+          <NumberField
+            label="Advertised port"
+            value={draft.settings.publicPort}
+            onChange={(value) => update("publicPort", value)}
+            max={65535}
+          />
+        </div>
       </Panel>
 
       <Panel title="Recorder load control">
         <div className="settings-grid">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.recorderIngressLoadControlEnabled}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField(
-                  "recorderIngressLoadControlEnabled",
-                  event.target.checked
-                )
-              }
-            />
-            Recorder load control
-          </label>
           <label>
-            Max replay throughput
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="5"
-              value={draft.recorderIngressSendDataReplayMaxMiBPerSecond}
-              disabled={
-                !canControlServices || !draft.recorderIngressLoadControlEnabled
-              }
-              onChange={(event) =>
-                updateReplayThroughput(event.target.value)
-              }
-              onBlur={normalizeReplayThroughput}
-            />
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.containerMemoryLimitsEnabled}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("containerMemoryLimitsEnabled", event.target.checked)
-              }
-            />
-            Container memory limits
-          </label>
-          <p className="muted full-width">
-            Container limit total: {containerMemoryLimitTotalPercent}% /{" "}
-            {containerMemoryLimitRanges.maxCombinedPercent}% of VM memory
-          </p>
-          <label>
-            VitalServer limit:{" "}
-            {containerMemoryLimitPercent(
-              draft.vitalServerContainerMemoryLimitMiB,
-              containerMemoryLimitVMMaxMiB
-            )}
-            % ({draft.vitalServerContainerMemoryLimitMiB} MiB)
-            <input
-              type="range"
-              min={
-                containerMemoryLimitPercentRange(
-                  containerMemoryLimitRanges.vitalServer,
-                  containerMemoryLimitVMMaxMiB
-                ).min
-              }
-              max={
-                containerMemoryLimitPercentRange(
-                  containerMemoryLimitRanges.vitalServer,
-                  containerMemoryLimitVMMaxMiB
-                ).max
-              }
-              step={containerMemoryLimitRanges.stepPercent}
-              value={containerMemoryLimitPercent(
-                draft.vitalServerContainerMemoryLimitMiB,
-                containerMemoryLimitVMMaxMiB
-              )}
-              disabled={!canControlServices || !draft.containerMemoryLimitsEnabled}
-              onChange={(event) =>
-                updateContainerMemoryLimitPercent(
-                  "vitalServerContainerMemoryLimitMiB",
-                  Number(event.target.value),
-                  containerMemoryLimitRanges.vitalServer
-                )
-              }
-            />
-          </label>
-          <label>
-            Recorder ingress limit:{" "}
-            {containerMemoryLimitPercent(
-              draft.recorderIngressContainerMemoryLimitMiB,
-              containerMemoryLimitVMMaxMiB
-            )}
-            % ({draft.recorderIngressContainerMemoryLimitMiB} MiB)
-            <input
-              type="range"
-              min={
-                containerMemoryLimitPercentRange(
-                  containerMemoryLimitRanges.recorderIngress,
-                  containerMemoryLimitVMMaxMiB
-                ).min
-              }
-              max={
-                containerMemoryLimitPercentRange(
-                  containerMemoryLimitRanges.recorderIngress,
-                  containerMemoryLimitVMMaxMiB
-                ).max
-              }
-              step={containerMemoryLimitRanges.stepPercent}
-              value={containerMemoryLimitPercent(
-                draft.recorderIngressContainerMemoryLimitMiB,
-                containerMemoryLimitVMMaxMiB
-              )}
-              disabled={!canControlServices || !draft.containerMemoryLimitsEnabled}
-              onChange={(event) =>
-                updateContainerMemoryLimitPercent(
-                  "recorderIngressContainerMemoryLimitMiB",
-                  Number(event.target.value),
-                  containerMemoryLimitRanges.recorderIngress
-                )
-              }
-            />
-          </label>
-          <label>
-            Redis limit:{" "}
-            {containerMemoryLimitPercent(
-              draft.redisContainerMemoryLimitMiB,
-              containerMemoryLimitVMMaxMiB
-            )}
-            % ({draft.redisContainerMemoryLimitMiB} MiB)
-            <input
-              type="range"
-              min={
-                containerMemoryLimitPercentRange(
-                  containerMemoryLimitRanges.redis,
-                  containerMemoryLimitVMMaxMiB
-                ).min
-              }
-              max={
-                containerMemoryLimitPercentRange(
-                  containerMemoryLimitRanges.redis,
-                  containerMemoryLimitVMMaxMiB
-                ).max
-              }
-              step={containerMemoryLimitRanges.stepPercent}
-              value={containerMemoryLimitPercent(
-                draft.redisContainerMemoryLimitMiB,
-                containerMemoryLimitVMMaxMiB
-              )}
-              disabled={!canControlServices || !draft.containerMemoryLimitsEnabled}
-              onChange={(event) =>
-                updateContainerMemoryLimitPercent(
-                  "redisContainerMemoryLimitMiB",
-                  Number(event.target.value),
-                  containerMemoryLimitRanges.redis
-                )
-              }
-            />
-          </label>
-          <label>
-            Hot path storage MiB
-            <input
-              type="number"
-              min="1"
-              value={draft.recorderIngressSendDataMaxPendingMiB}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("recorderIngressSendDataMaxPendingMiB", event.target.value)
-              }
-            />
-          </label>
-          <label>
-            Archive file size MiB
-            <input
-              type="number"
-              min="1"
-              value={draft.recorderIngressRawArchiveMaxFileMiB}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("recorderIngressRawArchiveMaxFileMiB", event.target.value)
-              }
-            />
-          </label>
-          <label>
-            Archive retention
-            <input
-              type="number"
-              min="1"
-              value={draft.recorderIngressRawArchiveMaxFiles}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("recorderIngressRawArchiveMaxFiles", event.target.value)
-              }
-            />
-          </label>
-        </div>
-        <p className="muted">
-          Load control queues recorder send_data and replays payloads to
-          VitalServer at a controlled throughput. Throughput is configured in
-          MiB/s. Recorder archives are automatically exported for all connected
-          recorders after files are ready. Container memory limits are hard
-          Docker limits configured in MiB. These changes are applied when
-          container services are reconciled.
-        </p>
-      </Panel>
-
-      <Panel title="Redis Relay">
-        <div className="settings-grid">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.redisRelayEnabled}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("redisRelayEnabled", event.target.checked)
-              }
-            />
-            Enable relay
-          </label>
-          <label>
-            Target URL
-            <input
-              type="text"
-              value={draft.redisRelayTargetURL}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("redisRelayTargetURL", event.target.value)
-              }
-            />
-          </label>
-          <label>
-            Username
-            <input
-              type="text"
-              value={draft.redisRelayUsername}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("redisRelayUsername", event.target.value)
-              }
-            />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={draft.redisRelayPassword}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("redisRelayPassword", event.target.value)
-              }
-            />
-          </label>
-          {draft.redisRelayPasswordConfigured ? (
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={draft.redisRelayClearPassword}
-                disabled={!canControlServices}
-                onChange={(event) =>
-                  updateField("redisRelayClearPassword", event.target.checked)
-                }
-              />
-              Clear saved password
-            </label>
-          ) : null}
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.redisRelayTLS}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("redisRelayTLS", event.target.checked)
-              }
-            />
-            TLS
-          </label>
-          <label>
-            Data scope
+            Send-data mode
             <select
-              value={draft.redisRelayScope}
-              disabled={!canControlServices}
+              value={draft.settings.recorderIngressSendDataMode}
               onChange={(event) =>
-                updateField(
-                  "redisRelayScope",
-                  event.target.value as RuntimeSettingsDraft["redisRelayScope"]
+                update(
+                  "recorderIngressSendDataMode",
+                  event.target.value as RuntimeProductSettings["recorderIngressSendDataMode"]
                 )
               }
             >
-              <option value="waveform_trend_only">Waveform/trend only</option>
-              <option value="vital_reconstruction">Vital reconstruction</option>
+              <option value="passthrough">passthrough</option>
+              <option value="observe_only">observe_only</option>
+              <option value="mirror_spool">mirror_spool</option>
+              <option value="spool_only">spool_only</option>
+              <option value="spool_and_replay">spool_and_replay</option>
             </select>
           </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.redisRelayIncludeRecorderNetworkContext}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField(
-                  "redisRelayIncludeRecorderNetworkContext",
-                  event.target.checked
-                )
-              }
-            />
-            Include recorder network context
-          </label>
-        </div>
-        <p className="muted">
-          Publishes allowlisted VitalServer Redis data to an external Redis
-          target. Use redis:// or rediss:// URLs.
-        </p>
-      </Panel>
-
-      <Panel title="Storage and VitalServer Helper backups">
-        <p className={settingsApplyStateClassName(backupSettingsPending)}>
-          {backupAppliedState}
-        </p>
-        <div className="settings-grid">
-          <label>
-            Vital files directory
-            <input
-              type="text"
-              value={draft.vitalFilesDirectory}
-              disabled={!canEditLocalFiles}
-              onChange={(event) =>
-                updateField("vitalFilesDirectory", event.target.value)
-              }
-            />
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.automaticBackupEnabled}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("automaticBackupEnabled", event.target.checked)
-              }
-            />
-            Automatic backups
-          </label>
-          <p className="muted full-width">
-            Schedule timezone: {systemTimeZone} (system local time).
+          <p className="settings-hint settings-warning">
+            observe_only preserves direct upstream delivery and records bounded raw
+            archive evidence without replay. spool_and_replay is degraded until
+            Recorder-visible durable admission acknowledgement is available.
           </p>
-          <label>
-            Backup times
-            <input
-              value={draft.backupScheduleTimes}
-              disabled={!canControlServices}
-              placeholder="03:15, 15:15"
-              pattern="^([01][0-9]|2[0-3]):[0-5][0-9](,\s*([01][0-9]|2[0-3]):[0-5][0-9])*$"
-              onChange={(event) =>
-                updateField("backupScheduleTimes", event.target.value)
-              }
-            />
-          </label>
-          <label>
-            Backup archives
-            <input
-              type="number"
-              min="1"
-              max="30"
-              value={draft.backupRetentionCount}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("backupRetentionCount", event.target.value)
-              }
-            />
-          </label>
+          <NumberField
+            label="Replay batch size"
+            value={draft.settings.recorderIngressSendDataReplayBatchSize}
+            onChange={(value) => update("recorderIngressSendDataReplayBatchSize", value)}
+          />
+          <NumberField
+            label="Replay limit MiB/s"
+            value={draft.settings.recorderIngressSendDataReplayMaxMiBPerSecond}
+            onChange={(value) =>
+              update("recorderIngressSendDataReplayMaxMiBPerSecond", value)
+            }
+          />
         </div>
-
-        <p className="muted">
-          Backup times use 24-hour HH:mm format, such as 03:15 or 15:15, and
-          each time must be unique.{" "}
-          VitalServer Helper backup retention keeps up to 30 recoverable archives,
-          including Redis data.
-        </p>
+        <label>
+          Recorder ingress advanced settings
+          <textarea
+            rows={18}
+            value={draft.recorderIngressJSON}
+            onChange={(event) =>
+              setDraft((current) =>
+                current ? { ...current, recorderIngressJSON: event.target.value } : current
+              )
+            }
+          />
+        </label>
       </Panel>
 
-      <Panel title="Logs">
-        <p className={settingsApplyStateClassName(logArchiveSettingsPending)}>
-          {logArchiveAppliedState}
-        </p>
+      <Panel title="Container memory limits">
+        <label className="checkbox-label block-checkbox">
+          <input
+            type="checkbox"
+            checked={draft.settings.containerMemoryLimitsEnabled}
+            onChange={(event) =>
+              update("containerMemoryLimitsEnabled", event.target.checked)
+            }
+          />
+          Apply explicit Compose container memory limits
+        </label>
         <div className="settings-grid">
-          <label>
-            Log archive retention
-            <input
-              type="number"
-              min="1"
-              max="30"
-              value={draft.logArchiveRetentionDays}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("logArchiveRetentionDays", event.target.value)
-              }
-            />
-          </label>
-          <label>
-            Log archive size limit
-            <input
-              type="number"
-              min="1"
-              max="20"
-              value={draft.logArchiveMaximumGiB}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("logArchiveMaximumGiB", event.target.value)
-              }
-            />
-          </label>
+          <NumberField
+            label="VitalServer MiB"
+            value={draft.settings.vitalServerContainerMemoryLimitMiB}
+            onChange={(value) => update("vitalServerContainerMemoryLimitMiB", value)}
+          />
+          <NumberField
+            label="Recorder ingress MiB"
+            value={draft.settings.recorderIngressContainerMemoryLimitMiB}
+            onChange={(value) =>
+              update("recorderIngressContainerMemoryLimitMiB", value)
+            }
+          />
+          <NumberField
+            label="Redis MiB"
+            value={draft.settings.redisContainerMemoryLimitMiB}
+            onChange={(value) => update("redisContainerMemoryLimitMiB", value)}
+          />
         </div>
-
-        <p className="muted">
-          Managed YYYY-MM-DD log archive folders are pruned by age first, then by
-          total size. Non-date folders are not automatically removed.
-        </p>
       </Panel>
 
-      <Panel title="Operations">
-        <div className="settings-toggles">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.startOnBoot}
-              disabled={!startOnBootControl.enabled}
-              onChange={(event) =>
-                updateField("startOnBoot", event.target.checked)
-              }
-            />
-            Start on boot
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.autoRecoveryEnabled}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("autoRecoveryEnabled", event.target.checked)
-              }
-            />
-            Auto recovery
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.preventSystemSleep}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("preventSystemSleep", event.target.checked)
-              }
-            />
-            Prevent system sleep
-          </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={draft.restartAfterSave}
-              disabled={!canControlServices}
-              onChange={(event) =>
-                updateField("restartAfterSave", event.target.checked)
-              }
-            />
-            Activate required runtime changes after save
-          </label>
+      <Panel title="Runtime backups">
+        <label className="checkbox-label block-checkbox">
+          <input
+            type="checkbox"
+            checked={draft.settings.automaticBackupEnabled}
+            onChange={(event) => update("automaticBackupEnabled", event.target.checked)}
+          />
+          Automatic Runtime backup
+        </label>
+        <div className="settings-grid">
+          <TextField
+            label="Schedule times"
+            value={draft.backupScheduleText}
+            onChange={(value) =>
+              setDraft((current) =>
+                current ? { ...current, backupScheduleText: value } : current
+              )
+            }
+          />
+          <NumberField
+            label="Retention count"
+            value={draft.settings.backupRetentionCount}
+            onChange={(value) => update("backupRetentionCount", value)}
+          />
         </div>
-        {!startOnBootControl.enabled ? (
-          <p className="muted">{startOnBootControl.reason}</p>
-        ) : null}
+        <p className="muted">Enter schedule times separated by commas, for example 03:15, 15:15.</p>
+      </Panel>
 
-        {validation.errors.length ? (
-          <div className="error-state">
-            <strong>Settings need attention</strong>
-            {validation.errors.map((error) => (
-              <span key={error}>{error}</span>
-            ))}
-          </div>
+      <Panel
+        title="Redis Relay"
+        actions={
+          <ConfirmButton
+            confirmMessage="Apply Redis Relay settings and reconcile the Runtime stack?"
+            disabled={
+              !relayDraft ||
+              !canApplyRuntimeRedisRelaySettings(capabilities.data) ||
+              applyRelay.isPending
+            }
+            onClick={() => {
+              if (relayDraft) {
+                applyRelay.mutate(relayDraft);
+              }
+            }}
+          >
+            Apply relay
+          </ConfirmButton>
+        }
+      >
+        <p className="muted">
+          Redis Relay configuration and its secret belong to the Runtime Controller.
+          The configured password is reported only as present or absent.
+        </p>
+        {relayRead.isPending ? <p>Loading Redis Relay settings...</p> : null}
+        {relayRead.isError ? (
+          <ErrorState title="Redis Relay settings read failed" error={relayRead.error} />
         ) : null}
-
-        {applySettings.isError ? (
+        {relayRead.data?.state !== "loaded" && relayRead.data?.readError ? (
           <ErrorState
-            title="Failed to apply settings"
-            error={applySettings.error}
+            title="Redis Relay settings are unavailable"
+            error={new Error(relayRead.data.readError)}
           />
         ) : null}
-        {applySettings.data ? (
-          <p className="muted">
-            Settings applied. Exit code{" "}
-            {applySettings.data.result?.exitCode ?? "unknown"}.
-          </p>
+        {relayDraft ? (
+          <>
+            <label className="checkbox-label block-checkbox">
+              <input
+                type="checkbox"
+                checked={relayDraft.enabled}
+                onChange={(event) =>
+                  setRelayDraft({ ...relayDraft, enabled: event.target.checked })
+                }
+              />
+              Enable Redis Relay
+            </label>
+            <div className="settings-grid">
+              <TextField
+                label="Target URL"
+                value={relayDraft.target.url}
+                onChange={(url) =>
+                  setRelayDraft({
+                    ...relayDraft,
+                    target: { ...relayDraft.target, url }
+                  })
+                }
+              />
+              <TextField
+                label="Target username"
+                value={relayDraft.target.username}
+                onChange={(username) =>
+                  setRelayDraft({
+                    ...relayDraft,
+                    target: { ...relayDraft.target, username }
+                  })
+                }
+              />
+              <label>
+                New target password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={relayDraft.target.password ?? ""}
+                  onChange={(event) =>
+                    setRelayDraft({
+                      ...relayDraft,
+                      target: {
+                        ...relayDraft.target,
+                        password: event.target.value,
+                        clearPassword: false
+                      }
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Scope
+                <select
+                  value={relayDraft.scope}
+                  onChange={(event) =>
+                    setRelayDraft({
+                      ...relayDraft,
+                      scope: event.target.value as RedisRelayDraft["scope"]
+                    })
+                  }
+                >
+                  <option value="vital_reconstruction">vital reconstruction</option>
+                  <option value="waveform_trend_only">waveform/trend only</option>
+                </select>
+              </label>
+              <NumberField
+                label="Interval seconds"
+                value={relayDraft.intervalSeconds}
+                onChange={(intervalSeconds) =>
+                  setRelayDraft({ ...relayDraft, intervalSeconds })
+                }
+                min={0.1}
+              />
+              <NumberField
+                label="Scan count"
+                value={relayDraft.scanCount}
+                onChange={(scanCount) => setRelayDraft({ ...relayDraft, scanCount })}
+              />
+            </div>
+            <label className="checkbox-label block-checkbox">
+              <input
+                type="checkbox"
+                checked={relayDraft.target.tls}
+                onChange={(event) =>
+                  setRelayDraft({
+                    ...relayDraft,
+                    target: { ...relayDraft.target, tls: event.target.checked }
+                  })
+                }
+              />
+              Use TLS
+            </label>
+            <label className="checkbox-label block-checkbox">
+              <input
+                type="checkbox"
+                checked={relayDraft.includeRecorderNetworkContext}
+                onChange={(event) =>
+                  setRelayDraft({
+                    ...relayDraft,
+                    includeRecorderNetworkContext: event.target.checked
+                  })
+                }
+              />
+              Include recorder network context
+            </label>
+            <label className="checkbox-label block-checkbox">
+              <input
+                type="checkbox"
+                checked={relayDraft.target.clearPassword}
+                onChange={(event) =>
+                  setRelayDraft({
+                    ...relayDraft,
+                    target: {
+                      ...relayDraft.target,
+                      password: "",
+                      clearPassword: event.target.checked
+                    }
+                  })
+                }
+              />
+              Clear configured target password
+            </label>
+            <p className="muted">
+              Password currently configured: {relayRead.data?.settings?.target.passwordConfigured ? "yes" : "no"}
+            </p>
+          </>
         ) : null}
-        {changedRuntimeControlPort !== null ? (
-          <p className="muted">
-            Remote Console port changed to {changedRuntimeControlPort}. Open the
-            Remote Console on the configured host after the Runtime Control API
-            is available on the new port.
-          </p>
+        {applyRelay.error ? (
+          <ErrorState title="Redis Relay settings apply failed" error={applyRelay.error} />
         ) : null}
       </Panel>
 
-      <Panel title="Change activation">
-        {activationDecision ? (
-          <>
-            <p
-              className={settingsApplyStateClassName(
-                activationDecision.requiresActivation
-              )}
-            >
-              {activationDecision.message}
-            </p>
-            {activationDecision.requiresVMRestart ? (
-              <p className="muted">
-                Requires VM restart. Required by:{" "}
-                {activationDecision.vmRestartChanges.join(", ")}.
-              </p>
-            ) : null}
-            {activationDecision.requiresContainerServicesReconcile ? (
-              <p className="muted">
-                Requires container reconcile. Required by:{" "}
-                {activationDecision.containerServiceChanges.join(", ")}.
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <p className="muted">Runtime activation state is not available.</p>
-        )}
+      <Panel title="Runtime administrator password">
+        <p className="muted">
+          The password is sent only to the Runtime Controller, is never returned
+          by a read API, and is not stored in this page after a successful change.
+        </p>
+        <div className="inline-form">
+          <label>
+            New administrator password
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={adminPassword}
+              onChange={(event) => setAdminPassword(event.target.value)}
+            />
+          </label>
+          <ConfirmButton
+            confirmMessage="Replace the VitalServer administrator password and reconcile the Runtime stack?"
+            disabled={
+              !canApplyRuntimeAdminPassword(capabilities.data) ||
+              adminPassword.length === 0 ||
+              adminPassword.includes("\n") ||
+              adminPassword.includes("\r") ||
+              applyAdminPassword.isPending
+            }
+            onClick={() =>
+              applyAdminPassword.mutate(
+                { password: adminPassword },
+                { onSuccess: () => setAdminPassword("") }
+              )
+            }
+          >
+            Replace password
+          </ConfirmButton>
+        </div>
+        {applyAdminPassword.data ? (
+          <p className="muted">
+            Operation {applyAdminPassword.data.operationId}: {applyAdminPassword.data.state}
+          </p>
+        ) : null}
+        {applyAdminPassword.error ? (
+          <ErrorState
+            title="Administrator password change failed"
+            error={applyAdminPassword.error}
+          />
+        ) : null}
       </Panel>
     </div>
   );
 }
 
-function currentBrowserHostname(): string | undefined {
-  return globalThis.location?.hostname;
-}
+function PlatformSettingsPanel() {
+  const read = useRuntimePlatformSettings();
+  const apply = useApplyRuntimePlatformSettings();
+  const capabilities = useControlCapabilities();
+  const [draft, setDraft] = useState<RuntimePlatformSettings | null>(null);
 
-function normalizeReplayThroughputValue(value: string): string {
-  const parsed = parseOptionalNumber(value);
-  if (parsed === undefined || parsed <= 1) {
-    return "1";
+  useEffect(() => {
+    setDraft(read.data?.state === "loaded" ? read.data.settings : null);
+  }, [read.data]);
+
+  if (read.isPending) {
+    return <Panel title="Platform settings">Loading Platform Agent settings...</Panel>;
   }
-  return String(Math.min(100, Math.max(5, Math.round(parsed / 5) * 5)));
-}
-
-function draftMemoryMiB(draft: RuntimeSettingsDraft, fallbackMemoryGiB: number): number {
-  return Math.max((parseOptionalNumber(draft.memoryGiB) ?? fallbackMemoryGiB) * 1024, 1);
-}
-
-function normalizeContainerMemoryLimitDraft(
-  draft: RuntimeSettingsDraft,
-  vmMiB: number
-): RuntimeSettingsDraft {
-  if (!draft.containerMemoryLimitsEnabled) {
-    return draft;
+  if (read.isError) {
+    return (
+      <Panel title="Platform settings">
+        <ErrorState title="Platform settings are unavailable" error={read.error} />
+      </Panel>
+    );
   }
-  let next = { ...draft };
-  for (const field of [
-    "vitalServerContainerMemoryLimitMiB",
-    "redisContainerMemoryLimitMiB",
-    "recorderIngressContainerMemoryLimitMiB"
-  ] as const) {
-    const surplus =
-      containerMemoryLimitDraftTotalPercent(next, vmMiB) -
-      containerMemoryLimitRanges.maxCombinedPercent;
-    if (surplus <= 0) {
-      return next;
-    }
-    const range = containerMemoryLimitRangeForField(field);
-    const currentPercent = containerMemoryLimitPercent(next[field], vmMiB);
-    const minimumPercent = containerMemoryLimitPercentRange(range, vmMiB).min;
-    const nextPercent = Math.max(minimumPercent, currentPercent - surplus);
-    next = {
-      ...next,
-      [field]: String(containerMemoryLimitMiB(nextPercent, range, vmMiB))
-    };
+  if (read.data?.state !== "loaded" || !draft) {
+    return (
+      <Panel title="Platform settings">
+        <ErrorState
+          title="Platform settings are unavailable"
+          error={new Error(read.data?.readError ?? "Platform settings were not reported.")}
+        />
+      </Panel>
+    );
   }
-  return next;
-}
 
-function enableContainerReconcileActivationWhenNeeded(
-  draft: RuntimeSettingsDraft,
-  runtime: Parameters<typeof draftToRuntimeSettings>[1],
-  customAdvertisedURL: boolean
-): RuntimeSettingsDraft {
-  const candidate = draftToRuntimeSettings(draft, runtime, customAdvertisedURL);
-  const decision = runtimeSettingsActivationDecision(candidate, runtime);
-  if (
-    decision.requiresContainerServicesReconcile &&
-    !decision.requiresVMRestart
-  ) {
-    return { ...draft, restartAfterSave: true };
-  }
-  return draft;
-}
+  const canApply =
+    capabilities.data?.canEditRuntimeProviderResources === true &&
+    capabilities.data.canEditNetworkExposure === true;
+  const validationError =
+    draft.diskGiB < draft.minimumDiskGiB
+      ? `Disk must be at least ${draft.minimumDiskGiB} GiB.`
+      : draft.networkMode === "bridged" && !draft.bridgedInterface?.trim()
+        ? "A bridged interface is required in bridged network mode."
+        : null;
+  const update = <K extends keyof RuntimePlatformSettings>(
+    field: K,
+    value: RuntimePlatformSettings[K]
+  ) => setDraft((current) => (current ? { ...current, [field]: value } : current));
 
-function containerMemoryLimitRangeForField(
-  field:
-    | "vitalServerContainerMemoryLimitMiB"
-    | "recorderIngressContainerMemoryLimitMiB"
-    | "redisContainerMemoryLimitMiB"
-): { minMiB: number; maxMiB: number } {
-  if (field === "recorderIngressContainerMemoryLimitMiB") {
-    return containerMemoryLimitRanges.recorderIngress;
-  }
-  if (field === "redisContainerMemoryLimitMiB") {
-    return containerMemoryLimitRanges.redis;
-  }
-  return containerMemoryLimitRanges.vitalServer;
-}
-
-function runtimeContainerLimitTotalPercent(settings: {
-  memoryGiB: number;
-  vitalServerContainerMemoryLimitMiB: number;
-  recorderIngressContainerMemoryLimitMiB: number;
-  redisContainerMemoryLimitMiB: number;
-}): number {
-  const vmMiB = Math.max(settings.memoryGiB * 1024, 1);
-  return Math.round(
-    ((settings.vitalServerContainerMemoryLimitMiB +
-      settings.recorderIngressContainerMemoryLimitMiB +
-      settings.redisContainerMemoryLimitMiB) /
-      vmMiB) *
-      100
-  );
-}
-
-function containerMemoryLimitDraftTotalPercent(
-  draft: RuntimeSettingsDraft,
-  vmMiB: number
-): number {
   return (
-    containerMemoryLimitPercent(draft.vitalServerContainerMemoryLimitMiB, vmMiB) +
-    containerMemoryLimitPercent(draft.recorderIngressContainerMemoryLimitMiB, vmMiB) +
-    containerMemoryLimitPercent(draft.redisContainerMemoryLimitMiB, vmMiB)
+    <Panel
+      title="Platform settings"
+      actions={
+        <ConfirmButton
+          confirmMessage="Apply Host settings? Runtime Provider resources or listeners may restart."
+          disabled={!canApply || validationError !== null || apply.isPending}
+          onClick={() => apply.mutate({ settings: platformApplyDocument(draft) })}
+        >
+          Apply Host settings
+        </ConfirmButton>
+      }
+    >
+      <p className="muted">
+        These settings are owned by the Platform Agent. macOS currently supports editing;
+        Windows and Linux report this contract as unavailable until their Host adapters own it.
+      </p>
+      {!canApply ? (
+        <p className="muted">This Platform Agent reports Host settings as read-only.</p>
+      ) : null}
+      {validationError ? <p className="form-error">{validationError}</p> : null}
+      {read.data.readIssues.map((issue) => (
+        <ErrorState key={`${issue.source}:${issue.message}`} title={issue.source} error={new Error(issue.message)} />
+      ))}
+      <div className="settings-grid">
+        <NumberField label="CPU count" value={draft.cpuCount} onChange={(value) => update("cpuCount", value)} />
+        <NumberField label="Memory GiB" value={draft.memoryGiB} onChange={(value) => update("memoryGiB", value)} />
+        <NumberField label={`Disk GiB (minimum ${draft.minimumDiskGiB})`} value={draft.diskGiB} min={draft.minimumDiskGiB} onChange={(value) => update("diskGiB", value)} />
+        <label>
+          Network mode
+          <select value={draft.networkMode} onChange={(event) => update("networkMode", event.target.value as RuntimePlatformSettings["networkMode"])}>
+            <option value="shared">shared</option>
+            <option value="bridged">bridged</option>
+          </select>
+        </label>
+        <TextField label="Bridged interface" value={draft.bridgedInterface ?? ""} onChange={(value) => update("bridgedInterface", value.trim() ? value : null)} />
+        <NumberField label="Public proxy port" value={draft.proxyPort} max={65535} onChange={(value) => update("proxyPort", value)} />
+        <NumberField label="Runtime Control port" value={draft.runtimeControlPort} max={65535} onChange={(value) => update("runtimeControlPort", value)} />
+        <TextField label="Vital files directory" value={draft.vitalFilesDirectory} onChange={(value) => update("vitalFilesDirectory", value)} />
+        <TextField label="Backup schedule times" value={draft.backupScheduleTimes.join(", ")} onChange={(value) => update("backupScheduleTimes", value.split(",").map((item) => item.trim()).filter(Boolean))} />
+        <NumberField label="Backup retention count" value={draft.backupRetentionCount} onChange={(value) => update("backupRetentionCount", value)} />
+        <NumberField label="Log retention days" value={draft.logArchiveRetentionDays} onChange={(value) => update("logArchiveRetentionDays", value)} />
+        <NumberField label="Maximum log archive GiB" value={draft.logArchiveMaximumGiB} onChange={(value) => update("logArchiveMaximumGiB", value)} />
+      </div>
+      <div className="settings-grid">
+        <SettingsToggle label="Start on boot" checked={draft.startOnBoot} disabled={!draft.startOnBootConfigurable} onChange={(value) => update("startOnBoot", value)} />
+        <SettingsToggle label="Automatic recovery" checked={draft.autoRecoveryEnabled} onChange={(value) => update("autoRecoveryEnabled", value)} />
+        <SettingsToggle label="Prevent system sleep" checked={draft.preventSystemSleep} onChange={(value) => update("preventSystemSleep", value)} />
+        <SettingsToggle label="Automatic backup" checked={draft.automaticBackupEnabled} onChange={(value) => update("automaticBackupEnabled", value)} />
+        <SettingsToggle label="Restart after save" checked={draft.restartAfterSave} onChange={(value) => update("restartAfterSave", value)} />
+      </div>
+      <CommandResult result={apply.data} error={apply.error} emptyText="No Host settings apply has run." />
+    </Panel>
   );
 }
 
-function containerMemoryLimitPercent(value: string, vmMiB: number): number {
-  const valueMiB = parseOptionalNumber(value) ?? 0;
-  return Math.round((valueMiB / Math.max(vmMiB, 1)) * 100);
+function platformApplyDocument(settings: RuntimePlatformSettings) {
+  return {
+    cpuCount: settings.cpuCount,
+    memoryGiB: settings.memoryGiB,
+    diskGiB: settings.diskGiB,
+    networkMode: settings.networkMode,
+    bridgedInterface: settings.bridgedInterface,
+    proxyPort: settings.proxyPort,
+    runtimeControlPort: settings.runtimeControlPort,
+    vitalFilesDirectory: settings.vitalFilesDirectory,
+    startOnBoot: settings.startOnBoot,
+    autoRecoveryEnabled: settings.autoRecoveryEnabled,
+    preventSystemSleep: settings.preventSystemSleep,
+    automaticBackupEnabled: settings.automaticBackupEnabled,
+    backupScheduleTimes: settings.backupScheduleTimes,
+    backupRetentionCount: settings.backupRetentionCount,
+    logArchiveRetentionDays: settings.logArchiveRetentionDays,
+    logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
+    restartAfterSave: settings.restartAfterSave
+  };
 }
 
-function containerMemoryLimitMiB(
-  percent: number,
-  range: { minMiB: number; maxMiB: number },
-  vmMiB: number
-): number {
-  const valueMiB = Math.round((Math.max(vmMiB, 1) * percent) / 100);
-  return Math.min(Math.max(valueMiB, range.minMiB), Math.min(range.maxMiB, vmMiB));
-}
-
-function containerMemoryLimitPercentRange(
-  range: { minMiB: number; maxMiB: number },
-  vmMiB: number
-): { min: number; max: number } {
-  const safeVMMiB = Math.max(vmMiB, 1);
-  const min = Math.max(1, Math.ceil((range.minMiB / safeVMMiB) * 100));
-  const max = Math.max(
-    min,
-    Math.min(100, Math.floor((Math.min(range.maxMiB, safeVMMiB) / safeVMMiB) * 100))
+function SettingsToggle({
+  label,
+  checked,
+  disabled = false,
+  onChange
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="checkbox-label block-checkbox">
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      {label}
+    </label>
   );
-  return { min, max };
 }
 
-function changedRuntimeControlPortValue(
-  runtimeControlPort: number | undefined
-): number | null {
-  if (
-    runtimeControlPort === undefined ||
-    typeof window === "undefined" ||
-    window.location.port === String(runtimeControlPort)
-  ) {
-    return null;
+function toDraft(settings: RuntimeProductSettings): Draft {
+  return {
+    settings,
+    recorderIngressJSON: JSON.stringify(settings.recorderIngress, null, 2),
+    backupScheduleText: settings.backupScheduleTimes.join(", ")
+  };
+}
+
+function parsedSettings(draft: Draft): RuntimeProductSettings | Error {
+  let recorderIngress: unknown;
+  try {
+    recorderIngress = JSON.parse(draft.recorderIngressJSON);
+  } catch (error) {
+    return new Error(`Recorder ingress settings JSON is invalid: ${String(error)}`);
   }
-
-  return runtimeControlPort;
+  if (!recorderIngress || typeof recorderIngress !== "object" || Array.isArray(recorderIngress)) {
+    return new Error("Recorder ingress settings must be a JSON object.");
+  }
+  const backupScheduleTimes = draft.backupScheduleText
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (backupScheduleTimes.length === 0) {
+    return new Error("At least one backup schedule time is required.");
+  }
+  return {
+    ...draft.settings,
+    recorderIngress: recorderIngress as RuntimeProductSettings["recorderIngress"],
+    backupScheduleTimes
+  };
 }
 
-function backupAppliedSettingsSummary(
-  applied: RuntimeSettingsDraftSource,
-  draft: RuntimeSettingsDraftSource,
-  systemTimeZone: string
-): string {
-  const prefix = backupSettingsChanged(applied, draft)
-    ? "Not applied yet. Applied"
-    : "Applied";
-  const automaticBackupText = applied.automaticBackupEnabled
-    ? "Automatic backups on"
-    : "Automatic backups off";
-  const scheduleTimes = applied.backupScheduleTimes.join(", ");
-
-  return `${prefix}: ${automaticBackupText} · ${scheduleTimes} · ${systemTimeZone} · keep ${applied.backupRetentionCount} archives`;
-}
-
-function logArchiveAppliedSettingsSummary(
-  applied: RuntimeSettingsDraftSource,
-  draft: RuntimeSettingsDraftSource
-): string {
-  const prefix = logArchiveSettingsChanged(applied, draft)
-    ? "Not applied yet. Applied"
-    : "Applied";
-
-  return `${prefix}: keep ${applied.logArchiveRetentionDays} days · max ${applied.logArchiveMaximumGiB} GiB`;
-}
-
-function backupSettingsChanged(
-  applied: RuntimeSettingsDraftSource,
-  draft: RuntimeSettingsDraftSource
-): boolean {
+function TextField({
+  label,
+  value,
+  onChange
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
   return (
-    applied.automaticBackupEnabled !== draft.automaticBackupEnabled ||
-    applied.backupRetentionCount !== draft.backupRetentionCount ||
-    applied.backupScheduleTimes.join("\n") !== draft.backupScheduleTimes.join("\n")
+    <label>
+      {label}
+      <input type="text" value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
   );
 }
 
-function logArchiveSettingsChanged(
-  applied: RuntimeSettingsDraftSource,
-  draft: RuntimeSettingsDraftSource
-): boolean {
+function NumberField({
+  label,
+  value,
+  onChange,
+  max,
+  min = 1
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  max?: number;
+  min?: number;
+}) {
   return (
-    applied.logArchiveRetentionDays !== draft.logArchiveRetentionDays ||
-    applied.logArchiveMaximumGiB !== draft.logArchiveMaximumGiB
+    <label>
+      {label}
+      <input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
   );
 }
-
-function settingsApplyStateClassName(pending: boolean): string {
-  return pending ? "settings-apply-state pending" : "settings-apply-state";
-}
-
-type RuntimeSettingsDraftSource = {
-  automaticBackupEnabled: boolean;
-  backupScheduleTimes: string[];
-  backupRetentionCount: number;
-  logArchiveRetentionDays: number;
-  logArchiveMaximumGiB: number;
-};

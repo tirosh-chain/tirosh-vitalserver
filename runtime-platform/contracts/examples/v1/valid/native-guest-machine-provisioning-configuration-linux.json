@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "v1",
+  "configurationId": "vitalserver-linux-guest-machine",
+  "providerKind": "linux-kvm-libvirt-systemd",
+  "providerId": "vitalserver-linux-provider",
+  "guestArchitecture": "amd64",
+  "guestMachine": {
+    "machineId": "vitalserver-guest",
+    "cpuCount": 4,
+    "memoryMiB": 8192,
+    "macAddress": "02:00:5e:10:00:21"
+  },
+  "releaseArtifacts": {
+    "nativeGuestArtifactManifest": {
+      "sourcePath": "/opt/vitalserver/releases/0.2.0/guest/native-guest-artifact-manifest.json",
+      "sizeBytes": 1024,
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "bootableGuestDisk": {
+      "id": "guest-root",
+      "sourcePath": "/opt/vitalserver/releases/0.2.0/guest/vitalserver-guest.raw",
+      "sizeBytes": 4294967296,
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "storageImageFormat": "raw"
+    },
+    "guestProductBootstrapVolume": {
+      "id": "guest-product-bootstrap",
+      "sourcePath": "/opt/vitalserver/releases/0.2.0/guest/guest-product-bootstrap.raw",
+      "sizeBytes": 104857600,
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "storageImageFormat": "raw"
+    }
+  },
+  "runtimeStorage": {
+    "rootDiskPath": "/var/lib/vitalserver/guest/vitalserver-guest.qcow2",
+    "bootstrapVolumePath": "/var/lib/vitalserver/guest/guest-product-bootstrap.qcow2",
+    "existingRuntimeStoragePolicy": "retain-when-receipt-matches-release-artifacts"
+  },
+  "native": {
+    "kind": "linux-kvm-libvirt",
+    "imageConverterExecutablePath": "/usr/bin/qemu-img",
+    "libvirtExecutablePath": "/usr/bin/virsh",
+    "emulatorExecutablePath": "/usr/bin/qemu-system-x86_64",
+    "uefiLoaderPath": "/usr/share/OVMF/OVMF_CODE.fd",
+    "uefiNvramTemplatePath": "/usr/share/OVMF/OVMF_VARS.fd",
+    "uefiNvramPath": "/var/lib/vitalserver/guest/vitalserver-guest-vars.fd",
+    "libvirtNetworkName": "vitalserver-network",
+    "runtimeImageFormat": "qcow2"
+  },
+  "provisioningReceiptPath": "/var/lib/vitalserver/guest/vitalserver-guest-provisioning.json"
+}

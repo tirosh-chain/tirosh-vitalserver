@@ -2,6 +2,7 @@ import Foundation
 import Application
 import Contracts
 import Errors
+import RuntimeControl
 
 public struct InstalledRuntimePaths: Equatable, Sendable {
     public static let defaultProductRoot = URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper")
@@ -55,6 +56,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         runtimeHome.appendingPathComponent("runtime")
     }
 
+    public var runtimeStateDatabase: URL {
+        runtimeDirectory.appendingPathComponent("runtime-state.sqlite")
+    }
+
     public var logsDirectory: URL {
         runtimeHome.appendingPathComponent("logs")
     }
@@ -87,6 +92,12 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         productRoot.appendingPathComponent("runtime-control-settings.json")
     }
 
+    public var runtimeControlAPIToken: URL {
+        productRoot
+            .appendingPathComponent("secrets", isDirectory: true)
+            .appendingPathComponent("runtime-control-api-token")
+    }
+
     public var installLog: URL {
         productLogsDirectory.appendingPathComponent("install.log")
     }
@@ -97,6 +108,12 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var backupsDirectory: URL {
         productRoot.appendingPathComponent(RuntimeBackupStorageLayout.rootDirectoryName)
+    }
+
+    public var standardUninstallRetainedDataRoot: URL {
+        productRoot
+            .deletingLastPathComponent()
+            .appendingPathComponent("\(productRoot.lastPathComponent)-retained-uninstall-data")
     }
 
     public var vitalServerHelperBackupsDirectory: URL {
@@ -119,6 +136,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         dataDirectory.appendingPathComponent("backups/redis")
     }
 
+    public var postgresBackupsDirectory: URL {
+        dataDirectory.appendingPathComponent("backups/postgres")
+    }
+
     public var bundlesDirectory: URL {
         productRoot.appendingPathComponent("bundles")
     }
@@ -139,128 +160,116 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         dataDirectory.appendingPathComponent("vital-files")
     }
 
+    public var helperManagedDefaultVitalFilesDirectory: URL {
+        URL(fileURLWithPath: RuntimeSettingsInitialValues.vitalFilesDirectory)
+    }
+
     public var vrReleaseDirectory: URL {
         dataDirectory.appendingPathComponent("vr-release")
     }
 
     public var runtimeStatus: URL {
-        statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)
+    }
+
+    public var runtimeProgress: URL {
+        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeProgress)
     }
 
     public var runtimeOperationLease: URL {
-        statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeOperationLease)
+        hostRunDirectory.appendingPathComponent(RuntimeLegacyHostStateFileNames.operationLease)
     }
 
     public var runtimeEvents: URL {
-        statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents)
+    }
+
+    public var hostRuntimeStateEvents: URL {
+        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.hostRuntimeStateEvents)
+    }
+
+    public var hostRuntimeStateSnapshot: URL {
+        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.hostRuntimeState)
     }
 
     public var runtimeObservabilityDB: URL {
-        statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        statusDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
     }
 
     public var appliedVMConfig: URL {
-        statusDirectory.appendingPathComponent(RuntimeFileNames.appliedVMConfig)
-    }
-
-    public var runtimeUninstallState: URL {
-        URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.runtimeUninstallState)")
+        statusDirectory.appendingPathComponent(RuntimeHostContractFileNames.appliedVMConfig)
     }
 
     public var runtimeInstallState: URL {
-        URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.runtimeInstallState)")
+        URL(fileURLWithPath: "/private/tmp/\(RuntimeWorkflowArtifactFileNames.runtimeInstallState)")
     }
 
     public var vmIPFile: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.vmIP)
+        guestRunDirectory.appendingPathComponent(RuntimeBootstrapEvidenceFileNames.vmIP)
     }
 
-    public var vmLifecycle: URL {
-        hostRunDirectory.appendingPathComponent(RuntimeFileNames.vmLifecycle)
-    }
-
-    public var runtimeState: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.runtimeState)
+    public var runtimeObservation: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservation)
     }
 
     public var bootstrapLog: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.bootstrapLog)
+        guestRunDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.bootstrapLog)
     }
 
     public var bootstrapResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.bootstrapResult)
+        guestRunDirectory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.bootstrapResult)
     }
 
     public var updateActivationLog: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
-    }
-
-    public var updateActivationResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationResult)
+        guestRunDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.updateActivationLog)
     }
 
     public var updateShutdownLog: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownLog)
-    }
-
-    public var updateShutdownResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownResult)
+        guestRunDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.updateShutdownLog)
     }
 
     public var datastoreRepairLog: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
-    }
-
-    public var datastoreRepairResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairResult)
+        guestRunDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.datastoreRepairLog)
     }
 
     public var centralBootstrapLog: URL {
-        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.bootstrapLog)
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.bootstrapLog)
     }
 
     public var centralUpdateActivationLog: URL {
-        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.updateActivationLog)
     }
 
     public var centralUpdateShutdownLog: URL {
-        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownLog)
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.updateShutdownLog)
     }
 
     public var centralDatastoreRepairLog: URL {
-        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.datastoreRepairLog)
     }
 
     public var redisBackupLog: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisBackupLog)
-    }
-
-    public var redisRestoreResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreResult)
-    }
-
-    public var redisRestoreRequest: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreRequest)
+        guestRunDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.redisBackupLog)
     }
 
     public var redisRestoreLog: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreLog)
+        guestRunDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.redisRestoreLog)
     }
 
     public var centralRedisBackupLog: URL {
-        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.redisBackupLog)
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.redisBackupLog)
     }
 
     public var centralRedisRestoreLog: URL {
-        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreLog)
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.redisRestoreLog)
     }
 
     public var containerLogs: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.containerLogs)
+        guestRunDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.containerLogs)
     }
 
     public var centralContainerLogs: URL {
-        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.containerLogs)
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeLogArtifactFileNames.containerLogs)
     }
 
     public var pidFile: URL {
@@ -308,7 +317,7 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
     }
 
     public var hostTime: URL {
-        deployDirectory.appendingPathComponent(RuntimeFileNames.hostTime)
+        deployDirectory.appendingPathComponent(RuntimeHostContractFileNames.hostTime)
     }
 
     public var proxyNginxPID: URL {
@@ -332,10 +341,14 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
     }
 
     public var managerCommandLog: URL {
-        URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.managerCommandLog)")
+        URL(fileURLWithPath: "/private/tmp/\(RuntimeLogArtifactFileNames.managerCommandLog)")
     }
 
     public var managerHelperMessageLog: URL {
-        URL(fileURLWithPath: "/private/tmp/\(RuntimeFileNames.managerHelperMessageLog)")
+        URL(fileURLWithPath: "/private/tmp/\(RuntimeLogArtifactFileNames.managerHelperMessageLog)")
+    }
+
+    public var runtimeUninstallLog: URL {
+        URL(fileURLWithPath: "/private/tmp/\(RuntimeLogArtifactFileNames.runtimeUninstallLog)")
     }
 }

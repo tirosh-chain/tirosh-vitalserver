@@ -12,6 +12,7 @@ APP_BRAND_IMAGE_NAME = "vitaldb.png"
 PWA_APP_DIR = "apps/vitalserver-runtime-pwa"
 PWA_DIST_DIR = "dist"
 PWA_RESOURCE_DIR = "runtime-control-pwa"
+PLATFORM_AGENT_PRODUCT_NAME = "vitalserver-platform-agent"
 
 
 def sync_release(root: Path, runtime_dir: Path, release_file: Path) -> None:
@@ -84,13 +85,14 @@ def build_app_bundle(
     icon_source = runtime_dir / "Support/App" / APP_ICON_NAME
     brand_image_source = runtime_dir / "Support/App" / APP_BRAND_IMAGE_NAME
     pwa_dist_source = root / PWA_APP_DIR / PWA_DIST_DIR
-    for required in [helper_bin, info_plist_source, icon_source, brand_image_source]:
+    platform_agent_bin = helper_bin.parent / PLATFORM_AGENT_PRODUCT_NAME
+    for required in [helper_bin, platform_agent_bin, info_plist_source, icon_source, brand_image_source]:
         if not required.is_file():
             raise SystemExit(f"error: missing app bundle input: {required}")
     if not (pwa_dist_source / "index.html").is_file():
         raise SystemExit(
             "error: missing Runtime Control PWA build output: "
-            f"{pwa_dist_source}. Run: make pwa-build"
+            f"{pwa_dist_source}. Run: make pwa/build"
         )
 
     if app_bundle.exists():
@@ -106,6 +108,18 @@ def build_app_bundle(
     resources.mkdir(parents=True)
     shutil.copy2(helper_bin, macos / app_name)
     (macos / app_name).chmod(0o755)
+    shutil.copy2(platform_agent_bin, macos / PLATFORM_AGENT_PRODUCT_NAME)
+    (macos / PLATFORM_AGENT_PRODUCT_NAME).chmod(0o755)
+    run(
+        [
+            "codesign",
+            "--force",
+            "--sign",
+            codesign_identity,
+            str(macos / PLATFORM_AGENT_PRODUCT_NAME),
+        ],
+        cwd=root,
+    )
     info_plist = contents / APP_INFO_PLIST_NAME
     shutil.copy2(info_plist_source, info_plist)
     run(

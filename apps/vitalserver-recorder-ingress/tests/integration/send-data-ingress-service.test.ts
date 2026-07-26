@@ -93,7 +93,7 @@ test("send_data ingress service archives raw payload before durable spool", asyn
     rawArchive: {
       append(item) {
         archived.push(item);
-        return { ok: true, archiveId: "send-data-raw.jsonl", path: "/tmp/send-data-raw.jsonl", offset: 0, bytes: 321 };
+        return { ok: true, archiveId: "send-data-raw.jsonl", path: "/tmp/send-data-raw.jsonl", offset: 0, endOffset: 321, bytes: 321 };
       },
     },
     spoolStore: {
@@ -122,6 +122,51 @@ test("send_data ingress service archives raw payload before durable spool", asyn
   assert.strictEqual(snapshot.rawArchive.persistedBytes, 7);
   assert.strictEqual(snapshot.rawArchive.writeFailures, 0);
   assert.strictEqual(snapshot.spool.spooledEvents, 1);
+});
+
+test("observe_only archives raw payload without writing replay spool", async () => {
+  const spool = spoolConfig({ enabled: false, mode: "observe_only" });
+  const metricState = configuredMetrics(spool, rawArchiveConfig());
+  const archived = [];
+  const service = createSendDataIngressService({
+    config: { spool, rawArchive: rawArchiveConfig() },
+    metrics: metricState,
+    rawArchive: {
+      append(item) {
+        archived.push(item);
+        return {
+          ok: true,
+          archiveId: "send-data-raw.jsonl",
+          path: "/tmp/send-data-raw.jsonl",
+          offset: 0,
+          endOffset: 321,
+          bytes: 321,
+        };
+      },
+    },
+    spoolStore: {
+      append() {
+        throw new Error("observe_only must not write replay spool");
+      },
+    },
+    now: () => new Date("2026-06-22T09:00:00.000Z"),
+    idFactory: () => "senddata_observe_only",
+  });
+
+  const result = await service.record(
+    "payload",
+    { request_id: "request-1", connection_id: "connection-1", joined_vrcode: "VR_A" },
+    { bytes: 7 }
+  );
+
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.outcome, "accepted");
+  assert.strictEqual(archived.length, 1);
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.rawArchive.persistedEvents, 1);
+  assert.strictEqual(snapshot.spool.status, "disabled");
+  assert.strictEqual(snapshot.spool.spooledEvents, 0);
+  assert.strictEqual(snapshot.spool.pendingItems, 0);
 });
 
 test("send_data ingress service stops hot path when raw archive write fails", async () => {

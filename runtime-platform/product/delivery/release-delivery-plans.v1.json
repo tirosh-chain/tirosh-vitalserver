@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "v1",
+  "plans": [
+    {
+      "schemaVersion": "v1",
+      "id": "macos-runtime-platform-release",
+      "productVersion": "0.2.0-dev",
+      "platform": "macos",
+      "providerKind": "macos-virtualization",
+      "intendedInstallerArtifact": {
+        "kind": "pkg",
+        "expectedName": "VitalServerRuntimePlatform-0.2.0-dev.pkg"
+      },
+      "macOSInstallerPackageIdentifier": "com.tirosh.vitalserver.runtime-platform",
+      "macOSInstallerSignaturePolicy": "unsigned",
+      "requiredHostServiceRegistrations": [
+        {
+          "role": "host-agent",
+          "manager": "launchd",
+          "name": "com.tirosh.vitalserver.host-agent"
+        },
+        {
+          "role": "host-edge-proxy",
+          "manager": "launchd",
+          "name": "com.tirosh.vitalserver.host-edge-proxy"
+        },
+        {
+          "role": "host-update-handoff-supervisor",
+          "manager": "launchd",
+          "name": "com.tirosh.vitalserver.host-update-handoff-supervisor"
+        }
+      ],
+      "requiredProofStages": [
+        "artifact-integrity",
+        "sbom-and-notices",
+        "clean-install",
+        "service-registration",
+        "reboot",
+        "installed-guest-runtime",
+        "update",
+        "rollback",
+        "uninstall-reinstall"
+      ]
+    },
+    {
+      "schemaVersion": "v1",
+      "id": "windows-runtime-platform-release",
+      "productVersion": "0.2.0",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "intendedInstallerArtifact": {
+        "kind": "msi",
+        "expectedName": "VitalServerRuntimePlatform-0.2.0.msi"
+      },
+      "requiredHostServiceRegistrations": [
+        {
+          "role": "host-agent",
+          "manager": "windows-scm",
+          "name": "VitalServerHostAgent"
+        },
+        {
+          "role": "host-edge-proxy",
+          "manager": "windows-scm",
+          "name": "VitalServerHostEdgeProxy"
+        },
+        {
+          "role": "host-update-handoff-supervisor",
+          "manager": "windows-scm",
+          "name": "VitalServerHostUpdateHandoffSupervisor"
+        }
+      ],
+      "requiredProofStages": [
+        "artifact-integrity",
+        "sbom-and-notices",
+        "clean-install",
+        "service-registration",
+        "reboot",
+        "update",
+        "rollback",
+        "uninstall-reinstall"
+      ]
+    },
+    {
+      "schemaVersion": "v1",
+      "id": "linux-runtime-platform-release",
+      "productVersion": "0.2.0-dev",
+      "platform": "linux",
+      "providerKind": "linux-kvm-libvirt-systemd",
+      "intendedInstallerArtifact": {
+        "kind": "deb",
+        "expectedName": "vitalserver-runtime-platform_0.2.0-dev_amd64.deb"
+      },
+      "requiredHostServiceRegistrations": [
+        {
+          "role": "host-agent",
+          "manager": "systemd",
+          "name": "vitalserver-host-agent.service"
+        },
+        {
+          "role": "host-edge-proxy",
+          "manager": "systemd",
+          "name": "vitalserver-host-edge-proxy.service"
+        },
+        {
+          "role": "host-update-handoff-supervisor",
+          "manager": "systemd",
+          "name": "vitalserver-host-update-handoff-supervisor.service"
+        }
+      ],
+      "requiredProofStages": [
+        "artifact-integrity",
+        "sbom-and-notices",
+        "clean-install",
+        "service-registration",
+        "reboot",
+        "update",
+        "rollback",
+        "uninstall-reinstall"
+      ]
+    }
+  ]
+}

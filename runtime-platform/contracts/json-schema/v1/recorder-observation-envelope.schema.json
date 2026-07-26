@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observation-envelope",
+  "title": "RecorderObservationEnvelope",
+  "description": "A Vital Recorder-owned self-observation. Gateway and Catalog may add received or persisted timestamps but must not overwrite occurredAt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "protocolVersion",
+    "recorderId",
+    "bootId",
+    "sequence",
+    "occurredAt",
+    "time",
+    "runtime"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "protocolVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ProtocolVersion"
+    },
+    "recorderId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "bootId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "occurredAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "time": {
+      "$ref": "#/$defs/RecorderTimeObservation"
+    },
+    "runtime": {
+      "$ref": "#/$defs/RecorderRuntimeObservation"
+    }
+  },
+  "$defs": {
+    "RecorderTimeObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "not-reported",
+            "synchronizing",
+            "synchronized",
+            "unsynchronized",
+            "stale",
+            "unsupported",
+            "failed"
+          ]
+        },
+        "sourceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "offsetMs": {
+          "type": "number"
+        },
+        "uncertaintyMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "lastSyncAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "synchronized"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "sourceId",
+              "offsetMs",
+              "uncertaintyMs",
+              "lastSyncAt"
+            ],
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unsynchronized",
+                  "stale",
+                  "unsupported",
+                  "failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "RecorderRuntimeObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "not-reported",
+            "ready",
+            "not-ready",
+            "failed",
+            "unsupported"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "ready"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "version"
+            ],
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "not-ready",
+                  "failed",
+                  "unsupported"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

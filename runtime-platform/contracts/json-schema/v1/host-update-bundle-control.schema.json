@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-bundle-control",
+  "title": "HostUpdateBundleControl",
+  "description": "C69 Host-local offline release-bundle import, declared bundle read, and C27 apply-request contracts. Importing immutable bytes is not envelope trust verification and is not an update success claim.",
+  "type": "object",
+  "$defs": {
+    "HostUpdateBundleImportCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "requestId", "sourceDirectory"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "sourceDirectory": { "type": "string", "minLength": 1, "maxLength": 4096 }
+      }
+    },
+    "HostUpdateBundleApplyCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "requestId", "installationId", "expectedInstallationRevision", "bundleReferenceId"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "installationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "expectedInstallationRevision": { "type": "integer", "minimum": 1 },
+        "bundleReferenceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "HostUpdateBundleDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "state", "bootstrapEnvelope"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "state": { "const": "declared" },
+        "bootstrapEnvelope": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope" }
+      }
+    },
+    "HostUpdateBundleImportReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "state", "requestId", "observedAt", "bundle", "sourceFingerprint"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "state": { "type": "string", "enum": ["imported", "already-imported"] },
+        "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "bundle": { "$ref": "#/$defs/HostUpdateBundleDeclaration" },
+        "sourceFingerprint": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    }
+  }
+}

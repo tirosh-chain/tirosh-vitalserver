@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:external-upstream-command",
+  "title": "ExternalUpstreamApplyCommand",
+  "description": "A revisioned command to persist and explicitly observe an ExternalUpstreamIntegration. The command carries only references, never endpoint secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "integrationId",
+    "expectedResourceRevision",
+    "spec"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "integrationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedResourceRevision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "spec": {
+      "$ref": "#/$defs/ExternalUpstreamSpec"
+    }
+  },
+  "$defs": {
+    "ProviderReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "capabilityRevision"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "capabilityRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "ExternalUpstreamSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "endpointReference"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/ProviderReference"
+        },
+        "endpointReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "credentialReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SecretReference"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "v1",
+  "id": "guest-telemetry-pipeline",
+  "resourceRevision": 1,
+  "node": {
+    "kind": "guest",
+    "id": "guest-runtime-0001"
+  },
+  "spec": {
+    "protocol": "otlp-http",
+    "collectorReference": {
+      "resourceType": "otel-collector",
+      "resourceId": "guest-collector"
+    },
+    "signalKinds": [
+      "logs",
+      "metrics",
+      "traces"
+    ],
+    "redaction": {
+      "allowedAttributeKeys": [
+        "component",
+        "outcome.code",
+        "request.id",
+        "operation.id"
+      ],
+      "maxAttributes": 4,
+      "maxValueLength": 128,
+      "maxDistinctValuesPerKey": 10
+    }
+  },
+  "status": {
+    "state": "ready",
+    "observedAt": "2026-07-17T00:00:00Z"
+  },
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:00:00Z"
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "providerKind": "windows-hyperv-scm",
+  "requestId": "platform-start-1",
+  "expectedGuestRuntimeControlEndpointRevision": 4,
+  "lifecycle": {
+    "schemaVersion": "v1",
+    "requestId": "platform-start-1",
+    "providerId": "hospital-vm",
+    "action": "start"
+  }
+}

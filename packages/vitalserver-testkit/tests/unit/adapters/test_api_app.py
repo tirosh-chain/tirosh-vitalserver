@@ -7,6 +7,10 @@ from fastapi import HTTPException
 from fastapi.routing import APIRoute
 
 from tests.support import fake_socketio_connector
+from tirosh_vitalserver.core.domain.vital_file import (
+    VitalFileFormatVersion,
+    VitalTrackKind,
+)
 from tirosh_vitalserver.testkit.adapters.inbound.api import create_testkit_app
 from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.recorder_session import (
@@ -40,11 +44,13 @@ class FakeRealVitalReader(RealVitalReaderPort):
     def header(self, path: Path) -> RealVitalFileHeader:
         return RealVitalFileHeader(
             path=path,
+            format_version=VitalFileFormatVersion.V3,
             dtstart=1000.0,
             dtend=1010.0,
             tracks=(
                 RealVitalTrackHeader(
                     dtname="Root/SPHB",
+                    kind=VitalTrackKind.NUMERIC,
                     dname="Root",
                     name="SPHB",
                     unit="g/dL",
@@ -239,13 +245,15 @@ def test_sessions_endpoint_accepts_purpose_scenario() -> None:
     registry.create_beds(room_names=("OR-A",))
 
     response = route.endpoint(
-        StartVirtualRecordersRequest.model_validate({
-            "targetUrl": "http://example.test",
-            "recorderCount": 1,
-            "bedroomName": "OR-A",
-            "maxMessages": 1,
-            "scenario": "hct_decreasing",
-        }),
+        StartVirtualRecordersRequest.model_validate(
+            {
+                "targetUrl": "http://example.test",
+                "recorderCount": 1,
+                "bedroomName": "OR-A",
+                "maxMessages": 1,
+                "scenario": "hct_decreasing",
+            }
+        ),
         manager,
         registry,
     )
@@ -288,10 +296,7 @@ def test_scenarios_endpoint_describes_purpose_centered_scenarios() -> None:
 
     response = route.endpoint()
 
-    scenarios = {
-        scenario["scenario"]: scenario
-        for scenario in response["scenarios"]
-    }
+    scenarios = {scenario["scenario"]: scenario for scenario in response["scenarios"]}
     assert "bloodbag_transfusion" in scenarios
     assert "bradycardia" in scenarios
     assert "hypotension" in scenarios
@@ -328,13 +333,15 @@ def test_sessions_endpoint_accepts_signal_quality_and_real_sample() -> None:
     registry.create_beds(room_names=("OR-A",))
 
     response = route.endpoint(
-        StartVirtualRecordersRequest.model_validate({
-            "targetUrl": "http://example.test",
-            "bedroomName": "OR-A",
-            "maxMessages": 1,
-            "signalQuality": "baseline_wander",
-            "realSampleKey": "startup_monitoring",
-        }),
+        StartVirtualRecordersRequest.model_validate(
+            {
+                "targetUrl": "http://example.test",
+                "bedroomName": "OR-A",
+                "maxMessages": 1,
+                "signalQuality": "baseline_wander",
+                "realSampleKey": "startup_monitoring",
+            }
+        ),
         manager,
         registry,
     )
@@ -357,18 +364,20 @@ def test_sessions_endpoint_accepts_vital_file_source() -> None:
     registry.create_beds(room_names=("OR-A",))
 
     response = route.endpoint(
-        StartVirtualRecordersRequest.model_validate({
-            "targetUrl": "http://example.test",
-            "bedroomName": "OR-A",
-            "maxMessages": 1,
-            "source": {
-                "type": "vitalFile",
-                "path": "/Users/Shared/VitalServerHelper/vital-files/sample.vital",
-                "scenario": "full_real",
-                "startOffsetSeconds": 1.0,
-                "durationSeconds": 2,
-            },
-        }),
+        StartVirtualRecordersRequest.model_validate(
+            {
+                "targetUrl": "http://example.test",
+                "bedroomName": "OR-A",
+                "maxMessages": 1,
+                "source": {
+                    "type": "vitalFile",
+                    "path": "/Users/Shared/VitalServerHelper/vital-files/sample.vital",
+                    "scenario": "full_real",
+                    "startOffsetSeconds": 1.0,
+                    "durationSeconds": 2,
+                },
+            }
+        ),
         manager,
         registry,
     )
@@ -397,18 +406,20 @@ def test_sessions_endpoint_reports_vital_file_source_unavailable() -> None:
 
     with pytest.raises(HTTPException) as exc:
         route.endpoint(
-            StartVirtualRecordersRequest.model_validate({
-                "targetUrl": "http://example.test",
-                "bedroomName": "OR-A",
-                "maxMessages": 1,
-                "source": {
-                    "type": "vitalFile",
-                    "path": "/mnt/tirosh-vital-files/missing.vital",
-                    "scenario": "full_real",
-                    "startOffsetSeconds": 1.0,
-                    "durationSeconds": 2,
-                },
-            }),
+            StartVirtualRecordersRequest.model_validate(
+                {
+                    "targetUrl": "http://example.test",
+                    "bedroomName": "OR-A",
+                    "maxMessages": 1,
+                    "source": {
+                        "type": "vitalFile",
+                        "path": "/mnt/tirosh-vital-files/missing.vital",
+                        "scenario": "full_real",
+                        "startOffsetSeconds": 1.0,
+                        "durationSeconds": 2,
+                    },
+                }
+            ),
             manager,
             registry,
         )
@@ -424,12 +435,12 @@ def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
     registry.create_beds(room_names=("OR-A", "OR-B"))
 
     first = route.endpoint(
-            StartVirtualRecordersRequest(
-                targetUrl="http://example.test",
-                recorderCount=1,
-                bedroomName="OR-A",
-                intervalSeconds=1,
-            ),
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorderCount=1,
+            bedroomName="OR-A",
+            intervalSeconds=1,
+        ),
         manager,
         registry,
     )

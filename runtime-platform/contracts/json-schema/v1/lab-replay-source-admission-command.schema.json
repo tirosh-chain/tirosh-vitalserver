@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:lab-replay-source-admission-command",
+  "title": "LabReplaySourceAdmissionCommand",
+  "description": "Metadata evidence for one complete user-uploaded Lab replay source. The binary .vital body is streamed separately and must match byteSize and sha256.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "sourceId", "originalFileName", "mediaType", "byteSize", "sha256"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "sourceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "originalFileName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[^/\\\\]+$"
+    },
+    "mediaType": { "const": "application/x-vital" },
+    "byteSize": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+    "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+  }
+}

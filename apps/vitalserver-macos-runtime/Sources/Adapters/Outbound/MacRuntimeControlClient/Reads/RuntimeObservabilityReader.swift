@@ -8,14 +8,34 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
+    func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
+    func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory
 }
 
 extension RuntimeObservabilityReading {
+    func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory {
+        loadVitalDBRelationships()
+    }
+
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         loadVitalDBRecorders()
+    }
+
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        .failed(readError: "Guest VitalDB bed read model is unavailable.")
     }
 
     func loadVitalDBRecorderActivityWindow(
@@ -28,37 +48,156 @@ extension RuntimeObservabilityReading {
             readError: "recorder activity window reader is unavailable"
         )
     }
+
+    func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory {
+        .failed(vrcode: vrcode, readError: "Guest VitalDB recorder vital-file read model is unavailable.")
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        .unavailable(
+            vrcode: vrcode,
+            readError: "Guest Recorder observability detail is unavailable."
+        )
+    }
+
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "Guest Recorder observability timeline is unavailable."
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "Guest Recorder observability incidents are unavailable."
+        )
+    }
+}
+
+protocol RuntimeRecorderIngressStatusReadProviding: Sendable {
+    func loadRecorderIngressStatusRead() -> RuntimeRecorderIngressStatusReadResult?
+}
+
+struct RuntimeRecorderIngressGuestStatusReadProvider: RuntimeRecorderIngressStatusReadProviding, @unchecked Sendable {
+    private let guestControlBaseURL: @Sendable () -> String?
+    private let guestControlGateway: @Sendable (String) throws -> any RuntimeGuestControlGateway
+
+    init(
+        guestControlBaseURL: @escaping @Sendable () -> String?,
+        guestControlGateway: @escaping @Sendable (String) throws -> any RuntimeGuestControlGateway = {
+            try HTTPRuntimeGuestControlGateway(
+                baseURL: $0,
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIProductReadModelTimeoutSeconds
+            )
+        }
+    ) {
+        self.guestControlBaseURL = guestControlBaseURL
+        self.guestControlGateway = guestControlGateway
+    }
+
+    func loadRecorderIngressStatusRead() -> RuntimeRecorderIngressStatusReadResult? {
+        guard let baseURL = guestControlBaseURL()?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !baseURL.isEmpty else {
+            return RuntimeRecorderIngressStatusReadResult(
+                readState: .readFailed,
+                httpStatus: RuntimeHTTPStatusText.failed,
+                document: nil,
+                readError: "guestControl=baseURLUnavailable"
+            )
+        }
+
+        do {
+            return try guestControlGateway(baseURL).recorderIngressStatus()
+        } catch {
+            return RuntimeRecorderIngressStatusReadResult(
+                readState: .readFailed,
+                httpStatus: RuntimeHTTPStatusText.failed,
+                document: nil,
+                readError: "guestControl=\(error)"
+            )
+        }
+    }
 }
 
 struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked Sendable {
-    let paths: RuntimePaths
-    private let fileStore: RuntimeFileStore
+    private let eventHistoryReader: any RuntimeEventHistoryReading
     private let currentObservationProvider: RuntimeVitalDBCurrentObservationProvider
-    private let makeVitalDBProjectionRepository: (URL) -> RuntimeVitalDBObservationProjectionReading
+    private let guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider?
+    private let guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider?
+    private let guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider?
+    private let guestVitalDBVitalFileProvider: RuntimeVitalDBGuestVitalFileProvider?
+    private let recorderObservabilityDetailProvider: RuntimeRecorderObservabilityDetailProvider?
+    private let recorderObservabilityHistoryProvider: RuntimeRecorderObservabilityHistoryProvider?
+    private let guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider?
 
     init(
-        paths: RuntimePaths,
+        paths: RuntimeObservabilityPaths,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        eventHistoryReader: (any RuntimeEventHistoryReading)? = nil,
         currentObservationProvider: RuntimeVitalDBCurrentObservationProvider,
-        makeVitalDBProjectionRepository: @escaping (URL) -> RuntimeVitalDBObservationProjectionReading = {
-            SQLiteVitalDBObservationRepository(url: $0)
-        }
+        guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider? = nil,
+        guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider? = nil,
+        guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider? = nil,
+        guestVitalDBVitalFileProvider: RuntimeVitalDBGuestVitalFileProvider? = nil,
+        recorderObservabilityDetailProvider: RuntimeRecorderObservabilityDetailProvider? = nil,
+        recorderObservabilityHistoryProvider: RuntimeRecorderObservabilityHistoryProvider? = nil,
+        guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider? = nil
     ) {
-        self.paths = paths
-        self.fileStore = fileStore
+        self.eventHistoryReader = eventHistoryReader ?? SystemRuntimeObservabilityReader.liveEventHistoryReader(
+            paths: paths,
+            fileStore: fileStore
+        )
         self.currentObservationProvider = currentObservationProvider
-        self.makeVitalDBProjectionRepository = makeVitalDBProjectionRepository
+        self.guestVitalDBReadModelProvider = guestVitalDBReadModelProvider
+        self.guestVitalDBBedReadModelProvider = guestVitalDBBedReadModelProvider
+        self.guestVitalDBActivityProvider = guestVitalDBActivityProvider
+        self.guestVitalDBVitalFileProvider = guestVitalDBVitalFileProvider
+        self.recorderObservabilityDetailProvider = recorderObservabilityDetailProvider
+        self.recorderObservabilityHistoryProvider = recorderObservabilityHistoryProvider
+        self.guestVitalDBRelationshipProvider = guestVitalDBRelationshipProvider
     }
 
     static func live(
-        paths: RuntimePaths,
-        fileStore: RuntimeFileStore = SystemRuntimeFileStore()
+        paths: RuntimeObservabilityPaths,
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        guestAddressProvider: any RuntimeGuestAddressProvider = RuntimeControlAPIGuestAddressProvider()
     ) -> SystemRuntimeObservabilityReader {
-        SystemRuntimeObservabilityReader(
+        let guestControlBaseURL: @Sendable () -> String? = {
+            RuntimeControlClientConstants.Product.guestControlAPIBaseURL(
+                guestAddressRead: guestAddressProvider.readGuestAddress()
+            )
+        }
+        return SystemRuntimeObservabilityReader(
             paths: paths,
             fileStore: fileStore,
-            currentObservationProvider: .live(paths: paths, fileStore: fileStore)
+            eventHistoryReader: liveEventHistoryReader(paths: paths, fileStore: fileStore),
+            currentObservationProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBBedReadModelProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBActivityProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            guestVitalDBVitalFileProvider: .live(guestControlBaseURL: guestControlBaseURL),
+            recorderObservabilityDetailProvider: .live(
+                guestControlBaseURL: guestControlBaseURL
+            ),
+            recorderObservabilityHistoryProvider: .live(
+                guestControlBaseURL: guestControlBaseURL
+            ),
+            guestVitalDBRelationshipProvider: .live(guestControlBaseURL: guestControlBaseURL)
         )
+    }
+
+    static func liveEventHistoryReader(
+        paths: RuntimeObservabilityPaths,
+        fileStore: RuntimeFileStore
+    ) -> any RuntimeEventHistoryReading {
+        RuntimeEventHistoryOwnerReader.live(paths: paths, fileStore: fileStore)
     }
 
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -66,10 +205,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     }
 
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
-        let primary = JSONLRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeEvents), fileStore: fileStore)
-        let secondary = SQLiteRuntimeEventRepository(url: URL(fileURLWithPath: paths.runtimeObservabilityDB))
-        let repository = CompositeRuntimeEventRepository(primary: primary, secondary: secondary)
-        let page = repository.query(query)
+        let page = eventHistoryReader.query(query)
         return RuntimeEventHistory(
             events: page.events,
             nextCursor: page.nextCursor.map(RuntimeEventCursorWireCodec.encode),
@@ -80,27 +216,26 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     }
 
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
-        let reads = vitalDBProjectionReadCollector().observationSnapshotReads()
-        return RuntimeVitalDBObservationSnapshotAssembler.makeSnapshot(
-            currentObservation: reads.current,
-            projectedObservation: reads.projected
+        RuntimeVitalDBObservationSnapshotAssembler.makeSnapshot(
+            currentObservation: currentObservationProvider.load(),
+            projectedObservation: .loaded(nil)
         )
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
-            reads: vitalDBProjectionReadCollector().recorderProjectionReads(),
-            containerObservation: loadContainerObservation(),
-            statusEvaluationTime: currentTimestamp()
-        )
+        guestVitalDBReadModelProvider?.load()
+            ?? .failed(readError: "Guest VitalDB recorder read model is unavailable.")
+    }
+
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        if let guestVitalDBBedReadModelProvider {
+            return guestVitalDBBedReadModelProvider.load()
+        }
+        return .failed(readError: "Guest VitalDB bed read model is unavailable.")
     }
 
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
-        return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
-            reads: vitalDBProjectionReadCollector().recorderProjectionReads(includeActivityBuckets: false),
-            containerObservation: loadContainerObservation(),
-            statusEvaluationTime: currentTimestamp()
-        )
+        loadVitalDBRecorders()
     }
 
     func loadVitalDBRecorderActivityWindow(
@@ -114,70 +249,172 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
                 readError: validationError
             )
         }
-        let repository = makeVitalDBProjectionRepository(URL(fileURLWithPath: paths.runtimeObservabilityDB))
-        let currentTime = Date()
-        do {
-            guard let bounds = try repository.loadRecorderActivityBucketBounds(vrcode: query.vrcode) else {
-                return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
-                    query: query,
-                    bounds: nil,
-                    records: []
-                )
-            }
-            guard let recordQuery = RuntimeVitalRecorderActivityWindowAssembler.windowReadQuery(
+        if let guestVitalDBActivityProvider {
+            return guestActivityWindow(
                 query: query,
-                bounds: bounds,
-                currentTime: currentTime
-            ) else {
-                return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
-                    query: query,
-                    bounds: bounds,
-                    records: [],
-                    readError: "activity window query could not be built"
-                )
-            }
-            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
-                query: query,
-                bounds: bounds,
-                records: try repository.loadRecorderActivityBuckets(query: recordQuery),
-                currentTime: currentTime
+                provider: guestVitalDBActivityProvider
             )
-        } catch {
+        }
+        return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+            query: query,
+            bounds: nil,
+            records: [],
+            readError: "Guest VitalDB activity read model is unavailable."
+        )
+    }
+
+    func loadVitalDBRecorderVitalFiles(vrcode: String) -> RuntimeVitalRecorderVitalFileHistory {
+        guestVitalDBVitalFileProvider?.load(vrcode: vrcode)
+            ?? .failed(
+                vrcode: vrcode,
+                readError: "Guest VitalDB recorder vital-file read model is unavailable."
+            )
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        recorderObservabilityDetailProvider?.load(vrcode: vrcode)
+            ?? .unavailable(
+                vrcode: vrcode,
+                readError: "Guest Recorder observability detail is unavailable."
+            )
+    }
+
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        recorderObservabilityHistoryProvider?.timeline(query: query)
+            ?? .unavailable(
+                vrcode: query.vrcode,
+                readError: "Guest Recorder observability timeline is unavailable."
+            )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        recorderObservabilityHistoryProvider?.incidents(query: query)
+            ?? .unavailable(
+                vrcode: query.vrcode,
+                readError: "Guest Recorder observability incidents are unavailable."
+            )
+    }
+
+    private func guestActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery,
+        provider: RuntimeVitalDBGuestActivityProvider
+    ) -> RuntimeVitalRecorderActivityWindow {
+        let vrcode = query.vrcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !vrcode.isEmpty else {
             return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
                 query: query,
                 bounds: nil,
                 records: [],
-                readError: String(describing: error)
+                readError: "recorder activity window requires vrcode"
             )
         }
+        let read = provider.load(vrcode: vrcode)
+        guard read.state == .loaded else {
+            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                query: query,
+                bounds: nil,
+                records: [],
+                readError: read.readError ?? "guestControl.activity=\(read.state.rawValue)"
+            )
+        }
+        if let readVrcode = read.vrcode, readVrcode != vrcode {
+            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                query: query,
+                bounds: nil,
+                records: [],
+                readError: "guestControl.activity returned vrcode=\(readVrcode) for requested vrcode=\(vrcode)"
+            )
+        }
+        let records = read.buckets
+        guard records.allSatisfy({ $0.vrcode == vrcode }) else {
+            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                query: query,
+                bounds: nil,
+                records: [],
+                readError: "guestControl.activity returned buckets for a different recorder"
+            )
+        }
+        guard let bounds = guestActivityBounds(vrcode: vrcode, records: records) else {
+            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                query: query,
+                bounds: nil,
+                records: []
+            )
+        }
+        guard let recordQuery = RuntimeVitalRecorderActivityWindowAssembler.windowReadQuery(
+            query: query,
+            bounds: bounds,
+            currentTime: Date()
+        ) else {
+            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                query: query,
+                bounds: bounds,
+                records: [],
+                readError: "activity window query could not be built"
+            )
+        }
+        return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+            query: query,
+            bounds: bounds,
+            records: records.filter { record in
+                activityRecord(record, isIncludedIn: recordQuery)
+            }
+        )
     }
 
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
-        return RuntimeVitalDBRelationshipHistoryAssembler.makeHistory(
-            reads: vitalDBProjectionReadCollector().relationshipProjectionReads()
-        )
-    }
-
-    private func vitalDBProjectionReadCollector() -> RuntimeVitalDBProjectionReadCollector {
-        RuntimeVitalDBProjectionReadCollector(
-            repository: makeVitalDBProjectionRepository(URL(fileURLWithPath: paths.runtimeObservabilityDB)),
-            currentObservationProvider: currentObservationProvider
-        )
-    }
-
-    private func loadContainerObservation() -> RuntimeContainerObservation? {
-        switch JSONFileRuntimeStatusRepository(
-            url: URL(fileURLWithPath: paths.runtimeStatus),
-            fileStore: fileStore
-        ).loadResult() {
-        case .loaded(let document):
-            return document.containerObservation
-        case .missing, .failed:
-            return nil
+        if let guestVitalDBRelationshipProvider {
+            return guestVitalDBRelationshipProvider.load()
         }
+        return .failed(
+            readError: "Guest VitalDB relationship read model is unavailable."
+        )
     }
 
-    private func currentTimestamp() -> String {
-        ISO8601DateFormatter().string(from: Date())
+    func loadVitalDBRelationshipsAsync() async -> RuntimeVitalRelationshipHistory {
+        if let guestVitalDBRelationshipProvider {
+            return await guestVitalDBRelationshipProvider.loadAsync()
+        }
+        return .failed(
+            readError: "Guest VitalDB relationship read model is unavailable."
+        )
     }
+
+}
+
+private func guestActivityBounds(
+    vrcode: String,
+    records: [VitalDBRecorderActivityBucketRecord]
+) -> VitalDBRecorderActivityBucketBounds? {
+    let starts = records.map(\.bucketStartedAt).sorted()
+    guard let first = starts.first, let latest = starts.last else {
+        return nil
+    }
+    return VitalDBRecorderActivityBucketBounds(
+        vrcode: vrcode,
+        firstBucketStartedAt: first,
+        latestBucketStartedAt: latest
+    )
+}
+
+private func activityRecord(
+    _ record: VitalDBRecorderActivityBucketRecord,
+    isIncludedIn query: VitalDBRecorderActivityBucketQuery
+) -> Bool {
+    guard query.vrcode == nil || query.vrcode == record.vrcode else {
+        return false
+    }
+    if let since = query.since, record.bucketStartedAt < since {
+        return false
+    }
+    if let until = query.until, record.bucketStartedAt > until {
+        return false
+    }
+    return true
 }

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "v1",
+  "sqlite": {
+    "databaseId": "guest-runtime-state-20260724-1",
+    "schemaVersion": 7
+  },
+  "observedAt": "2026-07-24T23:00:00Z"
+}

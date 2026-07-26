@@ -1,14 +1,24 @@
 import { useMemo, useState } from "react";
 
-import { useRuntimeEvents, useRuntimeOverview } from "@/console/hooks";
+import {
+  useLatestVitalDBObservation,
+  usePlatformState,
+  useRuntimeEvents,
+  useVitalDBRecorders
+} from "@/console/hooks";
+import type { RuntimeEventQuery } from "@/console/runtimeControlGateway";
 import type {
-  RuntimeControlOverview,
   RuntimeEventDocument,
+  RuntimeVitalDBObservationSnapshot,
   VitalDBAnomalyObservation,
   VitalDBObservationDocument
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
-import { formatVitalRecorderObservationMetric } from "@/domain/runtime-control/formatting/vitalRecorder";
-import { formatRuntimeState } from "@/domain/runtime-control/formatting/runtimeState";
+import type { RuntimeEventTypeValue } from "@/domain/runtime-control/contracts/runtimeEventTypes";
+import {
+  formatVitalRecorderObservationMetric,
+  vitalRecorderSummaryFromHistory,
+  type RuntimeVitalRecorderSummary
+} from "@/domain/runtime-control/formatting/vitalRecorder";
 import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
 import { ErrorState } from "@/components/ErrorState";
 import { KeyValueRows } from "@/components/KeyValueRows";
@@ -23,7 +33,7 @@ import {
 
 export function ObservabilityPage() {
   const [period, setPeriod] = useState<RuntimeEventPeriod>("24h");
-  const [eventType, setEventType] = useState("");
+  const [eventType, setEventType] = useState<RuntimeEventTypeValue | "">("");
   const [limit, setLimit] = useState(50);
   const dailyEventRequest = useMemo(
     () => ({
@@ -34,11 +44,7 @@ export function ObservabilityPage() {
   );
   const eventRequest = useMemo(
     () => {
-      const request: {
-        limit: number;
-        since: string;
-        type?: string;
-      } = {
+      const request: RuntimeEventQuery = {
         limit,
         since: sinceForPeriod(period)
       };
@@ -49,13 +55,17 @@ export function ObservabilityPage() {
     },
     [eventType, limit, period]
   );
-  const overviewQuery = useRuntimeOverview();
+  const observationQuery = useLatestVitalDBObservation();
+  const recordersQuery = useVitalDBRecorders();
+  const platformStateQuery = usePlatformState();
   const dailyEventsQuery = useRuntimeEvents(dailyEventRequest);
   const eventQuery = useRuntimeEvents(eventRequest);
 
-  const overview = overviewQuery.data;
-  const vitalDBObservationRead = selectVitalDBObservationRead(overview);
-  const recorderSummary = overview?.vitalRecorder;
+  const vitalDBObservationRead = selectVitalDBObservationRead(
+    observationQuery.data,
+    observationQuery.error
+  );
+  const recorderSummary = vitalRecorderSummaryFromHistory(recordersQuery.data);
   const eventRead = runtimeEventsRead(eventQuery);
   const dailyEventRead = runtimeEventsRead(dailyEventsQuery);
   const anomalyReadIssue = vitalDBObservationAnomalyReadIssue(
@@ -81,7 +91,9 @@ export function ObservabilityPage() {
             {
               label: "Guest log sync service",
               value: formatGuestLogSyncService(
-                overview?.status?.guestLogSyncServiceLoaded
+                platformStateQuery.data?.services.some(
+                  (service) => service.role === "log-sync" && service.state === "running"
+                )
               )
             },
             {
@@ -172,7 +184,9 @@ export function ObservabilityPage() {
             Filter
             <select
               value={eventType}
-              onChange={(event) => setEventType(event.target.value)}
+              onChange={(event) =>
+                setEventType(event.target.value as RuntimeEventTypeValue | "")
+              }
             >
               <option value="">All events</option>
               {runtimeEventTypes.map((type) => (
@@ -276,14 +290,14 @@ function RuntimeEventItem({ event }: { event: RuntimeEventDocument }) {
       <div className="event-meta">
         <span>{formatLocalDateTime(event.timestamp)}</span>
         <strong>{event.eventType}</strong>
-        <span>{formatRuntimeState(event.status)}</span>
-        <span className="event-operation">{event.operation ?? "Unknown"}</span>
+        <span>{event.operationState}</span>
+        <span className="event-operation">
+          {event.operationCommand || event.operationId}
+        </span>
       </div>
       <h3>{event.message || "Message not reported"}</h3>
       <p>{event.source ? `source: ${event.source}` : "source not reported"}</p>
-      {event.failureReasons?.length ? (
-        <p>{event.failureReasons.join(", ")}</p>
-      ) : null}
+      {event.failure ? <p>{`${event.failure.kind}: ${event.failure.message}`}</p> : null}
     </article>
   );
 }
@@ -309,9 +323,12 @@ type VitalDBObservationRead =
 type VitalDBObservationReadIssue = VitalDBObservationDocument["readIssues"][number];
 
 function selectVitalDBObservationRead(
-  overview: RuntimeControlOverview | undefined
+  snapshot: RuntimeVitalDBObservationSnapshot | undefined,
+  transportError: Error | null
 ): VitalDBObservationRead {
-  const snapshot = overview?.vitalDBObservationSnapshot;
+  if (transportError) {
+    return { state: "failed", readError: transportError.message };
+  }
   if (!snapshot?.state) {
     return { state: "notReported" };
   }
@@ -437,11 +454,16 @@ type RuntimeEventsRead =
   | {
       state: "loaded";
       events: RuntimeEventDocument[];
+      nextCursor: string | null;
       matchingCount: number | null;
     };
 
 function runtimeEventsRead(query: {
-  data?: { events?: RuntimeEventDocument[]; matchingCount?: number | null };
+  data?: {
+    events?: RuntimeEventDocument[];
+    nextCursor?: string | null;
+    matchingCount?: number | null;
+  };
   error: unknown;
   isError: boolean;
   isPending: boolean;
@@ -452,24 +474,38 @@ function runtimeEventsRead(query: {
   if (query.isError) {
     return { state: "failed", error: query.error };
   }
-  if (!query.data || !Array.isArray(query.data.events)) {
+  if (
+    !query.data ||
+    !Array.isArray(query.data.events) ||
+    (typeof query.data.nextCursor !== "string" && query.data.nextCursor !== null) ||
+    (typeof query.data.matchingCount !== "number" && query.data.matchingCount !== null)
+  ) {
     return { state: "missing" };
   }
   return {
     state: "loaded",
     events: query.data.events,
-    matchingCount:
-      typeof query.data.matchingCount === "number" ? query.data.matchingCount : null
+    nextCursor: query.data.nextCursor,
+    matchingCount: query.data.matchingCount
   };
 }
 
 function formatRuntimeEventCount(read: RuntimeEventsRead): string {
   switch (read.state) {
     case "loaded":
-      if (read.matchingCount !== null && read.matchingCount !== read.events.length) {
+      if (
+        read.matchingCount !== null &&
+        (read.nextCursor !== null || read.matchingCount !== read.events.length)
+      ) {
         return `${read.events.length} shown · ${read.matchingCount} matching`;
       }
-      return `${read.events.length} events`;
+      if (read.matchingCount !== null) {
+        return `${read.events.length} events`;
+      }
+      if (read.nextCursor !== null) {
+        return `${read.events.length} shown · more available`;
+      }
+      return `${read.events.length} shown · total unavailable`;
     case "loading":
       return "Loading...";
     case "failed":
@@ -490,7 +526,7 @@ function formatGuestLogSyncService(value: boolean | null | undefined): string {
 }
 
 function formatRecorderAnomalyMetric(
-  recorderSummary: RuntimeControlOverview["vitalRecorder"] | undefined,
+  recorderSummary: RuntimeVitalRecorderSummary | undefined,
   read: VitalDBObservationRead
 ): string {
   const summaryValue = String(formatVitalRecorderObservationMetric(

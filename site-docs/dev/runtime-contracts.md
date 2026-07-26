@@ -23,10 +23,10 @@ UI는 상태를 보여주는 곳입니다. UI가 “값이 없으니 정상일 �
 
 | 상태      | 뜻                                           | 예시                                               |
 | --------- | -------------------------------------------- | -------------------------------------------------- |
-| `ok`      | 확인 대상이 명시적으로 정상으로 확인됨       | runtime status를 읽었고 service가 healthy로 보고됨 |
-| `missing` | 필요한 상태, 파일, field가 없음              | `runtime-status.json` 파일이 아직 생성되지 않음    |
-| `invalid` | 값이나 문서 모양이 약속과 맞지 않음          | JSON은 있지만 필수 field 타입이 맞지 않음          |
-| `failed`  | 읽기, 해석, 권한, 의존 service 호출이 실패함 | 파일 권한 문제로 status를 읽지 못함                |
+| `ok`      | 확인 대상이 명시적으로 정상으로 확인됨       | Guest Control service status가 healthy로 보고됨 |
+| `missing` | 필요한 상태, 파일, field가 없음              | Guest Control operation id가 없거나 required field가 없음 |
+| `invalid` | 값이나 문서 모양이 약속과 맞지 않음          | API payload는 있지만 필수 field 타입이 맞지 않음 |
+| `failed`  | 읽기, 해석, 권한, 의존 service 호출이 실패함 | Guest Control API나 Host owner read 호출이 실패함 |
 | `stale`   | 상태는 있지만 최신 상태로 보기 어려움        | 마지막 recorder activity가 기준 시간을 넘김        |
 | `empty`   | 정상적으로 읽었고 결과가 비어 있음           | recorder 목록을 정상적으로 읽었지만 항목이 없음    |
 
@@ -69,7 +69,7 @@ Host는 runtime/process/filesystem state를 소유하고, Guest는 Host가 제�
 
 ### 3-1. Host time
 
-Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-state, observability, compose service를 시작합니다.
+Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. 실제 `vitalserver-vm start` entrypoint가 매 VM lifecycle run 직전에 현재 Host clock을 atomic write하므로 설정 restart, watchdog, 수동 start, launchd `RunAtLoad`/`KeepAlive`가 같은 계약을 사용합니다. Guest는 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-observation, observability, compose service를 시작합니다.
 
 | 상태                       | 의미                                    |
 | -------------------------- | --------------------------------------- |
@@ -79,34 +79,41 @@ Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. Gu
 
 UI나 observer는 timestamp를 현재 시간으로 보정하지 않습니다. 시간이 틀리면 Host/Guest time contract 문제로 보고 failure reason과 logs를 확인합니다.
 
-### 3-2. Guest shutdown result
+부팅 후 지속 동기화와 외부 Vital Recorder에 같은 시각을 제공하는 책임은 별도 Host NTP service에 둡니다. Boot contract는 pre-network 필수 입력으로 유지하며 NTP를 missing/invalid contract fallback으로 사용하지 않습니다. NTP 상태도 `synchronized`, `unsynchronized`, `failed`, `unavailable`을 구분해 owner contract로 제공합니다.
 
-Update나 VM restart가 Guest shutdown preparation을 요구하면 Host는 request를 쓰고 Guest의 typed result를 기다립니다. request가 남아 있거나 log가 없다는 사실만으로 pending/success를 추정하지 않습니다.
+### 3-2. Guest Control shutdown operation
+
+Update나 VM restart가 Guest shutdown preparation을 요구하면 Host는 Guest Control maintenance API로
+operation을 요청하고 Guest의 typed operation state를 기다립니다. operation read가 없거나 log가 없다는
+사실만으로 pending/success를 추정하지 않습니다.
 
 | 상태            | 의미                                                       |
 | --------------- | ---------------------------------------------------------- |
-| request missing | Host가 아직 operation을 요청하지 않았거나 cleanup이 끝남   |
-| result missing  | Guest worker가 실행되지 않았거나 result를 쓰기 전에 실패함 |
-| result failed   | Guest가 실패 reason과 details를 명시적으로 보고함          |
-| result stale    | requestId 또는 updatedAt이 현재 operation과 맞지 않음      |
-| result ready    | Guest가 shutdown preparation과 poweroff request를 완료함   |
+| accepted        | Guest Control API가 operation id를 발급함                  |
+| running         | Guest adapter가 shutdown preparation을 실행 중임           |
+| failed          | Guest가 실패 reason과 details를 명시적으로 보고함          |
+| unavailable     | Guest Control API 또는 operation repository를 읽을 수 없음 |
+| ready           | Guest가 shutdown preparation과 poweroff request를 완료함   |
 
-`prepare-update-shutdown-result.json`의 failure details에는 실패 service, 남은 service 목록, service state snapshot, snapshot path가 포함될 수 있습니다. Host와 UI는 이 details를 표시하거나 전달하고, 로그를 해석해서 다른 상태로 바꾸지 않습니다.
+Guest shutdown operation failure details에는 실패 service, 남은 service 목록, service state snapshot,
+snapshot path가 포함될 수 있습니다. Host와 UI는 이 details를 표시하거나 전달하고, 로그를 해석해서 다른
+상태로 바꾸지 않습니다.
 
-### 3-3. Guest compose reconcile result
+### 3-3. Guest Control stack reconcile operation
 
 Settings apply나 watchdog recovery가 VM 자체를 재시작할 필요 없이 Guest compose service 묶음만
-다시 맞추면 되는 경우 Host는 `reconcile-compose.request`를 쓰고 Guest의 typed result를 기다립니다.
-이 계약은 VM restart의 대체 경로이지, VM boundary 실패를 숨기는 fallback이 아닙니다.
+다시 맞추면 되는 경우 Host는 Guest Control API로 stack reconcile operation을 요청하고 typed operation
+state를 기다립니다. 이 계약은 VM restart의 대체 경로이지, VM boundary 실패를 숨기는 fallback이
+아닙니다.
 
 | 상태 | 의미 |
 |---|---|
-| capability missing | Guest가 compose reconcile contract를 제공하지 않음 |
-| request missing | Host가 아직 reconcile을 요청하지 않았거나 cleanup이 끝남 |
-| result missing | Guest worker가 실행되지 않았거나 result를 쓰기 전에 실패함 |
-| result failed | Guest가 compose reconcile 실패 reason을 명시적으로 보고함 |
-| result stale | requestId 또는 updatedAt이 현재 operation과 맞지 않음 |
-| result completed | Guest compose reconcile이 완료됨 |
+| capability missing | Guest가 stack reconcile capability를 제공하지 않음 |
+| accepted | Guest Control API가 operation id를 발급함 |
+| running | Guest adapter가 compose reconcile을 실행 중임 |
+| failed | Guest가 compose reconcile 실패 reason을 명시적으로 보고함 |
+| unavailable | Guest Control API 또는 operation repository를 읽을 수 없음 |
+| completed | Guest compose reconcile이 완료됨 |
 
 Watchdog은 Guest HTTP unhealthy 또는 critical container service unhealthy처럼 VM process/IP boundary가
 유지된 문제에서 compose reconcile을 먼저 선택합니다. VM IP missing, VM service not loaded, expired
@@ -162,7 +169,7 @@ Recorder가 보이지 않는다고 해서 곧바로 missing으로 만들지 않�
 | 영역                    | 상태를 말하는 쪽                        |
 | ----------------------- | --------------------------------------- |
 | Recorder/Bed 관측       | Recorder Observer / runtime 조회용 상태 |
-| `.vital` file discovery | 지원 예정 file reader / testkit policy  |
+| `.vital` file discovery | Product Lab / Guest Control file policy |
 | runtime service health  | Host runtime / watchdog                 |
 | guest service state     | guest tools                             |
 | 화면 표시               | PWA / Helper app presentation           |
@@ -206,7 +213,7 @@ PWA와 Helper app은 observer container나 Guest 내부를 직접 읽지 않습�
 
 | 문서 파일                                         | 역할                                     |
 | ------------------------------------------------- | ---------------------------------------- |
-| `docs/runtime/macos/runtime-control.openapi.json` | PWA/Helper app과 Host runtime 사이의 API |
+| `docs/runtime/runtime-control.openapi.json` | PWA/Helper app과 Host runtime 사이의 API |
 
 ### 7-3. Recorder Observer API
 
@@ -245,6 +252,30 @@ Recorder Ingress API는 VRecorder command 흐름과 audit event를 관측하기 
 | 문서 파일                           | 역할                           |
 | ----------------------------------- | ------------------------------ |
 | `docs/api/recorder-ingress.openapi.yaml` | command audit sidecar endpoint |
+
+Recorder 장비 Observer가 보내는 observability resource도 같은 ingress가
+수신합니다.
+
+```text
+POST /api/v1/recorders/{vrcode}/observations
+POST /api/v1/recorders/{vrcode}/profiles
+POST /api/v1/recorders/{vrcode}/boot-events
+POST /api/v1/recorders/{vrcode}/diagnostic-events
+POST /api/v1/recorders/{vrcode}/kernel-incidents
+```
+
+HTTP `/api/v1`과 NDJSON document의 `schemaVersion`은 독립 계약입니다. Helper
+0.2.1은 observation/boot-event v1과 v2를 함께 수락하고, Recorder 0.2.6 후보는
+observation v2와 boot-event v2를 활성 계약으로 발행합니다. 그래서 rollout은
+Helper 0.2.1을 먼저 배포하고 기존 v1 수신을 확인한 뒤 Recorder를 canary로
+올립니다.
+
+`202`는 line disposition이 durable하다는 뜻이지 모든 line이 accepted됐다는
+뜻은 아닙니다. accepted, duplicate와 quarantined count를 구분해야 합니다.
+PWA와 Swift가 표시하는 current incident assessment는 최신 observation의 상태이고,
+recent incident history는 accepted kernel incident 및 boot-event v2 signal을
+bounded query한 결과입니다. UI는 이 evidence를 root cause로 다시 분류하지
+않습니다.
 
 ### 7-5. Vital Server API
 

@@ -14,6 +14,7 @@ export type DataTableProps<T> = {
   selectedKey?: string | null;
   onSelectRow?: (row: T) => void;
   emptyText: string;
+  cardTitleColumnKey?: string;
 };
 
 export function DataTable<T>({
@@ -22,10 +23,18 @@ export function DataTable<T>({
   getRowKey,
   selectedKey,
   onSelectRow,
-  emptyText
+  emptyText,
+  cardTitleColumnKey
 }: DataTableProps<T>) {
   if (rows.length === 0) {
     return <p className="empty-state">{emptyText}</p>;
+  }
+  const cardTitleColumn =
+    cardTitleColumnKey === undefined
+      ? columns[0]
+      : columns.find((column) => column.key === cardTitleColumnKey);
+  if (cardTitleColumnKey !== undefined && cardTitleColumn === undefined) {
+    throw new Error(`DataTable card title column is missing: ${cardTitleColumnKey}`);
   }
 
   return (
@@ -67,17 +76,25 @@ export function DataTable<T>({
         {rows.map((row) => {
           const rowKey = getRowKey(row);
           const selected = selectedKey === rowKey;
-          const [titleColumn, ...detailColumns] = columns;
-          const Tag = onSelectRow ? "button" : "article";
+          const detailColumns = columns.filter(
+            (column) => column.key !== cardTitleColumn?.key
+          );
           return (
-            <Tag
+            <article
               key={rowKey}
-              type={onSelectRow ? "button" : undefined}
               className={selected ? "data-card selected-row" : "data-card"}
+              role={onSelectRow ? "button" : undefined}
+              tabIndex={onSelectRow ? 0 : undefined}
               onClick={onSelectRow ? () => onSelectRow(row) : undefined}
+              onKeyDown={onSelectRow ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectRow(row);
+                }
+              } : undefined}
             >
               <div className="data-card-title">
-                {titleColumn ? titleColumn.render(row) : rowKey}
+                {cardTitleColumn ? cardTitleColumn.render(row) : rowKey}
               </div>
               <dl className="data-card-rows">
                 {detailColumns.map((column) => (
@@ -87,7 +104,7 @@ export function DataTable<T>({
                   </div>
                 ))}
               </dl>
-            </Tag>
+            </article>
           );
         })}
       </div>

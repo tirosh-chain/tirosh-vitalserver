@@ -44,7 +44,7 @@ unprefixed key도 함께 허용합니다.
 ```text
 VITE_RUNTIME_CONTROL_API_BASE_URL=
 VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET=http://127.0.0.1:18321
-VITE_RUNTIME_CONTROL_TOKEN=vitalserver-helper-dev
+VITE_RUNTIME_CONTROL_TOKEN=
 VITE_RUNTIME_CONTROL_DEFAULT_PORT=18321
 VITE_RUNTIME_CONTROL_DEFAULT_PROXY_PORT=80
 VITE_PWA_DEV_SERVER_PORT=5174
@@ -59,7 +59,7 @@ VITE_QUERY_STALE_TIME_MS=1000
 - `VITE_RUNTIME_CONTROL_API_BASE_URL`: 브라우저에서 직접 호출할 API base URL입니다.
   비워두면 same-origin을 사용합니다.
 - `VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET`: Vite dev server가 `/runtime`, `/vitaldb`,
-  `/host`, `/dev/testkit` 요청을 넘길 대상입니다.
+  `/lab`, `/host` 요청을 넘길 대상입니다.
 - `VITE_RUNTIME_CONTROL_DEFAULT_PORT`: Status 화면에서 Remote Console link를
   만들 때 쓰는 fallback port입니다.
 - `VITE_RUNTIME_CONTROL_DEFAULT_PROXY_PORT`: VitalServer link를 만들 때 쓰는 fallback proxy port입니다.
@@ -70,7 +70,7 @@ VITE_QUERY_STALE_TIME_MS=1000
 Runtime Control API의 source of truth는 OpenAPI 문서입니다.
 
 ```text
-docs/runtime/macos/runtime-control.openapi.json
+docs/runtime/runtime-control.openapi.json
 ```
 
 생성된 TypeScript type은 아래에 위치합니다.
@@ -86,6 +86,21 @@ npm --prefix apps/vitalserver-runtime-pwa run generate:api
 ```
 
 `check`와 `build`는 내부적으로 `generate:api`를 먼저 실행합니다.
+
+Settings 화면은 owner 경계를 두 섹션으로 유지합니다.
+
+- `Platform settings`: Host CPU/memory/disk, network/listener, local path,
+  start-on-boot/recovery, backup, log retention. macOS Platform Agent는 조회와
+  적용을 제공하고, Windows/Linux는 현재 명시적인 미지원 응답을 제공합니다.
+- `Runtime product settings`: Runtime Controller가 소유하는 advertised endpoint,
+  recorder ingress, container limit, Product backup, Redis Relay, administrator
+  password command입니다. Platform settings 응답이나 UI가 Runtime secret을
+  읽거나 보관하지 않습니다.
+
+Recorders 화면은 실제 recorder의 activity를
+`GET /runtime/vitaldb/recorders/{vrcode}/activity`에서 읽으며, Product Lab
+recorder와 Bed 행은 선택 가능한 detail을 제공합니다. Info 화면은 Platform
+release/install metadata를 독립적으로 읽고 미지원 응답을 오류 상태로 보존합니다.
 
 ## Architecture
 
@@ -140,7 +155,7 @@ PWA는 Node/Vite runtime으로 배포하지 않습니다. release build에서 st
 
 ```sh
 make pwa-install
-make pwa-build
+make pwa/build
 ```
 
 빌드 결과물:
@@ -182,7 +197,7 @@ npm --prefix apps/vitalserver-runtime-pwa run build
 make pwa-check
 make pwa-test
 make pwa-coverage
-make pwa-build
+make pwa/build
 ```
 
 Coverage report:

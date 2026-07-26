@@ -8,16 +8,16 @@ public enum RuntimeHealthNotificationState: Equatable {
     case starting
     case notInstalled
 
-    public init(status: RuntimeStatus) {
+    public init(status: PlatformState) {
         if RuntimeReadinessPolicy.isReady(status) {
             self = .healthy
-        } else if !status.effectiveRuntimeInstallationState.isExecutable {
+        } else if !status.runtimeInstallationState.isExecutable {
             self = .notInstalled
-        } else if status.runtimeState == .critical {
+        } else if status.platformHealth == .critical {
             self = .critical
-        } else if status.runtimeState == .degraded
-            || status.runtimeState == .recovering
-            || !status.failureReasons.isEmpty {
+        } else if status.platformHealth == .degraded
+            || status.platformHealth == .recovering
+            || !status.healthIssues.isEmpty {
             self = .needsAttention
         } else {
             self = .starting

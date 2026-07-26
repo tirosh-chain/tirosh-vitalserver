@@ -47,30 +47,35 @@ public struct RuntimeStatusOverallHealthPolicy {
         self.vocabulary = vocabulary
     }
 
-    public func overallHealth(status: RuntimeStatus) -> RuntimeStatusOverallHealthValue {
-        if RuntimeActiveOperationPolicy.isInstallInProgress(status) {
-            return value(vocabulary.installingText, .warning)
+    public func overallHealth(
+        status: PlatformState,
+        operationState: PlatformOperationState
+    ) -> RuntimeStatusOverallHealthValue {
+        if let operation = operationState.operationForPresentation {
+            if RuntimeActiveOperationPolicy.isInstallOperation(operation) {
+                return value(vocabulary.installingText, .warning)
+            }
+            if RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation) {
+                return value(vocabulary.recoveringText, .warning)
+            }
+            if RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation) {
+                return value(vocabulary.updatingText, .warning)
+            }
         }
-        if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
+        if status.platformHealth == .initializing {
             return value(vocabulary.initializingText, .warning)
-        }
-        if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
-            return value(vocabulary.updatingText, .warning)
-        }
-        if RuntimeActiveOperationPolicy.isRecoveryInProgress(status) {
-            return value(vocabulary.recoveringText, .warning)
         }
         if RuntimeReadinessPolicy.isReady(status) {
             return value(vocabulary.healthyText, .healthy)
         }
-        let installationState = status.effectiveRuntimeInstallationState
+        let installationState = status.runtimeInstallationState
         if installationState == .missing {
             return value(vocabulary.notInstalledText, .critical)
         }
         if !installationState.isExecutable {
             return value(vocabulary.installStateText(installationState), .critical)
         }
-        switch status.runtimeState {
+        switch status.platformHealth {
         case .some(.installing):
             return value(vocabulary.installingText, .warning)
         case .some(.initializing):

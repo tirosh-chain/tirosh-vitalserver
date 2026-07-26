@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v1",
+  "configurationId": "external-vitalserver-reference-delivery-configuration",
+  "externalUpstreamIntegrationReference": {
+    "resourceType": "external-upstream-integration",
+    "resourceId": "external-vitalserver-reference"
+  },
+  "vitalServerDeliveryProvider": {
+    "kind": "external-vitalserver",
+    "id": "external-vitalserver-reference",
+    "capabilityRevision": 1
+  },
+  "vitalServerPacketDeliveryEndpoint": {
+    "scheme": "https",
+    "host": "reference-vitalserver.external.example",
+    "port": 443
+  },
+  "vitalServerDeliveryAcknowledgementTimeoutMilliseconds": 1000,
+  "vitalServerObservationEndpoint": {
+    "scheme": "https",
+    "host": "reference-vitalserver.external.example",
+    "port": 443,
+    "path": "/healthz",
+    "acceptedStatusCodes": [200]
+  },
+  "vitalServerArchiveProvider": {
+    "kind": "vitalserver-indexed-library",
+    "id": "external-vitalserver-reference-library",
+    "capabilityRevision": 1
+  },
+  "vitalServerIndexedLibraryEndpoint": {
+    "scheme": "https",
+    "host": "reference-vitalserver.external.example",
+    "port": 443
+  },
+  "vitalServerArchiveCredentialReference": {
+    "kind": "vitalserver-library-credential",
+    "id": "external-vitalserver-reference-library"
+  },
+  "vitalServerArchiveRequestTimeoutMilliseconds": 10000
+}

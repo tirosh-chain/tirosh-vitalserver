@@ -31,6 +31,14 @@ export function formatLocalDateTimeWithAge(
   return age === "Unknown" ? formatted : `${formatted} · ${age} ago`;
 }
 
+export function formatRelativeAge(value: string | null | undefined): string {
+  const age = formatAgeSince(value);
+  if (age !== "Unknown") {
+    return `${age} ago`;
+  }
+  return formatLocalDateTime(value);
+}
+
 export function formatAgeSince(value: string | null | undefined): string {
   if (!value) {
     return "Unknown";

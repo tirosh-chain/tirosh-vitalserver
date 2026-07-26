@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-assignment-evidence-receipt",
+  "title": "RecorderAssignmentEvidenceReceipt",
+  "description": "Recorder Assignment owner receipt. Duplicate means the same request already owns the same immutable command digest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "outcome", "evidenceReference", "persistedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "outcome": { "type": "string", "enum": ["accepted", "duplicate"] },
+    "evidenceReference": {
+      "allOf": [
+        { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference" },
+        {
+          "type": "object",
+          "properties": { "kind": { "const": "recorder-assignment-evidence" } }
+        }
+      ]
+    },
+    "persistedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  }
+}

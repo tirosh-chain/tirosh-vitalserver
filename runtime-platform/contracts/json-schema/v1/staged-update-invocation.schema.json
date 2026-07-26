@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:staged-update-invocation",
+  "title": "StagedUpdateInvocation",
+  "description": "C30 Host-to-next-updater local handoff document. The Host writes it only after C29 is durably handoff-pending, atomically stages the bundle, and records the exact request and handoff journal revision that the next updater must present with C27 completion. Host atomically verifies that handoff revision, marks execution applying, and settles C28. The next updater locates and validates opaque C26 itself; C26 is not embedded or decoded by the current Host updater.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "updateId", "requestId", "expectedHandoffJournalRevision", "bootstrapEnvelopeId", "updateSpecificationSha256", "layerOrder", "specificationRelativePath"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "expectedHandoffJournalRevision": { "type": "integer", "minimum": 1 },
+    "bootstrapEnvelopeId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "updateSpecificationSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "layerOrder": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/UpdateLayer" }
+    },
+    "specificationRelativePath": { "type": "string", "minLength": 9, "maxLength": 1024, "pattern": "^payload/[^\\\\]*$" }
+  },
+  "allOf": [
+    {
+      "not": {
+        "properties": { "specificationRelativePath": { "pattern": "\\.\\." } },
+        "required": ["specificationRelativePath"]
+      }
+    },
+    {
+      "not": {
+        "properties": {
+          "layerOrder": {
+            "anyOf": [
+              { "prefixItems": [{ "const": "host-platform" }], "minItems": 2 },
+              { "prefixItems": [{}, { "const": "host-platform" }], "minItems": 3 }
+            ]
+          }
+        },
+        "required": ["layerOrder"]
+      }
+    }
+  ]
+}

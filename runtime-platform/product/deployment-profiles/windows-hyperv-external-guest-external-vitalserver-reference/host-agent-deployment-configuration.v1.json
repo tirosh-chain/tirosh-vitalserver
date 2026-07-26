@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "v1",
+  "control": {
+    "localAdministration": {
+      "transport": "windows-named-pipe",
+      "endpointAddress": "\\\\.\\pipe\\VitalServerRuntimePlatform.HostAgent",
+      "descriptorPath": "C:\\ProgramData\\VitalServerRuntimePlatform\\control\\host-agent.local.json",
+      "securityDescriptor": "D:(A;;GA;;;SY)(A;;GA;;;BA)"
+    },
+    "loopbackHTTP": { "mode": "disabled" },
+    "stateDatabasePath": "C:\\ProgramData\\VitalServerRuntimePlatform\\data\\host-agent\\host-agent.sqlite",
+    "guestTimeoutMilliseconds": 5000
+  },
+  "installation": {
+    "installationId": "vitalserver-runtime-platform-windows-reference",
+    "productVersion": "0.2.0",
+    "runtimeVersion": "0.2.0",
+    "dataDirectory": "C:\\ProgramData\\VitalServerRuntimePlatform\\data"
+  },
+  "guestRuntimeControlEndpoint": {
+    "id": "vitalserver-windows-external-guest-runtime",
+    "scheme": "http",
+    "host": "192.0.2.10",
+    "port": 18443
+  },
+  "operationalStateBackup": {
+    "scheduleId": "daily-primary",
+    "intervalSeconds": 86400,
+    "retryIntervalSeconds": 60,
+    "destinationReference": {
+      "resourceType": "guest-backup-destination",
+      "resourceId": "guest-local-operational-state"
+    },
+    "retentionPolicy": "retain-all"
+  },
+  "provider": {
+    "kind": "windows-hyperv-scm",
+    "id": "vitalserver-windows-hyperv-reference-provider",
+    "nativeProviderBridgeExecutablePath": "C:\\ProgramData\\VitalServerRuntimePlatform\\current\\bin\\windows-hyperv-scm-bridge.exe",
+    "nativeVirtualMachineName": "vitalserver-guest",
+    "hostServiceName": "VitalServerHostAgent",
+    "nativeGuestMachineOwnership": "externally-provisioned"
+  },
+  "time": {
+    "hostNodeId": "vitalserver-windows-reference-host",
+    "timeAuthorityId": "vitalserver-windows-reference-time-authority",
+    "kind": "time-authority-outcome-profile",
+    "providerMode": "outcome-unknown"
+  },
+  "telemetry": {
+    "kind": "telemetry-export-outcome-profile",
+    "pipelineMode": "outcome-unknown",
+    "exportMode": "outcome-unknown"
+  },
+  "updateBootstrap": {
+    "mode": "staged",
+    "bundleStoreDirectory": "C:\\ProgramData\\VitalServerRuntimePlatform\\data\\update-bundles",
+    "stagingDirectory": "C:\\ProgramData\\VitalServerRuntimePlatform\\data\\update-staging",
+    "trustStorePath": "C:\\ProgramData\\VitalServerRuntimePlatform\\current\\config\\update-trust-store.json"
+  }
+}

@@ -40,6 +40,17 @@ final class RuntimeHealthSnapshotPolicyTests: XCTestCase {
         XCTAssertNil(RuntimeHealthSnapshotPolicy.missingFailureReasonIssue(snapshot))
     }
 
+    func testGuestAddressReadFailureDoesNotRequireCurrentHealthFailureReason() {
+        let snapshot = healthSnapshot(
+            guestAddressRead: .readFailed("permission denied"),
+            vmIP: nil,
+            failureReasons: []
+        )
+
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
+        XCTAssertNil(RuntimeHealthSnapshotPolicy.missingFailureReasonIssue(snapshot))
+    }
+
     private func healthSnapshot(
         vmExecutable: RuntimeFileState = .executable,
         proxyExecutable: RuntimeFileState = .executable,
@@ -50,6 +61,7 @@ final class RuntimeHealthSnapshotPolicyTests: XCTestCase {
         watchdogService: RuntimeServiceState = .loaded,
         vmState: RuntimeVMState = .running,
         vmErrors: [RuntimeVMError] = [],
+        guestAddressRead: RuntimeGuestAddressReadResult = .loaded(address: "192.168.64.2", source: .platformAgent),
         vmIP: String? = "192.168.64.2",
         hostProxyHTTP: String = "200",
         guestHTTP: String = "200",
@@ -67,6 +79,7 @@ final class RuntimeHealthSnapshotPolicyTests: XCTestCase {
             watchdogService: watchdogService,
             vmState: vmState,
             vmErrors: vmErrors,
+            guestAddressRead: guestAddressRead,
             vmIP: vmIP,
             proxyPort: 80,
             hostProxyHTTP: hostProxyHTTP,

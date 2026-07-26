@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-release-management",
+  "title": "GuestProductReleaseManagement",
+  "description": "C59 Guest Product Release Manager desired deployment, one release-update command carried with its declared archive bytes, and the manager-owned durable operation record. The manager is the only Guest component allowed to stage a release below the configured immutable release root or atomically retarget the current-release link. It preserves separately owned runtime, ingress, archive, and telemetry data directories; Host code never mounts or edits Guest state to implement this operation.",
+  "oneOf": [
+    { "$ref": "#/$defs/GuestProductReleaseManagerConfiguration" },
+    { "$ref": "#/$defs/GuestProductReleaseUpdateCommand" },
+    { "$ref": "#/$defs/GuestProductReleaseOperation" }
+  ],
+  "$defs": {
+    "AbsoluteGuestPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "LoopbackHTTPListener": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bindHost", "port"],
+      "properties": {
+        "bindHost": { "const": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "ControlVirtioSocketListener": {
+      "description": "Guest-side C59 AF_VSOCK listener. C32 owns the corresponding Host-loopback bridge; this document deliberately contains no Host address.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "ServiceManagement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["systemctlExecutablePath", "managedServiceUnitName", "restartTimeoutMilliseconds"],
+      "properties": {
+        "systemctlExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "managedServiceUnitName": { "const": "vitalserver-guest-product.service" },
+        "restartTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 600000 }
+      }
+    },
+    "HealthCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port", "path", "acceptedStatusCodes", "timeoutMilliseconds"],
+      "properties": {
+        "scheme": { "const": "http" },
+        "host": { "const": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "path": { "const": "/v1/runtime/readiness" },
+        "acceptedStatusCodes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 100, "maximum": 599 }
+        },
+        "timeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 600000 }
+      }
+    },
+    "ReleaseArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "sizeBytes", "mediaType"],
+      "properties": {
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "mediaType": { "const": "application/vnd.tirosh.vitalserver.guest-product-release+tar+gzip" }
+      }
+    },
+    "ReleaseTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseId", "releaseDirectory", "artifact"],
+      "properties": {
+        "releaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "releaseDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "artifact": { "$ref": "#/$defs/ReleaseArtifact" }
+      }
+    },
+    "GuestProductReleaseManagerConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "managerId", "listener", "controlVirtioSocketListener", "releaseDirectoryRoot", "currentReleaseLinkPath", "stagingDirectory", "stateDirectory", "stateDirectoryMode", "maximumReleaseArtifactBytes", "serviceManagement", "healthCheck"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "managerId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "listener": { "$ref": "#/$defs/LoopbackHTTPListener" },
+        "controlVirtioSocketListener": { "$ref": "#/$defs/ControlVirtioSocketListener" },
+        "releaseDirectoryRoot": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "currentReleaseLinkPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "stagingDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "stateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "stateDirectoryMode": { "const": "0700" },
+        "maximumReleaseArtifactBytes": { "type": "integer", "minimum": 1, "maximum": 17179869184 },
+        "serviceManagement": { "$ref": "#/$defs/ServiceManagement" },
+        "healthCheck": { "$ref": "#/$defs/HealthCheck" }
+      }
+    },
+    "GuestProductReleaseUpdateCommand": {
+      "description": "The metadata JSON part of one multipart release-upload request. The archive part named releaseArchive must exactly match targetRelease.artifact; an absent, truncated, or mismatched archive is not a command admission.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "updateId", "expectedActiveReleaseId", "targetRelease", "requestedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "expectedActiveReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "targetRelease": { "$ref": "#/$defs/ReleaseTarget" },
+        "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "Issue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" },
+    "GuestProductReleaseOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "updateId", "expectedActiveReleaseId", "targetRelease", "state", "observedAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "expectedActiveReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "targetRelease": { "$ref": "#/$defs/ReleaseTarget" },
+        "state": { "type": "string", "enum": ["received", "staged", "applying", "succeeded", "rollback-applying", "rolled-back", "failed", "unavailable"] },
+        "activeReleaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "issue": { "$ref": "#/$defs/Issue" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "enum": ["rolled-back", "failed", "unavailable"] } }, "required": ["state"] },
+          "then": { "required": ["issue"] },
+          "else": { "not": { "required": ["issue"] } }
+        }
+      ]
+    }
+  }
+}

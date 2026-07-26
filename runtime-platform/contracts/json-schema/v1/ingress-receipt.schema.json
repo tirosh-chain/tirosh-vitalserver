@@ -1,0 +1,458 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:ingress-receipt",
+  "title": "IngressReceipt",
+  "description": "A Recorder Gateway-owned receipt that keeps transport acceptance, durable ingress-state handoff, and VitalServer delivery correlation separate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "requestId",
+    "recorderId",
+    "connection",
+    "packet",
+    "ingressState",
+    "durableIngressStateHandoff",
+    "delivery",
+    "recordedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "recorderId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "connection": {
+      "$ref": "#/$defs/Connection"
+    },
+    "packet": {
+      "$ref": "#/$defs/Packet"
+    },
+    "ingressState": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "rejected",
+        "failed"
+      ]
+    },
+    "durableIngressStateHandoff": {
+      "$ref": "#/$defs/DurableIngressStateHandoff"
+    },
+    "coldPathCapture": {
+      "$ref": "#/$defs/ColdPathCaptureHandoff"
+    },
+    "delivery": {
+      "$ref": "#/$defs/DeliveryCorrelation"
+    },
+    "recordedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "evidenceReferences": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ingressState": {
+            "const": "accepted"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "packet": {
+            "properties": {
+              "parseState": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "parseState"
+            ]
+          },
+          "durableIngressStateHandoff": {
+            "properties": {
+              "state": {
+                "const": "stored"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ingressState": {
+            "const": "rejected"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "packet": {
+            "properties": {
+              "parseState": {
+                "enum": [
+                  "invalid",
+                  "unsupported"
+                ]
+              }
+            },
+            "required": [
+              "parseState"
+            ]
+          },
+          "durableIngressStateHandoff": {
+            "properties": {
+              "state": {
+                "const": "rejected"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ingressState": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "durableIngressStateHandoff": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "protocolVersion"
+      ],
+      "properties": {
+        "sessionId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "protocolVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ProtocolVersion"
+        },
+        "bootId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    },
+    "Packet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "byteCount",
+        "receivedAt",
+        "parseState"
+      ],
+      "properties": {
+        "packetId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "byteCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "payloadDigest": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "receivedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "parseState": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "invalid",
+            "unsupported"
+          ]
+        }
+      }
+    },
+    "DurableIngressStateHandoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "stored",
+            "rejected",
+            "unavailable",
+            "failed"
+          ]
+        },
+        "durableIngressStateReceiptId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "persistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "stored"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "durableIngressStateReceiptId",
+              "persistedAt"
+            ],
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "rejected",
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "ColdPathCaptureHandoff": {
+      "description": "Optional Recorder Gateway-owned evidence that this accepted ingress packet is retained by an explicit Recorder Cold-Path Capture. Its absence preserves the meaning of a migrated delivery-only record; it never means that an archive source was inferred.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "captureReference",
+        "persistedAt"
+      ],
+      "properties": {
+        "state": {
+          "const": "captured"
+        },
+        "captureReference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "resourceType",
+            "resourceId"
+          ],
+          "properties": {
+            "resourceType": {
+              "const": "recorder-cold-path-capture"
+            },
+            "resourceId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            }
+          }
+        },
+        "persistedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    },
+    "DeliveryCorrelation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "not-requested",
+            "requested",
+            "succeeded",
+            "failed",
+            "unsupported"
+          ]
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "receiptId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "completedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "not-requested"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "requestId"
+                  ]
+                },
+                {
+                  "required": [
+                    "receiptId"
+                  ]
+                },
+                {
+                  "required": [
+                    "completedAt"
+                  ]
+                },
+                {
+                  "required": [
+                    "issue"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "requested"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "requestId"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "receiptId"
+                  ]
+                },
+                {
+                  "required": [
+                    "completedAt"
+                  ]
+                },
+                {
+                  "required": [
+                    "issue"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "succeeded"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "requestId",
+              "receiptId",
+              "completedAt"
+            ],
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "failed",
+                  "unsupported"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "requestId",
+              "completedAt",
+              "issue"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

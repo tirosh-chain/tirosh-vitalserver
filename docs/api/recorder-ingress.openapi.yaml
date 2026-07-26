@@ -2,10 +2,360 @@ openapi: 3.0.3
 info:
   title: VitalServer Recorder Ingress API
   version: 0.1.0
-  description: Operational endpoints exposed by the VitalServer recorder ingress sidecar.
+  description: >
+    Operational endpoints exposed by the VitalServer recorder ingress
+    sidecar, including durable Recorder observability admission.
 servers:
   - url: /
 paths:
+  /api/v1/recorders/{vrcode}/observations:
+    post:
+      operationId: admitRecorderObservations
+      summary: Durably admit Recorder observation documents
+      description: >
+        Accepts the existing Recorder `v1` / `device-health` NDJSON documents.
+        The path VRCODE is the manufacturer-assigned Recorder identity;
+        `X-Device-ID` and each document `deviceId` identify the Observer
+        deployment that produced the evidence. Permanent line-level validation
+        failures and event-ID content conflicts are durably quarantined so that
+        a mixed Fluent Bit chunk can still receive 202. A previously accepted
+        `(vrcode,eventId)` with the same content is an idempotent duplicate.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderObservationNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "404":
+          $ref: "#/components/responses/ObservabilityRouteNotFound"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /api/v1/recorders/{vrcode}/diagnostic-events:
+    post:
+      operationId: admitRecorderDiagnosticEvents
+      summary: Durably admit Recorder diagnostic events
+      description: >
+        Accepts the existing Recorder `v1` / `diagnostic-log` NDJSON
+        documents. Permanent line-level failures are quarantined rather than
+        rejecting a mixed Fluent Bit chunk.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderDiagnosticEventNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "404":
+          $ref: "#/components/responses/ObservabilityRouteNotFound"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /api/v1/recorders/{vrcode}/kernel-incidents:
+    post:
+      operationId: admitRecorderKernelIncidents
+      summary: Durably admit Recorder kernel incident summaries
+      description: >
+        Accepts the existing Recorder `v1` / `kernel-incident` NDJSON
+        documents. These documents contain pstore artifact paths, hashes, and
+        bounded excerpts retained on the Raspberry Pi; this API does not upload
+        the artifact file contents.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderKernelIncidentNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "404":
+          $ref: "#/components/responses/ObservabilityRouteNotFound"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /api/v1/recorders/{vrcode}/profiles:
+    post:
+      operationId: admitRecorderProfiles
+      summary: Durably admit Recorder profile documents
+      description: >
+        Accepts Recorder v1 recorder-profile NDJSON. The authoritative schema,
+        profileDigest, and path VRCODE identity are validated before a line is
+        accepted; permanent line failures are quarantined.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderProfileNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /api/v1/recorders/{vrcode}/boot-events:
+    post:
+      operationId: admitRecorderBootEvents
+      summary: Durably admit Recorder boot events
+      description: >
+        Accepts Recorder v1 and v2 boot-event NDJSON. boot-started and
+        shutdown-clean remain separate immutable events. v2 adds a bounded,
+        non-causal incident assessment and an ordinal boot ledger.
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - $ref: "#/components/parameters/ObserverDeviceID"
+      requestBody:
+        $ref: "#/components/requestBodies/RecorderBootEventNDJSON"
+      responses:
+        "202":
+          $ref: "#/components/responses/ObservabilityAdmitted"
+        "400":
+          $ref: "#/components/responses/ObservabilityRequestInvalid"
+        "413":
+          $ref: "#/components/responses/ObservabilityRequestTooLarge"
+        "415":
+          $ref: "#/components/responses/ObservabilityMediaTypeUnsupported"
+        "503":
+          $ref: "#/components/responses/ObservabilityAdmissionUnavailable"
+  /runtime/vitaldb/recorders:
+    get:
+      operationId: listRecorderObservabilityCurrent
+      summary: List current Recorder observability summaries
+      responses:
+        "200":
+          description: Current PostgreSQL-backed Recorder summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityList"
+        "503":
+          description: PostgreSQL current projection is unavailable.
+  /runtime/vitaldb/recorders/{vrcode}/observability:
+    get:
+      operationId: getRecorderObservabilityCurrent
+      summary: Read one Recorder current observability aggregate
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+      responses:
+        "200":
+          description: >
+            Typed current Detail including associated Profile, health, and
+            matching boot start/shutdown state. Internal retained JSONB
+            evidence is not exposed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityDetail"
+        "404":
+          description: >
+            The VRCODE has neither projected observability nor an explicit
+            support expectation.
+        "503":
+          description: PostgreSQL current projection is unavailable.
+  /runtime/vitaldb/recorders/{vrcode}/observability/timeline:
+    get:
+      operationId: getRecorderObservabilityTimeline
+      summary: Read a bounded Recorder health timeline
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: until, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: bucketSeconds, in: query, required: true, schema: {type: integer, enum: [300, 900, 3600]}}
+      responses:
+        "200":
+          description: At most 24 hours of receipt-time buckets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityTimeline"
+        "400": {description: Query window or bucket is invalid.}
+        "503": {description: PostgreSQL history read is unavailable.}
+  /runtime/vitaldb/recorders/{vrcode}/observability/incidents:
+    get:
+      operationId: getRecorderObservabilityIncidents
+      summary: Read bounded explicit Recorder incidents
+      parameters:
+        - $ref: "#/components/parameters/RecorderVrcode"
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: until, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: type, in: query, required: false, schema: {type: string, enum: [panic, oops, watchdog, lockup, unknown]}}
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        "200":
+          description: Receipt-time ordered incident page with an opaque cursor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityIncidentPage"
+        "400": {description: Query window, filter, cursor, or limit is invalid.}
+        "503": {description: PostgreSQL history read is unavailable.}
+  /internal/recorder-observability/expectations:
+    post:
+      operationId: applyRecorderObservabilityExpectation
+      summary: Apply an authenticated support expectation command
+      description: >
+        Internal command boundary used by Guest Control. Commands are journaled
+        before the current projection is advanced with revision compare-and-set.
+        A missing or unreadable control credential is an unavailable dependency,
+        never a disabled or successful command.
+      security:
+        - ExpectationControlBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecorderObservabilityExpectationCommand"
+      responses:
+        "200":
+          description: The command was an idempotent replay.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityExpectationReceipt"
+        "201":
+          description: The command was accepted and persisted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityExpectationReceipt"
+        "401":
+          description: The internal control credential is invalid.
+        "409":
+          description: expectedRevision does not match the current projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityExpectationReceipt"
+        "422":
+          description: The domain rejected a complete command.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderObservabilityExpectationReceipt"
+        "503":
+          description: Credential or PostgreSQL command persistence is unavailable.
+  /upload:
+    post:
+      operationId: uploadTrackedNativeVitalFile
+      summary: Stream one native Recorder Vital file to VitalServer
+      description: >
+        Proxies one complete multipart Vital file without buffering the request.
+        A request with no tracking headers remains a legacy passthrough and is
+        not attributed. If any tracking header is present, upload ID, bed name,
+        filename, and file size are all required. Recorder code is optional.
+        The ingress records upstream acceptance only when the upstream response
+        is 2xx with the exact body `success`, then independently reconciles the
+        file against VitalServer file-index evidence. bedName is explicit
+        metadata; it is never parsed from filename.
+      parameters:
+        - $ref: "#/components/parameters/VitalUploadID"
+        - $ref: "#/components/parameters/VitalBedName"
+        - $ref: "#/components/parameters/VitalRecorderCode"
+        - $ref: "#/components/parameters/VitalFilename"
+        - $ref: "#/components/parameters/VitalFileSize"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [vitalfile]
+              properties:
+                vitalfile:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Upstream upload result. `X-Vital-Upload-State` is `reconciling` or `indexed`.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [success]
+        "400":
+          description: Partial or invalid tracked-upload metadata.
+        "409":
+          description: The upload ID was reused with conflicting immutable metadata.
+        "502":
+          description: The upstream upload dependency failed.
+        "503":
+          description: Tracked-upload state ownership is unavailable or its registry failed.
+  /upload_vital.php:
+    post:
+      operationId: uploadTrackedNativeVitalFileLegacyAlias
+      summary: Alias of POST /upload
+      description: Uses the same streaming and tracked-upload contract as POST /upload.
+      parameters:
+        - $ref: "#/components/parameters/VitalUploadID"
+        - $ref: "#/components/parameters/VitalBedName"
+        - $ref: "#/components/parameters/VitalRecorderCode"
+        - $ref: "#/components/parameters/VitalFilename"
+        - $ref: "#/components/parameters/VitalFileSize"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [vitalfile]
+              properties:
+                vitalfile:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Upstream upload result.
+  /recorder-ingress/vital-files/uploads:
+    get:
+      operationId: getTrackedNativeVitalUploads
+      summary: Read recorder-ingress-owned native upload records
+      description: >
+        Returns explicit native upload state only. Records are not Recorder
+        identity and unresolved bed attribution does not create Recorder state.
+      parameters:
+        - name: bedName
+          in: query
+          schema:
+            type: string
+        - name: declaredVrcode
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Native upload records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NativeVitalUploadList"
+        "503":
+          description: The native upload registry could not be read.
   /recorder-ingress/health:
     get:
       operationId: getRecorderIngressHealth
@@ -18,7 +368,10 @@ paths:
     get:
       operationId: getRecorderIngressStatus
       summary: Read recorder ingress counters
-      description: Returns in-memory counters for proxy traffic, Socket.IO parsing, audit sink failures, send_data spool status, and planned replay status fields.
+      description: >
+        Returns in-memory counters for proxy traffic, Socket.IO parsing, audit
+        sink failures, send_data spool status, replay status, and Recorder
+        observability durable admission.
       responses:
         "200":
           description: Recorder ingress status counters.
@@ -26,8 +379,745 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RecorderIngressStatus"
+  /recorder-ingress/raw-archive/finalize:
+    post:
+      operationId: requestRecorderArchiveFinalization
+      summary: Persist a terminal recorder archive finalization request
+      description: >
+        Accepts a durable terminal-finalization request. It does not wait for
+        Vital file export or upload; callers must read the owner-side status
+        using the returned request IDs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecorderArchiveFinalizationRequest"
+      responses:
+        "202":
+          description: Request persisted and accepted for asynchronous processing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderArchiveFinalizationAccepted"
+        "409":
+          description: Finalization was rejected by the explicit state guard.
+        "503":
+          description: The durable finalization dependency is unavailable.
+  /recorder-ingress/raw-archive/finalizations:
+    get:
+      operationId: getRecorderArchiveFinalizationStatus
+      summary: Read recorder-ingress-owned finalization progress
+      description: >
+        Returns only the progress for explicit requestId values. Product Lab
+        uses this as an internal read and projects a smaller status summary to
+        its session contract.
+      parameters:
+        - name: requestId
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: string
+          description: One or more request IDs returned by finalization acceptance.
+      responses:
+        "200":
+          description: Owner-side finalization progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecorderArchiveFinalizationStatus"
+        "400":
+          description: No valid requestId was supplied.
+        "503":
+          description: The finalization state dependency is unavailable.
 components:
+  securitySchemes:
+    ExpectationControlBearer:
+      type: http
+      scheme: bearer
+  parameters:
+    RecorderVrcode:
+      name: vrcode
+      in: path
+      required: true
+      description: >
+        Manufacturer-assigned Recorder identity. Case is preserved and never
+        normalized.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+    ObserverDeviceID:
+      name: X-Device-ID
+      in: header
+      required: true
+      description: >
+        Observer deployment identity. Every document in the NDJSON request
+        must carry the same `deviceId`; a mismatch is durably quarantined.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    VitalUploadID:
+      name: X-Vital-Upload-Id
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+    VitalBedName:
+      name: X-Vital-Bed-Name
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+    VitalRecorderCode:
+      name: X-Vital-Recorder-Code
+      in: header
+      required: false
+      schema:
+        type: string
+    VitalFilename:
+      name: X-Vital-Filename
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 255
+        pattern: '^[^/\\]+\.vital$'
+    VitalFileSize:
+      name: X-Vital-File-Size
+      in: header
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+  requestBodies:
+    RecorderObservationNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: >
+              One complete Recorder v1 device-health JSON object per non-empty
+              line.
+    RecorderDiagnosticEventNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: >
+              One complete Recorder v1 diagnostic-log JSON object per
+              non-empty line.
+    RecorderKernelIncidentNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: >
+              One complete Recorder v1 kernel-incident summary JSON object per
+              non-empty line.
+    RecorderProfileNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: One Recorder v1 recorder-profile object per line.
+    RecorderBootEventNDJSON:
+      required: true
+      content:
+        application/x-ndjson:
+          schema:
+            type: string
+            description: One Recorder v1 boot-event object per line.
+  responses:
+    ObservabilityAdmitted:
+      description: >
+        Every line reached a durable terminal admission state: accepted,
+        duplicate, or quarantined.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RecorderObservabilityAdmission"
+    ObservabilityRequestInvalid:
+      description: >
+        Request-level contract failure: invalid path identity, required header,
+        media type, or NDJSON framing. Document schema failures are not returned
+        as 400; they are quarantined and included in a 202 result.
+    ObservabilityRouteNotFound:
+      description: >
+        The Recorder observability path is unsafe, malformed, or names an
+        unsupported resource.
+    ObservabilityRequestTooLarge:
+      description: >
+        Request exceeds the configurable admission limit, 5 MiB by default to
+        accommodate Fluent Bit chunks.
+    ObservabilityMediaTypeUnsupported:
+      description: >
+        The request media type is not `application/x-ndjson`.
+    ObservabilityAdmissionUnavailable:
+      description: >
+        The PostgreSQL transaction could not confirm the admission result. The client
+        may retry the whole chunk.
   schemas:
+    RecorderObservabilityExpectationCommand:
+      type: object
+      additionalProperties: false
+      required:
+        - commandId
+        - vrcode
+        - expectedRevision
+        - action
+        - supportState
+        - source
+        - recorderVersion
+        - producerVersion
+        - protocolVersion
+        - catalogRevision
+        - expectedSince
+        - evidenceDocument
+        - decidedAt
+      properties:
+        commandId: {type: string, format: uuid}
+        vrcode: {type: string}
+        expectedRevision: {type: integer, minimum: 0}
+        action: {type: string, enum: [set, clear]}
+        supportState:
+          type: string
+          nullable: true
+          enum: [supported, unsupported]
+        source:
+          type: string
+          nullable: true
+          enum: [deployment_assignment, version_catalog, manual]
+        recorderVersion: {type: string, nullable: true}
+        producerVersion: {type: string, nullable: true}
+        protocolVersion: {type: string, nullable: true}
+        catalogRevision: {type: string, nullable: true}
+        expectedSince: {type: string, format: date-time, nullable: true}
+        evidenceDocument: {type: object, additionalProperties: true}
+        decidedAt: {type: string, format: date-time}
+    RecorderObservabilityExpectationReceipt:
+      type: object
+      additionalProperties: false
+      required: [state, commandId, eventId, vrcode, currentRevision, failure]
+      properties:
+        state:
+          type: string
+          enum: [accepted, idempotent, revisionConflict, rejected]
+        commandId: {type: string}
+        eventId: {type: string, nullable: true}
+        vrcode: {type: string}
+        currentRevision: {type: integer, minimum: 0}
+        failure: {type: string, nullable: true}
+    RecorderObservabilitySummary:
+      type: object
+      additionalProperties: false
+      required:
+        - vrcode
+        - supportState
+        - supportSource
+        - reportState
+        - profileState
+        - collectionState
+        - latestObservationReceivedAt
+        - lastBootStartedAt
+        - readIssueCount
+        - operationalHealthState
+        - operationalIssueCount
+        - expectedSince
+        - recorderVersion
+        - producerVersion
+        - protocolVersion
+      properties:
+        vrcode: {type: string}
+        supportState:
+          type: string
+          enum: [supported, unsupported, unknown]
+        supportSource: {type: string, nullable: true}
+        reportState:
+          type: string
+          enum: [notEvaluated, awaitingFirstReport, current, stale, missing, readFailed]
+        profileState: {type: string, nullable: true}
+        collectionState: {type: string, nullable: true}
+        latestObservationReceivedAt: {type: string, nullable: true}
+        lastBootStartedAt: {type: string, nullable: true}
+        readIssueCount: {type: integer, minimum: 0}
+        operationalHealthState:
+          type: string
+          enum: [healthy, warning, critical, unknown]
+        operationalIssueCount: {type: integer, minimum: 0}
+        expectedSince: {type: string, nullable: true}
+        recorderVersion: {type: string, nullable: true}
+        producerVersion: {type: string, nullable: true}
+        protocolVersion: {type: string, nullable: true}
+    RecorderObservabilityList:
+      type: object
+      additionalProperties: false
+      required: [state, recorders]
+      properties:
+        state: {type: string, enum: [loaded]}
+        recorders:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecorderObservabilitySummary"
+    RecorderObservabilityDetail:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+        - vrcode
+        - support
+        - report
+        - profile
+        - boot
+        - operationalHealth
+        - readings
+        - readIssues
+        - readError
+      properties:
+        state: {type: string, enum: [loaded]}
+        vrcode: {type: string}
+        support:
+          type: object
+          additionalProperties: false
+          required: [state, source, expectedSince, recorderVersion, producerVersion, protocolVersion]
+          properties:
+            state: {type: string, enum: [supported, unsupported, unknown]}
+            source: {type: string, nullable: true}
+            expectedSince: {type: string, nullable: true}
+            recorderVersion: {type: string, nullable: true}
+            producerVersion: {type: string, nullable: true}
+            protocolVersion: {type: string, nullable: true}
+        report:
+          type: object
+          additionalProperties: false
+          required: [state, receivedAt, deviceObservedAt, collectionState, readIssueCount]
+          properties:
+            state: {type: string, enum: [notEvaluated, awaitingFirstReport, current, stale, missing, readFailed]}
+            receivedAt: {type: string, nullable: true}
+            deviceObservedAt: {type: string, nullable: true}
+            collectionState: {type: string, nullable: true}
+            readIssueCount: {type: integer, minimum: 0}
+        profile:
+          type: object
+          additionalProperties: false
+          required: [state, receivedAt, deviceObservedAt, deviceId, bootId, software, collection, capabilities]
+          properties:
+            state: {type: string, enum: [associated, unassociated, missing, invalid]}
+            receivedAt: {type: string, nullable: true}
+            deviceObservedAt: {type: string, nullable: true}
+            deviceId: {type: string, nullable: true}
+            bootId: {type: string, nullable: true}
+            software:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/RecorderObservabilityReading"
+            collection:
+              type: object
+              nullable: true
+              additionalProperties: false
+              required: [powerIntervalSeconds, telemetryIntervalSeconds, observationIntervalSeconds]
+              properties:
+                powerIntervalSeconds: {type: integer, nullable: true}
+                telemetryIntervalSeconds: {type: integer, nullable: true}
+                observationIntervalSeconds: {type: integer, nullable: true}
+            capabilities:
+              type: object
+              additionalProperties:
+                type: object
+                required: [state, source, detail]
+                properties:
+                  state: {type: string}
+                  source: {type: string, nullable: true}
+                  detail: {type: string, nullable: true}
+        boot:
+          type: object
+          additionalProperties: false
+          required: [state, bootId, startedAt, cleanShutdownAt]
+          properties:
+            state: {type: string, enum: [notReported, started, shutdownClean]}
+            bootId: {type: string, nullable: true}
+            startedAt: {type: string, nullable: true}
+            cleanShutdownAt: {type: string, nullable: true}
+        operationalHealth:
+          $ref: "#/components/schemas/RecorderOperationalHealth"
+        readings:
+          type: object
+          additionalProperties: false
+          required: [temperatureCelsius, memoryAvailableBytes, memoryTotalBytes, rootUsedPercent, dataUsedPercent, recorderActiveState, publisherActiveState, publisherBufferBytes, publisherBufferLimitBytes, networkInterfaces]
+          properties:
+            temperatureCelsius: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            memoryAvailableBytes: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            memoryTotalBytes: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            rootUsedPercent: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            dataUsedPercent: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            recorderActiveState: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            publisherActiveState: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            publisherBufferBytes: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            publisherBufferLimitBytes: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+            networkInterfaces:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [name, operState, carrier, rxErrors, txErrors]
+                properties:
+                  name: {type: string}
+                  operState: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+                  carrier: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+                  rxErrors: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+                  txErrors: {$ref: "#/components/schemas/RecorderObservabilityReading"}
+        readIssues:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, state, detail]
+            properties:
+              field: {type: string}
+              state: {type: string}
+              detail: {type: string}
+        readError: {type: string, nullable: true}
+    RecorderOperationalHealth:
+      type: object
+      additionalProperties: false
+      required: [state, evaluatedAt, issueCount, issues]
+      properties:
+        state:
+          type: string
+          enum: [healthy, warning, critical, unknown]
+        evaluatedAt: {type: string, nullable: true}
+        issueCount: {type: integer, minimum: 0}
+        issues:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, category, severity, title, detail, field]
+            properties:
+              code: {type: string}
+              category:
+                type: string
+                enum: [power, storage, service, time, temperature, memory]
+              severity:
+                type: string
+                enum: [warning, critical]
+              title: {type: string}
+              detail: {type: string}
+              field: {type: string}
+    RecorderObservabilityReading:
+      type: object
+      additionalProperties: false
+      required: [state, value, detail, observedAt]
+      properties:
+        state: {type: string, enum: [ok, missing, invalid, failed, unsupported]}
+        value: {nullable: true}
+        detail: {type: string, nullable: true}
+        observedAt: {type: string, nullable: true}
+    RecorderObservabilityTimeline:
+      type: object
+      additionalProperties: false
+      required: [state, vrcode, supportState, timeBasis, query, buckets, readError]
+      properties:
+        state: {type: string, enum: [loaded, notReported, unsupported]}
+        vrcode: {type: string}
+        supportState: {type: string, enum: [supported, unsupported, unknown]}
+        timeBasis: {type: string, enum: [receivedAt]}
+        query:
+          type: object
+          required: [from, until, bucketSeconds]
+          properties:
+            from: {type: string, format: date-time}
+            until: {type: string, format: date-time}
+            bucketSeconds: {type: integer, enum: [300, 900, 3600]}
+        buckets:
+          type: array
+          items:
+            type: object
+            required: [bucketStartedAt, sampleCount, metrics]
+            properties:
+              bucketStartedAt: {type: string, format: date-time}
+              sampleCount: {type: integer, minimum: 1}
+              metrics:
+                type: object
+                additionalProperties:
+                  type: object
+                  required: [average, stateCounts]
+                  properties:
+                    average: {type: number, nullable: true}
+                    stateCounts:
+                      type: object
+                      additionalProperties: {type: integer, minimum: 0}
+        readError: {type: string, nullable: true}
+    RecorderObservabilityIncidentPage:
+      type: object
+      additionalProperties: false
+      required: [state, vrcode, timeBasis, incidents, nextCursor, readError]
+      properties:
+        state: {type: string, enum: [loaded]}
+        vrcode: {type: string}
+        timeBasis: {type: string, enum: [receivedAt]}
+        incidents:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [recordId, eventId, incidentId, category, code, severity, state, bootId, occurredAt, receivedAt, timeState, summary, evidence, source, capturedAt, captureTimeState, incidentType, incidentBootId, messageExcerpt, truncated]
+            properties:
+              recordId: {type: string}
+              eventId: {type: string}
+              incidentId: {type: string, description: Stable per-signal incident identity.}
+              category: {type: string, enum: [kernel, boot, power, evidence]}
+              code: {type: string}
+              severity: {type: string, enum: [warning, critical]}
+              state: {type: string, enum: [active, recovering, historical]}
+              bootId: {type: string, nullable: true}
+              occurredAt: {type: string, format: date-time, nullable: true}
+              receivedAt: {type: string, format: date-time}
+              timeState: {type: string, nullable: true}
+              summary: {type: string}
+              evidence:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [field, state, detail]
+                  properties:
+                    field: {type: string}
+                    state: {type: string}
+                    detail: {type: string, nullable: true}
+              source: {type: string, enum: [kernelIncident, bootEvent, observation]}
+              capturedAt: {type: string, format: date-time, nullable: true}
+              captureTimeState: {type: string, nullable: true}
+              incidentType: {type: string, enum: [panic, oops, watchdog, lockup, unknown, boot-loop, repeated-undervoltage, ledger-continuity]}
+              incidentBootId: {type: string, nullable: true}
+              messageExcerpt: {type: string, nullable: true}
+              truncated: {type: boolean}
+        nextCursor: {type: string, nullable: true}
+        readError: {type: string, nullable: true}
+    RecorderObservabilityAdmission:
+      type: object
+      additionalProperties: false
+      required:
+        - state
+        - requestId
+        - accepted
+        - duplicates
+        - quarantined
+      properties:
+        state:
+          type: string
+          enum: [admitted]
+        requestId:
+          type: string
+        accepted:
+          type: integer
+          minimum: 0
+        duplicates:
+          type: integer
+          minimum: 0
+        quarantined:
+          type: integer
+          minimum: 0
+    NativeVitalUploadList:
+      type: object
+      additionalProperties: false
+      required: [state, uploads, readError]
+      properties:
+        state:
+          type: string
+          enum: [loaded]
+        uploads:
+          type: array
+          items:
+            $ref: "#/components/schemas/NativeVitalUpload"
+        readError:
+          type: string
+          nullable: true
+    NativeVitalUpload:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - origin
+        - uploadId
+        - bedName
+        - declaredVrcode
+        - filename
+        - declaredSizeBytes
+        - state
+        - receivedAt
+        - upstreamAcceptedAt
+        - indexedAt
+        - reconciliationAttempts
+        - lastReconciliationAt
+        - indexEvidence
+        - failure
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        origin:
+          type: string
+          enum: [nativeRecorderUpload]
+        uploadId:
+          type: string
+        bedName:
+          type: string
+        declaredVrcode:
+          type: string
+          nullable: true
+        filename:
+          type: string
+        declaredSizeBytes:
+          type: integer
+          minimum: 1
+        state:
+          type: string
+          enum: [receiving, reconciling, indexed, failed]
+        receivedAt:
+          type: string
+        upstreamAcceptedAt:
+          type: string
+          nullable: true
+        indexedAt:
+          type: string
+          nullable: true
+        reconciliationAttempts:
+          type: integer
+          minimum: 0
+        lastReconciliationAt:
+          type: string
+          nullable: true
+        indexEvidence:
+          type: object
+          nullable: true
+        failure:
+          type: object
+          nullable: true
+    RecorderArchiveFinalizationRequest:
+      type: object
+      additionalProperties: false
+      required: [vrcodes, reason]
+      properties:
+        vrcodes:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            minLength: 1
+        reason:
+          type: string
+          enum: [lab_session_finished]
+    RecorderArchiveFinalizationAccepted:
+      type: object
+      additionalProperties: false
+      required: [ok, state, requestIds]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        state:
+          type: string
+          enum: [accepted]
+        requestIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    RecorderArchiveFinalizationRequestProgress:
+      type: object
+      additionalProperties: false
+      required:
+        - requestId
+        - vrcode
+        - state
+        - attempts
+        - maxAttempts
+        - requestedAt
+        - updatedAt
+        - startedAt
+        - completedAt
+        - nextAttemptAt
+        - failure
+      properties:
+        requestId:
+          type: string
+        vrcode:
+          type: string
+          nullable: true
+        state:
+          type: string
+          enum: [queued, processing, retrying, exported, published, failed, missing]
+        attempts:
+          type: integer
+          minimum: 0
+        maxAttempts:
+          type: integer
+          nullable: true
+        requestedAt:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          nullable: true
+        startedAt:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          nullable: true
+        nextAttemptAt:
+          type: string
+          nullable: true
+        failure:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required: [reason, message, occurredAt]
+          properties:
+            reason:
+              type: string
+            message:
+              type: string
+            occurredAt:
+              type: string
+    RecorderArchiveFinalizationStatus:
+      type: object
+      additionalProperties: false
+      required: [ok, state, finalization]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        state:
+          type: string
+          enum: [loaded]
+        finalization:
+          type: object
+          additionalProperties: false
+          required: [state, requests, updatedAt]
+          properties:
+            state:
+              type: string
+              enum: [queued, processing, retrying, exported, published, failed, partial, missing]
+            requests:
+              type: array
+              minItems: 1
+              items:
+                $ref: "#/components/schemas/RecorderArchiveFinalizationRequestProgress"
+            updatedAt:
+              type: string
+              nullable: true
     RecorderIngressStatus:
       type: object
       additionalProperties: false
@@ -55,6 +1145,7 @@ components:
         - spool
         - replay
         - realtimeCoverage
+        - recorderObservability
       properties:
         startedAt:
           type: string
@@ -129,6 +1220,48 @@ components:
             - $ref: "#/components/schemas/RecorderIngressReplayStatus"
         realtimeCoverage:
           $ref: "#/components/schemas/RecorderIngressRealtimeCoverageStatus"
+        recorderObservability:
+          $ref: "#/components/schemas/RecorderObservabilityStatus"
+    RecorderObservabilityStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - requests
+        - accepted
+        - duplicates
+        - quarantined
+        - admissionFailures
+        - lastAdmittedAt
+        - lastFailure
+      properties:
+        requests:
+          type: integer
+          minimum: 0
+        accepted:
+          type: integer
+          minimum: 0
+        duplicates:
+          type: integer
+          minimum: 0
+        quarantined:
+          type: integer
+          minimum: 0
+        admissionFailures:
+          type: integer
+          minimum: 0
+        lastAdmittedAt:
+          type: string
+          nullable: true
+        lastFailure:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required: [occurredAt, reason]
+          properties:
+            occurredAt:
+              type: string
+            reason:
+              type: string
     RecorderConnection:
       type: object
       additionalProperties: false
@@ -384,9 +1517,9 @@ components:
         - cursorStableForMs
         - lastDecisionAt
         - activeJob
-        - uploadedJobs
+        - exportedJobs
         - failedJobs
-        - lastResult
+        - lastExportResult
         - lastFailure
       properties:
         status:
@@ -394,13 +1527,17 @@ components:
           enum:
             - disabled
             - idle
+            - not_observed
             - open
             - inactive_candidate
             - finalizable_by_inactivity
+            - finalizable_by_explicit_request
+            - finalizable_by_shutdown
+            - already_exported
             - running
-            - uploaded
-            - retryable_failed
-            - failed
+            - exported
+            - export_retryable_failed
+            - export_failed
         finalizable:
           type: boolean
         reasons:
@@ -423,13 +1560,13 @@ components:
           nullable: true
         activeJob:
           $ref: "#/components/schemas/RecorderIngressRawArchiveAutoExportJob"
-        uploadedJobs:
+        exportedJobs:
           type: integer
           minimum: 0
         failedJobs:
           type: integer
           minimum: 0
-        lastResult:
+        lastExportResult:
           type: object
           additionalProperties: true
           nullable: true
@@ -441,9 +1578,16 @@ components:
       additionalProperties: false
       required:
         - jobId
+        - requestId
+        - trigger
+        - origin
+        - vrcode
         - archivePath
-        - archiveCursor
+        - startOffset
+        - endOffset
         - state
+        - publishState
+        - artifactIds
         - attempts
         - maxAttempts
         - createdAt
@@ -455,19 +1599,40 @@ components:
       properties:
         jobId:
           type: string
+        requestId:
+          type: string
+          nullable: true
+        trigger:
+          type: string
+          enum: [inactivity, shutdown, explicit]
+        origin:
+          type: string
+          enum: [coldPathRecovery, productLabGenerated]
+        vrcode:
+          type: string
         archivePath:
           type: string
-        archiveCursor:
+        startOffset:
+          type: integer
+          minimum: 0
+        endOffset:
           type: integer
           minimum: 0
         state:
           type: string
           enum:
-            - pending
-            - running
-            - uploaded
-            - retryable_failed
-            - failed
+            - export_pending
+            - exporting
+            - exported
+            - export_retryable_failed
+            - export_failed
+        publishState:
+          type: string
+          enum: [notRequested, published, unknownLegacy]
+        artifactIds:
+          type: array
+          items:
+            type: string
         attempts:
           type: integer
           minimum: 0
@@ -706,8 +1871,15 @@ components:
           $ref: "#/components/schemas/RecorderIngressFailure"
     SendDataIngressMode:
       type: string
+      description: |
+        Explicit send_data delivery policy. observe_only preserves direct upstream
+        delivery, records audit/metrics and bounded raw archive evidence without
+        appending Redis replay pending, and keeps replay disabled. In 0.2.1,
+        spool_and_replay is degraded because frame suppression is not guarded by
+        a Recorder-visible durable admission acknowledgement.
       enum:
         - passthrough
+        - observe_only
         - mirror_spool
         - spool_only
         - spool_and_replay

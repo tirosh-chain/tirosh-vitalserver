@@ -460,6 +460,34 @@
     @apply bg-app-accentSoft;
   }
 
+  .recorder-table .data-table {
+    @apply min-w-[1100px] text-lg;
+  }
+
+  .recorder-table .data-table th {
+    @apply text-base;
+  }
+
+  .recorder-table .data-table td {
+    @apply py-4;
+  }
+
+  .recorder-table .data-card {
+    @apply text-base;
+  }
+
+  .recorder-table .data-card-title {
+    @apply text-xl;
+  }
+
+  .recorder-metrics .metric span {
+    @apply text-lg;
+  }
+
+  .recorder-metrics .metric strong {
+    @apply text-3xl;
+  }
+
   .data-card-list {
     @apply grid gap-3 md:hidden;
   }
@@ -511,6 +539,107 @@
 
   .detail-heading > span:last-child {
     @apply text-base font-bold text-app-muted;
+  }
+
+  .recorder-details .key-value-row {
+    @apply text-lg;
+  }
+
+  .recorder-identity,
+  .recorder-detail-identity {
+    @apply inline-flex min-w-0 flex-wrap items-center gap-2;
+  }
+
+  .visibility-badge {
+    @apply inline-flex rounded-full border border-app-border bg-app-control/40 px-2 py-0.5 text-xs font-extrabold text-app-muted;
+  }
+
+  .recorder-detail-actions {
+    @apply ml-auto;
+  }
+
+  .recorder-visibility-notice {
+    @apply mb-4 flex flex-wrap items-center gap-3 rounded-panel border border-app-border bg-app-control/25 px-4 py-3 font-bold;
+  }
+
+  .detail-section {
+    @apply mt-[26px] border-t border-app-border pt-[22px];
+  }
+
+  .detail-section-first {
+    @apply mt-0 border-t-0 pt-0;
+  }
+
+  .detail-section h3 {
+    @apply mb-4 mt-0 text-lg font-extrabold;
+  }
+
+  .recorder-health-summary {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .recorder-operational-health,
+  .recorder-observability-read-issues {
+    margin-top: 1rem;
+  }
+
+  .recorder-operational-health h4,
+  .recorder-observability-read-issues h4 {
+    margin: 0 0 0.5rem;
+  }
+
+  .recorder-operational-issues {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .recorder-operational-issues li {
+    display: grid;
+    gap: 0.15rem;
+    padding: 0.65rem 0.75rem;
+    border-left: 4px solid;
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, currentColor 6%, transparent);
+  }
+
+  .recorder-operational-issue-warning {
+    @apply border-app-warning text-amber-800;
+  }
+
+  .recorder-operational-issue-critical {
+    @apply border-app-danger text-app-danger;
+  }
+
+  .recorder-data-management p {
+    @apply mb-3 mt-0;
+  }
+
+  .recorder-vital-file-list {
+    @apply grid gap-3;
+  }
+
+  .recorder-vital-file {
+    @apply rounded-panel border border-app-border bg-app-bg px-4 py-3;
+    min-width: 0;
+  }
+
+  .recorder-vital-file .detail-heading {
+    @apply mb-2 text-base;
+  }
+
+  .recorder-vital-file strong,
+  .recorder-vital-file p {
+    overflow-wrap: anywhere;
+  }
+
+  .recorder-vital-file p {
+    @apply my-1;
   }
 
   .subsection {
@@ -583,6 +712,29 @@
   .activity-chart {
     @apply block w-full rounded-panel bg-app-panel;
     height: auto;
+  }
+
+  .recorder-observability-history {
+    @apply mt-6 border-t border-app-border pt-5;
+  }
+
+  .recorder-observability-history h4 {
+    @apply mb-3 mt-5 text-lg font-bold;
+  }
+
+  .chart-series-primary,
+  .chart-series-secondary {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+  }
+
+  .chart-series-primary {
+    stroke: #1677d2;
+  }
+
+  .chart-series-secondary {
+    stroke: #e67e22;
   }
 
   .activity-axis {

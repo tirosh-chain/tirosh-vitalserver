@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v1",
+  "updateId": "bundled-upstream-020-to-030",
+  "expectedActiveImageSet": { "state": "active", "imageSetId": "bundled-upstream-020" },
+  "targetImageSet": {
+    "imageSetId": "bundled-upstream-030",
+    "artifact": {
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sizeBytes": 8192,
+      "mediaType": "application/vnd.tirosh.vitalserver.bundled-upstream-image-set+tar+gzip"
+    }
+  },
+  "requestedAt": "2026-07-20T00:00:00Z"
+}

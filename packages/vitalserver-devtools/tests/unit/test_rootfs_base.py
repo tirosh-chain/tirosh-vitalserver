@@ -3,17 +3,24 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION,
     require_ready_marker,
+    require_rootfs_artifact_guest_deploy_match,
     require_rootfs_artifact_manifest,
     require_runtime_manifest,
     require_stopped_lifecycle,
     rootfs_artifact_manifest_path,
     run_rootfs_base,
+)
+from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
+    GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
+    guest_deploy_material_sha256,
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.gzip_compression import (
     validate_gzip_file,
@@ -23,13 +30,32 @@ from tirosh_vitalserver.devtools.application.inputs import RootfsBaseInput
 
 def test_require_stopped_lifecycle_accepts_stopped_vm(tmp_path):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopped")
 
     require_stopped_lifecycle(source)
+
+
+def test_require_stopped_lifecycle_ignores_stale_json_diagnostic(tmp_path):
+    source = tmp_path / "vm" / "runtime" / "vm-disk.img"
+    diagnostic = tmp_path / "vm" / "run" / "vm-lifecycle.json"
+    source.parent.mkdir(parents=True)
+    diagnostic.parent.mkdir(parents=True)
+    source.write_bytes(b"disk")
+    diagnostic.write_text(json.dumps({"state": "failed"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopped")
+
+    require_stopped_lifecycle(source)
+
+
+def test_require_stopped_lifecycle_rejects_missing_sqlite_owner(tmp_path):
+    source = tmp_path / "vm" / "runtime" / "vm-disk.img"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"disk")
+
+    with pytest.raises(SystemExit, match="VM lifecycle SQLite owner is missing"):
+        require_stopped_lifecycle(source)
 
 
 def test_require_runtime_manifest_accepts_passed_rootfs_smoke(tmp_path):
@@ -59,6 +85,32 @@ def test_require_ready_marker_rejects_missing_identity_cleanup_proof(tmp_path):
     write_ready_marker(source, identity_cleanup=None)
 
     with pytest.raises(SystemExit, match="identity cleanup proof"):
+        require_ready_marker(source, expected_run_id="run-test")
+
+
+def test_require_ready_marker_rejects_missing_guest_tools_dependency_proof(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_ready_marker(source, python_dependencies=None)
+
+    with pytest.raises(SystemExit, match="Guest Tools dependency proof"):
+        require_ready_marker(source, expected_run_id="run-test")
+
+
+def test_require_ready_marker_rejects_incomplete_guest_tools_dependency_proof(
+    tmp_path,
+):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_ready_marker(
+        source,
+        python_dependencies={
+            "status": "passed",
+            "proof": "/opt/tirosh/guest-tools/install-proof.json",
+            "target": "linux-aarch64",
+            "dependencies": {"alembic": "1.16.5"},
+        },
+    )
+
+    with pytest.raises(SystemExit, match="invalid Guest Tools dependency proof"):
         require_ready_marker(source, expected_run_id="run-test")
 
 
@@ -248,11 +300,9 @@ def test_require_runtime_manifest_rejects_failed_cleanup(tmp_path):
 
 def test_require_stopped_lifecycle_rejects_stopping_vm(tmp_path):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(json.dumps({"state": "stopping"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopping")
 
     with pytest.raises(SystemExit, match="lifecycle is not stopped"):
         require_stopped_lifecycle(source)
@@ -260,16 +310,15 @@ def test_require_stopped_lifecycle_rejects_stopping_vm(tmp_path):
 
 def test_require_stopped_lifecycle_rejects_terminal_failure_reason(tmp_path):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(
-        json.dumps({"state": "stopped", "terminalReason": "guest-kernel-panic"}),
-        encoding="utf-8",
+    write_vm_lifecycle_owner(
+        source,
+        state="failed",
+        terminal_reason="guest-kernel-panic",
     )
 
-    with pytest.raises(SystemExit, match="terminal failure reason"):
+    with pytest.raises(SystemExit, match="lifecycle failed"):
         require_stopped_lifecycle(source)
 
 
@@ -284,11 +333,9 @@ def test_validate_gzip_file_rejects_corrupt_output(tmp_path):
 def test_run_rootfs_base_rejects_corrupt_compressor_output(tmp_path, monkeypatch):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
     output = tmp_path / "rootfs-base.raw.gz"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopped")
     write_runtime_manifest(source)
     write_ready_marker(source)
 
@@ -336,7 +383,7 @@ def test_run_rootfs_base_writes_artifact_manifest(tmp_path, monkeypatch):
 
     manifest = rootfs_artifact_manifest_path(output)
     document = json.loads(manifest.read_text(encoding="utf-8"))
-    assert document["schemaVersion"] == 1
+    assert document["schemaVersion"] == ROOTFS_ARTIFACT_MANIFEST_SCHEMA_VERSION
     assert document["artifact"]["name"] == "rootfs-base.raw.gz"
     assert document["artifact"]["path"] == str(output)
     assert document["artifact"]["sizeBytes"] == output.stat().st_size
@@ -344,6 +391,13 @@ def test_run_rootfs_base_writes_artifact_manifest(tmp_path, monkeypatch):
     assert document["source"]["diskPath"] == str(source)
     assert document["source"]["diskSizeBytes"] == source.stat().st_size
     assert document["source"]["runId"] == "run-test"
+    assert document["guestDeploy"] == {
+        "path": "data/deploy",
+        "materialDigestVersion": GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
+        "materialSha256": guest_deploy_material_sha256(
+            source.parent.parent / "data/deploy"
+        ),
+    }
     assert document["proof"]["cleanupStatus"] == "passed"
     assert "docker-image-load" in document["proof"]["requiredStages"]
 
@@ -397,7 +451,7 @@ def test_require_rootfs_artifact_manifest_rejects_checksum_mismatch(
     ))
     output.write_bytes(b"x" * output.stat().st_size)
 
-    with pytest.raises(SystemExit, match="artifact.sha256"):
+    with pytest.raises(SystemExit, match=r"artifact\.sha256"):
         require_rootfs_artifact_manifest(
             output,
             source,
@@ -409,14 +463,167 @@ def test_require_rootfs_artifact_manifest_rejects_checksum_mismatch(
         )
 
 
+def test_require_rootfs_artifact_manifest_rejects_changed_guest_deploy_material(
+    tmp_path,
+    monkeypatch,
+):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    output = tmp_path / "rootfs-base.raw.gz"
+    write_runtime_manifest(source)
+    write_ready_marker(source)
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [],
+    )
+    run_rootfs_base(RootfsBaseInput(
+        source=source,
+        output=output,
+        force=True,
+        compression_threads=1,
+        expected_run_id="run-test",
+    ))
+    (source.parent.parent / "data/deploy/bootstrap.sh").write_text(
+        "changed\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="Guest deploy material does not match"):
+        require_rootfs_artifact_manifest(
+            output,
+            source,
+            runtime_manifest=require_runtime_manifest(
+                source,
+                expected_run_id="run-test",
+            ),
+            ready_marker=require_ready_marker(source, expected_run_id="run-test"),
+        )
+
+
+def test_require_rootfs_artifact_guest_deploy_match_accepts_matching_receipt(
+    tmp_path,
+    monkeypatch,
+):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    output = tmp_path / "rootfs-base.raw.gz"
+    write_runtime_manifest(source)
+    write_ready_marker(source)
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [],
+    )
+    run_rootfs_base(RootfsBaseInput(
+        source=source,
+        output=output,
+        force=True,
+        compression_threads=1,
+        expected_run_id="run-test",
+    ))
+
+    material = require_rootfs_artifact_guest_deploy_match(
+        output,
+        source.parent.parent / "data/deploy",
+    )
+
+    assert material == guest_deploy_material_sha256(
+        source.parent.parent / "data/deploy"
+    )
+
+
+def test_require_rootfs_artifact_guest_deploy_match_rejects_static_metadata_change(
+    tmp_path,
+    monkeypatch,
+):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    output = tmp_path / "rootfs-base.raw.gz"
+    write_runtime_manifest(source)
+    write_ready_marker(source)
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [],
+    )
+    run_rootfs_base(RootfsBaseInput(
+        source=source,
+        output=output,
+        force=True,
+        compression_threads=1,
+        expected_run_id="run-test",
+    ))
+    metadata = source.parent.parent / "data/deploy/build-metadata/rootfs-input.json"
+    document = json.loads(metadata.read_text(encoding="utf-8"))
+    document["dockerImages"]["platform"] = "linux/amd64"
+    metadata.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="does not match rootfs artifact receipt"):
+        require_rootfs_artifact_guest_deploy_match(
+            output,
+            source.parent.parent / "data/deploy",
+        )
+
+
 def rootfs_source_with_lifecycle(tmp_path: Path) -> Path:
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
-    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
     source.parent.mkdir(parents=True)
-    lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(source, state="stopped")
+    deploy = tmp_path / "vm" / "data" / "deploy"
+    (deploy / "build-metadata").mkdir(parents=True)
+    (deploy / "build-metadata/rootfs-input.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "guestClockUtc": "2026-06-11T00:00:00Z",
+                "runtimeBootSmoke": {"enabled": False},
+                "dockerImages": {"platform": "linux/arm64"},
+                "runtimeData": {
+                    "diskImageName": "runtime-data.img",
+                    "diskSize": "16G",
+                    "filesystemLabel": "vital-runtime",
+                    "mountPath": "/mnt/runtime",
+                    "dockerDataRoot": "/mnt/runtime/docker",
+                    "containerdRoot": "/mnt/runtime/containerd",
+                },
+                "ubuntu": {
+                    "aptSnapshot": "20250313T000000Z",
+                    "baseUrl": "https://example.invalid/release",
+                    "cacheKey": "release-abcd",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
     return source
+
+
+def write_vm_lifecycle_owner(
+    source: Path,
+    *,
+    state: str,
+    terminal_reason: str | None = None,
+    message: str | None = None,
+) -> None:
+    database = source.parent / "runtime-state.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE vm_lifecycle (
+              singleton_id INTEGER PRIMARY KEY,
+              state TEXT NOT NULL,
+              terminal_reason TEXT,
+              message TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO vm_lifecycle(singleton_id, state, terminal_reason, message)
+            VALUES (1, ?, ?, ?)
+            """,
+            (state, terminal_reason, message),
+        )
 
 
 def write_runtime_manifest(
@@ -556,6 +763,7 @@ def write_ready_marker(
     *,
     run_id: str = "run-test",
     identity_cleanup: dict[str, object] | None | bool = True,
+    python_dependencies: dict[str, object] | None | bool = True,
 ) -> None:
     marker = source.parent.parent / "data" / "run" / "rootfs-ready"
     marker.parent.mkdir(parents=True, exist_ok=True)
@@ -567,10 +775,21 @@ def write_ready_marker(
     if identity_cleanup is True:
         document["identityCleanup"] = {
             "status": "passed",
-            "proof": str(source.parent.parent / "data/run/rootfs-identity-cleanup.json"),
+            "proof": str(
+                source.parent.parent / "data/run/rootfs-identity-cleanup.json"
+            ),
         }
     elif isinstance(identity_cleanup, dict):
         document["identityCleanup"] = identity_cleanup
+    if python_dependencies is True:
+        document["pythonDependencies"] = {
+            "status": "passed",
+            "proof": "/opt/tirosh/guest-tools/install-proof.json",
+            "target": "linux-aarch64",
+            "dependencies": {"alembic": "1.16.5", "sqlalchemy": "2.0.51"},
+        }
+    elif isinstance(python_dependencies, dict):
+        document["pythonDependencies"] = python_dependencies
     marker.write_text(
         json.dumps(document),
         encoding="utf-8",

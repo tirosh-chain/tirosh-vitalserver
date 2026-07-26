@@ -17,8 +17,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
           "adminPassword": "admin",
           "vitalFilesDirectory": "/mnt/tirosh-vital-files",
           "redisUiPort": 18081,
-          "swaggerUiPort": 18082,
-          "testkitEnabled": false
+          "swaggerUiPort": 18082
         }
         """
 
@@ -29,7 +28,6 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         XCTAssertEqual(document.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(document.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(document.publicPort, 443)
-        XCTAssertFalse(document.testkitEnabled)
     }
 
     func testDecodeMigratesLegacyAdvertisedURLs() throws {
@@ -44,8 +42,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
           "adminPassword": "admin",
           "vitalFilesDirectory": "/mnt/tirosh-vital-files",
           "redisUiPort": 18081,
-          "swaggerUiPort": 18082,
-          "testkitEnabled": false
+          "swaggerUiPort": 18082
         }
         """
 
@@ -67,8 +64,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
           "adminPassword": "admin",
           "vitalFilesDirectory": "/mnt/tirosh-vital-files",
           "redisUiPort": 18081,
-          "swaggerUiPort": 18082,
-          "testkitEnabled": false
+          "swaggerUiPort": 18082
         }
         """
 
@@ -112,8 +108,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/tirosh-vital-files",
             redisUiPort: 18081,
-            swaggerUiPort: 18082,
-            testkitEnabled: false
+            swaggerUiPort: 18082
         )
 
         let document = GuestRuntimeSettingsDocument(runtimeConfig: runtimeConfig)
@@ -122,7 +117,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         XCTAssertEqual(document.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(document.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(document.publicPort, 443)
-        XCTAssertEqual(document.recorderIngressSendDataMode, .spoolAndReplay)
+        XCTAssertEqual(document.recorderIngressSendDataMode, .observeOnly)
         XCTAssertEqual(document.recorderIngressSendDataReplayBatchSize, 1000)
         XCTAssertEqual(document.recorderIngressSendDataReplayMaxMiBPerSecond, 20)
         XCTAssertTrue(document.containerMemoryLimitsEnabled)

@@ -12,6 +12,8 @@ public struct RuntimeInstallPermissionInput: Equatable, Sendable {
 public struct RuntimeInstallPermissionContext {
     public let runtimeHome: URL
     public let nginxDirectory: URL
+    public let runtimeStateDatabase: URL
+    public let runtimeControlSettings: URL
     public let proxyLaunchDaemonPlist: String
     public let serviceLaunchDaemonPlists: [String]
     public let chownExecutable: String
@@ -21,6 +23,8 @@ public struct RuntimeInstallPermissionContext {
     public init(
         runtimeHome: URL,
         nginxDirectory: URL,
+        runtimeStateDatabase: URL,
+        runtimeControlSettings: URL,
         proxyLaunchDaemonPlist: String,
         serviceLaunchDaemonPlists: [String],
         chownExecutable: String,
@@ -29,6 +33,8 @@ public struct RuntimeInstallPermissionContext {
     ) {
         self.runtimeHome = runtimeHome
         self.nginxDirectory = nginxDirectory
+        self.runtimeStateDatabase = runtimeStateDatabase
+        self.runtimeControlSettings = runtimeControlSettings
         self.proxyLaunchDaemonPlist = proxyLaunchDaemonPlist
         self.serviceLaunchDaemonPlists = serviceLaunchDaemonPlists
         self.chownExecutable = chownExecutable
@@ -60,6 +66,8 @@ public struct RuntimeInstallPermissionConfigurator {
     public func configure(input: RuntimeInstallPermissionInput) throws {
         try operations.runRequired(context.chownExecutable, ["-R", "root:wheel", context.runtimeHome.path])
         try operations.runRequired(context.chownExecutable, ["-R", "root:wheel", context.nginxDirectory.path])
+        try operations.runRequired(context.chmodExecutable, ["0600", context.runtimeStateDatabase.path])
+        try operations.runRequired(context.chmodExecutable, ["0644", context.runtimeControlSettings.path])
         try operations.runRequired(
             context.plistBuddyExecutable,
             [

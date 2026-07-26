@@ -13,7 +13,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertFalse(plan.restartProxy)
     }
 
-    func testGuestReadinessFailureReconcilesGuestComposeAfterWakeTransitions() {
+    func testRuntimeReadinessFailureRestartsPlatformVMAndProxy() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             vmLifecycle: runningLifecycle(),
             guestHTTP: "503",
@@ -22,29 +22,26 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         ))
 
         XCTAssertTrue(plan.canRecover)
-        XCTAssertFalse(plan.restartVM)
-        XCTAssertFalse(plan.restartProxy)
-        XCTAssertTrue(plan.reconcileGuestCompose)
+        XCTAssertTrue(plan.restartVM)
+        XCTAssertTrue(plan.restartProxy)
         XCTAssertEqual(plan.actionReasons, [
             .guestHTTPUnhealthy("503"),
+            .vmRestartRequiresProxyRestart,
         ])
     }
 
-    func testGuestReadinessFailureWithoutVMLifecycleCanReconcileGuestCompose() {
+    func testRuntimeReadinessFailureWithoutVMLifecycleBlocksVMRestart() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             guestHTTP: "503",
             hostProxyReadinessHTTP: "502",
             hostProxyLivenessHTTP: "204"
         ))
 
-        XCTAssertTrue(plan.canRecover)
+        XCTAssertFalse(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertFalse(plan.restartProxy)
-        XCTAssertTrue(plan.reconcileGuestCompose)
-        XCTAssertEqual(plan.blockers, [])
-        XCTAssertEqual(plan.actionReasons, [
-            .guestHTTPUnhealthy("503"),
-        ])
+        XCTAssertEqual(plan.blockers, ["recovery-blocked-missing-vm-lifecycle-for-vm-restart"])
+        XCTAssertEqual(plan.actionReasons, [])
     }
 
     func testProxyLivenessFailureRestartsProxy() {
@@ -160,73 +157,22 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertEqual(plan.actionReasons, [])
     }
 
-    func testCriticalContainerServiceFailureReconcilesGuestCompose() {
-        let plan = RuntimeRecoveryPlanner.plan(input(
-            vmLifecycle: runningLifecycle(),
-            containerObservation: RuntimeContainerObservation(
-                recorderIngressHTTP: "200",
-                recorderIngressStatus: nil,
-                containerLogsPresent: true,
-                containerLogsBytes: 1024,
-                composeServices: [
-                    RuntimeContainerServiceObservation(
-                        service: "vitaldb-observer",
-                        state: "running",
-                        health: "unhealthy"
-                    ),
-                ]
-            )
-        ))
-
-        XCTAssertTrue(plan.canRecover)
-        XCTAssertFalse(plan.restartVM)
-        XCTAssertFalse(plan.restartProxy)
-        XCTAssertTrue(plan.reconcileGuestCompose)
-        XCTAssertEqual(plan.actionReasons, [
-            .containerFailureRequiresComposeReconcile,
-        ])
-    }
-
-    func testContainerServiceFailureCanReconcileDespiteGuestHTTPProbeReadFailure() {
+    func testRecorderIngressDiagnosticsDoNotHideGuestHTTPProbeReadFailure() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             vmLifecycle: runningLifecycle(),
             guestHTTP: "failed",
             hostProxyReadinessHTTP: "failed",
-            hostProxyLivenessHTTP: "failed",
-            containerObservation: RuntimeContainerObservation(
-                recorderIngressHTTP: "failed",
-                recorderIngressStatus: nil,
-                containerLogsPresent: true,
-                containerLogsBytes: 1024,
-                composeServices: [
-                    RuntimeContainerServiceObservation(
-                        service: "app",
-                        state: "created"
-                    ),
-                ]
-            )
+            hostProxyLivenessHTTP: "failed"
         ))
 
-        XCTAssertTrue(plan.canRecover)
-        XCTAssertFalse(plan.restartVM)
-        XCTAssertTrue(plan.restartProxy)
-        XCTAssertTrue(plan.reconcileGuestCompose)
-        XCTAssertEqual(plan.blockers, [])
-        XCTAssertEqual(plan.actionReasons, [
-            .containerFailureRequiresComposeReconcile,
-            .hostProxyLivenessUnhealthy("failed"),
-        ])
-    }
-
-    func testMissingContainerObservationDoesNotCreateVMRestartReason() {
-        let plan = RuntimeRecoveryPlanner.plan(input(
-            vmLifecycle: runningLifecycle(),
-            containerObservationInput: .missing
-        ))
-
-        XCTAssertTrue(plan.canRecover)
+        XCTAssertFalse(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertFalse(plan.restartProxy)
+        XCTAssertEqual(plan.blockers, [
+            "recovery-blocked-guest-http-read-failed-failed",
+            "recovery-blocked-host-proxy-readiness-http-read-failed-failed",
+            "recovery-blocked-host-proxy-liveness-http-read-failed-failed",
+        ])
         XCTAssertEqual(plan.actionReasons, [])
     }
 
@@ -278,9 +224,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         vmIP: String? = "192.168.64.2",
         guestHTTP: String = "200",
         hostProxyReadinessHTTP: String = "200",
-        hostProxyLivenessHTTP: String = "204",
-        containerObservation: RuntimeContainerObservation? = nil,
-        containerObservationInput: RuntimeObservationInput<RuntimeContainerObservation>? = nil
+        hostProxyLivenessHTTP: String = "204"
     ) -> RuntimeRecoveryInput {
         RuntimeRecoveryInput(
             vmExecutable: vmExecutable,
@@ -294,10 +238,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
             vmIP: vmIP,
             guestHTTP: guestHTTP,
             hostProxyReadinessHTTP: hostProxyReadinessHTTP,
-            hostProxyLivenessHTTP: hostProxyLivenessHTTP,
-            containerObservation: containerObservationInput
-                ?? containerObservation.map(RuntimeObservationInput.loaded)
-                ?? .notReported
+            hostProxyLivenessHTTP: hostProxyLivenessHTTP
         )
     }
 

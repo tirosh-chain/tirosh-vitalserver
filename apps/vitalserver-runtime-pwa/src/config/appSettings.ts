@@ -26,10 +26,10 @@ export type AppSettings = {
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  runtimeControl: {
-    apiBaseURL: "",
-    devProxyTarget: "http://127.0.0.1:18321",
-    token: "vitalserver-helper-dev",
+	runtimeControl: {
+		apiBaseURL: "",
+		devProxyTarget: "http://127.0.0.1:18321",
+		token: "",
     defaultPort: 18_321,
     defaultProxyPort: 80
   },

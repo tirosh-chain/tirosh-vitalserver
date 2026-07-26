@@ -13,12 +13,10 @@ public struct RuntimeHealthCheckerContext {
     public let lsofPath: String
     public let curlPath: String
     public let proxyLaunchDaemonPlist: String
-    public let runtimeStateStaleAfterSeconds: TimeInterval
     public let watchdogManagedOperationGraceSeconds: TimeInterval
     public let proxyHealthURL: (Int) -> String
     public let redisUIHealthURL: (Int) -> String
     public let swaggerUIHealthURL: (Int) -> String
-    public let recorderIngressStatusURL: (Int) -> String
 
     public init(
         installedPaths: InstalledRuntimePaths,
@@ -30,12 +28,10 @@ public struct RuntimeHealthCheckerContext {
         lsofPath: String,
         curlPath: String,
         proxyLaunchDaemonPlist: String,
-        runtimeStateStaleAfterSeconds: TimeInterval,
         watchdogManagedOperationGraceSeconds: TimeInterval,
         proxyHealthURL: @escaping (Int) -> String,
         redisUIHealthURL: @escaping (Int) -> String,
-        swaggerUIHealthURL: @escaping (Int) -> String,
-        recorderIngressStatusURL: @escaping (Int) -> String
+        swaggerUIHealthURL: @escaping (Int) -> String
     ) {
         self.installedPaths = installedPaths
         self.vmExecutablePath = vmExecutablePath
@@ -46,12 +42,10 @@ public struct RuntimeHealthCheckerContext {
         self.lsofPath = lsofPath
         self.curlPath = curlPath
         self.proxyLaunchDaemonPlist = proxyLaunchDaemonPlist
-        self.runtimeStateStaleAfterSeconds = runtimeStateStaleAfterSeconds
         self.watchdogManagedOperationGraceSeconds = watchdogManagedOperationGraceSeconds
         self.proxyHealthURL = proxyHealthURL
         self.redisUIHealthURL = redisUIHealthURL
         self.swaggerUIHealthURL = swaggerUIHealthURL
-        self.recorderIngressStatusURL = recorderIngressStatusURL
     }
 }
 
@@ -61,7 +55,9 @@ public struct RuntimeHealthChecker {
     private let serviceManager: RuntimeServiceManager
     private let commandRunner: RuntimeCommandRunner
     private let httpProber: RuntimeHTTPProber
-    private let guestGateway: RuntimeGuestGateway
+    private let guestAddressProvider: any RuntimeGuestAddressProvider
+    private let vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading
+    private let guestControlGateway: (@Sendable (String) throws -> any RuntimeGuestControlGateway)?
     private let now: @Sendable () -> Date
 
     public init(
@@ -70,7 +66,10 @@ public struct RuntimeHealthChecker {
         serviceManager: RuntimeServiceManager,
         commandRunner: RuntimeCommandRunner,
         httpProber: RuntimeHTTPProber,
-        guestGateway: RuntimeGuestGateway,
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        vmLifecycleResourceReader: (any RuntimeVMLifecycleResourceReading)? = nil,
+        guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
+        guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.context = context
@@ -78,18 +77,31 @@ public struct RuntimeHealthChecker {
         self.serviceManager = serviceManager
         self.commandRunner = commandRunner
         self.httpProber = httpProber
-        self.guestGateway = guestGateway
+        self.guestAddressProvider = guestAddressProvider
+        self.vmLifecycleResourceReader = vmLifecycleResourceReader ?? MissingRuntimeVMLifecycleResourceReader(
+            reason: "VM lifecycle document missing"
+        )
+        if let guestControlGatewayForBaseURL {
+            self.guestControlGateway = guestControlGatewayForBaseURL
+        } else if let guestControlGateway {
+            self.guestControlGateway = { _ in
+                return try guestControlGateway()
+            }
+        } else {
+            self.guestControlGateway = nil
+        }
         self.now = now
     }
 
     public func observationReads() -> RuntimeHealthObservationReads {
         let observedAt = now()
-        let guestRuntimeState = guestRuntimeStateObservationReader().read()
         let proxyPortRead = installedProxyPortRead()
         let proxyPort = proxyPortRead.port
         let hostProxyHTTP = proxyPort.map { httpProber.statusRead(url: context.proxyHealthURL($0)) }
         let redisUIHTTP = proxyPort.map { httpProber.statusRead(url: context.redisUIHealthURL($0)) }
         let swaggerUIHTTP = proxyPort.map { httpProber.statusRead(url: context.swaggerUIHealthURL($0)) }
+        let guestControlObservation = guestControlReadiness()
+        let guestAddressRead = guestControlObservation.guestAddressRead
 
         return RuntimeHealthObservationReads(
             vmExecutable: fileState(path: context.vmExecutablePath),
@@ -100,18 +112,17 @@ public struct RuntimeHealthChecker {
             proxyService: launchdState(.proxy),
             watchdogService: launchdState(.watchdog),
             vmLifecycleLoadResult: vmLifecycleLoadResult(),
-            guestRuntimeState: guestRuntimeState,
+            guestAddressRead: guestAddressRead,
+            guestControlReadiness: guestControlObservation.readiness,
             proxyPortReadState: proxyPortRead.state,
             hostProxyHTTP: hostProxyHTTP,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
-            recorderIngressStatus: proxyPort.map(recorderIngressStatus(port:)),
-            runtimeStateFileModifiedAt: runtimeStateFileModifiedAt(guestRuntimeState),
+            recorderIngressStatus: recorderIngressStatus(guestAddressRead),
+            vitalDBObservation: vitalDBObservation(guestAddressRead),
             containerLogsMetadata: containerLogsMetadata(),
             proxyListenerObservation: proxyPort.map(proxyListenerObservation(port:)),
-            guestBootstrapResult: guestGateway.loadBootstrapResultDocument(),
-            observedAt: observedAt,
-            guestBootstrapFreshnessGraceSeconds: context.watchdogManagedOperationGraceSeconds
+            observedAt: observedAt
         )
     }
 
@@ -131,6 +142,33 @@ public struct RuntimeHealthChecker {
         serviceManager.state(service: service)
     }
 
+    private func vitalDBObservation(
+        _ guestAddressRead: RuntimeGuestAddressReadResult
+    ) -> RuntimeObservationInput<VitalDBObservationDocument> {
+        guard let guestControlGateway else {
+            return .notReported
+        }
+        guard let baseURL = guestControlBaseURL(guestAddressRead) else {
+            return .notReported
+        }
+        do {
+            let read = try guestControlGateway(baseURL).latestVitalDBObservation()
+            switch read.state {
+            case .loaded:
+                guard let observation = read.observation else {
+                    return .readFailed("guestControl=loadedObservationMissing")
+                }
+                return .loaded(observation)
+            case .unavailable:
+                return .missing
+            case .failed:
+                return .readFailed(read.readError ?? "guestControl=failed")
+            }
+        } catch {
+            return .readFailed("guestControl=\(error)")
+        }
+    }
+
     public func installedProxyPort() -> Int? {
         installedProxyPortRead().port
     }
@@ -146,22 +184,45 @@ public struct RuntimeHealthChecker {
         )
     }
 
-    private func guestRuntimeStateObservationReader() -> RuntimeGuestRuntimeStateObservationReader {
-        RuntimeGuestRuntimeStateObservationReader(
-            guestGateway: guestGateway,
-            fileStore: fileStore,
-            runtimeStateURL: context.installedPaths.runtimeState,
-            staleAfterSeconds: context.runtimeStateStaleAfterSeconds,
-            now: now
+    private func guestControlReadiness(
+        _ guestAddressRead: RuntimeGuestAddressReadResult
+    ) -> RuntimeGuestControlReadinessRead {
+        guard let guestControlGateway else {
+            return .notReported
+        }
+        guard let baseURL = guestControlBaseURL(guestAddressRead) else {
+            return .notReported
+        }
+        do {
+            return .loaded(vmIP: guestAddressRead.loadedAddress, readiness: try guestControlGateway(baseURL).ready())
+        } catch {
+            return .failed(vmIP: guestAddressRead.loadedAddress, message: String(describing: error))
+        }
+    }
+
+    private func guestControlReadiness() -> RuntimeGuestControlReadinessObservation {
+        let guestAddressRead = readGuestAddress()
+        return RuntimeGuestControlReadinessObservation(
+            guestAddressRead: guestAddressRead,
+            readiness: guestControlReadiness(guestAddressRead)
         )
     }
 
+    private func readGuestAddress() -> RuntimeGuestAddressReadResult {
+        guestAddressProvider.readGuestAddress()
+    }
+
+    private func guestControlBaseURL(_ guestAddressRead: RuntimeGuestAddressReadResult) -> String? {
+        guard let guestAddress = guestAddressRead.loadedAddress else {
+            return nil
+        }
+        return RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: guestAddress)
+    }
+
     private func vmLifecycleLoadResult() -> RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument> {
-        RuntimeVMLifecycleStore(
-            url: context.installedPaths.vmLifecycle,
-            fileStore: fileStore,
-            now: now
-        ).load()
+        RuntimeVMLifecycleResourceReadMapper.loadResult(
+            from: vmLifecycleResourceReader.loadVMLifecycleResource()
+        )
     }
 
     private func proxyListenerObservation(port: Int) -> RuntimeHostProxyListenerObservation {
@@ -190,24 +251,35 @@ public struct RuntimeHealthChecker {
         ).read()
     }
 
-    private func runtimeStateFileModifiedAt(
-        _ observation: RuntimeGuestRuntimeStateObservation
-    ) -> RuntimeFileModifiedAtReadResult {
-        guard observation.isPresent else {
-            return .notRead()
+    private func recorderIngressStatus(
+        _ guestAddressRead: RuntimeGuestAddressReadResult
+    ) -> RuntimeRecorderIngressStatusReadResult {
+        guard let guestControlGateway else {
+            return RuntimeRecorderIngressStatusReadResult(
+                readState: .readFailed,
+                httpStatus: RuntimeHTTPStatusText.failed,
+                document: nil,
+                readError: "guestControl=unavailable"
+            )
         }
-        return RuntimeFileModifiedAtReader(
-            url: context.installedPaths.runtimeState,
-            fileStore: fileStore
-        ).read()
-    }
-
-    private func recorderIngressStatus(port: Int) -> RuntimeRecorderIngressStatusReadResult {
-        RuntimeRecorderIngressStatusReader(
-            curlPath: context.curlPath,
-            commandRunner: commandRunner,
-            statusURL: context.recorderIngressStatusURL
-        ).read(port: port)
+        guard let baseURL = guestControlBaseURL(guestAddressRead) else {
+            return RuntimeRecorderIngressStatusReadResult(
+                readState: .notRead,
+                httpStatus: RuntimeHTTPStatusText.notRead,
+                document: nil,
+                readError: nil
+            )
+        }
+        do {
+            return try guestControlGateway(baseURL).recorderIngressStatus()
+        } catch {
+            return RuntimeRecorderIngressStatusReadResult(
+                readState: .readFailed,
+                httpStatus: RuntimeHTTPStatusText.failed,
+                document: nil,
+                readError: "guestControl=\(error)"
+            )
+        }
     }
 }
 
@@ -217,4 +289,9 @@ private struct RuntimeProxyPortReadResult {
     var port: Int? {
         state.port
     }
+}
+
+private struct RuntimeGuestControlReadinessObservation {
+    let guestAddressRead: RuntimeGuestAddressReadResult
+    let readiness: RuntimeGuestControlReadinessRead
 }

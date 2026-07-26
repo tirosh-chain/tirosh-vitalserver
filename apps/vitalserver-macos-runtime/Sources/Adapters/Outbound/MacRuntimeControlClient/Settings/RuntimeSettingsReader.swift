@@ -4,25 +4,25 @@ import Application
 import Contracts
 import Errors
 
-protocol RuntimeSettingsReading: Sendable {
+public protocol RuntimeSettingsReading: Sendable {
     func load() -> RuntimeSettings
 }
 
 struct RuntimeSettingsPaths {
-    var vmConfig = RuntimeControlClientConstants.Paths.vmConfig
-    var appliedVMConfig = RuntimeControlClientConstants.Paths.appliedVMConfig
-    var vmDisk = RuntimeControlClientConstants.Paths.vmDisk
-    var guestRuntimeSettings = RuntimeControlClientConstants.Paths.guestRuntimeSettings
-    var runtimeControlSettings = RuntimeControlClientConstants.Paths.runtimeControlSettings
-    var proxyLaunchDaemon = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
+    var vmConfig = InstalledRuntimePaths.defaultInstalled.vmConfig.path
+    var appliedVMConfig = InstalledRuntimePaths.defaultInstalled.appliedVMConfig.path
+    var vmDisk = InstalledRuntimePaths.defaultInstalled.vmDisk.path
+    var guestRuntimeSettings = InstalledRuntimePaths.defaultInstalled.guestRuntimeSettings.path
+    var runtimeControlSettings = InstalledRuntimePaths.defaultInstalled.runtimeControlSettings.path
+    var proxyLaunchDaemon = InstalledRuntimePaths.defaultInstalled.proxyLaunchDaemon.path
 
     init(
-        vmConfig: String = RuntimeControlClientConstants.Paths.vmConfig,
-        appliedVMConfig: String = RuntimeControlClientConstants.Paths.appliedVMConfig,
-        vmDisk: String = RuntimeControlClientConstants.Paths.vmDisk,
-        guestRuntimeSettings: String = RuntimeControlClientConstants.Paths.guestRuntimeSettings,
-        runtimeControlSettings: String = RuntimeControlClientConstants.Paths.runtimeControlSettings,
-        proxyLaunchDaemon: String = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
+        vmConfig: String = InstalledRuntimePaths.defaultInstalled.vmConfig.path,
+        appliedVMConfig: String = InstalledRuntimePaths.defaultInstalled.appliedVMConfig.path,
+        vmDisk: String = InstalledRuntimePaths.defaultInstalled.vmDisk.path,
+        guestRuntimeSettings: String = InstalledRuntimePaths.defaultInstalled.guestRuntimeSettings.path,
+        runtimeControlSettings: String = InstalledRuntimePaths.defaultInstalled.runtimeControlSettings.path,
+        proxyLaunchDaemon: String = InstalledRuntimePaths.defaultInstalled.proxyLaunchDaemon.path
     ) {
         self.vmConfig = vmConfig
         self.appliedVMConfig = appliedVMConfig
@@ -34,9 +34,15 @@ struct RuntimeSettingsPaths {
 }
 
 struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable {
+    private enum HostSettingsSource: @unchecked Sendable {
+        case materializedFiles
+        case repository(any RuntimeHostSettingsReading)
+    }
+
     var paths = RuntimeSettingsPaths()
     private var fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     private var runCommand: @Sendable (String, [String]) -> RuntimeCommandResult
+    private var hostSettingsSource: HostSettingsSource
 
     init(
         paths: RuntimeSettingsPaths = RuntimeSettingsPaths(),
@@ -46,6 +52,19 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         self.paths = paths
         self.fileStore = fileStore
         self.runCommand = runCommand
+        self.hostSettingsSource = .materializedFiles
+    }
+
+    init(
+        paths: RuntimeSettingsPaths,
+        fileStore: RuntimeFileStore,
+        runCommand: @escaping @Sendable (String, [String]) -> RuntimeCommandResult,
+        hostSettingsReader: any RuntimeHostSettingsReading
+    ) {
+        self.paths = paths
+        self.fileStore = fileStore
+        self.runCommand = runCommand
+        self.hostSettingsSource = .repository(hostSettingsReader)
     }
 
     func load() -> RuntimeSettings {
@@ -53,21 +72,64 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
     }
 
     private func loadSnapshot() -> RuntimeSettingsReadSnapshot {
-        RuntimeSettingsReadSnapshot(
-            vmConfig: VMConfigDocument.loadResult(path: paths.vmConfig, fileStore: fileStore),
-            appliedVMConfig: VMConfigDocument.loadResult(path: paths.appliedVMConfig, fileStore: fileStore),
+        let hostSettings = loadHostSettings()
+        return RuntimeSettingsReadSnapshot(
+            vmConfig: hostSettings.vmConfig,
+            appliedVMConfig: hostSettings.appliedVMConfig,
             diskGiB: diskSizeGiB(path: paths.vmDisk),
-            guestRuntimeSettings: GuestRuntimeSettings.loadResult(
-                path: paths.guestRuntimeSettings,
-                fileStore: fileStore
-            ),
+            guestRuntimeSettings: hostSettings.guestRuntimeSettings,
             logArchiveSettings: RuntimeControlSettingsDocument.loadResult(
                 path: paths.runtimeControlSettings,
                 fileStore: fileStore
             ),
-            proxyPort: proxyPort(plistPath: paths.proxyLaunchDaemon),
+            proxyPort: RuntimeProxyLaunchDaemonPortReader(
+                plistPath: paths.proxyLaunchDaemon,
+                fileStore: fileStore
+            ).loadSettingsResult(),
             startOnBoot: RuntimeSettingsStartOnBootReader(runCommand: runCommand).startOnBootEnabled()
         )
+    }
+
+    private func loadHostSettings() -> RuntimeSettingsHostReadSnapshot {
+        switch hostSettingsSource {
+        case .materializedFiles:
+            return RuntimeSettingsHostReadSnapshot(
+                vmConfig: VMConfigDocument.loadResult(path: paths.vmConfig, fileStore: fileStore),
+                appliedVMConfig: VMConfigDocument.loadResult(
+                    path: paths.appliedVMConfig,
+                    fileStore: fileStore
+                ),
+                guestRuntimeSettings: GuestRuntimeSettings.loadResult(
+                    path: paths.guestRuntimeSettings,
+                    fileStore: fileStore
+                )
+            )
+        case .repository(let repository):
+            switch repository.loadHostSettings() {
+            case .missing:
+                return RuntimeSettingsHostReadSnapshot(
+                    vmConfig: .missing,
+                    appliedVMConfig: .missing,
+                    guestRuntimeSettings: .missing
+                )
+            case .failed(let reason):
+                return RuntimeSettingsHostReadSnapshot(
+                    vmConfig: .failed(reason),
+                    appliedVMConfig: .failed(reason),
+                    guestRuntimeSettings: .failed(reason)
+                )
+            case .loaded(let record):
+                return RuntimeSettingsHostReadSnapshot(
+                    vmConfig: VMConfigDocument.decodeResult(record.payload.vmConfigJSON),
+                    appliedVMConfig: record.appliedPayload.map {
+                        VMConfigDocument.decodeResult($0.vmConfigJSON)
+                    } ?? .missing,
+                    guestRuntimeSettings: GuestRuntimeSettings.decodeResult(
+                        record.payload.guestRuntimeSettingsJSON
+                    )
+                )
+            }
+        }
     }
 
     private func diskSizeGiB(path: String) -> RuntimeSettingsReadResult<Int> {
@@ -89,35 +151,10 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
         }
     }
 
-    private func proxyPort(plistPath: String) -> RuntimeSettingsReadResult<Int> {
-        let url = URL(fileURLWithPath: plistPath)
-        switch runtimeSettingsReadableFileState(url, fileStore: fileStore) {
-        case .loaded:
-            break
-        case .missing:
-            return .missing
-        case .failed(let message):
-            return .failed(message)
-        }
-        do {
-            let data = try fileStore.readData(url)
-            let plist = try PropertyListSerialization.propertyList(
-                from: data,
-                options: [],
-                format: nil
-            )
-            guard let document = plist as? [String: Any],
-                  let environment = document["EnvironmentVariables"] as? [String: Any],
-                  let rawPort = environment["VITALSERVER_PROXY_PORT"] as? String,
-                  let port = Int(rawPort),
-                  (1...65_535).contains(port)
-            else {
-                return .failed("VITALSERVER_PROXY_PORT is missing or invalid")
-            }
-            return .loaded(port)
-        } catch {
-            return .failed(error.localizedDescription)
-        }
-    }
+}
 
+private struct RuntimeSettingsHostReadSnapshot {
+    let vmConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput>
+    let appliedVMConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput>
+    let guestRuntimeSettings: RuntimeSettingsReadResult<RuntimeGuestRuntimeSettingsReadInput>
 }

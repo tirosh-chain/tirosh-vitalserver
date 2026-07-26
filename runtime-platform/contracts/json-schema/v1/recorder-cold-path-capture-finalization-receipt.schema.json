@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-cold-path-capture-finalization-receipt",
+  "title": "RecorderColdPathCaptureFinalizationReceipt",
+  "description": "Recorder Gateway evidence that one cold-path capture has been finalized into a digest-addressed raw packet sequence. This receipt does not claim .vital formation, artifact upload, or upstream indexing success.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "requestId",
+    "captureReference",
+    "expectedCaptureRevision",
+    "finalizedCaptureRevision",
+    "recorderId",
+    "connection",
+    "finalizedPacketSequence",
+    "finalizedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "captureReference": {
+      "$ref": "#/$defs/RecorderColdPathCaptureReference"
+    },
+    "expectedCaptureRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "finalizedCaptureRevision": {
+      "type": "integer",
+      "minimum": 2
+    },
+    "recorderId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "connection": {
+      "$ref": "#/$defs/RecorderGatewayConnection"
+    },
+    "finalizedPacketSequence": {
+      "$ref": "#/$defs/RecorderColdPathPacketSequence"
+    },
+    "finalizedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "expectedCaptureRevision",
+          "finalizedCaptureRevision"
+        ]
+      },
+      "then": {
+        "properties": {
+          "finalizedCaptureRevision": {
+            "minimum": 2
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "RecorderColdPathCaptureReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceType",
+        "resourceId"
+      ],
+      "properties": {
+        "resourceType": {
+          "const": "recorder-cold-path-capture"
+        },
+        "resourceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    },
+    "RecorderGatewayConnection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "protocolVersion"
+      ],
+      "properties": {
+        "sessionId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "protocolVersion": {
+          "const": "v2"
+        },
+        "bootId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    },
+    "RecorderColdPathPacketSequence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceType",
+        "resourceId",
+        "format",
+        "mediaType",
+        "packetCount",
+        "payloadByteCount",
+        "sha256"
+      ],
+      "properties": {
+        "resourceType": {
+          "const": "recorder-cold-path-packet-sequence"
+        },
+        "resourceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "format": {
+          "const": "recorder-gateway-cold-path-packet-sequence-v1"
+        },
+        "mediaType": {
+          "const": "application/vnd.tirosh.recorder-gateway.cold-path-packet-sequence+jsonl"
+        },
+        "packetCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "payloadByteCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        }
+      }
+    }
+  }
+}

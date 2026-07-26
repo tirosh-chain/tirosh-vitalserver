@@ -4,22 +4,31 @@ import Errors
 import Bootstrap
 
 final class GuestCommandDispatcherSupportTests: XCTestCase {
-    func testGuestCommandPollerDispatchesAllHostWrittenRequests() throws {
-        let poller = try readGuestToolsFile("adapters/inbound/request_file_poller.py")
+    func testGuestCommandPollerIsNotInstalled() throws {
+        let guestToolsDirectory = try guestToolsDirectory()
+        let supportDirectory = try guestSupportDirectory()
 
-        XCTAssertTrue(poller.contains("SETTINGS.intervals.command_poll_seconds"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.PREPARE_UPDATE_SHUTDOWN"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.ACTIVATE_UPDATE_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.ACTIVATE_UPDATE"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.REPAIR_DATASTORE_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.REPAIR_DATASTORE"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.REDIS_BACKUP_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.REDIS_BACKUP"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.RECONCILE_COMPOSE_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.RECONCILE_COMPOSE"))
-        XCTAssertTrue(poller.contains("\"start\", \"--no-block\""))
-        XCTAssertFalse(poller.contains("PathExists="))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: guestToolsDirectory
+                    .appendingPathComponent("adapters/inbound/request_file_poller.py")
+                    .path
+            )
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: supportDirectory
+                    .appendingPathComponent("bin/tirosh-vitalserver-command-poller")
+                    .path
+            )
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: supportDirectory
+                    .appendingPathComponent("systemd/tirosh-vitalserver-command-poller.service")
+                    .path
+            )
+        )
     }
 
     func testBootstrapInstallsWrappersAndExplicitSystemdFiles() throws {
@@ -36,14 +45,20 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(bootstrap.contains("docker "))
         XCTAssertTrue(workflow.contains("class GuestBootstrapWorkflow"))
         XCTAssertFalse(workflow.contains("from tirosh_guest_tools.infrastructure"))
-        XCTAssertTrue(operations.contains("RuntimeService.COMMAND_POLLER.value"))
+        XCTAssertTrue(operations.contains("RuntimeService.GUEST_CONTROL_API.value"))
         XCTAssertTrue(operations.contains("systemctl(\"enable\", service)"))
         XCTAssertTrue(workflow.contains("def start_guest_background_services(self)"))
-        XCTAssertTrue(operations.contains("systemctl(\"start\", RuntimeService.COMMAND_POLLER.value)"))
-        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-command-poller\""))
-        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-command-poller.service\""))
+        XCTAssertTrue(operations.contains("systemctl(\"start\", RuntimeService.GUEST_CONTROL_API.value)"))
+        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-guest-control-api\""))
+        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-guest-control-api.service\""))
+        XCTAssertFalse(operations.contains("COMMAND_POLLER"))
+        XCTAssertFalse(operations.contains("command-poller"))
         XCTAssertTrue(operations.contains("\"tirosh-vitalserver-sync-host-time\""))
         XCTAssertTrue(operations.contains("\"tirosh-vitalserver-sync-host-time.service\""))
+        let guestControlAPIUnit = try readGuestSupportFile(
+            "systemd/tirosh-vitalserver-guest-control-api.service"
+        )
+        XCTAssertFalse(guestControlAPIUnit.contains("tirosh-vitalserver-compose.service"))
         let observabilityUnit = try readGuestSupportFile(
             "systemd/tirosh-guest-observability.service"
         )
@@ -53,17 +68,67 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: removedInstaller.path))
     }
 
-    func testBootstrapChecksActualPythonVenvCreation() throws {
+    func testBootstrapUsesVerifiedOfflineGuestToolsInstaller() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let operations = try readGuestToolsFile("infrastructure/bootstrap_operations.py")
         let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+        let installer = try readGuestSupportFile("install-guest-tools-runtime.py")
 
-        XCTAssertTrue(bootstrap.contains("python3 -m venv --clear \"${GUEST_TOOLS_VENV}\""))
+        XCTAssertTrue(bootstrap.contains("python3 \"${DEPLOY_DIR}/install-guest-tools-runtime.py\""))
+        XCTAssertTrue(bootstrap.contains("--wheel-dir \"${PYTHON_WHEEL_DIR}\""))
+        XCTAssertTrue(bootstrap.contains("--guest-tools-home \"${GUEST_TOOLS_HOME}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("install_guest_tools_for_rootfs_smoke"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("python3 \"${DEPLOY_DIR}/install-guest-tools-runtime.py\""))
+        XCTAssertTrue(installer.contains("[sys.executable, \"-m\", \"venv\", \"--clear\", str(next_venv)]"))
+        XCTAssertTrue(installer.contains("\"--no-index\""))
+        XCTAssertTrue(installer.contains("\"--only-binary=:all:\""))
+        XCTAssertTrue(installer.contains("\"--require-hashes\""))
+        XCTAssertTrue(installer.contains("\"--find-links\""))
+        XCTAssertTrue(installer.contains("validate_wheelhouse"))
+        XCTAssertTrue(installer.contains("require_hash"))
+        XCTAssertTrue(installer.contains("require_requirements_hash_closure"))
+        XCTAssertTrue(installer.contains("install-proof.json"))
+        XCTAssertTrue(installer.contains("installed_dependency_versions"))
+        XCTAssertFalse(installer.contains("\"--no-deps\""))
         XCTAssertTrue(operations.contains("TemporaryDirectory(prefix=\"tirosh-venv-check-\")"))
         XCTAssertTrue(operations.contains("[\"python3\", \"-m\", \"venv\", str(test_venv)]"))
         XCTAssertFalse(operations.contains("[\"python3\", \"-m\", \"venv\", \"--help\"]"))
         XCTAssertTrue(prepareAirgapRootfs.contains("verify_python_venv"))
         XCTAssertTrue(prepareAirgapRootfs.contains("python3 -m venv \"${test_venv}\""))
+    }
+
+    func testPrepareAirgapRootfsOwnsGuestPathsAndFailureProofBoundary() throws {
+        let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+
+        XCTAssertTrue(prepareAirgapRootfs.contains("set -Euo pipefail"))
+        XCTAssertFalse(prepareAirgapRootfs.contains("set -eEuo pipefail"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("DEPLOY_DIR=\"${MOUNT_POINT}/deploy\""))
+        XCTAssertTrue(
+            prepareAirgapRootfs.contains("PYTHON_WHEEL_DIR=\"${DEPLOY_DIR}/python-wheels\"")
+        )
+        XCTAssertTrue(prepareAirgapRootfs.contains("ROOTFS_FAILURE_RECORDED=0"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("record_failure_once()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("handle_rootfs_error()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("handle_rootfs_exit()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("trap 'handle_rootfs_error \"$?\"' ERR"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("trap 'handle_rootfs_exit \"$?\"' EXIT"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("trap - ERR EXIT"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("exit \"${exit_code}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("127 for nounset"))
+        XCTAssertTrue(
+            prepareAirgapRootfs.contains(
+                "if [ \"${exit_code}\" -ne 0 ]; then\n"
+                    + "    record_failure_once \"${exit_code}\" \"${ROOTFS_STAGE}\"\n"
+                    + "  fi\n"
+                    + "  exit \"${exit_code}\""
+            )
+        )
+        XCTAssertFalse(prepareAirgapRootfs.contains("exit_code=1"))
+        assertOrder(
+            in: prepareAirgapRootfs,
+            first: "DEPLOY_DIR=\"${MOUNT_POINT}/deploy\"",
+            second: "PYTHON_WHEEL_DIR=\"${DEPLOY_DIR}/python-wheels\""
+        )
     }
 
     func testBootstrapFailureOverwritesRunningResult() throws {
@@ -120,11 +185,11 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
         XCTAssertEqual(
             compose.components(separatedBy: "seccomp=unconfined").count - 1,
-            10
+            12
         )
     }
 
-    func testRecorderIngressMountsRuntimeStateReadOnlyForMemoryGuard() throws {
+    func testRecorderIngressDoesNotMountRuntimeStateForMemoryGuard() throws {
         let compose = try readGuestSupportFile("compose.yaml")
         guard let serviceStart = compose.range(of: "  recorder-ingress:") else {
             XCTFail("recorder-ingress service is missing")
@@ -139,12 +204,11 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         }
         let recorderIngress = String(compose[serviceStart.lowerBound..<nextService.lowerBound])
 
-        XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_STATE_PATH: \"${RECORDER_INGRESS_RUNTIME_STATE_PATH:-/run/tirosh/runtime/runtime-state.json}\""))
+        XCTAssertFalse(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_OBSERVATION_PATH"))
+        XCTAssertFalse(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_OBSERVATION_MAX_AGE_MS"))
         XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH: \"${RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH:-50000}\""))
         XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS: \"${RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS:-3}\""))
-        XCTAssertTrue(recorderIngress.contains("source: /mnt/tirosh/run"))
-        XCTAssertTrue(recorderIngress.contains("target: /run/tirosh/runtime"))
-        XCTAssertTrue(recorderIngress.contains("read_only: true"))
+        XCTAssertFalse(recorderIngress.contains("target: /run/tirosh/runtime"))
     }
 
     func testDockerRuntimeSmokeRunsWithoutUnsupportedBPFJITSysctlGuard() throws {
@@ -175,13 +239,37 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
     func testPrepareAirgapRootfsDelegatesRootfsSmokeToGuestTools() throws {
         let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+        let aptPackages = try readGuestSupportFile("rootfs-apt-packages.txt")
+        let aptCacheContract = try readGuestSupportFile("rootfs-apt-cache-contract.txt")
 
         XCTAssertTrue(prepareAirgapRootfs.contains("RUNTIME_MANIFEST_FILE=\"${RUNTIME_DIR}/rootfs-runtime-manifest.json\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("busybox-static"))
+        XCTAssertTrue(aptPackages.contains("busybox-static"))
+        XCTAssertTrue(aptPackages.contains("docker-compose-v2"))
+        XCTAssertTrue(aptCacheContract.contains("installedPackageProof=exact-dpkg-version"))
+        XCTAssertTrue(aptCacheContract.contains("packageStateProof=dpkg-audit"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_PACKAGES_FILE=\"${DEPLOY_DIR}/rootfs-apt-packages.txt\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_BASE_PROOF_FILE=\"/var/lib/vitalserver/rootfs-apt-base.json\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("verify_apt_base_proof"))
+        XCTAssertTrue(
+            prepareAirgapRootfs.contains(
+                "configure_guest_clock\n  verify_apt_base_proof"
+            )
+        )
+        XCTAssertTrue(prepareAirgapRootfs.contains("Reusing verified APT-prepared rootfs base"))
         XCTAssertTrue(prepareAirgapRootfs.contains("install_guest_tools_for_rootfs_smoke"))
         XCTAssertTrue(prepareAirgapRootfs.contains("tirosh-vitalserver-rootfs-smoke"))
         XCTAssertTrue(prepareAirgapRootfs.contains("update_apt_indexes()"))
-        XCTAssertTrue(prepareAirgapRootfs.contains("ROOTFS_STAGE=\"apt-index-update\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("ROOTFS_STAGE=\"${stage}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("\"apt-index-update\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("\"apt-install\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_PROGRESS_JSON_FILE="))
+        XCTAssertTrue(prepareAirgapRootfs.contains("record_apt_progress()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("run_apt_command_with_progress()"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_INDEX_UPDATE_TIMEOUT_SECONDS=1800"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_INSTALL_TIMEOUT_SECONDS=1800"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT_PROGRESS_INTERVAL_SECONDS=30"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("Acquire::Retries=5"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("APT::Update::Error-Mode=any"))
         XCTAssertTrue(prepareAirgapRootfs.contains("update_apt_indexes\n  record_apt_plan"))
         XCTAssertFalse(prepareAirgapRootfs.contains("docker run --rm --network none"))
         XCTAssertFalse(prepareAirgapRootfs.contains("docker compose --project-name"))
@@ -189,25 +277,17 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(prepareAirgapRootfs.contains("ready_path.write_text"))
     }
 
-    func testGuestCommandFailuresClearRequestFilesAfterWritingFailureResult() throws {
-        let activation = try readGuestToolsFile("application/update_activation.py")
-        let shutdown = try readGuestToolsFile("application/update_shutdown.py")
-        let repair = try readGuestToolsFile("application/redis_repair.py")
-
-        XCTAssertTrue(activation.contains("REQUEST_FILE.unlink(missing_ok=True)"))
-        XCTAssertTrue(shutdown.contains("write_result"))
-        XCTAssertTrue(shutdown.contains("REQUEST_FILE.unlink(missing_ok=True)"))
-        XCTAssertTrue(repair.contains("REQUEST_FILE.unlink(missing_ok=True)"))
-    }
-
-    func testReleaseSyncTargetsGuestToolsInfrastructureAndUseCases() throws {
+    func testReleaseSyncValidatesImmutableGuestInputsAndOnlyGeneratesSwift() throws {
         let syncRelease = try readRuntimeSupportFile("Build/sync-release.py")
 
-        XCTAssertTrue(syncRelease.contains("\"packages/vitalserver-guest-tools/src/tirosh_guest_tools/infrastructure\""))
-        XCTAssertTrue(syncRelease.contains("\"bootstrap_operations.py\""))
-        XCTAssertTrue(syncRelease.contains("\"packages/vitalserver-guest-tools/src/tirosh_guest_tools/application\""))
-        XCTAssertTrue(syncRelease.contains("\"redis_repair.py\""))
-        XCTAssertFalse(syncRelease.contains("tirosh_guest_tools/redis/repair.py"))
+        XCTAssertTrue(syncRelease.contains("def validate_release_input_contract"))
+        XCTAssertTrue(syncRelease.contains("def sync_swift"))
+        XCTAssertTrue(syncRelease.contains("def sync_release"))
+        XCTAssertFalse(syncRelease.contains("def sync_compose"))
+        XCTAssertFalse(syncRelease.contains("def sync_build_config"))
+        XCTAssertFalse(syncRelease.contains("def sync_guest_scripts"))
+        XCTAssertFalse(syncRelease.contains("bootstrap_operations.py"))
+        XCTAssertFalse(syncRelease.contains("redis_repair.py"))
     }
 
     func testVMShutdownTimeoutMigrationReloadsLoadedLaunchdJob() throws {
@@ -224,6 +304,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         let postinstall = try readRuntimeSupportFile("Packaging/postinstall.template")
 
         XCTAssertTrue(postinstall.contains("\"${vm_bin}\" runtime install-provision"))
+        XCTAssertTrue(postinstall.contains("--package-install-contract \"${package_install_contract}\""))
+        XCTAssertTrue(postinstall.contains("package_install_contract=\"${script_dir}/package-install-contract.json\""))
         XCTAssertFalse(postinstall.contains("\"${vm_bin}\" runtime install &"))
         XCTAssertFalse(postinstall.contains("runtime_status="))
         XCTAssertFalse(postinstall.contains("log_runtime_install_status"))
@@ -233,28 +315,32 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(postinstall.contains("postinstall_timeout_seconds=300"))
         XCTAssertFalse(postinstall.contains("\"${vm_bin}\" runtime uninstall --clean"))
         XCTAssertFalse(postinstall.contains("postinstall failure cleanup blocked"))
-        XCTAssertTrue(postinstall.contains("\"${vm_bin}\" runtime stop-services"))
-        XCTAssertTrue(postinstall.contains("launchctl bootout \"system/${label}\""))
-        XCTAssertTrue(postinstall.contains("rm -rf \"${path}\""))
-        XCTAssertTrue(postinstall.contains("postinstall failure cleanup refused unsafe path"))
+        XCTAssertTrue(postinstall.contains("\"${vm_bin}\" runtime stop-package-services"))
+        XCTAssertTrue(postinstall.contains("persistent runtime data and package artifacts will be preserved"))
+        XCTAssertFalse(postinstall.contains("rm -rf"))
+        XCTAssertFalse(postinstall.contains("safe_remove_path"))
         XCTAssertFalse(postinstall.contains("pkgutil --forget"))
         XCTAssertFalse(postinstall.contains("pgrep -f"))
     }
 
-    func testPreinstallDelegatesFreshInstallStateCheckToCLIHost() throws {
+    func testPreinstallDelegatesFreshOnlyStateCheckToCLIHost() throws {
         let preinstall = try readRuntimeSupportFile("Packaging/preinstall")
 
         XCTAssertTrue(preinstall.contains("preflight_bin=\"${script_dir}/vitalserver-vm-preinstall\""))
         XCTAssertTrue(preinstall.contains("\"${preflight_bin}\" runtime preinstall-check"))
-        XCTAssertTrue(preinstall.contains("pkg install supports fresh installs only"))
-        XCTAssertTrue(preinstall.contains("Remove the existing install first, then run the pkg again."))
-        XCTAssertTrue(preinstall.contains("sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean"))
-        XCTAssertTrue(preinstall.contains("make dist/uninstall/dev VM_UNINSTALL_ARGS=--clean"))
+        XCTAssertTrue(preinstall.contains("--package-install-contract \"${package_install_contract}\""))
+        XCTAssertTrue(preinstall.contains("package_install_contract=\"${script_dir}/package-install-contract.json\""))
+        XCTAssertTrue(
+            preinstall.contains(
+                "Existing package receipts block direct PKG repair, upgrade, and downgrade"
+            )
+        )
         XCTAssertTrue(preinstall.contains("printf \"%s\\n\" \"${preflight_output}\" >&2"))
         XCTAssertFalse(preinstall.contains("pkgutil --pkg-info"))
         XCTAssertFalse(preinstall.contains("launchctl print"))
         XCTAssertFalse(preinstall.contains("lsof -nP"))
         XCTAssertFalse(preinstall.contains("plutil -extract"))
+        XCTAssertFalse(preinstall.contains("stop-package-services"))
         XCTAssertFalse(preinstall.contains("[[ -e"))
     }
 
@@ -266,7 +352,9 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(uninstall.contains("command+=(\"--force-clean-uninstaller\")"))
         XCTAssertTrue(uninstall.contains("vm_home=\"${VM_HOME}\""))
         XCTAssertTrue(uninstall.contains("VITALSERVER_VM_HOME=\"${vm_home}\" \"${command[@]}\""))
-        XCTAssertTrue(uninstall.contains("step=remove-uninstaller status=started"))
+        XCTAssertTrue(uninstall.contains("terminal cleanup verified uninstaller=${uninstall}"))
+        XCTAssertTrue(uninstall.contains("uninstaller remains after CLIHost cleanup"))
+        XCTAssertFalse(uninstall.contains("rm -f \"${uninstall}\""))
         XCTAssertFalse(uninstall.contains("/usr/bin/python3"))
         XCTAssertFalse(uninstall.contains("launchctl bootout"))
         XCTAssertFalse(uninstall.contains("rm -rf"))
@@ -277,19 +365,15 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         let guestSupport = try guestSupportDirectory()
         let systemInstall = try readGuestToolsFile("infrastructure/system_install.py")
 
-        XCTAssertTrue(bootstrap.contains("python3 -m venv --clear \"${GUEST_TOOLS_VENV}\""))
-        XCTAssertTrue(
-            bootstrap.contains(
-                "\"${GUEST_TOOLS_VENV}/bin/pip\" install --no-index --no-deps \"${wheel}\""
-            )
-        )
+        XCTAssertTrue(bootstrap.contains("install_guest_tools_runtime"))
         XCTAssertTrue(bootstrap.contains("tirosh-vitalserver-bootstrap"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.GUEST_OBSERVED"))
-        XCTAssertTrue(systemInstall.contains("RuntimeCommand.RUNTIME_STATE"))
+        XCTAssertTrue(systemInstall.contains("RuntimeCommand.RUNTIME_OBSERVATION"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RUNTIME_BOOT_SMOKE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RUNTIME_DATA_PREPARE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_ACTIVATE_UPDATE"))
-        XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RECONCILE_COMPOSE"))
+        XCTAssertFalse(systemInstall.contains("RuntimeCommand.VITALSERVER_RECONCILE_COMPOSE"))
+        XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_GUEST_CONTROL_API"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_BOOTSTRAP"))
         let activationUseCase = try readGuestToolsFile("application/update_activation.py")
         let shutdownUseCase = try readGuestToolsFile("application/update_shutdown.py")
@@ -302,25 +386,41 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_FAILURE"))
         let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
         let syncHostTimeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-sync-host-time")
+        let runtimeObservationWrapper = try readGuestSupportFile("bin/tirosh-runtime-observation")
+        let writeRuntimeObservationWrapper = try readGuestSupportFile("bin/tirosh-write-runtime-observation")
         let runtimeBootSmokeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-runtime-boot-smoke")
+        let guestControlAPIWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-guest-control-api")
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
+        let runtimeObservationService = try readGuestSupportFile("systemd/tirosh-runtime-observation.service")
         let syncHostTimeService = try readGuestSupportFile("systemd/tirosh-vitalserver-sync-host-time.service")
-        let activationService = try readGuestSupportFile("systemd/tirosh-vitalserver-activate-update.service")
-        let testkitService = try readGuestSupportFile("systemd/tirosh-vitalserver-testkit.service")
+        let guestControlAPIService = try readGuestSupportFile("systemd/tirosh-vitalserver-guest-control-api.service")
         XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))
         XCTAssertTrue(syncHostTimeWrapper.contains("tirosh-vitalserver-sync-host-time"))
+        XCTAssertTrue(runtimeObservationWrapper.contains("tirosh-runtime-observation"))
+        XCTAssertTrue(writeRuntimeObservationWrapper.contains("tirosh-write-runtime-observation"))
         XCTAssertTrue(runtimeBootSmokeWrapper.contains("tirosh-vitalserver-runtime-boot-smoke"))
+        XCTAssertTrue(guestControlAPIWrapper.contains("tirosh-vitalserver-guest-control-api"))
         XCTAssertTrue(service.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-compose up"))
         XCTAssertTrue(service.contains("TimeoutStopSec=150"))
+        XCTAssertTrue(runtimeObservationService.contains("ExecStart=/usr/local/bin/tirosh-runtime-observation watch"))
         XCTAssertTrue(syncHostTimeService.contains("Before=docker.service"))
         XCTAssertTrue(syncHostTimeService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-sync-host-time"))
-        XCTAssertTrue(
-            activationService.contains(
-                "Conflicts=tirosh-vitalserver-compose.service tirosh-vitalserver-testkit.service"
+        XCTAssertTrue(guestControlAPIService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-guest-control-api"))
+        XCTAssertFalse(guestControlAPIService.contains("tirosh-vitalserver-compose.service"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: guestSupport
+                    .appendingPathComponent("systemd/tirosh-vitalserver-activate-update.service")
+                    .path
             )
         )
-        XCTAssertTrue(testkitService.contains("After=docker.service network-online.target tirosh-vitalserver-compose.service"))
-        XCTAssertFalse(testkitService.contains("Wants=network-online.target tirosh-vitalserver-compose.service"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: guestSupport
+                    .appendingPathComponent("systemd/tirosh-vitalserver-testkit.service")
+                    .path
+            )
+        )
         XCTAssertFalse(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("guest-tools.toml").path))
         XCTAssertTrue(
             FileManager.default.fileExists(

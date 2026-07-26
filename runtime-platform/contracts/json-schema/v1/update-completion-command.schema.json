@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-completion-command",
+  "title": "UpdateCompletionCommand",
+  "description": "C27 Host-local command from the staged next updater. The expected journal revision prevents a superseded updater process from settling recovery state it no longer owns.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "updateId", "expectedJournalRevision", "report"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "expectedJournalRevision": { "type": "integer", "minimum": 1 },
+    "report": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-execution-report" }
+  }
+}

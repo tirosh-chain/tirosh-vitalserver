@@ -6,70 +6,138 @@ import Errors
 
 @MainActor
 public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
-    public let capabilities = RuntimeControlCapabilities()
+    public let capabilities = RuntimeControlCapabilities(canApplyBundle: false)
 
     private let releaseInfo: RuntimeReleaseInfo
-    private let statusReader: RuntimeStatusReading
+    private let platformStateReader: PlatformStateReading
+    private let operationStateReader: PlatformOperationStateReading
     private let observabilityReader: RuntimeObservabilityReading
     private let fileReader: RuntimeHostFileReading
     private let settingsReader: RuntimeSettingsReading
     private let commandWorker: MacRuntimeControlCommandWorker
 
     public init(
-        releaseInfo: RuntimeReleaseInfo
+        releaseInfo: RuntimeReleaseInfo,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        hostSettingsReader: any RuntimeHostSettingsReading,
+        commandWorker: MacRuntimeControlCommandWorker
     ) {
-        let paths = RuntimePaths()
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(paths: paths),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
+            platformStateReader: SystemPlatformStateReader(
+                guestAddressProvider: guestAddressProvider,
+                vmLifecycleResourceReader: vmLifecycleResourceReader
+            ),
+            operationStateReader: SystemPlatformOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
             fileReader: SystemRuntimeHostFileReader(),
-            settingsReader: SystemRuntimeSettingsReader(),
-            commandWorker: MacRuntimeControlCommandWorker()
+            settingsReader: SystemRuntimeSettingsReader(
+                paths: RuntimeSettingsPaths(),
+                fileStore: SystemRuntimeFileStore(),
+                runCommand: ProcessRunner.runSync,
+                hostSettingsReader: hostSettingsReader
+            ),
+            commandWorker: commandWorker
         )
     }
 
     public init(
         releaseInfo: RuntimeReleaseInfo,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        settingsReader: any RuntimeSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker
     ) {
-        let paths = RuntimePaths()
         self.init(
             releaseInfo: releaseInfo,
-            statusReader: SystemRuntimeStatusReader(paths: paths),
-            observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
+            platformStateReader: SystemPlatformStateReader(
+                guestAddressProvider: guestAddressProvider,
+                vmLifecycleResourceReader: vmLifecycleResourceReader
+            ),
+            operationStateReader: SystemPlatformOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
             fileReader: SystemRuntimeHostFileReader(),
-            settingsReader: SystemRuntimeSettingsReader(),
+            settingsReader: settingsReader,
+            commandWorker: commandWorker
+        )
+    }
+
+    public init(
+        releaseInfo: RuntimeReleaseInfo,
+        platformStateReader: any PlatformStateReading,
+        operationLeaseReader: any RuntimeOperationLeaseReading,
+        guestAddressProvider: any RuntimeGuestAddressProvider,
+        settingsReader: any RuntimeSettingsReading,
+        commandWorker: MacRuntimeControlCommandWorker
+    ) {
+        self.init(
+            releaseInfo: releaseInfo,
+            platformStateReader: platformStateReader,
+            operationStateReader: SystemPlatformOperationStateReader.live(
+                operationLeaseReader: operationLeaseReader
+            ),
+            observabilityReader: SystemRuntimeObservabilityReader.live(
+                paths: RuntimeObservabilityPaths(),
+                guestAddressProvider: guestAddressProvider
+            ),
+            fileReader: SystemRuntimeHostFileReader(),
+            settingsReader: settingsReader,
             commandWorker: commandWorker
         )
     }
 
     init(
         releaseInfo: RuntimeReleaseInfo,
-        statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(paths: RuntimePaths()),
-        observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimePaths()),
+        platformStateReader: PlatformStateReading = SystemPlatformStateReader(),
+        operationStateReader: PlatformOperationStateReading = SystemPlatformOperationStateReader.live(),
+        observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimeObservabilityPaths()),
         fileReader: RuntimeHostFileReading = SystemRuntimeHostFileReader(),
-        settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
+        settingsReader: RuntimeSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker = MacRuntimeControlCommandWorker()
     ) {
         self.releaseInfo = releaseInfo
-        self.statusReader = statusReader
+        self.platformStateReader = platformStateReader
+        self.operationStateReader = operationStateReader
         self.observabilityReader = observabilityReader
         self.fileReader = fileReader
         self.settingsReader = settingsReader
         self.commandWorker = commandWorker
     }
 
+    private static func livePlatformStateReader() -> PlatformStateReading {
+        SystemPlatformStateReader(
+            guestAddressProvider: RuntimeControlAPIGuestAddressProvider(),
+            vmLifecycleResourceReader: RuntimeControlAPIVMLifecycleResourceReader()
+        )
+    }
+
     public func loadSettings() -> RuntimeSettings {
         settingsReader.load()
     }
 
-    public func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
-        statusReader.loadStatus(settings: settings)
+    public func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
+        platformStateReader.loadPlatformState(settings: settings)
     }
 
-    public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
-        await statusReader.loadHealthStatus(settings: settings)
+    public func loadOperationState() -> PlatformOperationState {
+        operationStateReader.loadOperationState()
+    }
+
+    public func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
+        await platformStateReader.loadHealthStatus(settings: settings)
     }
 
     public func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -88,6 +156,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         observabilityReader.loadVitalDBRecorders()
     }
 
+    public func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        observabilityReader.loadVitalDBBeds()
+    }
+
     public func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         observabilityReader.loadVitalDBRecorderSummaries()
     }
@@ -96,6 +168,30 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         query: RuntimeVitalRecorderActivityWindowQuery
     ) -> RuntimeVitalRecorderActivityWindow {
         observabilityReader.loadVitalDBRecorderActivityWindow(query: query)
+    }
+
+    public func loadVitalDBRecorderVitalFiles(
+        vrcode: String
+    ) -> RuntimeVitalRecorderVitalFileHistory {
+        observabilityReader.loadVitalDBRecorderVitalFiles(vrcode: vrcode)
+    }
+
+    public func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        observabilityReader.loadRecorderObservabilityDetail(vrcode: vrcode)
+    }
+
+    public func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) -> RuntimeRecorderObservabilityTimeline {
+        observabilityReader.loadRecorderObservabilityTimeline(query: query)
+    }
+
+    public func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        observabilityReader.loadRecorderObservabilityIncidents(query: query)
     }
 
     public func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
@@ -152,6 +248,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.applySettings(settings)
     }
 
+    public func restartVMRuntime(applying settings: RuntimeSettings) async throws -> RuntimeCommandResult {
+        try await commandWorker.restartVMRuntime(applying: settings)
+    }
+
     public func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
         try await commandWorker.applyUpdateBundle(url: url)
     }
@@ -188,6 +288,12 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.repairRuntimeServices()
     }
 
+    public func controlRuntimeProvider(
+        _ action: RuntimeProviderCommandAction
+    ) async throws -> RuntimeCommandResult {
+        try await commandWorker.controlRuntimeProvider(action)
+    }
+
     public func createRedisBackup() async throws -> RuntimeCommandResult {
         try await commandWorker.createRedisBackup()
     }
@@ -196,24 +302,184 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.createRuntimeDataBackup()
     }
 
-    public func startRuntimeServices() async throws -> RuntimeCommandResult {
-        try await commandWorker.startRuntimeServices()
+    public func listGuestServices() async throws -> RuntimeGuestControlServiceList {
+        try await commandWorker.listGuestServices()
     }
 
-    public func stopRuntimeServices() async throws -> RuntimeCommandResult {
-        try await commandWorker.stopRuntimeServices()
+    public func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        try await commandWorker.guestStackStatus()
     }
 
-    public func startTestKitService() async throws -> RuntimeCommandResult {
-        try await commandWorker.startTestKitService()
+    public func runtimeCapabilities() async throws -> RuntimeCapabilities {
+        try await commandWorker.runtimeCapabilities()
     }
 
-    public func stopTestKitService() async throws -> RuntimeCommandResult {
-        try await commandWorker.stopTestKitService()
+    public func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead {
+        try await commandWorker.loadRuntimeProductSettings()
     }
 
-    public func restartTestKitService() async throws -> RuntimeCommandResult {
-        try await commandWorker.restartTestKitService()
+    public func applyRuntimeProductSettings(
+        _ settings: GuestRuntimeSettingsDocument
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.applyRuntimeProductSettings(settings)
+    }
+
+    public func applyRuntimeAdminPassword(
+        _ password: String
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.applyRuntimeAdminPassword(password)
+    }
+
+    public func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead {
+        try await commandWorker.loadRuntimeRedisRelaySettings()
+    }
+
+    public func applyRuntimeRedisRelaySettings(
+        _ settings: RuntimeRedisRelaySettingsApplyRequest
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.applyRuntimeRedisRelaySettings(settings)
+    }
+
+    public func loadRuntimeOperationEvents(
+        query: RuntimeOperationEventQuery
+    ) async throws -> RuntimeOperationEventHistory {
+        try await commandWorker.loadRuntimeOperationEvents(query: query)
+    }
+
+    public func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
+        try await commandWorker.guestServiceStatus(service)
+    }
+
+    public func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        try await commandWorker.guestServiceResource(service)
+    }
+
+    public func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult {
+        try await commandWorker.loadRedisRelayStatus()
+    }
+
+    public func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.startGuestService(request)
+    }
+
+    public func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.stopGuestService(request)
+    }
+
+    public func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.restartGuestService(request)
+    }
+
+    public func loadLabScenarios() async throws -> RuntimeLabScenarioList {
+        try await commandWorker.loadLabScenarios()
+    }
+
+    public func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
+        try await commandWorker.loadLabVitalFiles()
+    }
+
+    public func loadLabBeds() async throws -> RuntimeLabBedList {
+        try await commandWorker.loadLabBeds()
+    }
+
+    public func loadLabRecorders() async throws -> RuntimeLabRecorderList {
+        try await commandWorker.loadLabRecorders()
+    }
+
+    public func loadLabSessions() async throws -> RuntimeLabSessionList {
+        try await commandWorker.loadLabSessions()
+    }
+
+    public func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
+        try await commandWorker.createLabBeds(request)
+    }
+
+    public func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
+        try await commandWorker.deleteLabBeds(request)
+    }
+
+    public func resetLabBeds() async throws -> RuntimeLabBedList {
+        try await commandWorker.resetLabBeds()
+    }
+
+    public func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
+        try await commandWorker.createLabRecorders(request)
+    }
+
+    public func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
+        try await commandWorker.deleteLabRecorders(request)
+    }
+
+    public func resetLabRecorders() async throws -> RuntimeLabRecorderList {
+        try await commandWorker.resetLabRecorders()
+    }
+
+    public func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.hideVitalDBRecorders(request)
+    }
+
+    public func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        try await commandWorker.applyRecorderObservabilityExpectation(command)
+    }
+
+    public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.unhideVitalDBRecorders(request)
+    }
+
+    public func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.deleteVitalDBRecorders(request)
+    }
+
+    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        try await commandWorker.hideVitalDBBeds(request)
+    }
+
+    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        try await commandWorker.unhideVitalDBBeds(request)
+    }
+
+    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        try await commandWorker.deleteVitalDBBeds(request)
+    }
+
+    public func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.createLabSession(request)
+    }
+
+    public func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.loadLabSession(sessionId: sessionId)
+    }
+
+    public func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.startLabSession(sessionId: sessionId)
+    }
+
+    public func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.stopLabSession(sessionId: sessionId)
+    }
+
+    public func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.finishLabSession(sessionId: sessionId)
+    }
+
+    public func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        try await commandWorker.startLabRecorder(sessionId: sessionId, recorderId: recorderId)
+    }
+
+    public func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        try await commandWorker.stopLabRecorder(sessionId: sessionId, recorderId: recorderId)
+    }
+
+    public func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.replayLabVitalFile(request)
+    }
+
+    public func uploadLabVitalFiles(
+        _ sources: [RuntimeLabVitalFileUploadSource]
+    ) async throws -> RuntimeLabVitalFileLibraryUploadResponse {
+        try await commandWorker.uploadLabVitalFiles(sources)
     }
 
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
@@ -225,13 +491,14 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     public func loadInstallInfo() -> RuntimeInstallInfo {
-        RuntimeInstallInfo(
+        let installed = InstalledRuntimePaths.defaultInstalled
+        return RuntimeInstallInfo(
             appBundlePath: Bundle.main.bundlePath,
             packageIdentifier: RuntimeControlClientConstants.Product.packageIdentifier,
-            runtimeHomePath: RuntimeControlClientConstants.Paths.vmHome,
-            backupsPath: RuntimeControlClientConstants.Paths.backups,
-            redisBackupsPath: RuntimeControlClientConstants.Paths.redisBackups,
-            runtimeDataBackupsPath: RuntimeControlClientConstants.Paths.runtimeDataBackups
+            runtimeHomePath: installed.runtimeHome.path,
+            backupsPath: installed.backupsDirectory.path,
+            redisBackupsPath: installed.redisBackupsDirectory.path,
+            runtimeDataBackupsPath: installed.vitalServerHelperBackupsDirectory.path
         )
     }
 

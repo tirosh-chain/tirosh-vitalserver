@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-artifact-compilation-input-assembly-declaration",
+  "title": "GuestArtifactCompilationInputAssemblyDeclaration",
+  "description": "C41 release-build source selection for atomically assembling one complete Guest Product C35 input root. sourceAbsolutePath is Host build-machine input only and must never appear in emitted C35/C34/C65/C35 receipt. The declaration selects one Guest Product bootstrap artifact composer, one copied raw bootable root-storage base, C44 topology deployment, either the C46 external delivery configuration or the paired C64 manager payload, and one generated read-only NoCloud bootstrap volume without implicit builder, source, topology, delivery target, or storage-role choice. arm64 additionally selects macOS Virtualization boot resources; amd64 deliberately omits them because the selected native UEFI provider boots the disk directly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "assemblyId", "compilationId", "artifactSetId", "architecture", "guestProductBootstrapArtifactComposer", "guestRuntimeArtifact", "guestNodeServicesArtifact", "guestProductProcessSupervisorArtifact", "guestProductProcessDeploymentConfigurationArtifact", "guestProductReleaseManagerArtifact", "guestProductReleaseManagerConfigurationArtifact", "guestProductServiceManagerDeploymentConfigurationArtifact", "guestProductBootstrapConfigurationArtifact", "guestProductVitalServerTopologyDeploymentArtifact", "storageDevices"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "assemblyId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "compilationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "artifactSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "architecture": { "enum": ["arm64", "amd64"] },
+    "guestProductBootstrapArtifactComposer": { "$ref": "#/$defs/BuilderSource" },
+    "boot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kernel"],
+      "properties": {
+        "kernel": { "$ref": "#/$defs/BootSource" },
+        "initialRamdisk": { "$ref": "#/$defs/BootSource" }
+      }
+    },
+    "guestRuntimeArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestTelemetryCollectorArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestTelemetryCollectorConfigurationArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestNodeServicesArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestProductProcessSupervisorArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestProductProcessDeploymentConfigurationArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestProductReleaseManagerArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestProductReleaseManagerConfigurationArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestProductServiceManagerDeploymentConfigurationArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestProductBootstrapConfigurationArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestProductVitalServerTopologyDeploymentArtifact": { "$ref": "#/$defs/InputSource" },
+    "externalVitalServerDeliveryConfigurationArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestBundledUpstreamImageSetManagerArtifact": { "$ref": "#/$defs/InputSource" },
+    "guestBundledUpstreamImageSetManagerConfigurationArtifact": { "$ref": "#/$defs/InputSource" },
+    "storageDevices": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/StorageDeviceSource" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "architecture": { "const": "arm64" } }, "required": ["architecture"] },
+      "then": { "required": ["boot"] }
+    },
+    {
+      "if": { "properties": { "architecture": { "const": "amd64" } }, "required": ["architecture"] },
+      "then": { "not": { "required": ["boot"] } }
+    },
+    {
+      "if": { "required": ["guestTelemetryCollectorArtifact"] },
+      "then": { "required": ["guestTelemetryCollectorConfigurationArtifact"] }
+    },
+    {
+      "if": { "required": ["guestTelemetryCollectorConfigurationArtifact"] },
+      "then": { "required": ["guestTelemetryCollectorArtifact"] }
+    },
+    {
+      "if": { "required": ["guestBundledUpstreamImageSetManagerArtifact"] },
+      "then": { "required": ["guestBundledUpstreamImageSetManagerConfigurationArtifact"] }
+    },
+    {
+      "if": { "required": ["guestBundledUpstreamImageSetManagerConfigurationArtifact"] },
+      "then": { "required": ["guestBundledUpstreamImageSetManagerArtifact"] }
+    }
+  ],
+  "$defs": {
+    "SourceAbsolutePath": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "InputRelativePath": { "type": "string", "minLength": 12, "maxLength": 1024, "pattern": "^inputs/(?:[A-Za-z0-9][A-Za-z0-9._-]*/)*[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "BuilderRelativePath": { "type": "string", "minLength": 14, "maxLength": 1024, "pattern": "^builders/(?:[A-Za-z0-9][A-Za-z0-9._-]*/)*[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "InputSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourceAbsolutePath", "inputRelativePath"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "sourceAbsolutePath": { "$ref": "#/$defs/SourceAbsolutePath" },
+        "inputRelativePath": { "$ref": "#/$defs/InputRelativePath" }
+      }
+    },
+    "BuilderSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourceAbsolutePath", "inputRelativePath"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "sourceAbsolutePath": { "$ref": "#/$defs/SourceAbsolutePath" },
+        "inputRelativePath": { "$ref": "#/$defs/BuilderRelativePath" }
+      }
+    },
+    "BootSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "outputRelativePath"],
+      "properties": {
+        "source": { "$ref": "#/$defs/InputSource" },
+        "outputRelativePath": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "StorageDeviceSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "storageImageFormat", "readOnly", "outputRelativePath"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "role": { "enum": ["guest-root-storage", "guest-product-bootstrap-volume"] },
+        "storageImageFormat": { "const": "raw" },
+        "guestVolumeFileSystem": { "enum": ["iso9660"] },
+        "readOnly": { "type": "boolean" },
+        "baseImage": { "$ref": "#/$defs/InputSource" },
+        "outputRelativePath": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "id": { "const": "guest-root" },
+            "role": { "const": "guest-root-storage" },
+            "storageImageFormat": { "const": "raw" },
+            "readOnly": { "const": false },
+            "outputRelativePath": { "const": "storage/guest-root.raw" }
+          },
+          "required": ["baseImage"],
+          "not": { "required": ["guestVolumeFileSystem"] }
+        },
+        {
+          "properties": {
+            "id": { "const": "guest-product-bootstrap" },
+            "role": { "const": "guest-product-bootstrap-volume" },
+            "storageImageFormat": { "const": "raw" },
+            "guestVolumeFileSystem": { "const": "iso9660" },
+            "readOnly": { "const": true },
+            "outputRelativePath": { "const": "storage/guest-product-bootstrap.raw" }
+          },
+          "required": ["guestVolumeFileSystem"],
+          "not": { "required": ["baseImage"] }
+        }
+      ]
+    }
+  }
+}

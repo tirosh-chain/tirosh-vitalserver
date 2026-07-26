@@ -4,50 +4,89 @@ import Application
 import Contracts
 import Errors
 
-protocol RuntimeStatusReading: Sendable {
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+public protocol PlatformStateReading: Sendable {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState
 }
 
-struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
-    let paths: RuntimePaths
+struct SystemPlatformStateReader: PlatformStateReading, @unchecked Sendable {
     private let fileStore: RuntimeFileStore
     private let storageUsageProvider: RuntimeStorageUsageProviding
-    private let runtimeExecutableState: (String) -> RuntimeFileState
+    private let guestAddressProvider: any RuntimeGuestAddressProvider
+    private let liveDiagnosticsReader: any RuntimeLiveDiagnosticsReading
+    private let proxyPortReader: any RuntimeProxyPortReading
+    private let runtimeVersionReader: any RuntimeVersionReading
+    private let latestBackupReader: any RuntimeLatestBackupReading
+    private let vmLifecycleReader: any RuntimeVMLifecycleReading
+    private let guestControlGateway: @Sendable (String) throws -> any RuntimeGuestControlGateway
     private let runCommand: @Sendable (String, [String]) async -> RuntimeCommandResult
-    private let runSyncCommand: @Sendable (String, [String]) -> RuntimeCommandResult
 
     init(
-        paths: RuntimePaths,
+        runtimeLauncherPath: String = RuntimeControlClientConstants.Paths.launcher,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         storageUsageProvider: RuntimeStorageUsageProviding? = nil,
+        guestAddressProvider: (any RuntimeGuestAddressProvider)? = nil,
         runtimeExecutableState: ((String) -> RuntimeFileState)? = nil,
+        runtimeVersionFile: URL = InstalledRuntimePaths.defaultInstalled.runtimeDirectory
+            .appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion),
+        backupsDirectory: URL = InstalledRuntimePaths.defaultInstalled.backupsDirectory,
+        vmLifecycleResourceReader: (any RuntimeVMLifecycleResourceReading)? = nil,
+        liveDiagnosticsReader: (any RuntimeLiveDiagnosticsReading)? = nil,
+        proxyPortReader: (any RuntimeProxyPortReading)? = nil,
+        runtimeVersionReader: (any RuntimeVersionReading)? = nil,
+        latestBackupReader: (any RuntimeLatestBackupReading)? = nil,
+        vmLifecycleReader: (any RuntimeVMLifecycleReading)? = nil,
+        guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
+        guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         runCommand: @escaping @Sendable (String, [String]) async -> RuntimeCommandResult = { command, arguments in
             await ProcessRunner.run(command, arguments: arguments)
         },
         runSyncCommand: @escaping @Sendable (String, [String]) -> RuntimeCommandResult = ProcessRunner.runSync
     ) {
-        self.paths = paths
-        self.fileStore = fileStore
-        self.storageUsageProvider = storageUsageProvider ?? SystemRuntimeStorageUsageProvider(fileStore: fileStore)
-        self.runtimeExecutableState = runtimeExecutableState ?? { path in
+        let resolvedRuntimeExecutableState = runtimeExecutableState ?? { path in
             fileStore.fileState(atPath: path)
         }
+        let ownerReaders = RuntimeHostStatusOwnerReaderBundle.live(
+            runtimeLauncherPath: runtimeLauncherPath,
+            fileStore: fileStore,
+            guestAddressProvider: guestAddressProvider,
+            runtimeVersionFile: runtimeVersionFile,
+            backupsDirectory: backupsDirectory,
+            vmLifecycleResourceReader: vmLifecycleResourceReader,
+            runtimeExecutableState: resolvedRuntimeExecutableState,
+            runSyncCommand: runSyncCommand
+        )
+        self.fileStore = fileStore
+        self.storageUsageProvider = storageUsageProvider ?? SystemRuntimeStorageUsageProvider(fileStore: fileStore)
+        self.guestAddressProvider = guestAddressProvider ?? ownerReaders.guestAddressProvider
+        self.liveDiagnosticsReader = liveDiagnosticsReader ?? ownerReaders.liveDiagnosticsReader
+        self.proxyPortReader = proxyPortReader ?? ownerReaders.proxyPortReader
+        self.runtimeVersionReader = runtimeVersionReader ?? ownerReaders.runtimeVersionReader
+        self.latestBackupReader = latestBackupReader ?? ownerReaders.latestBackupReader
+        self.vmLifecycleReader = vmLifecycleReader ?? ownerReaders.vmLifecycleReader
+        self.guestControlGateway = guestControlGatewayForBaseURL ?? { baseURL in
+            if let guestControlGateway {
+                return try guestControlGateway()
+            }
+            return try HTTPRuntimeGuestControlGateway(
+                baseURL: baseURL,
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIStackStatusTimeoutSeconds
+            )
+        }
         self.runCommand = runCommand
-        self.runSyncCommand = runSyncCommand
     }
 
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
         withDataDirectoryMetrics(loadBaseStatus(), settings: settings)
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
         let status = loadBaseStatus()
         let reads = RuntimeHealthProbeReads(
-            guestHTTP: await guestHTTPRead(vmIP: status.vmIP),
-            hostProxyHTTP: await hostProxyHTTPRead(proxyPort: status.proxyPort),
-            redisUIHTTP: await redisUIHTTPRead(proxyPort: status.proxyPort),
-            swaggerUIHTTP: await swaggerUIHTTPRead(proxyPort: status.proxyPort)
+            guestHTTP: await guestHTTPRead(vmIP: status.runtimeEndpoint),
+            hostProxyHTTP: await hostProxyHTTPRead(proxyPort: status.publicProxyPort),
+            redisUIHTTP: nil,
+            swaggerUIHTTP: nil
         )
         return withDataDirectoryMetrics(
             RuntimeHealthStatusAssembler.applyingHealthProbeReads(to: status, reads: reads),
@@ -56,13 +95,34 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     }
 
     private func guestHTTPRead(vmIP: String?) async -> RuntimeHTTPStatusRead? {
-        guard let vmIP else {
+        guard let vmIP, !vmIP.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
-        return await httpStatus(
-            source: "guestHTTP",
-            url: RuntimeControlClientConstants.Product.guestHealthURL(vmIP: vmIP)
-        )
+        let baseURL = RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: vmIP)
+        do {
+            let readiness = try guestControlGateway(baseURL).ready()
+            if readiness.status == "ready" {
+                return RuntimeHTTPStatusRead(status: "200", issue: nil)
+            }
+            let message = readiness.failureSummary.map {
+                "\(readiness.status):\($0)"
+            } ?? readiness.status
+            return RuntimeHTTPStatusRead(
+                status: readiness.status,
+                issue: PlatformStateReadIssue(
+                    source: "guestHTTP",
+                    message: "guest control readiness failed: \(message)"
+                )
+            )
+        } catch {
+            return RuntimeHTTPStatusRead(
+                status: nil,
+                issue: PlatformStateReadIssue(
+                    source: "guestHTTP",
+                    message: String(describing: error)
+                )
+            )
+        }
     }
 
     private func hostProxyHTTPRead(proxyPort: Int?) async -> RuntimeHTTPStatusRead? {
@@ -75,54 +135,17 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         )
     }
 
-    private func redisUIHTTPRead(proxyPort: Int?) async -> RuntimeHTTPStatusRead? {
-        guard let proxyPort else {
-            return nil
-        }
-        return await httpStatus(
-            source: "redisUIHTTP",
-            url: RuntimeControlClientConstants.Product.redisUIURL(proxyPort: proxyPort)
-        )
-    }
+    func loadBaseStatus() -> PlatformState {
+        let liveDiagnostics = liveDiagnosticsReader.loadLiveDiagnostics()
+        let guestAddressRead = guestAddressProvider.readGuestAddress()
+        let vmLifecycleRead = vmLifecycleReader.loadVMLifecycleRead()
 
-    private func swaggerUIHTTPRead(proxyPort: Int?) async -> RuntimeHTTPStatusRead? {
-        guard let proxyPort else {
-            return nil
-        }
-        return await httpStatus(
-            source: "swaggerUIHTTP",
-            url: RuntimeControlClientConstants.Product.swaggerURL(proxyPort: proxyPort)
-        )
-    }
-
-    func loadBaseStatus() -> RuntimeStatus {
-        let statusRead = RuntimeStatusDocumentReader(
-            url: URL(fileURLWithPath: paths.runtimeStatus),
-            fileStore: fileStore
-        ).load()
-        let guestStateRead = GuestRuntimeStateDocumentReader(
-            path: paths.runtimeState,
-            fileStore: fileStore
-        ).load()
-        let installStateRead = RuntimeInstallStateDocumentReader(
-            path: paths.runtimeInstallState,
-            fileStore: fileStore
-        ).load()
-        let redisRelayStatusRead = RuntimeRedisRelayStatusReader(
-            path: paths.redisRelayStatus,
-            fileStore: fileStore
-        ).load()
-        let liveDiagnostics = RuntimeLiveDiagnosticsReader(
-            paths: paths,
-            runtimeExecutableState: runtimeExecutableState,
-            launchdServiceState: launchdServiceState
-        ).load(statusDocument: statusRead.document)
-
-        return RuntimeControlStatusAssembler.makeStatus(
-            statusRead: statusRead,
-            guestStateRead: guestStateRead,
-            installStateRead: installStateRead,
-            redisRelayStatusRead: redisRelayStatusRead,
+        return PlatformStateAssembler.makePlatformState(
+            proxyPortReadState: proxyPortReader.loadProxyPortReadState(),
+            runtimeVersionRead: runtimeVersionReader.loadRuntimeVersionRead(),
+            latestBackupRead: latestBackupReader.loadLatestBackupRead(),
+            guestAddressRead: guestAddressRead,
+            vmLifecycleRead: vmLifecycleRead,
             liveDiagnostics: liveDiagnostics
         )
     }
@@ -136,7 +159,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         guard result.exitCode == 0 else {
             return RuntimeHTTPStatusRead(
                 status: nil,
-                issue: RuntimeStatusReadIssue(
+                issue: PlatformStateReadIssue(
                     source: source,
                     message: RuntimeProcessFailureMessageFormatter.message(
                         exitCode: result.exitCode,
@@ -151,13 +174,13 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         guard !code.isEmpty else {
             return RuntimeHTTPStatusRead(
                 status: nil,
-                issue: RuntimeStatusReadIssue(source: source, message: "empty HTTP status")
+                issue: PlatformStateReadIssue(source: source, message: "empty HTTP status")
             )
         }
         return RuntimeHTTPStatusRead(status: code, issue: nil)
     }
 
-    private func withDataDirectoryMetrics(_ status: RuntimeStatus, settings: RuntimeSettings) -> RuntimeStatus {
+    private func withDataDirectoryMetrics(_ status: PlatformState, settings: RuntimeSettings) -> PlatformState {
         RuntimeDataDirectoryMetricsAssembler.applyingMetricReads(
             to: status,
             reads: dataDirectoryMetricReads(settings: settings)
@@ -178,19 +201,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             storageUsage: storageUsage,
             directoryStats: RuntimeDataDirectoryStatsReader(fileStore: fileStore)
                 .read(path: settings.vitalFilesDirectory)
-        )
-    }
-
-    private func launchdServiceState(_ service: RuntimeManagedService) -> RuntimeServiceState {
-        let result = runSyncCommand(
-            RuntimeControlClientConstants.Commands.launchctl,
-            ["print", "system/\(service.label)"]
-        )
-        return RuntimeLaunchdServiceStateMapper.state(
-            exitCode: result.exitCode,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            outputIssues: result.outputIssues
         )
     }
 

@@ -1,4 +1,6 @@
+import Application
 import Foundation
+import RuntimeControl
 
 public struct RuntimeControlErrorResponse: Codable, Equatable, Sendable {
     public let code: RuntimeControlAPIErrorCode
@@ -19,6 +21,41 @@ enum RuntimeControlHTTPErrorResponseMapper {
                 message: queryError.localizedDescription
             )
         }
+        if let multipartError = error as? RuntimeControlMultipartFormDataError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .badRequest,
+                code: .badRequest,
+                message: multipartError.localizedDescription
+            )
+        }
+        if let stagingError = error as? RuntimeControlMultipartStagingError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .serviceUnavailable,
+                code: .handlerFailed,
+                message: stagingError.localizedDescription
+            )
+        }
+        if let guestQueryError = error as? RuntimeGuestOperationEventQueryRejectedError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .badRequest,
+                code: .badRequest,
+                message: guestQueryError.localizedDescription
+            )
+        }
+        if let guestHistoryError = error as? RuntimeGuestOperationEventHistoryUnavailableError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .serviceUnavailable,
+                code: .guestControlUnavailable,
+                message: guestHistoryError.localizedDescription
+            )
+        }
+        if let operationConflict = error as? RuntimeControlOperationInProgressError {
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .conflict,
+                code: .operationInProgress,
+                message: operationConflict.message
+            )
+        }
         if let handlerError = error as? RuntimeControlAPIReadHandlerError {
             return response(for: handlerError)
         }
@@ -31,10 +68,22 @@ enum RuntimeControlHTTPErrorResponseMapper {
 
     private static func response(for error: RuntimeControlAPIReadHandlerError) -> RuntimeControlHTTPResponse {
         switch error {
-        case .hostAffordanceUnavailable:
+        case .platformAffordanceUnavailable, .runtimeProviderControlUnavailable:
             return RuntimeControlHTTPResponseFactory.error(
                 status: .notImplemented,
-                code: .hostAffordanceUnavailable,
+                code: .platformAffordanceUnavailable,
+                message: error.localizedDescription
+            )
+        case .updateApplyUnavailable:
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .notImplemented,
+                code: .updateApplyUnavailable,
+                message: error.localizedDescription
+            )
+        case .platformSettingsCurrentStateInvalid:
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .serviceUnavailable,
+                code: .handlerFailed,
                 message: error.localizedDescription
             )
         case .unsupportedFileReference:

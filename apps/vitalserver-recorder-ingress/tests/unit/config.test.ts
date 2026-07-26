@@ -1,10 +1,88 @@
 "use strict";
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const test = require("node:test");
 const { loadConfig } = require("../../src/config");
 
 const MIB = 1024 * 1024;
+
+test("config loads bounded Recorder observability admission settings", () => {
+  const defaults = loadConfig({}).observability;
+  assert.strictEqual(defaults.enabled, true);
+  assert.strictEqual(
+    defaults.ledgerDirectory,
+    "/var/lib/vitalserver-recorder-ingress/observability",
+  );
+  assert.strictEqual(defaults.maxRequestBytes, 5 * MIB);
+  assert.deepStrictEqual(defaults.database, {
+    host: "postgres",
+    port: 5432,
+    database: "vitalserver",
+    user: "vitalserver",
+    password: "vitalserver",
+    maxConnections: 10,
+  });
+  assert.deepStrictEqual(defaults.projector, {
+    intervalMs: 1000,
+    batchSize: 100,
+  });
+  assert.strictEqual(defaults.freshnessToleranceMultiplier, 3);
+  assert.strictEqual(defaults.freshnessAllowanceSeconds, 30);
+  assert.strictEqual(defaults.firstReportGraceSeconds, 300);
+  assert.deepStrictEqual(defaults.expectationControl, {
+    state: "unavailable",
+    token: null,
+    reason: "expectation_control_credential_missing",
+  });
+  assert.strictEqual(defaults.expectationCommandMaxBytes, 64 * 1024);
+  const configured = loadConfig({
+    RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY: "/data/observability",
+    RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES: "7340032",
+    RECORDER_INGRESS_POSTGRES_HOST: "db.internal",
+    RECORDER_INGRESS_POSTGRES_MAX_CONNECTIONS: "4",
+  }).observability;
+  assert.strictEqual(configured.ledgerDirectory, "/data/observability");
+  assert.strictEqual(configured.maxRequestBytes, 7 * MIB);
+  assert.strictEqual(configured.database.host, "db.internal");
+  assert.strictEqual(configured.database.maxConnections, 4);
+});
+
+test("expectation control credential is explicit and file read failures stay unavailable", () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "recorder-expectation-credential-"),
+  );
+  const tokenFile = path.join(directory, "token");
+  fs.writeFileSync(tokenFile, "control-secret\n");
+
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE: tokenFile,
+  }).observability.expectationControl, {
+    state: "loaded",
+    token: "control-secret",
+    reason: null,
+  });
+  const unreadable = loadConfig({
+    RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE:
+      path.join(directory, "missing"),
+  }).observability.expectationControl;
+  assert.strictEqual(unreadable.state, "unavailable");
+  assert.strictEqual(unreadable.token, null);
+  assert.match(
+    unreadable.reason,
+    /^expectation_control_credential_file_read_failed:/,
+  );
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN: "literal",
+    RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE: tokenFile,
+  }).observability.expectationControl, {
+    state: "unavailable",
+    token: null,
+    reason: "expectation_control_credential_ambiguous",
+  });
+});
 
 test("config loads explicit redis ip rewrite policy", () => {
   assert.deepStrictEqual(loadConfig({
@@ -38,10 +116,33 @@ test("config loads explicit redis availability policy", () => {
   });
 });
 
-test("config enables bounded spool and replay by default", () => {
+test("config loads explicit native vital upload tracking settings", () => {
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_UPSTREAM_HOST: "vitalserver.test",
+    RECORDER_INGRESS_UPSTREAM_PORT: "8080",
+    RECORDER_INGRESS_NATIVE_UPLOAD_STATE_PATH: "/data/native-uploads.json",
+    RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_INTERVAL_MS: "2000",
+    RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_MAX_ATTEMPTS: "8",
+    RECORDER_INGRESS_NATIVE_UPLOAD_INDEX_TIMEOUT_MS: "3000",
+    VITALSERVER_ADMIN_PASSWORD: "secret",
+  }).nativeVitalUploads, {
+    statePath: "/data/native-uploads.json",
+    reconciliation: {
+      intervalMs: 2000,
+      maxAttempts: 8,
+    },
+    vitalServerIndex: {
+      baseUrl: "http://vitalserver.test:8080",
+      adminPassword: "secret",
+      timeoutMs: 3000,
+    },
+  });
+});
+
+test("config preserves direct upstream delivery and observes send_data by default", () => {
   assert.deepStrictEqual(loadConfig({}).spool, {
-    enabled: true,
-    mode: "spool_and_replay",
+    enabled: false,
+    mode: "observe_only",
     storage: "redis_list",
     listKey: "vitalserver:recorder_ingress:send_data:pending",
     inFlightListKey: "vitalserver:recorder_ingress:send_data:in_flight",
@@ -53,14 +154,14 @@ test("config enables bounded spool and replay by default", () => {
     maxPendingBytes: 512 * 1024 * 1024,
     maxPayloadBytes: 10 * 1024 * 1024,
     replay: {
-      enabled: true,
+      enabled: false,
       intervalMs: 1000,
       batchSize: 1000,
       maxAttempts: 3,
       maxBytesPerSecond: 20 * MIB,
-      targetTimeoutMs: 5000,
-      adaptive: {
-        enabled: true,
+        targetTimeoutMs: 5000,
+        adaptive: {
+        enabled: false,
         minBytesPerSecond: 1 * MIB,
         maxBytesPerSecond: 20 * MIB,
         minItemsPerTick: 50,
@@ -71,8 +172,7 @@ test("config enables bounded spool and replay by default", () => {
     },
   });
   assert.deepStrictEqual(loadConfig({}).memoryGuard, {
-    runtimeStatePath: "/run/tirosh/runtime/runtime-state.json",
-    maxAgeMs: 15000,
+    enabled: false,
   });
   assert.deepStrictEqual(loadConfig({}).failureLog, {
     enabled: true,
@@ -91,9 +191,7 @@ test("config enables bounded spool and replay by default", () => {
       retryDelayMs: 60000,
       maxAttempts: 3,
       requestTimeoutMs: 300000,
-      recoverUrl: "",
-      vitalserverUrl: "http://app:80",
-      uploadEndpoint: "/upload",
+      exportUrl: "",
       outputDir: "/var/lib/vitalserver-recorder-ingress/recovery/vital-export",
       statePath: "/var/lib/vitalserver-recorder-ingress/recovery/raw-archive-auto-export-state.json",
     },
@@ -123,9 +221,7 @@ test("config loads explicit send_data raw archive settings", () => {
     RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS: "30000",
     RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS: "5",
     RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS: "40000",
-    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL: "http://recover.test/raw",
-    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL: "http://app.test",
-    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT: "/upload_vital.php",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_EXPORT_URL: "http://recover.test/export",
     RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR: "/external/export",
     RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH: "/external/state.json",
   }).rawArchive, {
@@ -141,9 +237,7 @@ test("config loads explicit send_data raw archive settings", () => {
       retryDelayMs: 30000,
       maxAttempts: 5,
       requestTimeoutMs: 40000,
-      recoverUrl: "http://recover.test/raw",
-      vitalserverUrl: "http://app.test",
-      uploadEndpoint: "/upload_vital.php",
+      exportUrl: "http://recover.test/export",
       outputDir: "/external/export",
       statePath: "/external/state.json",
     },
@@ -180,7 +274,7 @@ test("config supports explicit send_data passthrough mode", () => {
       maxBytesPerSecond: 20 * MIB,
       targetTimeoutMs: 5000,
       adaptive: {
-        enabled: true,
+        enabled: false,
         minBytesPerSecond: 1 * MIB,
         maxBytesPerSecond: 20 * MIB,
         minItemsPerTick: 50,

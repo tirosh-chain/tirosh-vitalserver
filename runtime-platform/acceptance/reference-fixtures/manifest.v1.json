@@ -1,0 +1,247 @@
+{
+  "schemaVersion": "v1",
+  "collection": "runtime-platform-reference-fixtures",
+  "fixtures": [
+    {
+      "id": "legacy-recorder-socketio-join-vr",
+      "path": "recorder-socketio/join-vr.json",
+      "sha256": "32804be0953a13d024f02033b7dd20a76eb7dec2504b44e6ea69c57972dbba9d",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-wire-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-recorder-ingress/tests/integration/socketio-audit-service.test.ts",
+        "locator": "socket.io auditor records join_vr and rewrites redis ip (lines 14-38)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "protocol-spike",
+        "acceptance-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C5",
+        "purpose": "Establish the Recorder session identity event before ingress receipt behavior is implemented."
+      }
+    },
+    {
+      "id": "legacy-recorder-socketio-send-data-text",
+      "path": "recorder-socketio/send-data-text.json",
+      "sha256": "4e03746c0f8b604cd57cf62ed4cc6f48054d880e55d3b14edd8a93b64aa827db",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-wire-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-recorder-ingress/tests/integration/socketio-audit-service.test.ts",
+        "locator": "socket.io auditor summarizes send_data payload (lines 60-95)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "protocol-spike",
+        "acceptance-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C5",
+        "purpose": "Exercise the text event shape without retaining Recorder content."
+      }
+    },
+    {
+      "id": "legacy-recorder-socketio-send-data-binary-attachment",
+      "path": "recorder-socketio/send-data-binary-attachment.json",
+      "sha256": "9eade7a8ecfc85a3e19a9d31c0203b477cd28a694c09b8f4680e009d8a0e05dd",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-wire-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-recorder-ingress/tests/integration/socketio-audit-service.test.ts",
+        "locator": "socket.io auditor summarizes binary send_data attachments (lines 130-157)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "protocol-spike",
+        "acceptance-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C5",
+        "purpose": "Require explicit binary-attachment correlation before a receipt can be accepted."
+      }
+    },
+    {
+      "id": "legacy-recorder-socketio-req-cmd-dispatch",
+      "path": "recorder-socketio/req-cmd-dispatch.json",
+      "sha256": "66c1a2c312e3408ca85db9cf3ef4903c0ce6354dac792cd499c93bdeb993a4dd",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-wire-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-recorder-ingress/tests/integration/socketio-audit-service.test.ts",
+        "locator": "socket.io auditor correlates req_cmd and dispatch (lines 244-263)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "protocol-spike",
+        "negative-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C5",
+        "purpose": "Preserve command-request recognition while Recorder Gateway returns explicit unsupported instead of dispatching a command."
+      }
+    },
+    {
+      "id": "legacy-recorder-ingress-durable-spool-stored",
+      "path": "recorder-ingress/durable-spool-stored.json",
+      "sha256": "28179f880848a28f22c864fc7285b75e46880e3acff2bfc7ffe09e1023dc7992",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-outcome-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-recorder-ingress/tests/integration/send-data-ingress-service.test.ts",
+        "locator": "send_data ingress service writes accepted payload to durable spool (lines 13-45)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "acceptance-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C5",
+        "purpose": "Keep durable spool handoff separate from an upstream delivery result."
+      }
+    },
+    {
+      "id": "legacy-recorder-ingress-spool-full-rejected",
+      "path": "recorder-ingress/spool-full-rejected.json",
+      "sha256": "06efeba80c63dbc36755474b7120090f2a7c9cb75eb7a58220dfe26f064890ee",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-outcome-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-recorder-ingress/tests/integration/send-data-ingress-service.test.ts",
+        "locator": "send_data ingress service reports spool queue full as backpressure (lines 171-207)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "acceptance-oracle",
+        "negative-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C5",
+        "purpose": "Prove that an admission rejection is not silently converted into a delivery success."
+      }
+    },
+    {
+      "id": "legacy-recorder-replay-upstream-unavailable",
+      "path": "recorder-ingress/upstream-unavailable.json",
+      "sha256": "7a66468833c3a68755a8c2b024b24d7875742c0e4459391626988f1d68ce24c3",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-outcome-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-recorder-ingress/tests/unit/send-data-replay-target.test.ts",
+        "locator": "send_data replay target reports connection failure explicitly (lines 75-86)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "acceptance-oracle",
+        "negative-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C5",
+        "purpose": "Keep upstream transport unavailability explicit and distinct from an ingress acceptance."
+      }
+    },
+    {
+      "id": "legacy-vital-file-upload-completed",
+      "path": "vital-file-upload/multipart-completed.json",
+      "sha256": "eade05810dcc61b72c3a7cb4ad1bb955a0768befd5e1b95cfb589521a792fcc6",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-wire-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-macos-runtime/Tests/OutboundAdaptersTests/HTTPRuntimeGuestControlGatewayTests.swift",
+        "locator": "testUploadLabVitalFilesForwardsMultipartBytesToGuestController (lines 1476-1517)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "acceptance-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C6",
+        "purpose": "Preserve the historical library-upload request shape without treating it as export success."
+      }
+    },
+    {
+      "id": "legacy-vital-file-upload-partial",
+      "path": "vital-file-upload/multipart-partial.json",
+      "sha256": "ac192d8552ba490d4fc0ce9dfd914152b23bcc7c71052435e86d8839d5a45710",
+      "capturedAt": "2026-07-17",
+      "classification": "legacy-wire-observation",
+      "source": {
+        "repository": "legacy-parent",
+        "revision": "5775f74c5d07d183f171be86b27892474b926ba5",
+        "path": "apps/vitalserver-macos-runtime/Tests/OutboundAdaptersTests/HTTPRuntimeGuestControlGatewayTests.swift",
+        "locator": "testUploadLabVitalFilesForwardsAllFilesAndDecodesPerFileFailures (lines 1519-1545)"
+      },
+      "sanitization": {
+        "rawProtocolContent": false,
+        "patientData": false,
+        "networkAddress": false,
+        "secretMaterial": false
+      },
+      "newPlatformUse": [
+        "acceptance-oracle",
+        "negative-oracle"
+      ],
+      "vnextMapping": {
+        "contract": "C6",
+        "purpose": "Preserve the partial-result fact while requiring a future export receipt to report upload and indexing separately."
+      }
+    }
+  ]
+}

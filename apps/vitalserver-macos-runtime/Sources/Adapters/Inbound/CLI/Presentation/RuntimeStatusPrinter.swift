@@ -2,6 +2,16 @@ import Contracts
 import Foundation
 import Errors
 
+public struct RuntimeStatusPrinterCurrentStatus {
+    let status: RuntimeStatusLevel
+    let vmIP: String?
+
+    public init(status: RuntimeStatusLevel, vmIP: String?) {
+        self.status = status
+        self.vmIP = vmIP
+    }
+}
+
 public struct RuntimeStatusPrinter {
     let productRoot: URL
     let runtimeDirectory: URL
@@ -11,7 +21,7 @@ public struct RuntimeStatusPrinter {
     let rootfsBase: URL
     let vmDisk: URL
     let latestBackupPath: () throws -> String?
-    let runtimeStatusDocument: () -> RuntimeStatusDocumentLoadResult
+    let currentStatus: () -> RuntimeStatusPrinterCurrentStatus
     let runtimeVersionValue: () -> String
     let installedProxyPort: () -> Int?
     let hostProxyHTTP: (Int) -> String
@@ -29,7 +39,7 @@ public struct RuntimeStatusPrinter {
         rootfsBase: URL,
         vmDisk: URL,
         latestBackupPath: @escaping () throws -> String?,
-        runtimeStatusDocument: @escaping () -> RuntimeStatusDocumentLoadResult,
+        currentStatus: @escaping () -> RuntimeStatusPrinterCurrentStatus,
         runtimeVersionValue: @escaping () -> String,
         installedProxyPort: @escaping () -> Int?,
         hostProxyHTTP: @escaping (Int) -> String,
@@ -46,7 +56,7 @@ public struct RuntimeStatusPrinter {
         self.rootfsBase = rootfsBase
         self.vmDisk = vmDisk
         self.latestBackupPath = latestBackupPath
-        self.runtimeStatusDocument = runtimeStatusDocument
+        self.currentStatus = currentStatus
         self.runtimeVersionValue = runtimeVersionValue
         self.installedProxyPort = installedProxyPort
         self.hostProxyHTTP = hostProxyHTTP
@@ -61,9 +71,9 @@ public struct RuntimeStatusPrinter {
         printLine("  product root: \(productRoot.path)")
         printLine("  runtime dir: \(runtimeDirectory.path)")
         printLine("  latest backup: \(latestBackupText())")
-        printLine("  status file: \(fileState(url: runtimeStatus))")
-        let statusDocument = runtimeStatusDocument()
-        printLine("  status: \(statusText(statusDocument))")
+        printLine("  status diagnostics file: \(fileState(url: runtimeStatus))")
+        let currentStatus = currentStatus()
+        printLine("  status: \(currentStatus.status.rawValue)")
         printLine("  launcher: \(fileState(path: launcherPath))")
         printLine("  proxy runner: \(fileState(path: proxyRunnerPath))")
         printLine("  rootfs base: \(fileState(url: rootfsBase))")
@@ -72,7 +82,7 @@ public struct RuntimeStatusPrinter {
         printLine("  VM service: \(serviceState(.vm).rawValue)")
         printLine("  proxy service: \(serviceState(.proxy).rawValue)")
         printLine("  watchdog service: \(serviceState(.watchdog).rawValue)")
-        printLine("  VM IP: \(vmIPText(statusDocument))")
+        printLine("  VM IP: \(currentStatus.vmIP ?? "not reported")")
         if let proxyPort = installedProxyPort() {
             printLine("  proxy port: \(proxyPort)")
             printLine("  host proxy HTTP: \(hostProxyHTTP(proxyPort))")
@@ -95,28 +105,6 @@ public struct RuntimeStatusPrinter {
             return try latestBackupPath() ?? "none"
         } catch {
             return "read failed: \(error.localizedDescription)"
-        }
-    }
-
-    private func statusText(_ result: RuntimeStatusDocumentLoadResult) -> String {
-        switch result {
-        case .loaded(let document):
-            return document.status.rawValue
-        case .missing:
-            return "missing status document"
-        case .failed(let reason):
-            return "status document read failed: \(reason)"
-        }
-    }
-
-    private func vmIPText(_ result: RuntimeStatusDocumentLoadResult) -> String {
-        switch result {
-        case .loaded(let document):
-            return document.vmIP ?? "not reported"
-        case .missing:
-            return "missing status document"
-        case .failed(let reason):
-            return "status document read failed: \(reason)"
         }
     }
 }

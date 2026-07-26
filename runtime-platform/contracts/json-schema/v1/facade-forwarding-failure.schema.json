@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:facade-forwarding-failure",
+  "title": "FacadeForwardingFailure",
+  "description": "A Host facade failure while forwarding a command to its configured Guest endpoint. It never claims that a Guest operation does or does not exist when deliveryDisposition is unknown.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "state",
+    "requestId",
+    "observedAt",
+    "deliveryDisposition",
+    "issue"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "unavailable",
+        "failed"
+      ]
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "deliveryDisposition": {
+      "type": "string",
+      "enum": [
+        "not-sent",
+        "unknown"
+      ]
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    }
+  }
+}

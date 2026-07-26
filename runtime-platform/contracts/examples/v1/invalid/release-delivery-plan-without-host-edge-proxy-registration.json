@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v1",
+  "id": "macos-release-plan-without-edge-proxy",
+  "productVersion": "0.2.0-dev",
+  "platform": "macos",
+  "providerKind": "macos-virtualization",
+  "intendedInstallerArtifact": {
+    "kind": "pkg",
+    "expectedName": "VitalServerRuntimePlatform-0.2.0-dev.pkg"
+  },
+  "macOSInstallerPackageIdentifier": "com.tirosh.vitalserver.runtime-platform",
+  "requiredHostServiceRegistrations": [
+    {
+      "role": "host-agent",
+      "manager": "launchd",
+      "name": "com.tirosh.vitalserver.host-agent"
+    }
+  ],
+  "requiredProofStages": [
+    "artifact-integrity",
+    "sbom-and-notices",
+    "clean-install",
+    "service-registration",
+    "reboot",
+    "update",
+    "rollback",
+    "uninstall-reinstall"
+  ]
+}

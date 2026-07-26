@@ -163,6 +163,19 @@ final class RuntimeFreshInstallPreflightRunnerTests: XCTestCase {
         ))
     }
 
+    func testFreshInstallArtifactContractDoesNotTreatRetainedUninstallDataAsInstalledPayload() {
+        let installedPaths = InstalledRuntimePaths(
+            productRoot: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper")
+        )
+
+        let artifactPaths = RuntimeFreshInstallPreflightComposition
+            .freshInstallArtifactPaths(installedPaths: installedPaths)
+
+        XCTAssertTrue(artifactPaths.contains(installedPaths.productRoot))
+        XCTAssertTrue(artifactPaths.contains(installedPaths.uninstaller))
+        XCTAssertFalse(artifactPaths.contains(installedPaths.standardUninstallRetainedDataRoot))
+    }
+
     func testProxyPortReaderDistinguishesClearOccupiedAndInspectFailed() {
         let clear = proxyPortState(result:
             RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")

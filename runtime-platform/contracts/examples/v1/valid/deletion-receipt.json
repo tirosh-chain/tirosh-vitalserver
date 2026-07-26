@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v1",
+  "id": "deletion-receipt-0001",
+  "operationId": "guest-operation-0001",
+  "requestId": "delete-lab-session-0001",
+  "target": {
+    "resourceType": "lab-session",
+    "resourceId": "lab-session-0001"
+  },
+  "cascade": "owned-resources",
+  "deletedResources": [
+    { "resourceType": "virtual-recorder", "resourceId": "lab-recorder-0001" },
+    { "resourceType": "lab-bed", "resourceId": "lab-bed-0001" },
+    { "resourceType": "lab-session", "resourceId": "lab-session-0001" }
+  ],
+  "retainedResources": [
+    { "resourceType": "artifact-manifest", "resourceId": "artifact-manifest-0001" }
+  ],
+  "completedAt": "2026-07-17T00:06:00Z"
+}

@@ -340,29 +340,29 @@ public struct RuntimeVMDiskRepairUseCase {
         )
     }
 
-    public func redisBackupStartedStatusPlan() -> RepairRuntimeStatusPlan {
+    public func vitalServerBackupStartedStatusPlan() -> RepairRuntimeStatusPlan {
         RepairRuntimeStatusPlan(
             status: .recovering,
             operation: .repairVMDisk,
-            message: "Creating Redis backup before VM disk repair"
+            message: "Creating VitalServer backup before VM disk repair"
         )
     }
 
-    public func redisBackupCompletedPlan() -> RepairRuntimeLoggedStatusPlan {
+    public func vitalServerBackupCompletedPlan() -> RepairRuntimeLoggedStatusPlan {
         RepairRuntimeLoggedStatusPlan(
-            logMessage: "redis backup before vm disk repair completed",
+            logMessage: "VitalServer backup before VM disk repair completed",
             status: .recovering,
             operation: .repairVMDisk,
-            statusMessage: "Redis backup completed before VM disk repair"
+            statusMessage: "VitalServer backup completed before VM disk repair"
         )
     }
 
-    public func redisBackupFailedPlan(reason: String) -> RepairRuntimeLoggedStatusPlan {
+    public func vitalServerBackupFailedPlan(reason: String) -> RepairRuntimeLoggedStatusPlan {
         RepairRuntimeLoggedStatusPlan(
-            logMessage: "redis backup before vm disk repair failed error=\(reason); continuing with VM disk archive",
+            logMessage: "VitalServer backup before VM disk repair failed error=\(reason); continuing with VM disk archive",
             status: .recovering,
             operation: .repairVMDisk,
-            statusMessage: "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
+            statusMessage: "VitalServer backup before VM disk repair failed; current VM disk will be archived before replacement"
         )
     }
 

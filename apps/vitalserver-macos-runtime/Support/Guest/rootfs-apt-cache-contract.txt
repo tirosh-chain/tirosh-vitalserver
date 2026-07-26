@@ -1,0 +1,6 @@
+schemaVersion=1
+snapshotSources=noble,noble-updates,noble-security
+installMode=no-install-recommends
+blockedUpgradePolicy=explicit-guard-list
+installedPackageProof=exact-dpkg-version
+packageStateProof=dpkg-audit

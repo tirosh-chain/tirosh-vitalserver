@@ -35,6 +35,16 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             path=path,
         ),
         app_dockerfile=required_string(docker_images, "app_dockerfile", path=path),
+        postgres_migrator_image=required_string(
+            docker_images,
+            "postgres_migrator_image",
+            path=path,
+        ),
+        postgres_migrator_dockerfile=required_string(
+            docker_images,
+            "postgres_migrator_dockerfile",
+            path=path,
+        ),
         recorder_ingress_image=required_string(
             docker_images,
             "recorder_ingress_image",
@@ -75,14 +85,14 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             "redis_relay_dockerfile",
             path=path,
         ),
-        testkit_image=required_string(
+        lab_image=required_string(
             docker_images,
-            "testkit_image",
+            "lab_image",
             path=path,
         ),
-        testkit_dockerfile=required_string(
+        lab_dockerfile=required_string(
             docker_images,
-            "testkit_dockerfile",
+            "lab_dockerfile",
             path=path,
         ),
     )

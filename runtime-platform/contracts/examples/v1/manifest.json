@@ -1,0 +1,975 @@
+{
+  "schemaVersion": "v1",
+  "fixtures": [
+    {
+      "path": "valid/read-result-available.json",
+      "schema": "read-result.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/read-result-unsupported.json",
+      "schema": "read-result.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/command-rejection.json",
+      "schema": "command-rejection.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/operation-succeeded.json",
+      "schema": "operation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/runtime-topology.json",
+      "schema": "runtime-topology.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/runtime-topology-apply-command.json",
+      "schema": "runtime-topology-apply-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/capability-document.json",
+      "schema": "capability-document.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/ingress-receipt-accepted.json",
+      "schema": "ingress-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-cold-path-capture-finalization-command.json",
+      "schema": "recorder-cold-path-capture-finalization-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-cold-path-capture-finalization-receipt.json",
+      "schema": "recorder-cold-path-capture-finalization-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-cold-path-capture-finalized.json",
+      "schema": "recorder-cold-path-capture.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-cold-path-capture-finalization-rejection-without-request-id.json",
+      "schema": "recorder-cold-path-capture-finalization-rejection.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/delivery-receipt-succeeded.json",
+      "schema": "delivery-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/delivery-receipt-unavailable-retry.json",
+      "schema": "delivery-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/artifact-manifest.json",
+      "schema": "artifact-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/export-receipt-succeeded.json",
+      "schema": "export-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/artifact-export-command.json",
+      "schema": "artifact-export-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/archive-export-provider.json",
+      "schema": "archive-export-provider.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/archive-artifact-detail.json",
+      "schema": "archive-artifact-detail.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-artifact-page.json",
+      "schema": "recorder-artifact-page.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/lab-session.json",
+      "schema": "lab-resources.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/lab-bed.json",
+      "schema": "lab-resources.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/virtual-recorder.json",
+      "schema": "lab-resources.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/lab-session-create-command.json",
+      "schema": "lab-commands.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/lab-resource-delete-command.json",
+      "schema": "lab-commands.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/deletion-receipt.json",
+      "schema": "deletion-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/service-readiness-ready.json",
+      "schema": "service-readiness.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/clock-quality-synchronized.json",
+      "schema": "clock-quality.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observation.json",
+      "schema": "recorder-observation-envelope.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/telemetry-correlation.json",
+      "schema": "telemetry-correlation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/external-upstream-integration-available.json",
+      "schema": "external-upstream-integration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/external-upstream-apply-command.json",
+      "schema": "external-upstream-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/outbound-relay-target-available.json",
+      "schema": "outbound-relay-target.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/outbound-relay-apply-command.json",
+      "schema": "outbound-relay-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/time-authority-synchronized.json",
+      "schema": "time-authority.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/time-authority-apply-command.json",
+      "schema": "time-authority-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/catalog-observation.json",
+      "schema": "catalog-observation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/catalog-observation-ingest-command.json",
+      "schema": "catalog-observation-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/catalog-observation-admission-accepted.json",
+      "schema": "catalog-observation-admission.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/catalog-observation-admission-quarantined.json",
+      "schema": "catalog-observation-admission.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observability-summary-current.json",
+      "schema": "recorder-observability-summary.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observability-summary-page.json",
+      "schema": "recorder-observability-summary-page.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-expectation-command-set.json",
+      "schema": "recorder-observability-expectation-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-expectation-receipt.json",
+      "schema": "recorder-expectation-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observation-timeline-page.json",
+      "schema": "recorder-observation-timeline-page.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-incident-page.json",
+      "schema": "recorder-incident-page.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/telemetry-pipeline-ready.json",
+      "schema": "telemetry-pipeline.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/telemetry-pipeline-apply-command.json",
+      "schema": "telemetry-pipeline-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/telemetry-signal-command.json",
+      "schema": "telemetry-signal-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/telemetry-emission-receipt-dropped.json",
+      "schema": "telemetry-emission-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/platform-installation.json",
+      "schema": "platform-installation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-endpoint-running-not-checked.json",
+      "schema": "guest-runtime-control-endpoint.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-lifecycle-command.json",
+      "schema": "guest-lifecycle-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/provider-lifecycle-request.json",
+      "schema": "provider-lifecycle-request.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/provider-lifecycle-result-running.json",
+      "schema": "provider-lifecycle-result.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/platform-provider-lifecycle-invocation.json",
+      "schema": "platform-provider-lifecycle-invocation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/provider-installation-evidence-running.json",
+      "schema": "provider-installation-evidence.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/release-delivery-plan.json",
+      "schema": "release-delivery-plan.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/release-delivery-plan-macos-unsigned.json",
+      "schema": "release-delivery-plan.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/release-delivery-proof-pending.json",
+      "schema": "release-delivery-proof.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/release-delivery-proof-service-registration-verified.json",
+      "schema": "release-delivery-proof.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/facade-forwarding-failure-unknown.json",
+      "schema": "facade-forwarding-failure.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/command-admission-failure-unknown.json",
+      "schema": "command-admission-failure.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/update-bootstrap-envelope.json",
+      "schema": "update-bootstrap-envelope.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/product-update-specification.json",
+      "schema": "product-update-specification.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/staged-update-layer-effect-receipt-succeeded.json",
+      "schema": "staged-update-layer-effect-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-update-command.json",
+      "schema": "host-update-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/update-bootstrap-receipt-staged.json",
+      "schema": "update-bootstrap-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/update-execution-report-succeeded.json",
+      "schema": "update-execution-report.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/update-completion-command.json",
+      "schema": "update-completion-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-update-journal-handoff-pending.json",
+      "schema": "host-update-journal.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/staged-update-invocation.json",
+      "schema": "staged-update-invocation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/staged-update-handoff.json",
+      "schema": "staged-update-handoff.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/macos-virtual-machine-configuration.json",
+      "schema": "macos-virtual-machine-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-agent-deployment-configuration-macos.json",
+      "schema": "host-agent-deployment-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/native-guest-machine-provisioning-configuration-linux.json",
+      "schema": "native-guest-machine-provisioning-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/native-guest-machine-provisioning-receipt-linux.json",
+      "schema": "native-guest-machine-provisioning-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/native-guest-artifact-manifest.json",
+      "schema": "native-guest-artifact-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-local-administration-endpoint-descriptor-unix.json",
+      "schema": "host-local-administration-endpoint-descriptor.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-local-administration-endpoint-descriptor-windows.json",
+      "schema": "host-local-administration-endpoint-descriptor.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/macos-guest-artifact-manifest.json",
+      "schema": "macos-guest-artifact-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-artifact-compilation-command.json",
+      "schema": "guest-artifact-compilation-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-bootstrap-configuration.json",
+      "schema": "guest-product-bootstrap-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-bootstrap-volume-composition-plan.json",
+      "schema": "guest-product-bootstrap-volume-composition-plan.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-vitalserver-topology-deployment-external.json",
+      "schema": "guest-product-vitalserver-topology-deployment.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-vitalserver-topology-deployment-bundled.json",
+      "schema": "guest-product-vitalserver-topology-deployment.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/external-vitalserver-delivery-configuration.json",
+      "schema": "external-vitalserver-delivery-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-artifact-compilation-receipt.json",
+      "schema": "guest-artifact-compilation-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-artifact-compilation-input-assembly-declaration.json",
+      "schema": "guest-artifact-compilation-input-assembly-declaration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-artifact-compilation-input-assembly-receipt.json",
+      "schema": "guest-artifact-compilation-input-assembly-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-linux-boot-artifact-extraction-declaration.json",
+      "schema": "guest-linux-boot-artifact-extraction-declaration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-linux-boot-artifact-extraction-receipt.json",
+      "schema": "guest-linux-boot-artifact-extraction-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-linux-source-disk-materialization-declaration.json",
+      "schema": "guest-linux-source-disk-materialization.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-linux-source-disk-materialization-receipt.json",
+      "schema": "guest-linux-source-disk-materialization.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-root-storage-partition-assembly-declaration.json",
+      "schema": "guest-root-storage-partition-assembly-declaration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-root-storage-partition-assembly-receipt.json",
+      "schema": "guest-root-storage-partition-assembly-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-edge-proxy-deployment-configuration.json",
+      "schema": "host-edge-proxy-deployment-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-service-manager-deployment-configuration.json",
+      "schema": "guest-product-service-manager-deployment-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/macos-release-package-assembly-declaration.json",
+      "schema": "macos-release-package-assembly-declaration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/macos-release-package-assembly-receipt.json",
+      "schema": "macos-release-package-assembly-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/read-result-available-without-value.json",
+      "schema": "read-result.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/command-rejection-with-operation-id.json",
+      "schema": "command-rejection.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/operation-failed-without-failure.json",
+      "schema": "operation.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/ingress-accepted-without-durable-ingress-state.json",
+      "schema": "ingress-receipt.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/recorder-cold-path-capture-finalized-without-receipt.json",
+      "schema": "recorder-cold-path-capture.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/delivery-receipt-succeeded-with-retry.json",
+      "schema": "delivery-receipt.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/export-succeeded-without-indexing.json",
+      "schema": "export-receipt.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/lab-session-delete-without-cascade.json",
+      "schema": "lab-commands.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/clock-synchronized-without-quality-evidence.json",
+      "schema": "clock-quality.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/external-upstream-available-without-capability.json",
+      "schema": "external-upstream-integration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/telemetry-receipt-exported-with-issue.json",
+      "schema": "telemetry-emission-receipt.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-endpoint-running-with-issue.json",
+      "schema": "guest-runtime-control-endpoint.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/provider-lifecycle-unavailable-without-issue.json",
+      "schema": "provider-lifecycle-result.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/platform-provider-lifecycle-invocation-without-revision.json",
+      "schema": "platform-provider-lifecycle-invocation.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/provider-installation-evidence-running-with-issue.json",
+      "schema": "provider-installation-evidence.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/release-delivery-proof-verified-without-evidence.json",
+      "schema": "release-delivery-proof.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/release-delivery-proof-verified-without-observed-installer-artifact.json",
+      "schema": "release-delivery-proof.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/release-delivery-proof-service-registration-verified-without-observed-registrations.json",
+      "schema": "release-delivery-proof.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/release-delivery-plan-without-host-edge-proxy-registration.json",
+      "schema": "release-delivery-plan.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/release-delivery-plan-macos-without-signature-policy.json",
+      "schema": "release-delivery-plan.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/command-admission-failure-without-admission-state.json",
+      "schema": "command-admission-failure.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/update-bootstrap-envelope-with-minimum-updater-version.json",
+      "schema": "update-bootstrap-envelope.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/product-update-specification-available-rollback-without-artifact.json",
+      "schema": "product-update-specification.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/staged-update-layer-effect-receipt-failed-without-issue.json",
+      "schema": "staged-update-layer-effect-receipt.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/update-bootstrap-receipt-staged-with-issue.json",
+      "schema": "update-bootstrap-receipt.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/update-execution-report-succeeded-with-failure.json",
+      "schema": "update-execution-report.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/host-update-journal-succeeded-without-report.json",
+      "schema": "host-update-journal.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/staged-update-invocation-with-traversal.json",
+      "schema": "staged-update-invocation.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/staged-update-handoff-with-traversal.json",
+      "schema": "staged-update-handoff.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/macos-virtual-machine-configuration-with-traversal.json",
+      "schema": "macos-virtual-machine-configuration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/host-agent-deployment-configuration-macos-without-c32.json",
+      "schema": "host-agent-deployment-configuration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/host-local-administration-endpoint-descriptor-remote.json",
+      "schema": "host-local-administration-endpoint-descriptor.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/operator-interface-bootstrap-configuration-unix.json",
+      "schema": "operator-interface-bootstrap-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/operator-interface-bootstrap-configuration-windows.json",
+      "schema": "operator-interface-bootstrap-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/operator-interface-bootstrap-configuration-with-remote-endpoint.json",
+      "schema": "operator-interface-bootstrap-configuration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/macos-guest-artifact-manifest-without-storage-digest.json",
+      "schema": "macos-guest-artifact-manifest.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-artifact-compilation-command-with-traversal.json",
+      "schema": "guest-artifact-compilation-command.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-artifact-compilation-input-assembly-declaration-without-bootstrap-configuration.json",
+      "schema": "guest-artifact-compilation-input-assembly-declaration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-linux-boot-artifact-extraction-declaration-with-partitioned-root.json",
+      "schema": "guest-linux-boot-artifact-extraction-declaration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-linux-source-disk-materialization-declaration-with-raw-source.json",
+      "schema": "guest-linux-source-disk-materialization.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-root-storage-partition-assembly-declaration-with-implicit-root-partition.json",
+      "schema": "guest-root-storage-partition-assembly-declaration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/host-edge-proxy-deployment-configuration-with-implicit-identity-policy.json",
+      "schema": "host-edge-proxy-deployment-configuration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-product-service-manager-deployment-configuration-with-implicit-restart-policy.json",
+      "schema": "guest-product-service-manager-deployment-configuration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-product-bootstrap-configuration-without-enabled-unit-link-target.json",
+      "schema": "guest-product-bootstrap-configuration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-product-bootstrap-volume-composition-plan-without-nocloud-label.json",
+      "schema": "guest-product-bootstrap-volume-composition-plan.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-product-vitalserver-topology-deployment-external-without-delivery-configuration.json",
+      "schema": "guest-product-vitalserver-topology-deployment.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/macos-release-package-assembly-declaration-unsigned-with-identity.json",
+      "schema": "macos-release-package-assembly-declaration.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/host-product-installation-manifest.json",
+      "schema": "host-product-installation-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-product-installation-manifest-without-transaction-store.json",
+      "schema": "host-product-installation-manifest.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/host-installation-footprint-clean.json",
+      "schema": "host-installation-footprint.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-installation-preflight-request.json",
+      "schema": "host-installation-lifecycle.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-installation-preflight-receipt.json",
+      "schema": "host-installation-lifecycle.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-product-removal-receipt-purged.json",
+      "schema": "host-product-removal-lifecycle.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-installation-unimplemented-uninstall-request.json",
+      "schema": "host-installation-lifecycle.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/host-installation-receipt-blocked-without-issue.json",
+      "schema": "host-installation-lifecycle.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/host-update-handoff-supervisor-configuration.json",
+      "schema": "host-update-handoff-supervisor-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-update-handoff-dispatch-receipt-completion-submitted.json",
+      "schema": "host-update-handoff-dispatch-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-update-handoff-dispatch-receipt-submitted-with-issue.json",
+      "schema": "host-update-handoff-dispatch-receipt.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/host-update-trust-store.json",
+      "schema": "host-update-trust-store.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-update-trust-store-without-keys.json",
+      "schema": "host-update-trust-store.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/guest-product-release-manager-configuration.json",
+      "schema": "guest-product-release-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-release-update-command.json",
+      "schema": "guest-product-release-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-release-operation-succeeded.json",
+      "schema": "guest-product-release-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-product-release-effect-executor-configuration.json",
+      "schema": "guest-product-release-effect-executor-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-bundled-upstream-image-set-manager-configuration.json",
+      "schema": "guest-bundled-upstream-image-set-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-bundled-upstream-image-set-update-command.json",
+      "schema": "guest-bundled-upstream-image-set-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-bundled-upstream-image-set-operation-succeeded.json",
+      "schema": "guest-bundled-upstream-image-set-management.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-bundled-upstream-image-set-effect-executor-configuration.json",
+      "schema": "guest-bundled-upstream-image-set-effect-executor-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-platform-release-effect-executor-configuration.json",
+      "schema": "host-platform-release-effect-executor-configuration.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-platform-staged-release-update-succeeded.json",
+      "schema": "host-platform-staged-release-update.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/host-platform-staged-release-recovery-succeeded.json",
+      "schema": "host-platform-staged-release-update.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-archive-credential-material-availability-missing.json",
+      "schema": "guest-archive-credential-material-availability.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-archive-credential-material-provisioning-outcome.json",
+      "schema": "guest-archive-credential-material-provisioning-outcome.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/guest-product-release-update-command-without-artifact-digest.json",
+      "schema": "guest-product-release-management.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/host-service-execution-definition.json",
+      "schema": "host-service-execution-definition.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/host-service-execution-definition-with-relative-command.json",
+      "schema": "host-service-execution-definition.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/runtime-console-desktop-artifact-receipt-linux.json",
+      "schema": "runtime-console-desktop-artifact-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/operator-delivery-kit-manifest-linux.json",
+      "schema": "operator-delivery-kit-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/release-delivery-proof-attachment-review.json",
+      "schema": "release-delivery-proof-attachment-review.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/lab-replay-command.json",
+      "schema": "lab-replay-command.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/lab-replay-operation-failed.json",
+      "schema": "lab-replay-operation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-operational-state-artifact-inventory.json",
+      "schema": "guest-operational-state-artifact-inventory.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-operational-state-empty-target-proof.json",
+      "schema": "guest-operational-state-empty-target-proof.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-operational-state-identity.json",
+      "schema": "guest-operational-state-identity.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-installed-runtime-evidence-first-boot.json",
+      "schema": "guest-installed-runtime-evidence.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/guest-installed-runtime-evidence-verified-without-identity.json",
+      "schema": "guest-installed-runtime-evidence.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/guest-operational-state-identity-without-postgresql.json",
+      "schema": "guest-operational-state-identity.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/guest-operational-state-backup-manifest.json",
+      "schema": "guest-operational-state-backup-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/guest-operational-state-backup-operation-succeeded.json",
+      "schema": "guest-operational-state-backup-operation.schema.json",
+      "valid": true
+    },
+    {
+      "path": "valid/recorder-observability-summary-page.json",
+      "schema": "recorder-observability-summary-page.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/guest-operational-state-backup-manifest-with-object-bytes.json",
+      "schema": "guest-operational-state-backup-manifest.schema.json",
+      "valid": false
+    },
+    {
+      "path": "invalid/release-delivery-proof-attachment-review-verified-without-evidence.json",
+      "schema": "release-delivery-proof-attachment-review.schema.json",
+      "valid": false
+    },
+    {
+      "path": "valid/vital-replay-corpus-manifest.json",
+      "schema": "vital-replay-corpus-manifest.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/vital-replay-corpus-manifest-without-redistribution-approval.json",
+      "schema": "vital-replay-corpus-manifest.schema.json",
+      "valid": false
+    }
+  ]
+}

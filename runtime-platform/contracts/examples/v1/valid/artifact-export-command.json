@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "export-lab-recorder-0001",
+  "virtualRecorderId": "lab-recorder-0001",
+  "expectedResourceRevision": 3,
+  "source": {
+    "kind": "recorder-gateway-cold-path",
+    "coldPathFinalizationReceiptId": "recorder-cold-path-finalization-0001"
+  },
+  "provider": {
+    "kind": "file-index",
+    "id": "bundled-archive",
+    "capabilityRevision": 1
+  }
+}

@@ -56,7 +56,7 @@ final class RuntimeVMDiskRepairWorkflowTests: XCTestCase {
         XCTAssertTrue(harness.logs.isEmpty)
     }
 
-    func testRedisBackupFailureResultContinuesWithExplicitReason() throws {
+    func testVitalServerBackupFailureResultContinuesWithExplicitReason() throws {
         let harness = VMDiskRepairWorkflowHarness()
         harness.files[harness.rootfsBase] = 2
         harness.files[harness.vmDisk] = harness.bytesPerGiB * 32
@@ -65,12 +65,12 @@ final class RuntimeVMDiskRepairWorkflowTests: XCTestCase {
         try harness.run()
 
         XCTAssertTrue(harness.logs.contains(
-            "redis backup before vm disk repair failed error=permission denied; continuing with VM disk archive"
+            "VitalServer backup before VM disk repair failed error=permission denied; continuing with VM disk archive"
         ))
         XCTAssertTrue(harness.statuses.contains {
             $0.level == .recovering
                 && $0.operation == .repairVMDisk
-                && $0.message == "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
+                && $0.message == "VitalServer backup before VM disk repair failed; current VM disk will be archived before replacement"
         })
     }
 
@@ -162,8 +162,8 @@ private final class VMDiskRepairWorkflowHarness {
                     events.append("create-replacement:\(plan.rootfsBase.lastPathComponent):\(plan.targetDiskGiB):\(plan.temporaryDisk.lastPathComponent)")
                     files[plan.temporaryDisk] = bytesPerGiB * UInt64(plan.targetDiskGiB)
                 },
-                createRedisBackup: { [self] in
-                    events.append("redis-backup")
+                createVitalServerBackup: { [self] in
+                    events.append("vitalserver-backup")
                     if let redisBackupFailureReason {
                         return .failed(reason: redisBackupFailureReason)
                     }

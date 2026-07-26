@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "powerShellExecutable": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+  "vmName": "VitalServer Runtime",
+  "runtimeReadyURL": "http://172.24.0.2:18330/ready",
+  "runtimeEndpointAddress": "172.24.0.2",
+  "runtimeEndpointDocument": "C:\\ProgramData\\VitalServer\\run\\runtime-endpoint.json",
+  "runtimeProviderDocument": "C:\\ProgramData\\VitalServer\\run\\runtime-provider.json",
+  "startupTimeoutSeconds": 300,
+  "shutdownTimeoutSeconds": 180
+}

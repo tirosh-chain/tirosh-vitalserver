@@ -25,27 +25,19 @@ public struct RuntimeStatusWriter {
 
     @discardableResult
     public func writeStatus(
-        _ status: RuntimeStatusLevel,
-        operation: RuntimeOperation,
-        message: String,
-        progress: RuntimeProgressDocument? = nil
+        _ status: RuntimeStatusLevel
     ) throws -> RuntimeHealthSnapshot {
         let snapshot = healthSnapshot()
         try reporter.writeStatus(
             status,
-            operation: operation,
-            message: message,
-            updatedAt: timestamp(),
             runtimeVersion: runtimeVersion(),
             healthSnapshot: snapshot,
-            latestBackup: try latestBackup(),
-            progress: progress
+            latestBackup: try latestBackup()
         )
         return snapshot
     }
 
     public func writeProgress(
-        _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,
         step: RuntimeWorkflowStep,
         stepStatus: RuntimeProgressStepStatus,
@@ -54,16 +46,13 @@ public struct RuntimeStatusWriter {
         reasonCodes: [String] = []
     ) throws {
         try reporter.writeProgress(
-            status,
             operation: operation,
             step: step,
             stepStatus: stepStatus,
             phase: phase,
             message: message,
             reasonCodes: reasonCodes,
-            updatedAt: timestamp(),
-            runtimeVersion: runtimeVersion(),
-            latestBackup: try latestBackup()
+            updatedAt: timestamp()
         )
     }
 }

@@ -11,6 +11,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
         XCTAssertEqual(RuntimeOperationPlans.install.steps.map(\.rawValue), [
             "load-install-settings",
             "prepare-install-directories",
+            "prepare-host-state-store",
             "rotate-runtime-logs",
             "configure-guest-runtime-config",
             "prepare-installed-executables",
@@ -32,6 +33,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
         XCTAssertEqual(RuntimeOperationPlans.installProvision.steps.map(\.rawValue), [
             "load-install-settings",
             "prepare-install-directories",
+            "prepare-host-state-store",
             "rotate-runtime-logs",
             "configure-guest-runtime-config",
             "prepare-installed-executables",

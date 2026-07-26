@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v1",
+  "id": "export-receipt-0001",
+  "operationId": "operation-lab-stop-0001",
+  "requestId": "export-request-0001",
+  "artifactManifestReference": {
+    "resourceType": "artifact-manifest",
+    "resourceId": "artifact-manifest-0001"
+  },
+  "provider": {
+    "kind": "vitalserver",
+    "id": "bundled-upstream-main",
+    "capabilityRevision": 3
+  },
+  "upload": {
+    "state": "succeeded",
+    "receiptId": "upload-receipt-0001",
+    "completedAt": "2026-07-17T00:00:01Z"
+  },
+  "indexing": {
+    "state": "succeeded",
+    "receiptId": "index-receipt-0001",
+    "completedAt": "2026-07-17T00:00:02Z"
+  },
+  "outcome": "succeeded",
+  "retryable": false,
+  "completedAt": "2026-07-17T00:00:02Z"
+}

@@ -60,12 +60,12 @@ Helper app 또는 host API affordance를 통해 처리합니다.
 | Observability | 상태 변화의 시간 순서를 볼 때               | event timeline, recorder anomaly, relationship history                       |
 | Logs          | 지원 자료를 모으거나 상세 로그를 볼 때      | command, update activation, VM, container, watchdog logs                     |
 
-설치 직후 Advanced에서 일부 service나 HTTP endpoint가 아직 준비되지 않아도, active operation이 `Installing`이면 설치 작업 중으로, `Initializing`이면 runtime service와 guest가 사용 가능 상태로 올라오는 중으로 봅니다. 설치와 초기 기동이 끝난 뒤에도 `Stopped`, `Unavailable`, `Read failed`가 남아 있을 때 세부 점검을 시작합니다.
+설치 직후 Advanced에서 일부 service나 HTTP endpoint가 아직 준비되지 않아도, runtime state가 `Installing`이면 설치 작업 중으로, `Initializing`이면 runtime service와 guest가 사용 가능 상태로 올라오는 중으로 봅니다. Active operation은 별도 operation-state read model이 제공하는 작업 소유권 표시이며, runtime state나 status projection에서 다시 추론하지 않습니다. 설치와 초기 기동이 끝난 뒤에도 `Stopped`, `Unavailable`, `Read failed`가 남아 있을 때 세부 점검을 시작합니다.
 
 ### 2-2. 화면 예시
 
 아래 이미지는 release 검증자가 Helper app의 주요 화면을 빠르게 맞춰 보기 위한 참고 자료입니다.
-화면의 값은 예시이며, 실제 상태 판단은 각 화면이 표시하는 최신 runtime status와 event를 기준으로 합니다.
+화면의 값은 예시이며, 실제 상태 판단은 각 화면이 표시하는 최신 Runtime Control status, operation-state, event를 기준으로 합니다.
 
 Remote Console (PWA)는 같은 runtime 상태 계약을 브라우저에서 확인하는 화면입니다. macOS native 권한,
 Finder 열기, local file picker 같은 host affordance는 Helper app 또는 host API 경계를 통해 처리합니다.
@@ -154,7 +154,7 @@ restart 안내가 아직 반영되지 않은 VM runtime 변경을 표시합니�
 `.vital` 파일 저장 위치는 이 `Vital files directory` 하나가 SoT입니다. My Files 목록은 같은 파일
 저장소를 읽되, 조회 대상은 VitalServer upload endpoint가 Redis에 생성한 filelist index를 기준으로
 결정됩니다. 운영자가 `.vital` 파일을 My Files에서 보이게 하려면 storage directory에 직접 복사하지 말고
-Helper Test 탭의 `Manual .vital upload` 또는 VitalServer `/upload` 경로를 사용해야 합니다.
+Helper Product Lab의 `.vital` replay/upload 흐름 또는 VitalServer `/upload` 경로를 사용해야 합니다.
 
 ### 3-2. Redis relay 설정
 

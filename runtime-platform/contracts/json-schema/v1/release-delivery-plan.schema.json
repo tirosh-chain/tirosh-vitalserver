@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:release-delivery-plan",
+  "title": "ReleaseDeliveryPlan",
+  "description": "A release-process-owned declaration of one intended installer artifact, platform-specific installer identity, its required Host service registrations, and every proof required before it may be called releasable. It is a plan, not evidence that an artifact exists or installed successfully.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "productVersion",
+    "platform",
+    "providerKind",
+    "intendedInstallerArtifact",
+    "requiredHostServiceRegistrations",
+    "requiredProofStages"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "productVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "macos",
+        "windows",
+        "linux"
+      ]
+    },
+    "providerKind": {
+      "type": "string",
+      "enum": [
+        "macos-virtualization",
+        "windows-hyperv-scm",
+        "linux-kvm-libvirt-systemd"
+      ]
+    },
+    "intendedInstallerArtifact": {
+      "$ref": "#/$defs/IntendedInstallerArtifact"
+    },
+    "macOSInstallerPackageIdentifier": {
+      "description": "The macOS pkgbuild package identifier that a macOS release installer must realize. It is release identity, not a Host Agent installation identifier.",
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$"
+    },
+    "macOSInstallerSignaturePolicy": {
+      "description": "The release-process-owned macOS Installer signature state that C23 requires C24 to observe. unsigned permits a deliberately unsigned PKG only when pkgutil explicitly reports Status: no signature; developer-id requires an accepted Apple Developer ID Installer signature. Neither policy is inferred from a build host or installer exit code.",
+      "type": "string",
+      "enum": [
+        "unsigned",
+        "developer-id"
+      ]
+    },
+    "requiredHostServiceRegistrations": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/RequiredHostServiceRegistration"
+      },
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-agent"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-edge-proxy"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "const": "host-update-handoff-supervisor"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "requiredProofStages": {
+      "type": "array",
+      "minItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/ProofStage"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "const": "macos"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "then": {
+        "required": [
+          "macOSInstallerPackageIdentifier",
+          "macOSInstallerSignaturePolicy"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "macOSInstallerPackageIdentifier"
+              ]
+            },
+            {
+              "required": [
+                "macOSInstallerSignaturePolicy"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "IntendedInstallerArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "expectedName"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dmg",
+            "pkg",
+            "msi",
+            "msix",
+            "deb",
+            "rpm",
+            "tarball"
+          ]
+        },
+        "expectedName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      }
+    },
+    "RequiredHostServiceRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "manager",
+        "name"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "host-agent",
+            "host-edge-proxy",
+            "host-update-handoff-supervisor"
+          ]
+        },
+        "manager": {
+          "type": "string",
+          "enum": [
+            "launchd",
+            "windows-scm",
+            "systemd"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      }
+    },
+    "ProofStage": {
+      "type": "string",
+      "enum": [
+        "artifact-integrity",
+        "sbom-and-notices",
+        "clean-install",
+        "service-registration",
+        "reboot",
+        "installed-guest-runtime",
+        "update",
+        "rollback",
+        "uninstall-reinstall"
+      ]
+    }
+  }
+}

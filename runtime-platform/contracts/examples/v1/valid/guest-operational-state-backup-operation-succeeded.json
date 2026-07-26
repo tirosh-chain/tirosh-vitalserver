@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v1",
+  "id": "guest-backup-operation-1",
+  "requestId": "guest-backup-request-1",
+  "resourceRevision": 6,
+  "kind": "backup",
+  "state": "succeeded",
+  "destinationReference": {
+    "resourceType": "guest-backup-destination",
+    "resourceId": "guest-backup-local-1"
+  },
+  "manifestReference": {
+    "resourceType": "guest-backup-manifest",
+    "resourceId": "guest-backup-manifest-1"
+  },
+  "manifestSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "stageReceipts": [
+    {
+      "stage": "sqlite-snapshot",
+      "evidenceReference": { "resourceType": "guest-backup-stage-receipt", "resourceId": "sqlite-snapshot-1" },
+      "evidenceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "completedAt": "2026-07-24T18:00:01Z"
+    },
+    {
+      "stage": "postgresql-snapshot",
+      "evidenceReference": { "resourceType": "guest-backup-stage-receipt", "resourceId": "postgresql-snapshot-1" },
+      "evidenceSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "completedAt": "2026-07-24T18:00:02Z"
+    },
+    {
+      "stage": "artifact-inventory",
+      "evidenceReference": { "resourceType": "guest-backup-stage-receipt", "resourceId": "artifact-inventory-1" },
+      "evidenceSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "completedAt": "2026-07-24T18:00:03Z"
+    },
+    {
+      "stage": "manifest-publication",
+      "evidenceReference": { "resourceType": "guest-backup-manifest", "resourceId": "guest-backup-manifest-1" },
+      "evidenceSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "completedAt": "2026-07-24T18:00:05Z"
+    }
+  ],
+  "createdAt": "2026-07-24T18:00:00Z",
+  "updatedAt": "2026-07-24T18:00:05Z"
+}

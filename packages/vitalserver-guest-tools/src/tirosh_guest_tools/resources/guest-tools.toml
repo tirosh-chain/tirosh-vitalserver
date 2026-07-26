@@ -3,23 +3,37 @@ guestHostname = "tirosh-vitalserver"
 [shares]
 runtimeTag = "tirosh"
 runtimeMount = "/mnt/tirosh"
+runtimeMountMode = "virtiofs"
 vitalFilesTag = "tirosh-vital-files"
 vitalFilesMount = "/mnt/tirosh-vital-files"
+vitalFilesMountMode = "virtiofs"
 
 [paths]
 deployDir = "/mnt/tirosh/deploy"
 runtimeDir = "/mnt/tirosh/run"
+controlStateDir = "/mnt/runtime/control"
+composeFile = "/mnt/tirosh/deploy/compose.yaml"
+runtimeConfigFile = "/mnt/tirosh/deploy/runtime-config.json"
+runtimeSettingsFile = "/mnt/tirosh/deploy/runtime-settings.json"
+redisRelayConfigFile = "/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml"
+redisRelayPasswordFile = "/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-password"
+composeRuntimeLimitsFile = "/mnt/tirosh/deploy/compose.runtime-limits.yaml"
 guestToolsHome = "/opt/tirosh/guest-tools"
 pythonWheelDir = "/mnt/tirosh/deploy/python-wheels"
 commandBinDir = "/usr/local/bin"
 
+[controlStore]
+root = "/mnt/runtime"
+requiresMount = true
+
 [compose]
 projectName = "vitalserver"
+environmentFile = "/mnt/runtime/compose.env"
 stopTimeoutSeconds = 120
 
 [intervals]
 commandPollSeconds = 3
-runtimeStateSeconds = 5
+runtimeObservationSeconds = 5
 observabilitySeconds = 10
 
 [containerLogs]

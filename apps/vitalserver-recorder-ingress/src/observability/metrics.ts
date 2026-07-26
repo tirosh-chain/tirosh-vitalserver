@@ -25,6 +25,7 @@ function createMetrics() {
     sendDataRawArchive: defaultRawArchiveStatus(),
     sendDataSpool: defaultSpoolStatus(),
     sendDataReplay: defaultReplayStatus(),
+    recorderObservability: defaultRecorderObservabilityStatus(),
   };
 }
 
@@ -44,6 +45,7 @@ function metricsSnapshot(metrics) {
         sendDataEventsObserved: recorder.sendDataEventsObserved || 0,
         sendDataBytesObserved: recorder.sendDataBytesObserved || 0,
         lastSendDataObservedAt: recorder.lastSendDataObservedAt || null,
+        rawArchive: recorderRawArchiveSnapshot(recorder.rawArchive || defaultRecorderRawArchiveStatus()),
         redisIpSync: recorder.redisIpSync || null,
         spool: recorderSpoolSnapshot(recorder.spool || defaultRecorderSpoolStatus()),
         replay: recorderReplaySnapshot(recorder.replay || defaultRecorderReplayStatus()),
@@ -67,6 +69,24 @@ function metricsSnapshot(metrics) {
     spool: spoolSnapshot(metrics.sendDataSpool),
     replay: replaySnapshot(metrics.sendDataReplay),
     realtimeCoverage: realtimeCoverageSnapshot(metrics.recorders),
+    recorderObservability: {
+      ...metrics.recorderObservability,
+      lastFailure: metrics.recorderObservability.lastFailure
+        ? { ...metrics.recorderObservability.lastFailure }
+        : null,
+    },
+  };
+}
+
+function defaultRecorderObservabilityStatus() {
+  return {
+    requests: 0,
+    accepted: 0,
+    duplicates: 0,
+    quarantined: 0,
+    admissionFailures: 0,
+    lastAdmittedAt: null,
+    lastFailure: null,
   };
 }
 
@@ -262,8 +282,20 @@ function recordSendDataRawArchived(metrics, item, result) {
   archive.persistedBytes += bytes;
   archive.lastArchivedAt = archivedAt;
   archive.lastArchiveId = result && result.archiveId ? result.archiveId : archive.lastArchiveId;
-  archive.lastOffset = Number.isFinite(result && result.offset) ? result.offset : archive.lastOffset;
+  archive.lastOffset = Number.isFinite(result && result.endOffset) ? result.endOffset : archive.lastOffset;
   metrics.sendDataRawArchive = archive;
+  const vrcode = item && item.vrcode;
+  if (vrcode) {
+    const recorder = metrics.recorders.get(vrcode) || defaultRecorderStatus();
+    const recorderArchive = recorder.rawArchive || defaultRecorderRawArchiveStatus();
+    recorderArchive.persistedEvents += 1;
+    recorderArchive.persistedBytes += bytes;
+    recorderArchive.lastArchivedAt = archivedAt;
+    recorderArchive.lastArchiveId = result && result.archiveId ? result.archiveId : recorderArchive.lastArchiveId;
+    recorderArchive.lastOffset = Number.isFinite(result && result.endOffset) ? result.endOffset : recorderArchive.lastOffset;
+    recorder.rawArchive = recorderArchive;
+    metrics.recorders.set(vrcode, recorder);
+  }
 }
 
 function recordSendDataRawArchiveWriteFailed(metrics, reason, message) {
@@ -578,12 +610,12 @@ function recordSendDataRawArchiveAutoExportStarted(metrics, job) {
 function recordSendDataRawArchiveAutoExportSucceeded(metrics, job, result) {
   const archive = metrics.sendDataRawArchive || defaultRawArchiveStatus();
   const autoExport = archive.autoExport || defaultRawArchiveAutoExportStatus();
-  autoExport.status = "uploaded";
+  autoExport.status = "exported";
   autoExport.finalizable = false;
   autoExport.reasons = [];
   autoExport.activeJob = null;
-  autoExport.uploadedJobs += 1;
-  autoExport.lastResult = result || null;
+  autoExport.exportedJobs += 1;
+  autoExport.lastExportResult = result || null;
   autoExport.lastDecisionAt = new Date().toISOString();
   archive.autoExport = autoExport;
   metrics.sendDataRawArchive = archive;
@@ -604,9 +636,18 @@ function recordSendDataRawArchiveAutoExportFailed(metrics, job, reason, message)
 function rawArchiveAutoExportJobSnapshot(job) {
   return {
     jobId: job.jobId,
+    requestId: job.requestId,
+    trigger: job.trigger,
+    origin: job.origin,
+    vrcode: job.vrcode,
     archivePath: job.archivePath,
-    archiveCursor: job.archiveCursor,
+    startOffset: job.startOffset,
+    endOffset: job.endOffset,
     state: job.state,
+    publishState: job.publishState,
+    artifactIds: Array.isArray(job.artifacts)
+      ? job.artifacts.map((artifact) => artifact.artifactId)
+      : [],
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
     createdAt: job.createdAt,
@@ -691,6 +732,16 @@ function recorderReplaySnapshot(replay) {
   };
 }
 
+function recorderRawArchiveSnapshot(archive) {
+  return {
+    persistedEvents: archive.persistedEvents,
+    persistedBytes: archive.persistedBytes,
+    lastArchivedAt: archive.lastArchivedAt,
+    lastArchiveId: archive.lastArchiveId,
+    lastOffset: archive.lastOffset,
+  };
+}
+
 function oldestPendingAgeSeconds(oldestPendingAt) {
   if (!oldestPendingAt) return null;
   const oldest = Date.parse(oldestPendingAt);
@@ -723,9 +774,20 @@ function defaultRecorderStatus() {
     sendDataEventsObserved: 0,
     sendDataBytesObserved: 0,
     lastSendDataObservedAt: null,
+    rawArchive: defaultRecorderRawArchiveStatus(),
     redisIpSync: null,
     spool: defaultRecorderSpoolStatus(),
     replay: defaultRecorderReplayStatus(),
+  };
+}
+
+function defaultRecorderRawArchiveStatus() {
+  return {
+    persistedEvents: 0,
+    persistedBytes: 0,
+    lastArchivedAt: null,
+    lastArchiveId: null,
+    lastOffset: null,
   };
 }
 
@@ -773,9 +835,9 @@ function defaultRawArchiveAutoExportStatus() {
     cursorStableForMs: null,
     lastDecisionAt: null,
     activeJob: null,
-    uploadedJobs: 0,
+    exportedJobs: 0,
     failedJobs: 0,
-    lastResult: null,
+    lastExportResult: null,
     lastFailure: null,
   };
 }

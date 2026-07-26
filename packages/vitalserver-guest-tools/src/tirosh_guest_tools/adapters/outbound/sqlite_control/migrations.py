@@ -1,0 +1,229 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import Connection, inspect, text
+
+from tirosh_guest_tools.domain.guest_control.models import GuestControlDependencyError
+
+CONTROL_SCHEMA_VERSION = "0001"
+CONTROL_SCHEMA_CHECKSUM = "f5b6a98ac7a8d61d"
+CONTROL_SCHEMA_COLUMNS: dict[str, frozenset[str]] = {
+    "control_schema_migrations": frozenset({"version", "checksum", "applied_at"}),
+    "service_operations": frozenset(
+        {
+            "operation_id",
+            "service",
+            "command",
+            "state",
+            "document",
+            "created_at",
+            "updated_at",
+        }
+    ),
+    "service_operation_events": frozenset(
+        {"event_id", "operation_id", "state", "document", "observed_at"}
+    ),
+    "active_operation_leases": frozenset(
+        {"resource_key", "operation_id", "acquired_at"}
+    ),
+    "service_status_snapshots": frozenset({"service", "document", "observed_at"}),
+    "guest_service_resources": frozenset({"service", "document", "updated_at"}),
+    "redis_relay_status_snapshots": frozenset(
+        {"snapshot_id", "document", "observed_at"}
+    ),
+}
+
+
+def migrate_control_schema(connection: Connection) -> None:
+    """Apply reviewed control-store revisions while the caller owns the lock."""
+
+    try:
+        tables = set(inspect(connection).get_table_names())
+        if "control_schema_migrations" not in tables:
+            partial_control_tables = tables & set(CONTROL_SCHEMA_COLUMNS)
+            if partial_control_tables:
+                raise GuestControlDependencyError(
+                    "control SQLite schema is partial without migration history: "
+                    f"tables={sorted(partial_control_tables)!r}",
+                    kind="controlStoreSchemaMismatch",
+                )
+            _upgrade_0001(connection)
+        validate_control_schema(connection)
+    except GuestControlDependencyError:
+        raise
+    except sa.exc.SQLAlchemyError as error:
+        raise GuestControlDependencyError(
+            f"control SQLite schema migration failed: {error}",
+            kind="controlStoreSchemaMigrationFailed",
+        ) from error
+
+
+def validate_control_schema(connection: Connection) -> None:
+    """Check the complete persisted schema without changing it."""
+
+    try:
+        inspector = inspect(connection)
+        tables = set(inspector.get_table_names())
+        missing_tables = set(CONTROL_SCHEMA_COLUMNS) - tables
+        if missing_tables:
+            kind = (
+                "controlStoreSchemaMissing"
+                if "control_schema_migrations" in missing_tables
+                else "controlStoreSchemaMismatch"
+            )
+            raise GuestControlDependencyError(
+                "control SQLite schema tables are missing: "
+                f"tables={sorted(missing_tables)!r}",
+                kind=kind,
+            )
+
+        missing_columns = {
+            table: sorted(
+                required_columns
+                - {column["name"] for column in inspector.get_columns(table)}
+            )
+            for table, required_columns in CONTROL_SCHEMA_COLUMNS.items()
+        }
+        missing_columns = {
+            table: columns for table, columns in missing_columns.items() if columns
+        }
+        if missing_columns:
+            raise GuestControlDependencyError(
+                "control SQLite schema columns are missing: "
+                f"columns={missing_columns!r}",
+                kind="controlStoreSchemaMismatch",
+            )
+
+        applied = connection.execute(
+            text(
+                "SELECT version, checksum FROM control_schema_migrations "
+                "ORDER BY applied_at DESC"
+            )
+        ).all()
+        actual = [tuple(row) for row in applied]
+        if actual != [(CONTROL_SCHEMA_VERSION, CONTROL_SCHEMA_CHECKSUM)]:
+            raise GuestControlDependencyError(
+                f"control SQLite schema version is unsupported: {actual!r}",
+                kind="controlStoreSchemaMismatch",
+            )
+    except GuestControlDependencyError:
+        raise
+    except sa.exc.SQLAlchemyError as error:
+        raise GuestControlDependencyError(
+            f"control SQLite schema validation failed: {error}",
+            kind="controlStoreSchemaMismatch",
+        ) from error
+
+
+def _upgrade_0001(connection: Connection) -> None:
+    context = MigrationContext.configure(connection)
+    operations = Operations(context)
+    operations.create_table(
+        "control_schema_migrations",
+        sa.Column("version", sa.String(), primary_key=True),
+        sa.Column("checksum", sa.String(), nullable=False),
+        sa.Column("applied_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_table(
+        "service_operations",
+        sa.Column("operation_id", sa.String(), primary_key=True),
+        sa.Column("service", sa.String(), nullable=False),
+        sa.Column("command", sa.String(), nullable=False),
+        sa.Column("state", sa.String(), nullable=False),
+        sa.Column("document", sa.Text(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_index(
+        "service_operations_updated_at_idx",
+        "service_operations",
+        ["updated_at"],
+    )
+    operations.create_table(
+        "service_operation_events",
+        sa.Column("event_id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column(
+            "operation_id",
+            sa.String(),
+            sa.ForeignKey("service_operations.operation_id"),
+            nullable=False,
+        ),
+        sa.Column("state", sa.String(), nullable=False),
+        sa.Column("document", sa.Text(), nullable=False),
+        sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
+        sqlite_autoincrement=True,
+    )
+    operations.create_index(
+        "service_operation_events_operation_id_idx",
+        "service_operation_events",
+        ["operation_id"],
+    )
+    operations.create_index(
+        "service_operation_events_observed_at_idx",
+        "service_operation_events",
+        ["observed_at"],
+    )
+    operations.create_table(
+        "active_operation_leases",
+        sa.Column("resource_key", sa.String(), primary_key=True),
+        sa.Column(
+            "operation_id",
+            sa.String(),
+            sa.ForeignKey("service_operations.operation_id"),
+            nullable=False,
+            unique=True,
+        ),
+        sa.Column("acquired_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_table(
+        "service_status_snapshots",
+        sa.Column("service", sa.String(), primary_key=True),
+        sa.Column("document", sa.Text(), nullable=False),
+        sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_index(
+        "service_status_snapshots_observed_at_idx",
+        "service_status_snapshots",
+        ["observed_at"],
+    )
+    operations.create_table(
+        "guest_service_resources",
+        sa.Column("service", sa.String(), primary_key=True),
+        sa.Column("document", sa.Text(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_index(
+        "guest_service_resources_updated_at_idx",
+        "guest_service_resources",
+        ["updated_at"],
+    )
+    operations.create_table(
+        "redis_relay_status_snapshots",
+        sa.Column("snapshot_id", sa.String(), primary_key=True),
+        sa.Column("document", sa.Text(), nullable=False),
+        sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_index(
+        "redis_relay_status_snapshots_observed_at_idx",
+        "redis_relay_status_snapshots",
+        ["observed_at"],
+    )
+    connection.execute(
+        text(
+            "INSERT INTO control_schema_migrations "
+            "(version, checksum, applied_at) VALUES "
+            "(:version, :checksum, :applied_at)"
+        ),
+        {
+            "version": CONTROL_SCHEMA_VERSION,
+            "checksum": CONTROL_SCHEMA_CHECKSUM,
+            # `text()` does not carry SQLAlchemy's DateTime bind processor.
+            # Persist an explicit ISO-8601 string instead of relying on the
+            # deprecated sqlite3 implicit datetime adapter.
+            "applied_at": datetime.now(UTC).isoformat(),
+        },
+    )

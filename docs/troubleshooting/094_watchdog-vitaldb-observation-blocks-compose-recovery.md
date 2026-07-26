@@ -26,7 +26,9 @@ The watchdog recovery policy treated `vitaldb-observation-missing` as an unrecov
 
 ```sh
 cat "/Library/Application Support/VitalServerHelper/status/runtime-status.json"
-cat "/Library/Application Support/VitalServerHelper/vm/run/vm-lifecycle.json"
+jq '.vmLifecycle' "/Library/Application Support/VitalServerHelper/status/host-runtime-state.json"
+sqlite3 "/Library/Application Support/VitalServerHelper/vm/runtime/runtime-state.sqlite" \
+  'SELECT revision,run_id,state,operation,updated_at,deadline_at,terminal_reason FROM vm_lifecycle;'
 tail -n 120 "/Library/Application Support/VitalServerHelper/logs/runtime/watchdog.out.log"
 tail -n 240 "/Library/Application Support/VitalServerHelper/logs/guest/bootstrap.log"
 tail -n 240 "/Library/Application Support/VitalServerHelper/logs/guest/container-logs.log"

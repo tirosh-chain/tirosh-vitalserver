@@ -64,10 +64,10 @@ describe("recorderIngressQueueStatus", () => {
   it("does not expose raw command failure text while recorder ingress is not ready", () => {
     expect(
       recorderIngressQueueStatus({
-        recorderIngressHTTP: "failed",
-        recorderIngressStatus: null,
-        recorderIngressStatusReadState: "commandFailed",
-        recorderIngressStatusReadError:
+        readState: "commandFailed",
+        httpStatus: "failed",
+        document: null,
+        readError:
           "command-failed-7 exitCode=7 stderr=curl: (7) Failed to connect to 127.0.0.1 port 80"
       } as Parameters<typeof recorderIngressQueueStatus>[0])
     ).toBe("Not ready");
@@ -76,10 +76,10 @@ describe("recorderIngressQueueStatus", () => {
   it("uses read state instead of inferring readiness from read error text", () => {
     expect(
       recorderIngressQueueStatus({
-        recorderIngressHTTP: "failed",
-        recorderIngressStatus: null,
-        recorderIngressStatusReadState: "commandFailed",
-        recorderIngressStatusReadError: null
+        readState: "commandFailed",
+        httpStatus: "failed",
+        document: null,
+        readError: null
       } as Parameters<typeof recorderIngressQueueStatus>[0])
     ).toBe("Not ready");
   });
@@ -87,10 +87,10 @@ describe("recorderIngressQueueStatus", () => {
   it("reports raw archive write failures in the recorder ingress queue summary", () => {
     expect(
       recorderIngressQueueStatus({
-        recorderIngressHTTP: "200",
-        recorderIngressStatusReadState: "loaded",
-        recorderIngressStatusReadError: null,
-        recorderIngressStatus: {
+        readState: "loaded",
+        httpStatus: "200",
+        readError: null,
+        document: {
           activeWebSockets: 1,
           activeRecorderConnections: 1,
           recorders: [],
@@ -115,10 +115,6 @@ describe("recorderIngressQueueStatus", () => {
             pendingBytes: 0
           }
         },
-        runtimeStateFileMetadataReadState: "loaded",
-        containerLogsPresent: true,
-        composeServices: [],
-        composeServicesReadState: "loaded"
       } as Parameters<typeof recorderIngressQueueStatus>[0])
     ).toContain("failed");
   });

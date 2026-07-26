@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.guest_image.ubuntu import qemu_image_info
 from tirosh_vitalserver.devtools.adapters.toolchain.shell_commands import (

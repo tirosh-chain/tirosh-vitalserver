@@ -1,16 +1,32 @@
 import Foundation
 import Application
+import Contracts
 import InboundAdapters
 @testable import CLIHost
 import XCTest
 import Errors
+import RuntimeControl
 
 final class RuntimeLifecycleCommandTests: XCTestCase {
     func testParsesCommandsWithoutArguments() throws {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse([]), .help)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["install"]), .install)
-        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["install-provision"]), .installProvision)
-        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["preinstall-check"]), .preinstallCheck)
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "install-provision",
+                "--package-install-contract",
+                "/tmp/package-install-contract.json",
+            ]),
+            .installProvision(URL(fileURLWithPath: "/tmp/package-install-contract.json"))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "preinstall-check",
+                "--package-install-contract",
+                "/tmp/package-install-contract.json",
+            ]),
+            .preinstallCheck(URL(fileURLWithPath: "/tmp/package-install-contract.json"))
+        )
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["status"]), .status)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["health"]), .health)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["guest-log-sync"]), .guestLogSync)
@@ -23,11 +39,87 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-services"]), .repairServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["start-services"]), .startServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["stop-services"]), .stopServices)
-        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["testkit-start"]), .startTestKit)
-        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["testkit-stop"]), .stopTestKit)
-        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["testkit-restart"]), .restartTestKit)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["stop-package-services"]), .stopPackageServices)
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["guest-stack-status"]),
+            .guestStackStatus(RuntimeGuestControlReadCommand())
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["guest-service-start", "app"]),
+            .guestServiceStart(RuntimeGuestServiceControlCommand(service: "app"))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["guest-service-stop", "app"]),
+            .guestServiceStop(RuntimeGuestServiceControlCommand(service: "app"))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["guest-service-restart", "app"]),
+            .guestServiceRestart(RuntimeGuestServiceControlCommand(service: "app"))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["vitaldb-observation"]),
+            .vitalDB(RuntimeVitalDBReadCommand(action: .observation))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["vitaldb-recorders"]),
+            .vitalDB(RuntimeVitalDBReadCommand(action: .recorders))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["vitaldb-recorder-activity", "VR-001"]),
+            .vitalDB(RuntimeVitalDBReadCommand(action: .recorderActivity("VR-001")))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["vitaldb-beds"]),
+            .vitalDB(RuntimeVitalDBReadCommand(action: .beds))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["vitaldb-relationships"]),
+            .vitalDB(RuntimeVitalDBReadCommand(action: .relationships))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["lab-scenarios"]),
+            .lab(RuntimeLabControlCommand(action: .scenarios))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["lab-beds"]),
+            .lab(RuntimeLabControlCommand(action: .beds))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["lab-recorders"]),
+            .lab(RuntimeLabControlCommand(action: .recorders))
+        )
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["uninstall"]), .uninstall(RuntimeUninstallCommand(clean: false)))
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["--help"]), .help)
+    }
+
+    func testPackageInstallCommandsRequireExplicitContractPath() {
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse(["install-provision"]))
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse(["preinstall-check"]))
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse([
+            "install-provision",
+            "--package-install-contract",
+        ]))
+    }
+
+    func testLegacyTestKitAliasesAreNotRuntimeCommands() {
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse(["testkit-start"])) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                String(describing: LauncherError.unsupportedCommand("runtime testkit-start"))
+            )
+        }
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse(["testkit-stop"])) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                String(describing: LauncherError.unsupportedCommand("runtime testkit-stop"))
+            )
+        }
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parse(["testkit-restart"])) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                String(describing: LauncherError.unsupportedCommand("runtime testkit-restart"))
+            )
+        }
     }
 
     func testParsesCleanUninstallCommand() throws {
@@ -58,6 +150,8 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             "8",
             "--network",
             "shared",
+            "--runtime-control-port",
+            "18444",
             "--start-on-boot",
             "false",
             "--log-archive-retention-days",
@@ -79,6 +173,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             changes: [
                 .cpu(8),
                 .network(.shared),
+                .runtimeControlPort(18444),
                 .startOnBoot(false),
                 .logArchiveRetentionDays(10),
                 .logArchiveMaximumGiB(3),
@@ -104,7 +199,40 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         )
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["apply-bundle", bundleURL.path]),
-            .applyBundle(bundleURL)
+            .applyBundle(RuntimeApplyBundleCommand(
+                bundleURL: bundleURL,
+                trustIntent: .requireVerifiedPublisher
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "apply-bundle",
+                bundleURL.path,
+                "--allow-unsigned-dev-bundle",
+            ]),
+            .applyBundle(RuntimeApplyBundleCommand(
+                bundleURL: bundleURL,
+                trustIntent: .allowUnsignedDevelopmentBundle
+            ))
+        )
+    }
+
+    func testApplyBundleRejectsUnknownOrMisplacedUnsignedDevelopmentIntent() {
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse([
+                "apply-bundle",
+                "/tmp/update-bundle.tar.gz",
+                "--unknown",
+            ]),
+            expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse([
+                "apply-bundle",
+                "--allow-unsigned-dev-bundle",
+                "/tmp/update-bundle.tar.gz",
+            ]),
+            expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
         )
     }
 
@@ -113,6 +241,187 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["rollback", "/backups/latest"]),
             .rollback(.specificBackup(URL(fileURLWithPath: "/backups/latest")))
+        )
+    }
+
+    func testParsesGuestServiceControlWithExplicitGuestControlURL() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "guest-stack-status",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .guestStackStatus(RuntimeGuestControlReadCommand(
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "guest-service-start",
+                "recorder-ingress",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .guestServiceStart(RuntimeGuestServiceControlCommand(
+                service: "recorder-ingress",
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+    }
+
+    func testParsesVitalDBReadCommandsWithExplicitGuestControlURL() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "vitaldb-observation",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .vitalDB(RuntimeVitalDBReadCommand(
+                action: .observation,
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "vitaldb-recorders",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .vitalDB(RuntimeVitalDBReadCommand(
+                action: .recorders,
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "vitaldb-recorder-activity",
+                "VR-001",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .vitalDB(RuntimeVitalDBReadCommand(
+                action: .recorderActivity("VR-001"),
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "vitaldb-beds",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .vitalDB(RuntimeVitalDBReadCommand(
+                action: .beds,
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "vitaldb-relationships",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .vitalDB(RuntimeVitalDBReadCommand(
+                action: .relationships,
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+    }
+
+    func testParsesLabSessionCreateCommand() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "lab-beds",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .lab(RuntimeLabControlCommand(
+                action: .beds,
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "lab-recorders",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .lab(RuntimeLabControlCommand(
+                action: .recorders,
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "lab-session-create",
+                "routine-case",
+                "--name",
+                "Morning lab run",
+                "--recorder-count",
+                "3",
+                "--target-url",
+                "http://edge/",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .lab(RuntimeLabControlCommand(
+                action: .createSession(RuntimeLabSessionCreateRequest(
+                    scenarioId: "routine-case",
+                    name: "Morning lab run",
+                    recorderCount: 3,
+                    targetURL: "http://edge/"
+                )),
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+    }
+
+    func testParsesLabSessionCommandsWithExplicitGuestControlURL() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "lab-session-get",
+                "session-1",
+                "--guest-control-url",
+                "http://192.168.64.2:18330",
+            ]),
+            .lab(RuntimeLabControlCommand(
+                action: .getSession("session-1"),
+                guestControlBaseURL: "http://192.168.64.2:18330"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["lab-session-start", "session-1"]),
+            .lab(RuntimeLabControlCommand(action: .startSession("session-1")))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["lab-session-stop", "session-1"]),
+            .lab(RuntimeLabControlCommand(action: .stopSession("session-1")))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["lab-session-finish", "session-1"]),
+            .lab(RuntimeLabControlCommand(action: .finishSession("session-1")))
+        )
+    }
+
+    func testParsesLabVitalReplayCommand() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "lab-vital-replay",
+                "sample.vital",
+                "--session-name",
+                "Replay run",
+                "--target-url",
+                "http://edge/",
+            ]),
+            .lab(RuntimeLabControlCommand(
+                action: .replayVitalFile(RuntimeLabVitalFileReplayRequest(
+                    vitalFileRelativePath: "sample.vital",
+                    sessionName: "Replay run",
+                    targetURL: "http://edge/",
+                    resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
+                    repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
+                ))
+            ))
         )
     }
 
@@ -127,7 +436,26 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         )
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["apply-bundle"]),
-            expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>"
+            expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
+        )
+    }
+
+    func testLabCommandsRequireExplicitInputs() {
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["lab-session-create"]),
+            expectedMessage: "usage: vitalserver-vm runtime lab-session-create <scenario-id> [--name <name>] [--recorder-count <count>] [--target-url <url>] [--guest-control-url <url>]"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["lab-session-get"]),
+            expectedMessage: "usage: vitalserver-vm runtime lab-session-get <session-id> [--guest-control-url <url>]"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["lab-vital-replay"]),
+            expectedMessage: "usage: vitalserver-vm runtime lab-vital-replay <vital-file-relative-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["lab-session-create", "routine-case", "--recorder-count", "0"]),
+            expectedMessage: "--recorder-count must be a positive integer"
         )
     }
 
@@ -165,6 +493,20 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-proxy"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-services"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime stop-services"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime guest-stack-status"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime guest-service-start <service>"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime guest-service-stop <service>"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime guest-service-restart <service>"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime vitaldb-observation"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime vitaldb-recorders"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime vitaldb-recorder-activity <vrcode>"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime vitaldb-beds"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime vitaldb-relationships"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime lab-scenarios"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime lab-beds"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime lab-recorders"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime lab-session-create <scenario-id>"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime lab-vital-replay <vital-file-path>"))
         XCTAssertTrue(
             RuntimeLifecycleCommand.usage.contains(
                 "vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]"

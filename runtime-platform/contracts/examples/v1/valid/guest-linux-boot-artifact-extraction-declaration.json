@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v1",
+  "extractionId": "ubuntu-noble-arm64-boot-artifacts",
+  "architecture": "arm64",
+  "sourceImage": {
+    "id": "ubuntu-noble-arm64-cloud-image",
+    "sourceAbsolutePath": "/release-sources/ubuntu-noble-arm64.img",
+    "sourceOriginUri": "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-arm64.tar.gz",
+    "sourceRelease": "ubuntu-24.04-noble-release",
+    "sizeBytes": 2061500416,
+    "sha256": "3fd73a3cde12636b59cf0aa3485f05452ef6a068d91a03268b04f3f614e453ae"
+  },
+  "sourceFilesystem": {
+    "layout": "whole-disk-ext4",
+    "filesystemType": "ext4"
+  },
+  "bootResources": {
+    "kernel": {
+      "id": "linux-arm64-kernel",
+      "source": {
+        "kind": "source-image-filesystem",
+        "guestAbsolutePath": "/boot/vmlinuz"
+      },
+      "sourceCompression": "gzip",
+      "outputRelativePath": "boot/Image",
+      "outputFormat": "uncompressed-linux-arm64-image"
+    },
+    "initialRamdisk": {
+      "id": "linux-arm64-initrd",
+      "source": {
+        "kind": "source-image-filesystem",
+        "guestAbsolutePath": "/boot/initrd.img"
+      },
+      "sourceCompression": "none",
+      "outputRelativePath": "boot/initrd.img",
+      "outputFormat": "cpio"
+    }
+  },
+  "rootStorage": {
+    "id": "linux-arm64-root-storage-base",
+    "guestDevicePath": "/dev/vda",
+    "outputRelativePath": "storage/guest-root.raw",
+    "filesystemType": "ext4",
+    "storageLayout": "whole-disk-ext4"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "fixtureKind": "vital-file-upload-observation",
+  "requestShape": {
+    "contentType": "multipart/form-data",
+    "fieldName": "files",
+    "method": "POST",
+    "path": "/runtime/lab/vital-files/upload"
+  },
+  "legacyResponse": {
+    "failedFileCount": 1,
+    "storedFileCount": 1,
+    "state": "partial"
+  },
+  "expectedFact": {
+    "perFileFailureObserved": true,
+    "exportAndIndexingWereNotProven": true
+  }
+}

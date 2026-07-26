@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tirosh.local/contracts/kernel-incident-v1.schema.json",
+  "title": "Kernel incident v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "eventId", "deviceId", "captureBootId", "kind", "capturedAt",
+    "source", "incidentType", "kernelRelease", "model", "kernelCommandLine",
+    "firmwareThrottleFlags", "artifacts", "previousBootJournal", "messageExcerpt", "truncated"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "v1"},
+    "eventId": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": ":kernel-incident:[0-9a-f]{64}$"},
+    "deviceId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "siteId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "captureBootId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "kind": {"const": "kernel-incident"},
+    "capturedAt": {"type": "string", "format": "date-time"},
+    "source": {"const": "pstore"},
+    "incidentType": {"enum": ["panic", "oops", "watchdog", "lockup", "unknown"]},
+    "kernelRelease": {"type": "string", "minLength": 1, "maxLength": 256},
+    "model": {"type": "string", "minLength": 1, "maxLength": 256},
+    "kernelCommandLine": {"type": "string", "maxLength": 8192},
+    "firmwareThrottleFlags": {"type": ["string", "null"], "maxLength": 256},
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sourcePath", "sourceRoot", "storedPath", "sizeBytes", "sha256"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 256},
+          "sourcePath": {"type": "string", "pattern": "^/"},
+          "sourceRoot": {"type": "string", "pattern": "^/"},
+          "storedPath": {"type": "string", "pattern": "^/data/vitalrecorder-observer/kernel-incidents/"},
+          "sizeBytes": {"type": "integer", "minimum": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "previousBootJournal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "storedPath": {"type": "string", "pattern": "^/data/vitalrecorder-observer/kernel-incidents/"},
+        "sizeBytes": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"available": {"const": true}}},
+          "then": {"required": ["storedPath", "sizeBytes", "sha256"]}
+        }
+      ]
+    },
+    "messageExcerpt": {"type": "string", "minLength": 1, "maxLength": 65536},
+    "truncated": {"type": "boolean"}
+  }
+}

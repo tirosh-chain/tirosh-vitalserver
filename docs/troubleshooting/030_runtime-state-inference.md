@@ -20,11 +20,11 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - `"missing-vm-ip"`, `"bootstrap-pending"`, `"not evaluated"` 같은 문자열이 여러 레이어에 흩어져 상태처럼 사용됩니다.
 - progress/event 기록이 현재 status document 없이 임시 health snapshot을 만들어 상태를 채웁니다.
 - 내부 enum을 API read model로 변환할 때 알 수 없는 값을 `warning`, `staleLink` 같은 구체 상태로 바꿉니다.
-- `runtime-state.json`이 없거나 stale인데 `vm-ip` 파일로 guest endpoint를 직접 probing해 상태를 채웁니다.
+- `runtime-observation.json`이 없거나 stale인데 `vm-ip` 파일로 guest endpoint를 직접 probing해 상태를 채웁니다.
 - container health가 보고되지 않았는데 `stable`로 분류됩니다.
 - read model이 제공되지 않은 경로/식별자를 빈 문자열로 채워 UI나 API consumer가 값이 있는 것처럼 처리합니다.
 - timestamp가 없을 때 `""`로 치환해 정렬하거나 최신 값을 고릅니다.
-- status document가 이미 제공해야 하는 `vmIP`, `guestHTTP`, VitalDB observation을 raw `runtime-state.json`으로 보정합니다.
+- status document가 이미 제공해야 하는 `vmIP`, `guestHTTP`, VitalDB observation을 raw `runtime-observation.json`으로 보정합니다.
 - 선택되지 않은 backup/update bundle을 빈 문자열 sentinel로 보관해 UI와 command 실행 경로가 같은 값을 다르게 해석합니다.
 - backup/Redis backup 목록을 읽지 못했는데 `[]`로 바꿔 “백업 없음”처럼 표시합니다.
 - 배포되지 않은 구버전 layout을 추정해 runtime install path에서 legacy log migration을 수행합니다.
@@ -36,7 +36,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - Data directory 통계를 읽지 못했는데 `0 files · 0 B` 또는 `Unknown`처럼 표시합니다.
 - Settings 값인 host proxy port를 StatusReader가 launchd plist/default 값으로 추정합니다.
 - status document를 읽거나 decode하지 못했는데 `nil`로 바꿔 “상태 없음”처럼 표시합니다.
-- guest `runtime-state.json`을 읽거나 decode하지 못했는데 resource usage 미보고처럼 표시합니다.
+- guest `runtime-observation.json`을 읽거나 decode하지 못했는데 resource usage 미보고처럼 표시합니다.
 - settings 파일을 읽거나 decode하지 못했는데 기본 설정값으로 조용히 대체합니다.
 - guest 작업 result 파일을 읽거나 decode하지 못했는데 “아직 result 없음”처럼 대기합니다.
 - Redis backup result 파일을 읽거나 decode하지 못했는데 “guest worker 대기 중”처럼 대기합니다.
@@ -183,7 +183,7 @@ container log metadata read failure -> missing container log metadata
 8. UI는 상태를 새로 만들지 않습니다. UI policy는 제공된 상태를 표시용 text/severity로만 변환합니다.
 9. Progress/event 기록은 기존 status document의 명시 필드를 보존합니다. health snapshot placeholder를 만들어 채우지 않습니다.
 10. 내부 typed enum을 API read model로 옮길 때는 exhaustive mapping을 사용하고, unknown을 임의의 구체 값으로 바꾸지 않습니다.
-11. Guest HTTP 상태는 guest가 제공한 runtime-state만 사용합니다. `vm-ip` 파일을 이용해 Host가 guest readiness를 대신 probing하지 않습니다.
+11. Legacy Guest HTTP 상태는 guest가 제공한 runtime-state만 사용합니다. Current Guest Control readiness는 typed Guest address provider가 loaded address를 제공할 때만 Guest Control API로 읽고, `runtime-observation.json.vmIP`로 address를 보정하지 않습니다.
 12. 보고되지 않은 container health는 `stable`이 아니라 `unreported`로 분류합니다.
 13. API/read model에서 미보고 경로와 식별자는 optional로 유지합니다. UI만 표시 단계에서 `Not reported`로 포맷합니다.
 14. timestamp 정렬은 explicit comparator를 사용합니다. `nil` timestamp를 빈 문자열로 변환하지 않습니다.
@@ -286,11 +286,11 @@ container log metadata read failure -> missing container log metadata
 - 2026-05-29: `RuntimeHealthSnapshot.isHealthy` computed property를 제거하고 `RuntimeHealthSnapshotPolicy`로 분리했습니다. `RuntimeHealthSnapshot`의 기본 `vmState`도 제거해 모든 snapshot 생성자가 VM state를 명시하게 했습니다.
 - 2026-05-29: progress/status writer에서 `not-evaluated` health snapshot을 생성하던 경로를 제거했습니다. Progress는 기존 status document가 없으면 쓰지 않고, 있으면 해당 document의 명시 상태 필드를 보존합니다.
 - 2026-05-29: VitalDB relationship event/severity를 Remote Console read model로 옮길 때 `staleLink`/`warning`으로 fallback하던 로직을 제거하고 exhaustive mapping으로 변경했습니다.
-- 2026-05-29: `RuntimeHealthChecker`가 missing/stale `runtime-state.json` 상태에서 `vm-ip` 파일로 guest readiness를 직접 probing하던 경로를 제거했습니다. Guest HTTP 상태는 runtime-state가 제공한 값만 사용합니다.
+- 2026-05-29: `RuntimeHealthChecker`가 missing/stale `runtime-observation.json` 상태에서 `vm-ip` 파일로 guest readiness를 직접 probing하던 경로를 제거했습니다. Guest HTTP 상태는 runtime-state가 제공한 값만 사용합니다.
 - 2026-05-29: container health 미보고 값을 `stable`로 분류하지 않고 `unreported`로 명시했습니다. `RuntimeHealthInput`의 guest runtime-state 기본값도 제거해 호출자가 present/fresh 여부를 직접 넘기게 했습니다.
 - 2026-05-30: `RuntimeInstallInfo`의 경로/식별자 빈 문자열 fallback을 optional로 변경했습니다. Swift UI는 표시 단계에서만 `Not reported`로 포맷합니다.
 - 2026-05-30: Vital recorder/bed 최신값 선택과 정렬에서 `lastSeenAt ?? ""` 비교를 제거하고 explicit timestamp comparator로 변경했습니다.
-- 2026-05-30: `RuntimeStatusReader`가 status document의 `vmIP`, `guestHTTP`, UI HTTP, VitalDB observation을 raw `runtime-state.json`으로 보정하던 경로를 제거했습니다. Runtime status API는 status document가 보고한 상태만 노출하고, raw guest runtime-state는 resource usage 소스로만 사용합니다.
+- 2026-05-30: `RuntimeStatusReader`가 status document의 `vmIP`, `guestHTTP`, UI HTTP, VitalDB observation을 raw `runtime-observation.json`으로 보정하던 경로를 제거했습니다. Runtime status API는 status document가 보고한 상태만 노출하고, raw guest runtime-state는 resource usage 소스로만 사용합니다.
 - 2026-05-30: rollback/delete backup 선택 상태의 빈 문자열 sentinel을 제거하고 optional selection으로 변경했습니다. 선택 없음은 command 실행 전 명시적으로 차단합니다.
 - 2026-05-30: backup/Redis backup 목록 조회에서 디렉터리 읽기 실패를 빈 배열로 숨기던 `try? ... ?? []` 패턴을 제거했습니다. 읽기 실패는 API/UI에 오류로 전달하고, 빈 목록은 실제 빈 디렉터리에만 사용합니다.
 - 2026-05-30: runtime install directory 준비 단계에서 legacy runtime log migration을 제거했습니다. Install 준비는 현재 layout 디렉터리를 생성하는 역할만 수행합니다.
@@ -316,8 +316,9 @@ container log metadata read failure -> missing container log metadata
 - 2026-05-30: Latest backup 조회가 backup directory read failure를 empty list로 숨기지 않도록 변경했습니다. Status convenience path는 실패를 로그에 남기고, rollback preflight는 오류를 그대로 받습니다.
 - 2026-05-30: Runtime log collection이 존재하는 log source의 read/copy/size 실패를 조용히 skip하지 않고 throw하도록 변경했습니다. UI log preview는 실패 메시지를 표시하고, export logs는 실패를 호출자에게 전달합니다.
 - 2026-05-30: Guest log collection이 guest run directory read failure를 조용히 skip하지 않고 throw하도록 변경했습니다. Health/watchdog 경로는 실패를 로그로 남긴 뒤 본래 작업을 계속합니다.
-- 2026-05-30: Host proxy의 legacy `vm-ip` fallback을 제거했습니다. Proxy upstream은 Guest가 제공하는 `runtime-state.json`의 `vmIP`만 사용합니다. `guestHTTP` 필드가 누락된 runtime-state도 `bootstrap-pending`으로 추정하지 않고 `missing-guest-http`와 `guest-runtime-state-invalid`로 노출합니다.
-- 2026-05-30: devtools health/status도 legacy `vm-ip` 파일을 읽지 않도록 변경했습니다. 개발 도구도 `runtime-state.json`의 `vmIP`와 `guestHTTP` 계약을 사용하고 missing/invalid state를 명시 오류로 표시합니다.
+- 2026-05-30: Host proxy의 legacy `vm-ip` fallback을 제거했습니다. 당시 proxy upstream은 Guest가 제공하는 `runtime-observation.json`의 `vmIP`만 사용했습니다. `guestHTTP` 필드가 누락된 runtime-state도 `bootstrap-pending`으로 추정하지 않고 `missing-guest-http`와 `guest-runtime-state-invalid`로 노출합니다.
+- 2026-07-08: Host proxy는 더 이상 `runtime-observation.json.vmIP`를 address source로 파싱하지 않습니다. 단기 호환 provider는 explicit `vm-ip` bootstrap file을 읽고, `runtime-observation.json.guestHTTP`는 bootstrap readiness evidence로만 사용합니다.
+- 2026-05-30: devtools health/status도 legacy `vm-ip` 파일을 읽지 않도록 변경했습니다. 개발 도구도 `runtime-observation.json`의 `vmIP`와 `guestHTTP` 계약을 사용하고 missing/invalid state를 명시 오류로 표시합니다.
 - 2026-05-30: Apply bundle 시작 전 log directory 준비와 runtime log rotation 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
 - 2026-05-30: Apply bundle 중 guest shutdown preparation cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
 - 2026-05-30: Update bundle archive materialization 임시 디렉터리 cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.

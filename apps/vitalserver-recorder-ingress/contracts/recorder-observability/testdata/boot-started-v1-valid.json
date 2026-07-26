@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "v1",
+  "eventId": "vr-brmh-15:boot-b:boot-event:boot-started",
+  "deviceId": "vr-brmh-15",
+  "siteId": "brmh",
+  "bootId": "boot-b",
+  "kind": "boot-event",
+  "eventType": "boot-started",
+  "deviceObservedAt": "2026-07-23T01:02:03Z",
+  "ntpState": "unsynchronized",
+  "previousBoot": {
+    "bootId": {"state": "ok", "value": "boot-a"},
+    "cleanShutdown": {"state": "ok", "value": false},
+    "shutdownAt": {"state": "missing", "detail": "previous boot has no clean shutdown marker"}
+  },
+  "rebootIntent": {
+    "state": "absent",
+    "detail": "no reboot intent marker belongs to the previous boot"
+  },
+  "firmwarePower": {
+    "throttleFlags": {"state": "ok", "value": "throttled=0x50005"},
+    "resetFlags": {"state": "ok", "value": "0x0"},
+    "underVoltageOccurred": {"state": "ok", "value": true}
+  },
+  "powerSupply": {
+    "maxCurrentMilliAmps": {"state": "ok", "value": 3000},
+    "usbMaxCurrentEnabled": {"state": "ok", "value": true},
+    "usbOverCurrentDetected": {
+      "state": "missing",
+      "detail": "device-tree property is not exposed by this board firmware"
+    },
+    "resetEvent": {"state": "ok", "value": "watchdog"},
+    "usbPdPowerDataObjects": {
+      "state": "ok",
+      "value": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  },
+  "pstore": {
+    "backend": {"state": "ok", "value": "ramoops"},
+    "files": {"state": "ok", "value": ["console-ramoops-0"]}
+  },
+  "readIssues": [
+    {
+      "field": "previousBoot.shutdownAt",
+      "state": "missing",
+      "detail": "previous boot has no clean shutdown marker"
+    },
+    {
+      "field": "powerSupply.usbOverCurrentDetected",
+      "state": "missing",
+      "detail": "device-tree property is not exposed by this board firmware"
+    }
+  ]
+}

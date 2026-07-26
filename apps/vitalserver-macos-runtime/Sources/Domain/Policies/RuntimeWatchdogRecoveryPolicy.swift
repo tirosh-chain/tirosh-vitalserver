@@ -30,16 +30,6 @@ public enum RuntimeWatchdogRecoveryPolicy {
         if let missingFailureReasonIssue = RuntimeHealthSnapshotPolicy.missingFailureReasonIssue(snapshot) {
             return .unrecoverable(reason: missingFailureReasonIssue)
         }
-        if let bootstrapObservationIssue = bootstrapObservationIssue(snapshot.failureReasons) {
-            return .unrecoverable(reason: bootstrapObservationIssue.rawValue)
-        }
-        if let observationSourceIssue = observationSourceIssue(
-            snapshot.failureReasons,
-            containerObservation: snapshot.containerObservation.map(RuntimeObservationInput.loaded) ?? .notReported
-        ) {
-            return .unrecoverable(reason: observationSourceIssue.rawValue)
-        }
-
         guard automaticRecoveryEnabled else {
             return .recoveryDisabled(reason: reasons)
         }
@@ -55,8 +45,7 @@ public enum RuntimeWatchdogRecoveryPolicy {
             vmIP: snapshot.vmIP,
             guestHTTP: snapshot.guestHTTP,
             hostProxyReadinessHTTP: snapshot.hostProxyHTTP,
-            hostProxyLivenessHTTP: hostProxyLivenessHTTP,
-            containerObservation: snapshot.containerObservation.map(RuntimeObservationInput.loaded) ?? .notReported
+            hostProxyLivenessHTTP: hostProxyLivenessHTTP
         ))
 
         guard plan.canRecover else {
@@ -105,32 +94,6 @@ public enum RuntimeWatchdogRecoveryPolicy {
 
     private static func reasonText(_ reasons: [RuntimeFailureReason]) -> String {
         reasons.isEmpty ? "no failure reason reported" : reasons.map(\.rawValue).joined(separator: ", ")
-    }
-
-    private static func bootstrapObservationIssue(_ reasons: [RuntimeFailureReason]) -> RuntimeFailureReason? {
-        reasons.first { reason in
-            reason == .guestBootstrapResultMissing || reason == .guestBootstrapResultUnavailable
-        }
-    }
-
-    private static func observationSourceIssue(
-        _ reasons: [RuntimeFailureReason],
-        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
-    ) -> RuntimeFailureReason? {
-        if RuntimeObservationHealthPolicy.requiresGuestComposeReconcile(containerObservation: containerObservation) {
-            return nil
-        }
-        return reasons.first { reason in
-            switch reason {
-            case .containerObservationReadFailed:
-                return !reason.isContainerObservationReadFailureFromStaleGuestRuntimeState
-            case .containerObservationMissing,
-                 .vitalDBObservationMissing, .vitalDBObservationReadFailed:
-                return true
-            default:
-                return false
-            }
-        }
     }
 
     private static func reasonText(_ reasons: [String]) -> String {

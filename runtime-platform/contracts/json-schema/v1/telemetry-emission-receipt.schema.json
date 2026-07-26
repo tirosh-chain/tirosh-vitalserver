@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:telemetry-emission-receipt",
+  "title": "TelemetryEmissionReceipt",
+  "description": "A diagnostic-only receipt for a redacted, bounded telemetry emission attempt. It contains key names and outcomes, never untrusted attribute values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "requestId",
+    "pipelineReference",
+    "signal",
+    "outcome",
+    "emittedAt",
+    "exportedAttributeCount",
+    "redactedAttributeKeys",
+    "droppedAttributeKeys"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "pipelineReference": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+    },
+    "signal": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:telemetry-correlation"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "exported",
+        "dropped",
+        "unavailable",
+        "failed",
+        "unknown"
+      ]
+    },
+    "emittedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "exportedAttributeCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 32
+    },
+    "redactedAttributeKeys": {
+      "$ref": "#/$defs/AttributeKeys"
+    },
+    "droppedAttributeKeys": {
+      "$ref": "#/$defs/AttributeKeys"
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "exported"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "issue"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "dropped",
+              "unavailable",
+              "failed",
+              "unknown"
+            ]
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "issue"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "AttributeKeys": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_.-]*$"
+      }
+    }
+  }
+}

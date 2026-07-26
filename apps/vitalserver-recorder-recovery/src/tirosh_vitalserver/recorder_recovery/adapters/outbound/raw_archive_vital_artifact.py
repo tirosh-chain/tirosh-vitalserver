@@ -2,113 +2,227 @@
 
 from __future__ import annotations
 
-import gzip
+import hashlib
+import json
 import time
-from dataclasses import dataclass
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 from tirosh_vitalserver.core.domain.vital_file import (
     VitalSessionMetadata,
-    VitalTrack,
+    iter_raw_archive_payloads_from_jsonl_lines,
     metadata_track,
-    raw_archive_payloads_from_jsonl_lines,
-    vital_tracks_by_vrcode_from_raw_archive,
 )
-from tirosh_vitalserver.core.types.json import JsonValue
+from tirosh_vitalserver.recorder_recovery.domain import (
+    RecoveryArtifactOrigin,
+    RecoveryArtifactReceipt,
+)
+from tirosh_vitalserver.vitalfile import VitalDbVitalFileWriter
 
+from .raw_archive_vital_spool import (
+    RawArchiveVitalSpool,
+)
 
-@dataclass(frozen=True)
-class RawArchiveVitalArtifact:
-    """One `.vital` artifact exported from raw archive payloads."""
-
-    vrcode: str
-    path: str
-    filename: str
-    size_bytes: int
-    created_at: float
-    track_count: int
+ARCHIVE_READ_CHUNK_BYTES = 64 * 1024
+ARTIFACT_HASH_CHUNK_BYTES = 1024 * 1024
+RECOVERY_ARTIFACT_PRODUCER = "vitalserver-recorder-recovery"
+RECOVERY_ARTIFACT_WRITER_VERSION = "2"
 
 
 class RawArchiveVitalFileExporter:
     """Write vrcode-grouped raw archive payloads as VitalDB `.vital` files."""
 
+    def __init__(
+        self,
+        writer: VitalDbVitalFileWriter | None = None,
+    ) -> None:
+        self._writer = writer or VitalDbVitalFileWriter()
+
     def export_raw_archive(
         self,
         raw_archive_path: Path,
         output_dir: Path,
-    ) -> tuple[RawArchiveVitalArtifact, ...]:
+        *,
+        vrcode: str | None = None,
+        start_offset: int = 0,
+        end_offset: int | None = None,
+        origin: RecoveryArtifactOrigin = RecoveryArtifactOrigin.COLD_PATH_RECOVERY,
+    ) -> tuple[RecoveryArtifactReceipt, ...]:
         """Create `.vital` artifacts from one raw archive JSONL file."""
 
-        try:
-            import numpy as np
-            from vitaldb import VitalFile
-        except ModuleNotFoundError as exc:
-            raise RuntimeError("vitaldb package is required for vital export") from exc
-
-        payloads = raw_archive_payloads_from_jsonl_lines(
-            raw_archive_path.read_text(encoding="utf-8").splitlines()
+        archive_size = raw_archive_path.stat().st_size
+        resolved_end = archive_size if end_offset is None else end_offset
+        if start_offset < 0 or resolved_end < start_offset:
+            raise ValueError("raw archive byte window is invalid")
+        if resolved_end > archive_size:
+            raise ValueError("raw archive byte window exceeds the current archive")
+        decoded_payloads = iter_raw_archive_payloads_from_jsonl_lines(
+            _iter_archive_window_lines(
+                raw_archive_path,
+                start_offset=start_offset,
+                end_offset=resolved_end,
+            )
         )
-        grouped_tracks = vital_tracks_by_vrcode_from_raw_archive(payloads)
-        if not grouped_tracks:
-            raise ValueError("raw archive did not contain exportable payloads")
-
         output_dir.mkdir(parents=True, exist_ok=True)
         exported_at = time.time()
-        artifacts: list[RawArchiveVitalArtifact] = []
+        artifacts: list[RecoveryArtifactReceipt] = []
+        source_archive_id = str(raw_archive_path.resolve())
 
-        for vrcode, tracks in grouped_tracks.items():
-            if not tracks:
-                continue
-            started_at = min(record.dt for track in tracks for record in track.records)
-            stopped_at = max(latest_record_time(tracks), started_at + 0.001)
-            metadata = VitalSessionMetadata(
-                session_id=f"recorder-ingress-raw-{vrcode}-{int(started_at)}",
-                vrcodes=(vrcode,),
-                bed_room_names=(vrcode,),
-                started_at=started_at,
-                stopped_at=stopped_at,
-                default_scenario="raw-archive",
-                channels=tuple(track.dtname for track in tracks),
-                playback_events=(("raw-archive-exported", exported_at),),
-            )
-
-            vital_file = VitalFile()
-            vital_file.dtstart = started_at
-            vital_file.dtend = stopped_at
-            for track in (*tracks, metadata_track(metadata)):
-                vitaldb_track = vital_file.add_track(
-                    track.dtname,
-                    vital_recs_for_track(track, np=np),
-                    srate=track.srate,
-                    unit=track.unit,
-                    mindisp=track.mindisp,
-                    maxdisp=track.maxdisp,
+        with RawArchiveVitalSpool(output_dir.parent) as spool:
+            for payload in decoded_payloads:
+                if vrcode is None or payload.vrcode == vrcode:
+                    spool.append(payload)
+            for artifact in spool.iter_artifacts():
+                group = artifact.group
+                tracks = group.tracks
+                started_at = artifact.coverage_started_at
+                stopped_at = artifact.coverage_ended_at
+                metadata = VitalSessionMetadata(
+                    session_id=(
+                        f"recorder-ingress-raw-{group.vrcode}-{int(started_at)}"
+                    ),
+                    vrcodes=(group.vrcode,),
+                    bed_room_names=group.room_names,
+                    started_at=started_at,
+                    stopped_at=stopped_at,
+                    scenario="raw-archive",
+                    channels=tuple(track.dtname for track in tracks),
+                    # Artifact bytes must be deterministic for the same explicit
+                    # source window and writer version. Wall-clock export time is
+                    # receipt evidence, not Vital File payload state.
+                    playback_events=(("raw-archive-exported", stopped_at),),
                 )
-                if vitaldb_track is None:
-                    raise RuntimeError(f"vitaldb failed to add track {track.dtname}")
-                vitaldb_track.montype = track.montype
 
-            artifact_path = output_dir / artifact_filename(vrcode, started_at)
-            result = vital_file.to_vital(str(artifact_path))
-            if result is not True:
-                raise RuntimeError(f"vitaldb failed to write {artifact_path}")
-            rewrite_vital_header_for_vitalserver_legacy_parser(artifact_path)
-            stat = artifact_path.stat()
-            artifacts.append(
-                RawArchiveVitalArtifact(
-                    vrcode=vrcode,
-                    path=str(artifact_path),
-                    filename=artifact_path.name,
-                    size_bytes=stat.st_size,
-                    created_at=exported_at,
-                    track_count=len(tracks),
+                artifact_path = output_dir / artifact_filename(
+                    group.vrcode,
+                    started_at,
                 )
-            )
+                receipt = self._writer.write(
+                    artifact_path,
+                    started_at=started_at,
+                    ended_at=stopped_at,
+                    tracks=(*tracks, metadata_track(metadata)),
+                )
+                artifact_sha256 = _file_sha256(artifact_path)
+                artifact_id = _artifact_id(
+                    origin=origin,
+                    vrcode=group.vrcode,
+                    room_names=group.room_names,
+                    source_archive_id=source_archive_id,
+                    source_start_offset=start_offset,
+                    source_end_offset=resolved_end,
+                    coverage_started_at=started_at,
+                    coverage_ended_at=stopped_at,
+                    sha256=artifact_sha256,
+                )
+                artifacts.append(
+                    RecoveryArtifactReceipt(
+                        artifact_id=artifact_id,
+                        origin=origin,
+                        producer=RECOVERY_ARTIFACT_PRODUCER,
+                        writer_version=RECOVERY_ARTIFACT_WRITER_VERSION,
+                        vrcode=group.vrcode,
+                        room_names=group.room_names,
+                        source_archive_id=source_archive_id,
+                        source_start_offset=start_offset,
+                        source_end_offset=resolved_end,
+                        coverage_started_at=started_at,
+                        coverage_ended_at=stopped_at,
+                        format_version=int(receipt.format_version),
+                        sha256=artifact_sha256,
+                        path=str(artifact_path),
+                        filename=artifact_path.name,
+                        size_bytes=receipt.size_bytes,
+                        created_at=exported_at,
+                        track_count=receipt.track_count,
+                    )
+                )
 
         if not artifacts:
             raise ValueError("raw archive did not contain exportable vital tracks")
         return tuple(artifacts)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(ARTIFACT_HASH_CHUNK_BYTES):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _artifact_id(
+    *,
+    origin: RecoveryArtifactOrigin,
+    vrcode: str,
+    room_names: tuple[str, ...],
+    source_archive_id: str,
+    source_start_offset: int,
+    source_end_offset: int,
+    coverage_started_at: float,
+    coverage_ended_at: float,
+    sha256: str,
+) -> str:
+    identity = json.dumps(
+        {
+            "origin": origin.value,
+            "producer": RECOVERY_ARTIFACT_PRODUCER,
+            "writerVersion": RECOVERY_ARTIFACT_WRITER_VERSION,
+            "vrcode": vrcode,
+            "roomNames": room_names,
+            "sourceArchiveId": source_archive_id,
+            "sourceStartOffset": source_start_offset,
+            "sourceEndOffset": source_end_offset,
+            "coverageStartedAt": coverage_started_at,
+            "coverageEndedAt": coverage_ended_at,
+            "sha256": sha256,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(identity).hexdigest()
+
+
+def _iter_archive_window_lines(
+    path: Path,
+    *,
+    start_offset: int,
+    end_offset: int,
+) -> Iterator[str]:
+    """Yield UTF-8 JSONL records from one explicit byte window."""
+
+    remaining = end_offset - start_offset
+    pending = bytearray()
+    line_number = 0
+    with path.open("rb") as stream:
+        stream.seek(start_offset)
+        while remaining:
+            chunk = stream.read(min(ARCHIVE_READ_CHUNK_BYTES, remaining))
+            if not chunk:
+                raise ValueError("raw archive changed while reading the byte window")
+            remaining -= len(chunk)
+            pending.extend(chunk)
+            while True:
+                newline = pending.find(b"\n")
+                if newline < 0:
+                    break
+                encoded_line = bytes(pending[:newline])
+                del pending[: newline + 1]
+                line_number += 1
+                yield _decode_archive_line(encoded_line, line_number=line_number)
+        if pending:
+            line_number += 1
+            yield _decode_archive_line(bytes(pending), line_number=line_number)
+
+
+def _decode_archive_line(encoded: bytes, *, line_number: int) -> str:
+    try:
+        return encoded.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            "raw archive byte window is not aligned to UTF-8 records: "
+            f"line={line_number}"
+        ) from exc
 
 
 def artifact_filename(vrcode: str, started_at: float) -> str:
@@ -116,85 +230,11 @@ def artifact_filename(vrcode: str, started_at: float) -> str:
 
     prefix = artifact_filename_prefix(vrcode)
     timestamp = time.strftime("%y%m%d_%H%M%S", time.localtime(started_at))
-    return f"{prefix}_{timestamp}_auto_export.vital"
-
-
-def vital_recs_for_track(track: VitalTrack, *, np: Any) -> list[dict[str, Any]]:
-    """Return VitalDB writer records for one track."""
-
-    records: list[dict[str, Any]] = []
-    for record in track.records:
-        value = record.value
-        if track.srate > 0:
-            records.append(
-                {
-                    "dt": record.dt,
-                    "val": np.asarray(numeric_array(value), dtype=np.float32),
-                }
-            )
-        else:
-            records.append({"dt": record.dt, "val": scalar_value(value)})
-
-    return records
-
-
-def latest_record_time(tracks: tuple[VitalTrack, ...]) -> float:
-    """Return the latest record timestamp in generated tracks."""
-
-    return max(record.dt for track in tracks for record in track.records)
-
-
-def rewrite_vital_header_for_vitalserver_legacy_parser(path: Path) -> None:
-    """Rewrite Python vitaldb v3 headers for bundled VitalServer indexing."""
-
-    payload = gzip.decompress(path.read_bytes())
-    if len(payload) < 20 or payload[:4] != b"VITA":
-        raise RuntimeError(f"vitaldb wrote an invalid vital payload: {path}")
-
-    header_len = int.from_bytes(payload[8:10], byteorder="little")
-    if header_len == 10:
-        return
-    if header_len != 27 or len(payload) < 37:
-        raise RuntimeError(
-            "vitaldb wrote an unsupported vital header length "
-            f"{header_len} for {path}"
-        )
-
-    legacy_payload = (
-        payload[:8]
-        + (10).to_bytes(2, byteorder="little")
-        + payload[10:20]
-        + payload[37:]
-    )
-    with gzip.GzipFile(str(path), mode="wb", compresslevel=9) as vital_file:
-        vital_file.write(legacy_payload)
-
-
-def numeric_array(value: JsonValue) -> list[float]:
-    """Return a waveform sample array from an explicit JSON value."""
-
-    if not isinstance(value, list):
-        raise ValueError("waveform vital record value must be an array")
-
-    samples: list[float] = []
-    for sample in value:
-        if not isinstance(sample, int | float):
-            raise ValueError("waveform vital record samples must be numeric")
-        samples.append(float(sample))
-
-    return samples
-
-
-def scalar_value(value: JsonValue) -> float | str:
-    """Return a numeric or string scalar for VitalDB writer records."""
-
-    if isinstance(value, int | float):
-        return float(value)
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        raise ValueError("numeric vital record value must not be an array")
-    return str(value)
+    # VitalServer derives its storage path from the final 20 characters of a
+    # filename: ``_YYMMDD_HHMMSS.vital``.  Keep export provenance in the
+    # artifact metadata, not in the filename, otherwise VitalServer indexes
+    # the file under a malformed bed/date path and the library cannot read it.
+    return f"{prefix}_{timestamp}.vital"
 
 
 def artifact_filename_prefix(room_name: str | None) -> str:

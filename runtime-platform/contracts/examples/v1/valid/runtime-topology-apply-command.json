@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "request-topology-0002",
+  "topologyId": "runtime-topology-main",
+  "expectedResourceRevision": 3,
+  "spec": {
+    "profileKind": "bundled-upstream",
+    "providerKind": "vitalserver",
+    "endpointReference": {
+      "resourceType": "guest-service-endpoint",
+      "resourceId": "bundled-upstream-main"
+    }
+  }
+}

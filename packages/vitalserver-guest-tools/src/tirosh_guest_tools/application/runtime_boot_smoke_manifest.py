@@ -20,7 +20,7 @@ class RuntimeBootSmokeContext:
     deploy_dir: Path
     manifest_path: Path
     run_id: str
-    max_runtime_state_age_seconds: int
+    max_runtime_observation_age_seconds: int
     compose_ready_timeout_seconds: float
     dev_build: bool
 
@@ -32,6 +32,10 @@ class RuntimeBootSmokeOperations:
     write_json: Callable[[Path, dict[str, Any]], None]
     run: Callable[..., subprocess.CompletedProcess[str]]
     http_status: Callable[[str, float], int]
+    http_json: Callable[
+        [str, str, float, dict[str, Any] | None],
+        dict[str, Any],
+    ]
     now: Callable[[], datetime]
     sleep: Callable[[float], None]
 

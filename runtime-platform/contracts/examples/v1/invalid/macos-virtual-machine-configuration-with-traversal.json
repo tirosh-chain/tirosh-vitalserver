@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "v1",
+  "machineId": "vitalserver-macos-arm64",
+  "cpuCount": 4,
+  "memoryBytes": 8589934592,
+  "boot": {
+    "kernelPath": "/Library/Application Support/VitalServerRuntimePlatform/vm/assets/../Image",
+    "guestRootDevicePath": "/dev/vda1",
+    "commandLine": "console=hvc0 root=/dev/vda1"
+  },
+  "guestBootConsoleCapture": {
+    "capturePath": "/var/lib/vitalserver/data/guest-boot-console.log",
+    "writeMode": "append"
+  },
+  "guestRuntimeDiskProvisioning": {
+    "releaseArtifactManifestPath": "/Library/Application Support/VitalServerRuntimePlatform/release/macos-guest-artifact-manifest.json",
+    "releaseArtifactPath": "/Library/Application Support/VitalServerRuntimePlatform/release/guest-root.raw",
+    "runtimeDiskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/data/vm/guest-root.raw",
+    "provisioningReceiptPath": "/Library/Application Support/VitalServerRuntimePlatform/data/vm/guest-root-provisioning-receipt.json",
+    "existingRuntimeDiskPolicy": "retain-when-receipt-matches-release-artifact"
+  },
+  "guestRuntimeControlHostLocalHTTPBridge": {
+    "hostLoopbackAddress": "127.0.0.1",
+    "hostLoopbackPort": 18443,
+    "guestVirtioSocketPort": 18443
+  },
+  "guestProductReleaseManagerHostLocalHTTPBridge": {
+    "hostLoopbackAddress": "127.0.0.1",
+    "hostLoopbackPort": 18444,
+    "guestVirtioSocketPort": 18444
+  },
+  "guestPublicServiceHostLocalHTTPBridges": [
+    {
+      "routeId": "recorder-gateway",
+      "hostLoopbackAddress": "127.0.0.1",
+      "hostLoopbackPort": 18090,
+      "guestVirtioSocketPort": 18090
+    }
+  ],
+  "storageDevices": [
+    {
+      "id": "guest-root",
+      "role": "guest-root-storage",
+      "storageImageFormat": "raw",
+      "diskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/data/vm/guest-root.raw",
+      "readOnly": false,
+      "attachmentIndex": 0
+    },
+    {
+      "id": "guest-product-bootstrap",
+      "role": "guest-product-bootstrap-volume",
+      "storageImageFormat": "raw",
+      "guestVolumeFileSystem": "iso9660",
+      "diskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/vm/disks/guest-product-bootstrap.raw",
+      "readOnly": true,
+      "attachmentIndex": 1
+    }
+  ],
+  "network": {
+    "attachment": "nat",
+    "macAddress": "02:16:3e:00:00:01"
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "v1",
+  "id": "guest-backup-manifest-1",
+  "operationId": "guest-backup-operation-1",
+  "destinationReference": {
+    "resourceType": "guest-backup-destination",
+    "resourceId": "guest-backup-local-1"
+  },
+  "sqliteSnapshot": {
+    "databaseId": "guest-runtime-ledger-1",
+    "schemaVersion": 7,
+    "snapshot": {
+      "reference": {
+        "resourceType": "guest-backup-object",
+        "resourceId": "guest-runtime-sqlite-1"
+      },
+      "byteSize": 4096,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "postgresqlSnapshot": {
+    "databaseId": "guest-operational-postgresql-1",
+    "alembicRevision": "0006_backup_owner",
+    "includedOwnerSchemas": [
+      "recorder_catalog",
+      "archive_export",
+      "recorder_assignment",
+      "guest_operational_state"
+    ],
+    "snapshot": {
+      "reference": {
+        "resourceType": "guest-backup-object",
+        "resourceId": "guest-operational-postgresql-1"
+      },
+      "byteSize": 8192,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "artifactInventory": {
+    "artifactCount": 3,
+    "inventory": {
+      "reference": {
+        "resourceType": "guest-backup-object",
+        "resourceId": "archive-artifact-inventory-1"
+      },
+      "byteSize": 1024,
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  },
+  "objectBytesIncluded": false,
+  "createdAt": "2026-07-24T18:00:05Z"
+}

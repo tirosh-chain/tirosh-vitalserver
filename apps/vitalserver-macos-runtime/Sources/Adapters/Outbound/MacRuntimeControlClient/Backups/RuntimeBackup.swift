@@ -9,7 +9,7 @@ extension RuntimeBackup {
         latestBackupPath: String? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) throws -> [RuntimeBackup] {
-        let directory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.backups)
+        let directory = InstalledRuntimePaths.defaultInstalled.backupsDirectory
         let discovered = try fileStore.childDirectories(
             at: directory,
             nameContains: RuntimeManagedBackupPolicy.nameFragment,
@@ -28,7 +28,7 @@ extension RuntimeBackup {
     }
 
     static func loadRedisBackups(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) throws -> [RuntimeBackup] {
-        let directory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.redisBackups)
+        let directory = InstalledRuntimePaths.defaultInstalled.redisBackupsDirectory
         let discovered = try fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)
             .filter { $0.lastPathComponent.hasPrefix("redis-") && $0.lastPathComponent.hasSuffix(".tar.gz") }
             .map { RuntimeBackup(path: $0.path, sizeBytes: try fileSize($0, fileStore: fileStore)) }
@@ -36,13 +36,13 @@ extension RuntimeBackup {
     }
 
     static func loadRuntimeDataBackups(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) throws -> [RuntimeBackup] {
-        let directory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeDataBackups)
+        let directory = InstalledRuntimePaths.defaultInstalled.vitalServerHelperBackupsDirectory
         let directoryState = fileStore.pathState(at: directory)
         switch directoryState {
         case .directory:
             break
         case .missing:
-            return []
+            throw RuntimeBackupListError.unexpectedPathState(path: directory.path, state: directoryState.rawValue)
         case .inspectFailed(let reason):
             throw RuntimeBackupListError.pathInspectionFailed(path: directory.path, reason: reason)
         case .file, .other, .unknown:

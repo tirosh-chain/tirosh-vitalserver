@@ -23,12 +23,12 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
         do {
             try secondary.append(event)
         } catch {
-            let appendError = CompositeRuntimeEventRepositoryError.secondaryAppendFailed(
-                eventID: event.id,
-                error: String(describing: error)
+            log(
+                CompositeRuntimeEventRepositoryError.secondaryAppendFailed(
+                    eventID: event.id,
+                    error: String(describing: error)
+                ).description
             )
-            log(appendError.description)
-            throw appendError
         }
     }
 
@@ -45,7 +45,10 @@ public struct CompositeRuntimeEventRepository: RuntimeEventRepository, RuntimeEv
             events: primaryPage.events,
             nextCursor: primaryPage.nextCursor,
             matchingCount: primaryPage.matchingCount,
-            readError: [secondaryReadError, primaryPage.readError]
+            readError: [
+                "sqlite=\(secondaryReadError)",
+                primaryPage.readError.map { "jsonl=\($0)" },
+            ]
                 .compactMap { $0 }
                 .joined(separator: "; ")
         )

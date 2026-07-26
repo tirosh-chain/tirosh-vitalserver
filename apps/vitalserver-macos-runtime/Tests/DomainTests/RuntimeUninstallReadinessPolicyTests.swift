@@ -18,7 +18,10 @@ final class DomainRuntimeUninstallReadinessPolicyTests: XCTestCase {
 
     func testPackageReceiptFailuresRemainExplicitBlockers() {
         let blockers = RuntimeUninstallReadinessPolicy.packageReceiptBlockers([
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
             .readFailed(identifier: "ai.tirosh.vitalserver.helper", reason: "database locked"),
             .forgetFailed(identifier: "ai.tirosh.vitalserver.helper", reason: "permission denied"),
         ])
@@ -34,7 +37,7 @@ final class DomainRuntimeUninstallReadinessPolicyTests: XCTestCase {
 private func serviceStates(
     overrides: [RuntimeManagedService: RuntimeServiceState] = [:]
 ) -> [RuntimeManagedService: RuntimeServiceState] {
-    Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
+    Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map { service in
         (service, overrides[service] ?? .notLoaded)
     })
 }

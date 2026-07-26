@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v1",
+  "serviceManagerKind": "systemd",
+  "serviceUnitName": "vitalserver-guest-product.service",
+  "supervisor": {
+    "executablePath": "/opt/vitalserver/current/bin/guest-product-process-supervisor",
+    "deploymentConfigurationPath": "/opt/vitalserver/current/config/guest-product-process-deployment.json"
+  },
+  "restart": {
+    "mode": "on-failure",
+    "delayMilliseconds": 1000
+  },
+  "logging": {
+    "standardOutput": "journal+console",
+    "standardError": "journal+console"
+  },
+  "install": {
+    "wantedByTarget": "multi-user.target"
+  }
+}

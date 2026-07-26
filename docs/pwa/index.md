@@ -26,7 +26,7 @@ PWA는 Runtime Control API를 primary boundary로 사용합니다. native shell�
 
 - PWA에서 macOS native 권한을 직접 대체하지 않습니다.
 - 인증/session 정책은 별도 이슈에서 독립적으로 다룹니다.
-- TestKit 전용 기능은 capability가 허용될 때만 노출하며, 제품 UI 경계와 섞지 않습니다.
+- Product Lab 기능은 `/runtime/lab/*` Runtime Control API 계약으로만 노출합니다. TestKit 구현 세부 정보는 제품 UI 경계로 승격하지 않습니다.
 
 ## 관련 문서
 

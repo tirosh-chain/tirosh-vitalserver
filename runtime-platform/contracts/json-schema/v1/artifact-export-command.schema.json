@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:artifact-export-command",
+  "title": "ArtifactExportCommand",
+  "description": "A request to finalize a stopped Lab virtual recorder source and export its immutable artifact. It is separate from Lab stop.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requestId", "virtualRecorderId", "expectedResourceRevision", "source", "provider"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "virtualRecorderId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "expectedResourceRevision": { "type": "integer", "minimum": 1 },
+    "source": {
+      "description": "The finalized Recorder Gateway source receipt that Archive Export must verify and form. A stopped virtual recorder alone is not archive source evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "coldPathFinalizationReceiptId"],
+      "properties": {
+        "kind": { "const": "recorder-gateway-cold-path" },
+        "coldPathFinalizationReceiptId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    },
+    "provider": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:export-receipt#/$defs/ProviderReference" }
+  }
+}

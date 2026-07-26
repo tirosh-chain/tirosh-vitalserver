@@ -1,0 +1,63 @@
+# Open-source OpenTelemetry Collector profile for VitalServer Runtime Platform.
+#
+# This is deliberately an explicit collector declaration, not an application
+# fallback. Deployments must set VITALSERVER_OTLP_BACKEND_ENDPOINT to an
+# operator-chosen OTLP-compatible endpoint. If it is absent or the endpoint is
+# unavailable, the collector reports that failure; product operations do not
+# use it as a success/failure signal.
+receivers:
+  otlp:
+    protocols:
+      grpc: {}
+      http: {}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  batch:
+    send_batch_size: 1024
+    timeout: 5s
+  # Process-side C20 policy is the authority for redaction and cardinality.
+  # These defense-in-depth removals prevent accidental downstream retention if
+  # a future instrumented component bypasses that policy.
+  attributes/defense-in-depth-redaction:
+    actions:
+      - key: patient.id
+        action: delete
+      - key: packet.bytes
+        action: delete
+      - key: waveform.bytes
+        action: delete
+      - key: authorization
+        action: delete
+      - key: credential
+        action: delete
+      - key: secret
+        action: delete
+      - key: token
+        action: delete
+      - key: password
+        action: delete
+
+exporters:
+  otlphttp/diagnostic-backend:
+    endpoint: ${env:VITALSERVER_OTLP_BACKEND_ENDPOINT}
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/defense-in-depth-redaction, batch]
+      exporters: [otlphttp/diagnostic-backend]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/defense-in-depth-redaction, batch]
+      exporters: [otlphttp/diagnostic-backend]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/defense-in-depth-redaction, batch]
+      exporters: [otlphttp/diagnostic-backend]

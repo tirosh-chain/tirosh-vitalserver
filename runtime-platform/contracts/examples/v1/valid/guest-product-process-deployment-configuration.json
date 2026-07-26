@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "v1",
+  "deploymentId": "vitalserver-guest-product",
+  "requiredProcessExitPolicy": "terminate-guest-product",
+  "guestRuntime": {
+    "executablePath": "/opt/vitalserver/bin/guest-runtime",
+    "listener": { "bindHost": "0.0.0.0", "port": 18443 },
+    "controlVirtioSocketListener": { "port": 18443 },
+    "publicServiceVirtioSocketBridges": [
+      { "routeId": "recorder-gateway", "guestProductProcessName": "recorder-gateway", "virtioSocketPort": 18090, "targetHost": "127.0.0.1", "targetPort": 8090 }
+    ],
+    "stateDatabasePath": "/var/lib/vitalserver/guest-runtime/guest-runtime.sqlite",
+    "recorderCatalogDatabaseUrlMaterialPath": "/var/lib/vitalserver/private/recorder-catalog-database-url",
+    "recorderCatalogMigrationReceiptPath": "/var/lib/vitalserver/private/recorder-catalog-migration-receipt.json",
+    "recorderCatalogAdmissionBearerTokenMaterialPath": "/var/lib/vitalserver/private/recorder-catalog-admission-token",
+    "recorderObservationMaxReportAgeSeconds": 300,
+    "archiveSourceAdmissionBearerTokenMaterialPath": "/var/lib/vitalserver/private/archive-source-admission-token",
+    "archiveArtifactObjectRootDirectory": "/var/lib/vitalserver/archive-artifacts",
+    "archiveSourceMaximumBytes": 67108864,
+    "labReplaySourceObjectRootDirectory": "/var/lib/vitalserver/lab-replay-sources",
+    "labReplaySourceMaximumBytes": 67108864,
+    "labReplaySpoolRootDirectory": "/var/lib/vitalserver/lab-replay-spools",
+    "labReplayStringTrackPolicy": "skip",
+    "labReplayGapPolicy": "fail-frame",
+    "labReplayFrameBatchSize": 1,
+    "recorderAttributionPolicyKind": "recorder-assignment-owner",
+    "serviceVersion": "0.1.0-dev",
+    "instanceId": "guest-runtime-primary",
+    "archiveExportProvider": { "kind": "archive-export-outcome-profile", "id": "bundled-archive", "capabilityRevision": 1, "outcomeMode": "succeed" },
+    "recorderGatewayColdPathSourceEndpoint": "http://127.0.0.1:8090",
+    "externalUpstreamObservationProvider": { "kind": "external-capability-profile", "id": "external-upstream", "capabilityRevision": 1, "outcomeMode": "unsupported" },
+    "outboundRelayObservationProvider": { "kind": "outbound-relay-profile", "id": "outbound-relay", "capabilityRevision": 1, "outcomeMode": "unsupported" },
+    "timeAuthority": { "guestNodeId": "guest-primary", "timeAuthorityId": "guest-time-authority", "probeOutcomeMode": "unsupported" },
+    "telemetryPipeline": { "collectorProbeOutcomeMode": "unsupported", "exportOutcomeMode": "unavailable" },
+    "operationalStateBackup": {
+      "rootDirectory": "/var/lib/vitalserver/guest-runtime",
+      "ledgerDatabasePath": "/var/lib/vitalserver/guest-runtime/operational-state-backup-ledger.sqlite",
+      "destinationReference": {
+        "resourceType": "guest-backup-destination",
+        "resourceId": "guest-local-operational-state"
+      },
+      "pgDumpExecutablePath": "/usr/bin/pg_dump",
+      "pgRestoreExecutablePath": "/usr/bin/pg_restore"
+    }
+  },
+  "recorderGateway": {
+    "nodeExecutablePath": "/opt/vitalserver/node/bin/node",
+    "programPath": "/opt/vitalserver/recorder-gateway/dist/cmd/recorder-gateway.js",
+    "listener": { "bindHost": "0.0.0.0", "port": 8090 },
+    "durableIngressStateDirectory": "/var/lib/vitalserver/recorder-gateway",
+    "vitalServerTopologyDeploymentPath": "/etc/vitalserver/guest-product-vitalserver-topology-deployment.json",
+    "externalVitalServerDeliveryConfigurationPath": "/etc/vitalserver/external-vitalserver-delivery-configuration.json",
+    "deliveryReplayAdmissionPolicy": { "maximumPendingItems": 1024, "maximumPendingBytes": 67108864 },
+    "coldPathCapturePolicy": { "maximumRetainedPackets": 1024, "maximumRetainedPayloadBytes": 67108864 },
+    "replayPolicy": { "intervalMilliseconds": 100, "maximumAttempts": 3, "retryDelayMilliseconds": 100, "leaseDurationMilliseconds": 1000 },
+    "guestRuntimeObservationCatalogEndpoint": "http://127.0.0.1:18443",
+    "observationCatalogBearerTokenMaterialPath": "/var/lib/vitalserver/private/recorder-catalog-admission-token",
+    "vitalUploadPolicy": { "maximumBytes": 67108864, "recoveryIntervalMilliseconds": 1000, "recoveryMaximumItems": 100 },
+    "guestRuntimeArchiveSourceAdmissionEndpoint": "http://127.0.0.1:18443/internal/v1/archive/recorder-uploads",
+    "archiveSourceAdmissionBearerTokenMaterialPath": "/var/lib/vitalserver/private/archive-source-admission-token",
+    "archiveSourceAdmissionRequestTimeoutMilliseconds": 30000
+  }
+}

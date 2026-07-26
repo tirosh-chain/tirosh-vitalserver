@@ -1,7 +1,7 @@
 [Unit]
 Description=Synchronize Tirosh guest clock from explicit host time contract
 After=local-fs.target
-Before=docker.service tirosh-runtime-state.service tirosh-vitalserver-command-poller.service tirosh-guest-observability.service tirosh-vitalserver-compose.service tirosh-vitalserver-testkit.service
+Before=docker.service tirosh-runtime-observation.service tirosh-guest-observability.service tirosh-vitalserver-compose.service
 
 [Service]
 Type=oneshot

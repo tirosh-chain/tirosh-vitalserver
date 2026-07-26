@@ -4,6 +4,14 @@
 
 현재 주요 역할은 simulated Vital Recorder data 또는 외부 payload를 Socket.IO `send_data` event로 보내고, VitalServer와 Redis가 운영에 필요한 형태로 반응하는지 확인하는 것입니다.
 
+Runtime v2에서는 TestKit이 제품 runtime surface가 아닙니다. macOS Helper,
+PWA, CLI에서 제공하는 virtual recorder와 `.vital` replay 기능은 Product
+Lab API와 Guest Control API를 통해 제공되며, TestKit은 local 개발,
+부하검증, recorder ingress 검증을 위한 dev/load-test 도구로 남습니다.
+runtime release compose, Runtime Control API, Swift/PWA product UI는
+`/dev/testkit`이나 TestKit container를 제품 상태의 source로 사용하지
+않아야 합니다.
+
 upstream VitalServer `2.3.4` 코드 기준 API 목록은 [OpenAPI 문서](../api/vitalserver.openapi.yaml)에 정리되어 있습니다. 실시간 monitor data는 HTTP `POST /api/send`가 아니라 Socket.IO `send_data` event로 들어갑니다.
 
 ## 준비
@@ -32,10 +40,10 @@ uv run vitalserver-testkit --help
 반복해서 쓰는 검증 시나리오는 저장소 root의 script와 Makefile target으로 실행할 수 있습니다.
 
 ```sh
-make testkit-smoke
-make testkit-verify
-make testkit-load
-make testkit-stream
+make testkit/smoke
+make testkit/verify
+make testkit/load
+make testkit/stream
 ```
 
 내부적으로는 `scripts/test_vitalserver.py`가 `config/testkit.toml`을 읽고 testkit CLI를 호출합니다. 기본값은 파일을 읽지 않고 simulated recorder data를 생성합니다. 기본 config는 recorder 5대와 총 500개 `send_data` event 기준의 load scenario를 바로 실행할 수 있게 잡아 둡니다. stream scenario는 Ctrl+C 전까지 계속 전송합니다. 더 강한 검증이 필요하면 config 파일을 복사해 조정합니다.
@@ -77,14 +85,16 @@ duration_seconds = 0
 그리고 해당 config로 실행합니다.
 
 ```sh
-TESTKIT_CONFIG=config/load-test.toml make testkit-load
+TESTKIT_CONFIG=config/load-test.toml make testkit/load
 ```
 
 ## 실시간 수집 검증
 
 기본값은 내부 simulated recorder data를 만들어 Socket.IO `send_data` event로 반복 전송합니다. testkit은 room map payload를 upstream VitalServer가 기대하는 `{vrcode, ver, rooms}` 형태로 감싼 뒤 zlib으로 압축해 보냅니다. 실제 장비에서 캡처한 payload를 재현해야 하면 command의 첫 positional argument나 `config/testkit.toml`의 `[recorder].payload`에 JSON 파일 경로를 지정합니다.
 
-TestKit API와 Test 탭에서 쓰는 recorder session 입력은 세 축으로 분리합니다.
+TestKit recorder session 입력은 세 축으로 분리합니다. Runtime v2 제품
+Lab도 같은 개념을 사용하지만, 제품 UI와 CLI의 session/operation 상태는
+Product Lab과 Guest Control API가 소유합니다.
 
 | 축 | 의미 | 예 |
 | --- | --- | --- |
@@ -130,7 +140,11 @@ uv run vitalserver-testkit stream-recorder \
   --vital-duration 120
 ```
 
-macOS runtime Test 탭에서 선택하는 `.vital` 파일은 Helper Settings의 `Vital files directory` 아래에 있어야 합니다. Helper는 host path를 guest mount path `/mnt/tirosh-vital-files/...`로 변환해 TestKit API에 전달합니다. PWA나 raw TestKit API에서 runtime container를 직접 제어할 때는 TestKit container가 읽을 수 있는 guest path를 명시해야 합니다.
+Runtime v2 제품 Lab에서 선택하는 `.vital` 파일은 Helper Settings의
+`Vital files directory` 아래에 있어야 합니다. Helper는 host path를 guest
+mount path `/mnt/tirosh-vital-files/...`로 변환해 Product Lab replay API에
+전달합니다. raw TestKit API를 local dev 목적으로 직접 사용할 때는 TestKit
+process가 읽을 수 있는 path를 명시해야 합니다.
 
 120초 real sample payload는 이미 window 안에 여러 record를 담고 있으므로, lifecycle 검증에서 그대로 재생할 때는 `--replay-sample`과 종료 조건을 함께 둡니다.
 
@@ -220,7 +234,7 @@ uv run vitalserver-testkit stream-recorder \
 
 장시간 soak test는 `elapsed_seconds`, `messages_sent`, `bytes_sent`만으로 성공/실패를 판단하지 않습니다. 같은 run에서 아래 runtime evidence를 함께 보존해야 합니다.
 
-- guest `runtime-state.json`의 app container `oomKilled`, `restartCount`, `finishedAt`, `memoryLimitBytes`
+- guest `runtime-observation.json`의 app container `oomKilled`, `restartCount`, `finishedAt`, `memoryLimitBytes`
 - `/recorder-ingress/status`의 `sendDataEventsObserved`, `sendDataBytesObserved`, `lastSendDataObservedAt`
 - Redis memory와 guest HTTP status
 - `guest-runtime-state-stale`, `guestHTTP: 502`, recorder-ingress upstream failure 같은 연쇄 증상
@@ -285,7 +299,10 @@ print(f"bytes={transfer_total_bytes_sent(summary)}")
 
 ## TestKit API server
 
-Runtime Helper의 Test 탭과 PWA가 TestKit을 제어할 수 있도록 TestKit은 FastAPI server를 제공한다. macOS runtime dev bundle에서는 TestKit을 guest Docker Compose의 `testkit` container로 포함하고, Helper는 VM IP의 `http://<vm-ip>:18322` API를 호출한다. Stable release runtime에서는 TestKit container와 deploy source를 제외한다. 이 server는 virtual VRecorder session의 시작/중지/상태 조회를 담당한다.
+TestKit FastAPI server는 local 개발과 부하검증을 위한 보조 server입니다.
+Runtime v2 제품 UI와 CLI는 이 API를 직접 제어하지 않습니다. 제품 runtime의
+Lab 기능은 `apps/vitalserver-lab`과 Guest Control `/runtime/lab/*` 경계가
+소유합니다.
 
 ```sh
 uv run vitalserver-testkit serve \
@@ -293,7 +310,11 @@ uv run vitalserver-testkit serve \
   --port 18322
 ```
 
-위 명령은 local 개발용이다. Dev runtime에서는 `vitalserver-testkit:0.1.1` container가 `0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서 `http://edge/`를 대상으로 접속한다. 이 container는 `/mnt/tirosh-vital-files`를 read-only로 mount해 `.vital` playback source를 읽는다.
+위 명령은 local 개발용입니다. TestKit server를 직접 띄우는 경우 생성된
+virtual VRecorder는 지정한 target URL로 접속합니다. 제품 runtime에서
+mounted `.vital` replay를 검증해야 하면 TestKit server가 아니라 Product
+Lab `POST /runtime/lab/vital-files/replay` 또는 Guest Control
+`POST /runtime/lab/vital-files/replay`를 사용합니다.
 
 API는 bed registry와 session lifecycle을 분리한다.
 
@@ -310,7 +331,10 @@ DELETE /sessions/{id}
 DELETE /sessions
 ```
 
-Helper Test 탭의 기본 모델은 “virtual VRecorder 1대 = TestKit session 1개”이다. 여러 대를 동시에 실행할 때는 session을 여러 개 생성한다. Bulk 생성은 이후 API에서 여러 session을 한 번에 생성하는 얇은 편의 기능으로 추가한다.
+TestKit API의 기본 모델은 “virtual VRecorder 1대 = TestKit session
+1개”입니다. 이 모델은 dev/load-test용입니다. 제품 Lab session 모델과
+operation persistence는 Product Lab/Guest Control API 문서를 기준으로
+확인합니다.
 
 예시 요청:
 
@@ -338,13 +362,24 @@ Helper Test 탭의 기본 모델은 “virtual VRecorder 1대 = TestKit session 
 }
 ```
 
-TestKit API의 SoT는 “시뮬레이터가 무엇을 실행 중인지”이다. VitalServer가 실제로 recorder를 인식했는지는 기존 `vitaldb-observer`와 Runtime Control API `/vitaldb/recorders` 결과를 기준으로 판단한다.
+TestKit API의 SoT는 “시뮬레이터가 무엇을 실행 중인지”이다. VitalServer가 실제로 recorder를 인식했는지는 기존 `vitaldb-observer`와 Runtime Control API `/runtime/vitaldb/recorders` 결과를 기준으로 판단한다.
 
 ## `.vital` 파일 업로드 검증
 
 파일 업로드 경로를 확인할 때 사용합니다. upstream 코드 기준 upload endpoint는 `/upload` 또는 `/upload_vital.php`입니다. testkit 기본값은 `/upload`입니다. `.vital` 파일 저장 위치는 VitalServer Helper Settings의 `Vital files directory`가 SoT입니다. My Files 표시 여부는 별도 Redis 조회 index에 의해 결정되며, 이 index는 upload endpoint가 파일 저장과 함께 생성합니다. 따라서 파일을 storage directory에 직접 복사하는 것만으로는 My Files에 표시되지 않을 수 있습니다.
 
-Helper Test 탭의 `Manual .vital upload`는 로컬 `.vital` 파일 여러 개를 선택하고, 파일명 `bedname_yymmdd_hhmmss.vital`에서 bed room name을 추출해 TestKit bed registry에 등록한 뒤, 각 파일을 VitalServer `/upload`로 multipart streaming upload합니다. 이 경로는 파일 저장 위치와 My Files 조회 index를 같은 VitalServer upload 계약으로 갱신하기 위한 기능입니다.
+`.vital` upload 검증은 local/dev workflow입니다. 로컬 `.vital` 파일 여러
+개를 선택하고 파일명 `bedname_yymmdd_hhmmss.vital`에서 bed room name을
+추출해 VitalServer `/upload`로 multipart streaming upload하면, 파일 저장
+위치와 My Files 조회 index를 같은 VitalServer upload 계약으로 갱신할 수
+있습니다. Runtime v2 제품 UI에서 이 기능을 제공할 때의 제품 소유자는
+TestKit이 아니라 Lab 또는 recorder-recovery 쪽 계약이어야 합니다.
+
+여러 파일을 선택해도 VitalServer에는 파일별로 독립된 `/upload` 요청을
+순서대로 보냅니다. 한 파일의 응답이 끝나기 전에 다음 파일을 동시에 보내거나,
+여러 파일을 하나의 multipart request로 합치지 않습니다. Multipart body는
+file-backed streaming으로 전송하므로 파일 크기만큼의 메모리 buffer를 만들지
+않습니다. 이는 단일 `.vital`을 byte 범위로 쪼개는 resumable upload가 아닙니다.
 
 Recorder ingress raw archive JSONL을 `.vital` 파일로 변환한 뒤 같은 upload 계약으로 반영할 수도 있습니다.
 이 기능의 제품 소유자는 `apps/vitalserver-recorder-recovery`이며, TestKit CLI는 제품 CLI를 호출하는
@@ -379,22 +414,26 @@ uv run vitalserver-recorder-recovery recover-raw-archive-vital \
   --concurrency 4
 ```
 
-제품 `recorder-recovery` server는 같은 기능을 HTTP API로도 제공합니다. Recorder ingress auto export worker는
-기본적으로 이 endpoint를 호출합니다. TestKit server는 이 recovery endpoint를 제공하지 않습니다.
+제품 `recorder-recovery` server는 export와 수동 recover 기능을 서로 다른 HTTP API로 제공합니다. Recorder
+ingress auto export worker는 `/raw-archive/export-vital`만 호출하며 VitalServer publish를 요청하지 않습니다.
+TestKit server는 이 recovery endpoint를 제공하지 않습니다.
 `rawArchivePath`와 `outputDir`은 recorder-ingress와 recorder-recovery container가 같은 mount path로
 볼 수 있어야 합니다.
 
 ```sh
-curl -X POST http://recorder-recovery:8080/raw-archive/recover-vital \
+curl -X POST http://recorder-recovery:8080/raw-archive/export-vital \
   -H 'content-type: application/json' \
   -d '{
     "rawArchivePath": "/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl",
     "outputDir": "/var/lib/vitalserver-recorder-ingress/recovery/vital-export",
-    "vitalserverUrl": "http://app:80",
-    "endpoint": "/upload",
-    "skipFilenameCheck": true
+    "vrcode": "VR001"
   }'
 ```
+
+응답 artifact receipt의 `origin=coldPathRecovery`, source byte range, coverage, format/writer version,
+SHA-256을 보존해야 합니다. Export 완료는 Vital Recorder native upload 또는 My Files publish 완료가 아닙니다.
+`recover-raw-archive-vital` CLI와 `/raw-archive/recover-vital` API는 운영자가 export와 publish를 한 번에
+명시적으로 요청하는 수동 compatibility 경로이며 auto export worker는 사용하지 않습니다.
 
 TestKit의 `.vital` upload 검증 경로는 Python 코드에서 직접 호출할 수도 있습니다.
 

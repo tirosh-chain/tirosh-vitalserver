@@ -20,15 +20,11 @@ public enum RuntimeActiveOperationPolicy {
         }
     }
 
-    public static func isUpdateInProgress(_ status: RuntimeStatus) -> Bool {
-        if let progress = status.progress,
-           isUpdateOperation(progress.operation) {
-            return !isTerminal(progress.phase)
-        }
-        guard isUpdateOperation(status.operation) else {
+    public static func isUpdateInProgress(_ status: PlatformState, operation: RuntimeOperation?) -> Bool {
+        guard status.platformHealth != .recovering else {
             return false
         }
-        return status.runtimeState == .updating
+        return isUpdateOperation(operation)
     }
 
     public static func isRecoveryOperation(_ operation: RuntimeOperation?) -> Bool {
@@ -46,33 +42,15 @@ public enum RuntimeActiveOperationPolicy {
         }
     }
 
-    public static func isRecoveryInProgress(_ status: RuntimeStatus) -> Bool {
-        if let progress = status.progress,
-           isRecoveryOperation(progress.operation) {
-            return !isTerminal(progress.phase)
-        }
-        guard isRecoveryOperation(status.operation) || isUpdateOperation(status.operation) else {
+    public static func isRecoveryInProgress(_ status: PlatformState, operation: RuntimeOperation?) -> Bool {
+        guard status.platformHealth == .recovering else {
             return false
         }
-        return status.runtimeState == .recovering
+        return isRecoveryOperation(operation) || isUpdateOperation(operation)
     }
 
-    public static func isInstallInProgress(_ status: RuntimeStatus) -> Bool {
-        guard status.runtimeState == .installing else {
-            return false
-        }
-        if let progress = status.progress,
-           isInstallOperation(progress.operation) {
-            return !isTerminal(progress.phase)
-        }
-        if let installState = status.installStateDocument?.state {
-            return isInstallStateInProgress(installState, status: status)
-        }
-        return true
-    }
-
-    public static func isInitializationInProgress(_ status: RuntimeStatus) -> Bool {
-        status.runtimeState == .initializing
+    public static func isInitializationInProgress(_ status: PlatformState) -> Bool {
+        status.platformHealth == .initializing
     }
 
     public static func isTerminal(_ phase: RuntimeProgressPhase) -> Bool {
@@ -81,23 +59,6 @@ public enum RuntimeActiveOperationPolicy {
             return true
         default:
             return false
-        }
-    }
-
-    private static func isInstallStateInProgress(_ state: RuntimeInstallState, status: RuntimeStatus) -> Bool {
-        switch state {
-        case .preflightBlocked, .provisionPayloadBlocked, .completed, .failed:
-            return false
-        case .started,
-             .settingsLoaded,
-             .preflightVerified,
-             .provisionPayloadVerified,
-             .stepStarted,
-             .stepCompleted,
-             .unknown:
-            return true
-        case .provisioned:
-            return !RuntimeReadinessPolicy.isReady(status)
         }
     }
 }

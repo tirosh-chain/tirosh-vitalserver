@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "v1",
+  "proofs": [
+    {
+      "planId": "windows-release-plan",
+      "platform": "windows",
+      "providerKind": "windows-hyperv-scm",
+      "stage": "clean-install",
+      "status": "verified",
+      "recordedAt": "2026-07-18T00:00:00Z",
+      "runner": {
+        "kind": "windows-clean-host",
+        "id": "windows-clean-host-1"
+      },
+      "evidence": {
+        "uri": "file:///evidence/windows-clean-install.json",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  ]
+}

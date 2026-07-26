@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "id": "recorder-cold-path-capture-0002",
+  "recorderId": "recorder-lab-0002",
+  "connection": {
+    "sessionId": "socket-session-0002",
+    "protocolVersion": "v2"
+  },
+  "resourceRevision": 2,
+  "state": "finalized",
+  "openedAt": "2026-07-17T00:00:00Z"
+}

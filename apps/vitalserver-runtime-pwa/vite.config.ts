@@ -9,6 +9,22 @@ import { loadAppSettings } from "./src/config/appSettings";
 
 export default defineConfig(({ mode }) => {
   const settings = loadAppSettings(loadEnv(mode, process.cwd(), ""));
+  if (mode === "production" && settings.runtimeControl.token) {
+    throw new Error(
+      "Refusing to embed a Runtime Control API token in the production PWA."
+    );
+  }
+  const localAgentOrigin = new URL(settings.runtimeControl.devProxyTarget).origin;
+  const localAgentProxy = {
+    target: settings.runtimeControl.devProxyTarget,
+    changeOrigin: true,
+    configure(proxy: { on(event: string, listener: (...args: unknown[]) => void): void }) {
+      proxy.on("proxyReq", (...args: unknown[]) => {
+        const request = args[0] as { setHeader(name: string, value: string): void };
+        request.setHeader("Origin", localAgentOrigin);
+      });
+    }
+  };
 
   return {
     plugins: [react()],
@@ -20,10 +36,11 @@ export default defineConfig(({ mode }) => {
     server: {
       port: settings.pwa.devServerPort,
       proxy: {
-        "/runtime": settings.runtimeControl.devProxyTarget,
-        "/vitaldb": settings.runtimeControl.devProxyTarget,
-        "/host": settings.runtimeControl.devProxyTarget,
-        "/dev/testkit": settings.runtimeControl.devProxyTarget
+        "/platform": localAgentProxy,
+        "/runtime": localAgentProxy,
+        "/vitaldb": localAgentProxy,
+        "/host": localAgentProxy,
+        "/lab": localAgentProxy
       }
     },
     preview: {

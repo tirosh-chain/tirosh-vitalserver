@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "v1",
+  "managerId": "bundled-upstream-image-set-manager",
+  "listener": { "bindHost": "127.0.0.1", "port": 18445 },
+  "controlVirtioSocketListener": { "port": 18445 },
+  "stateDirectory": "/var/lib/vitalserver/bundled-upstream-image-sets",
+  "stagingDirectory": "/var/lib/vitalserver/bundled-upstream-image-sets/staging",
+  "stateDirectoryMode": "0700",
+  "maximumImageSetArtifactBytes": 4294967296,
+  "containerEngine": { "kind": "docker-cli", "executablePath": "/usr/bin/docker", "composeProjectName": "vitalserver-bundled-upstream" }
+}

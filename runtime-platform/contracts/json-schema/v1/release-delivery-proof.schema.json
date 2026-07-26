@@ -1,0 +1,390 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:release-delivery-proof",
+  "title": "ReleaseDeliveryProofSet",
+  "description": "Release-process-owned proof records for declared delivery plans. A pending, unsupported, or failed stage never represents installation success. Every verified stage records the observed installer artifact identity so it cannot prove a different release. A verified service-registration record must also name each observed required Host service registration explicitly.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "proofs"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "proofs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ReleaseDeliveryProof"
+      }
+    }
+  },
+  "$defs": {
+    "ReleaseDeliveryProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planId",
+        "platform",
+        "providerKind",
+        "stage",
+        "status",
+        "recordedAt",
+        "runner"
+      ],
+      "properties": {
+        "planId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "platform": {
+          "type": "string",
+          "enum": [
+            "macos",
+            "windows",
+            "linux"
+          ]
+        },
+        "providerKind": {
+          "type": "string",
+          "enum": [
+            "macos-virtualization",
+            "windows-hyperv-scm",
+            "linux-kvm-libvirt-systemd"
+          ]
+        },
+        "stage": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:release-delivery-plan#/$defs/ProofStage"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "pending",
+            "failed",
+            "unsupported"
+          ]
+        },
+        "recordedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "runner": {
+          "$ref": "#/$defs/Runner"
+        },
+        "evidence": {
+          "$ref": "#/$defs/Evidence"
+        },
+        "observedInstallerArtifact": {
+          "$ref": "#/$defs/ObservedInstallerArtifact"
+        },
+        "observedMacOSInstallerReceipt": {
+          "$ref": "#/$defs/ObservedMacOSInstallerReceipt"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "observedHostServiceRegistrations": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/ObservedHostServiceRegistration"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "const": "host-agent"
+                  }
+                },
+                "required": [
+                  "role"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "const": "host-edge-proxy"
+                  }
+                },
+                "required": [
+                  "role"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "const": "host-update-handoff-supervisor"
+                  }
+                },
+                "required": [
+                  "role"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "evidence",
+              "observedInstallerArtifact"
+            ],
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "issue"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "stage": {
+                "const": "service-registration"
+              },
+              "status": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "stage",
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "observedHostServiceRegistrations"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "observedHostServiceRegistrations"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "platform": {
+                "const": "macos"
+              },
+              "stage": {
+                "const": "clean-install"
+              },
+              "status": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "platform",
+              "stage",
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "observedMacOSInstallerReceipt"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "observedMacOSInstallerReceipt"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "Runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "not-assigned",
+            "macos-clean-host",
+            "windows-clean-host",
+            "linux-clean-host"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uri",
+        "sha256"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "ObservedInstallerArtifact": {
+      "description": "A clean-host runner observation of the exact installer artifact used for this proof stage. It is an observed identity, not C23 desired release input.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "fileName",
+        "productVersion",
+        "sha256",
+        "observedAt"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dmg",
+            "pkg",
+            "msi",
+            "msix",
+            "deb",
+            "rpm",
+            "tarball"
+          ]
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^/\\\\]+$"
+        },
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    },
+    "ObservedHostServiceRegistration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "manager",
+        "name",
+        "registrationState",
+        "observedAt"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "host-agent",
+            "host-edge-proxy",
+            "host-update-handoff-supervisor"
+          ]
+        },
+        "manager": {
+          "type": "string",
+          "enum": [
+            "launchd",
+            "windows-scm",
+            "systemd"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "registrationState": {
+          "const": "registered"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    },
+    "ObservedMacOSInstallerReceipt": {
+      "description": "A clean macOS Host observation that the C23-owned PKG receipt is installed after the explicit installer effect.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageIdentifier",
+        "productVersion",
+        "receiptState",
+        "observedAt"
+      ],
+      "properties": {
+        "packageIdentifier": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+$"
+        },
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "receiptState": {
+          "const": "installed"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-cold-path-capture",
+  "title": "RecorderColdPathCapture",
+  "description": "A Recorder Gateway-owned capture aggregate for raw accepted Recorder packets. It is source evidence for a later Archive Export operation, not a .vital artifact, upload, or index receipt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "recorderId",
+    "connection",
+    "resourceRevision",
+    "state",
+    "openedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "recorderId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "connection": {
+      "$ref": "#/$defs/RecorderGatewayConnection"
+    },
+    "resourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "capturing",
+        "finalized"
+      ]
+    },
+    "openedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "finalizationReceipt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-cold-path-capture-finalization-receipt"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "capturing"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "finalizationReceipt"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "finalized"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "finalizationReceipt"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "RecorderGatewayConnection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "protocolVersion"
+      ],
+      "properties": {
+        "sessionId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "protocolVersion": {
+          "const": "v2"
+        },
+        "bootId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    }
+  }
+}

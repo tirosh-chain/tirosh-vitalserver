@@ -11,13 +11,13 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
         try harness.run(.startAll)
 
         XCTAssertEqual(harness.events, [
-            "log:runtime services start requested",
-            "status:recovering:start-services:runtime services start requested",
+            "log:host runtime services start requested",
+            "status:recovering:start-services:host runtime services start requested",
             "start:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
             "observe:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
             "wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
-            "status:healthy:start-services:runtime services started",
-            "log:runtime services started",
+            "status:healthy:start-services:host runtime services started",
+            "log:host runtime services started",
         ])
     }
 
@@ -30,8 +30,8 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains(RuntimeManagedService.guestLogSync.label))
         }
 
-        XCTAssertFalse(harness.events.contains("status:healthy:start-services:runtime services started"))
-        XCTAssertFalse(harness.events.contains("log:runtime services started"))
+        XCTAssertFalse(harness.events.contains("status:healthy:start-services:host runtime services started"))
+        XCTAssertFalse(harness.events.contains("log:host runtime services started"))
     }
 
     func testRepairAllObservesStoppedStateBeforeStartingRequiredServices() throws {
@@ -41,15 +41,15 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
         try harness.run(.repairAll)
 
         XCTAssertEqual(Array(harness.events.prefix(7)), [
-            "log:runtime services repair requested",
-            "status:recovering:repair-services:runtime services repair requested",
+            "log:host runtime services repair requested",
+            "status:recovering:repair-services:host runtime services repair requested",
             "stop",
             "observe:ai.tirosh.vitalserver.helper.watchdog,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.sleep-prevention",
             "start:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
             "observe:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
             "wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
         ])
-        XCTAssertTrue(harness.events.contains("status:healthy:repair-services:runtime services repaired"))
+        XCTAssertTrue(harness.events.contains("status:healthy:repair-services:host runtime services repaired"))
     }
 
     func testRepairProxyStartsOnlyProxyAndObservesProxyLoaded() throws {
@@ -90,8 +90,8 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
         }
 
         XCTAssertTrue(harness.events.contains("wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog"))
-        XCTAssertFalse(harness.events.contains("status:healthy:repair-services:runtime services repaired"))
-        XCTAssertFalse(harness.events.contains("log:runtime services repaired"))
+        XCTAssertFalse(harness.events.contains("status:healthy:repair-services:host runtime services repaired"))
+        XCTAssertFalse(harness.events.contains("log:host runtime services repaired"))
     }
 
     func testStopAllCompletesOnlyAfterRuntimeServicesAreObservedStopped() throws {
@@ -101,11 +101,11 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
         try harness.run(.stopAll)
 
         XCTAssertEqual(harness.events, [
-            "log:runtime services stop requested",
+            "log:host runtime services stop requested",
             "stop",
             "observe:ai.tirosh.vitalserver.helper.watchdog,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.sleep-prevention",
-            "status:degraded:stop-services:runtime services stopped",
-            "log:runtime services stopped",
+            "status:degraded:stop-services:host runtime services stopped",
+            "log:host runtime services stopped",
         ])
     }
 
@@ -118,8 +118,8 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains(RuntimeManagedService.proxy.label))
         }
 
-        XCTAssertFalse(harness.events.contains("status:degraded:stop-services:runtime services stopped"))
-        XCTAssertFalse(harness.events.contains("log:runtime services stopped"))
+        XCTAssertFalse(harness.events.contains("status:degraded:stop-services:host runtime services stopped"))
+        XCTAssertFalse(harness.events.contains("log:host runtime services stopped"))
     }
 }
 

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "v1",
+  "corpusId": "unapproved-vital-replay-corpus-1",
+  "approval": {
+    "decision": "approved",
+    "reviewer": {
+      "kind": "human",
+      "id": "release-data-reviewer-1"
+    },
+    "reviewedAt": "2026-07-24T12:00:00Z",
+    "evidenceReference": {
+      "kind": "release-data-review",
+      "id": "vital-corpus-review-1"
+    },
+    "assertions": {
+      "nonIdentifying": true,
+      "redistributionAuthorized": false,
+      "clinicalUseProhibited": true
+    }
+  },
+  "entries": [
+    {
+      "id": "unapproved-recorder-vital-v1",
+      "fileName": "unapproved-recorder-v1.vital",
+      "byteSize": 20480,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "formatVersion": 1,
+      "origin": {
+        "kind": "deidentified-recorder-export",
+        "evidenceReference": {
+          "kind": "recorder-export-review",
+          "id": "unapproved-recorder-v1"
+        }
+      },
+      "expectedReplay": {
+        "outcome": "succeeded",
+        "minimumGraphCompatibleSignalCount": 2,
+        "trackKinds": [
+          "waveform",
+          "numeric"
+        ]
+      }
+    }
+  ]
+}

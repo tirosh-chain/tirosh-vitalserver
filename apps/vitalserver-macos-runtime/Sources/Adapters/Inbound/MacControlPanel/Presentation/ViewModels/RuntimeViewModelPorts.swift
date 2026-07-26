@@ -5,13 +5,20 @@ import Errors
 
 public protocol RuntimeViewModelSnapshotReading: Sendable {
     func loadSettings() async -> RuntimeSettings
-    func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+    func loadPlatformState(settings: RuntimeSettings) async -> PlatformState
+    func loadOperationState() async -> PlatformOperationState
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState
     func loadRuntimeEvents(query: RuntimeEventQuery) async -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() async -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() async -> RuntimeVitalRecorderHistory
+    func loadVitalDBBeds() async -> RuntimeVitalBedHistory
     func loadVitalDBRecorderSummaries() async -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async -> RuntimeVitalRecorderActivityWindow
+    func loadVitalDBRecorderVitalFiles(vrcode: String) async -> RuntimeVitalRecorderVitalFileHistory
+    func loadRecorderObservabilityDetail(vrcode: String) async -> RuntimeRecorderObservabilityDetail
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async -> RuntimeRecorderObservabilityIncidents
     func loadVitalDBRelationships() async -> RuntimeVitalRelationshipHistory
     func loadBackups(latestBackupPath: String?) async throws -> [RuntimeBackup]
     func loadRedisBackups() async throws -> [RuntimeBackup]
@@ -22,14 +29,32 @@ public extension RuntimeViewModelSnapshotReading {
     func loadVitalDBRecorderSummaries() async -> RuntimeVitalRecorderHistory {
         await loadVitalDBRecorders()
     }
-}
 
-@MainActor
-public protocol RuntimeControlLocalAPISettingsApplying: AnyObject {
-    var runtimeControlPort: Int { get }
-    func settingsWithLocalAPIPort(_ settings: RuntimeSettings) -> RuntimeSettings
-    func apply(settings: RuntimeSettings)
-    func apply(port: Int)
+    func loadVitalDBBeds() async -> RuntimeVitalBedHistory {
+        .failed(readError: "vitaldb-beds reader is unavailable")
+    }
+
+    func loadVitalDBRecorderVitalFiles(vrcode: String) async -> RuntimeVitalRecorderVitalFileHistory {
+        .failed(vrcode: vrcode, readError: "vitaldb-recorder-vital-files reader is unavailable")
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) async -> RuntimeRecorderObservabilityDetail {
+        .unavailable(
+            vrcode: vrcode,
+            readError: "recorder-observability-detail reader is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async -> RuntimeRecorderObservabilityIncidents {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "recorder-observability-incidents reader is unavailable"
+        )
+    }
 }
 
 @MainActor
@@ -38,6 +63,7 @@ public protocol RuntimeNativeShell {
     func chooseUpdateBundle(prompt: String) -> URL?
     func chooseRedisBackupArchive(prompt: String) -> URL?
     func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL]
+    func readVitalFileUploadSources(_ sources: [URL]) throws -> [RuntimeLabVitalFileUploadSource]
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL?
     func logExportDestinationValidationMessage(for url: URL) -> String?
     func pathState(_ url: URL) -> RuntimePathState
@@ -58,6 +84,13 @@ public struct NoopRuntimeNativeShell: RuntimeNativeShell {
     public func chooseUpdateBundle(prompt: String) -> URL? { nil }
     public func chooseRedisBackupArchive(prompt: String) -> URL? { nil }
     public func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL] { [] }
+    public func readVitalFileUploadSources(_ sources: [URL]) throws -> [RuntimeLabVitalFileUploadSource] {
+        throw NSError(
+            domain: "NoopRuntimeNativeShell",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "native shell is not configured"]
+        )
+    }
     public func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? { nil }
     public func logExportDestinationValidationMessage(for url: URL) -> String? { nil }
     public func pathState(_ url: URL) -> RuntimePathState { .inspectFailed("native shell is not configured") }

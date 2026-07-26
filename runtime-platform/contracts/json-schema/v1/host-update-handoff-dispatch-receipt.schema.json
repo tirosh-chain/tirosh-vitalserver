@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-handoff-dispatch-receipt",
+  "title": "HostUpdateHandoffDispatchReceipt",
+  "description": "C57 immutable outcome of one C31 dispatch attempt. completion-submitted means only that the selected next updater returned a correlated C27 after using C52; C29 remains the Host-owned update settlement fact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "attemptId", "state", "startedAt", "finishedAt", "evidence"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "attemptId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "invocationRelativePath": { "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^updates/[^\\\\]*$", "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
+    "nextUpdaterSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "executionMode": { "type": "string", "enum": ["execute", "complete"] },
+    "state": { "type": "string", "enum": ["completion-submitted", "failed", "unavailable"] },
+    "startedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "finishedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "evidence": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference" },
+    "completionCommandSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "issue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "completion-submitted" } }, "required": ["state"] },
+      "then": { "required": ["updateId", "invocationRelativePath", "nextUpdaterSha256", "executionMode", "completionCommandSha256"], "not": { "required": ["issue"] } },
+      "else": { "required": ["issue"], "not": { "required": ["completionCommandSha256"] } }
+    }
+  ]
+}

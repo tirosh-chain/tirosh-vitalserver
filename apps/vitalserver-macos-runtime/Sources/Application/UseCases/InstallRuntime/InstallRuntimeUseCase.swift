@@ -48,6 +48,7 @@ public struct InstallRuntimeStartPlan: Equatable, Sendable {
 public enum InstallRuntimeStepExecutionPlan: Equatable, Sendable {
     case log(String)
     case prepareInstallDirectories
+    case prepareHostStateStore
     case rotateRuntimeLogs
     case configureDeployEnvironment
     case prepareInstalledExecutables
@@ -108,6 +109,8 @@ public struct InstallRuntimeUseCase {
             return .log("install settings loaded")
         case .prepareInstallDirectories:
             return .prepareInstallDirectories
+        case .prepareHostStateStore:
+            return .prepareHostStateStore
         case .rotateRuntimeLogs:
             return .rotateRuntimeLogs
         case .configureGuestRuntimeConfig:

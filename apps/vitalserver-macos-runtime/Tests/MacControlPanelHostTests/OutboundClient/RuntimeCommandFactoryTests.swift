@@ -64,6 +64,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("write_result \"completed\" 0 true \"uninstall completed\" \"not-checked\""))
         XCTAssertTrue(command.contains("\"freshInstallReadiness\""))
         XCTAssertTrue(command.contains("tail -n 0 -F"))
+        XCTAssertTrue(command.contains("read -r -t \(RuntimeUninstallProgressScript.terminalCloseDelaySeconds) _ || true"))
         XCTAssertTrue(command.contains("worker_pid_file="))
         XCTAssertTrue(command.contains("/usr/local/bin/tirosh-vitalserver-uninstall"))
         XCTAssertTrue(command.contains("--force-clean-uninstaller"))
@@ -160,6 +161,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
 
         XCTAssertTrue(viewer.contains("worker_process_exited()"))
         XCTAssertTrue(viewer.contains("ps -p \"${worker_pid}\" -o pid="))
+        XCTAssertTrue(viewer.contains("read -r -t \(RuntimeUninstallProgressScript.terminalCloseDelaySeconds) _ || true"))
         XCTAssertFalse(viewer.contains("kill -0 \"${worker_pid}\""))
     }
 
@@ -202,7 +204,9 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         input.fileHandleForWriting.write(Data("\n".utf8))
         input.fileHandleForWriting.closeFile()
 
-        let deadline = Date().addingTimeInterval(5)
+        // The viewer can consume its full 4-second result grace period after a
+        // 1-second worker poll. Leave room for CI scheduler latency as well.
+        let deadline = Date().addingTimeInterval(10)
         while process.isRunning && Date() < deadline {
             usleep(100_000)
         }
@@ -532,7 +536,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
 
         XCTAssertTrue(command.hasPrefix("/bin/bash -lc "))
         XCTAssertTrue(command.contains("rm -f"))
-        XCTAssertTrue(command.contains("/private/tmp/\(RuntimeFileNames.managerCommandLog)"))
+        XCTAssertTrue(command.contains("/private/tmp/\(RuntimeLogArtifactFileNames.managerCommandLog)"))
         XCTAssertTrue(command.contains("{ echo hello; }"))
         XCTAssertTrue(command.contains("2>&1"))
         XCTAssertTrue(command.contains("exit $status"))
@@ -556,6 +560,15 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(startCommand.contains("'runtime' 'start-services'"))
         XCTAssertTrue(stopCommand.contains("'runtime' 'stop-services'"))
         XCTAssertTrue(repairCommand.contains("'runtime' 'repair-services'"))
+    }
+
+    func testRuntimeProviderRestartStopsBeforeStarting() {
+        let command = RuntimeCommandFactory.runtimeProviderCommand(action: .restart)
+
+        let stopRange = try! XCTUnwrap(command.range(of: "'runtime' 'stop-services'"))
+        let startRange = try! XCTUnwrap(command.range(of: "'runtime' 'start-services'"))
+        XCTAssertLessThan(stopRange.lowerBound, startRange.lowerBound)
+        XCTAssertTrue(command.contains(" && "))
     }
 }
 

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "v1",
+  "service": {
+    "name": "recorder-gateway",
+    "version": "0.1.0",
+    "instanceId": "recorder-gateway-0001"
+  },
+  "signalKinds": [
+    "logs",
+    "traces"
+  ],
+  "signalName": "recorder.ingress.accepted",
+  "emittedAt": "2026-07-17T00:00:00Z",
+  "requestId": "ingress-request-0001",
+  "operationId": "operation-replay-0001",
+  "traceId": "0123456789abcdef0123456789abcdef",
+  "spanId": "0123456789abcdef",
+  "component": "ingress-adapter",
+  "outcomeCode": "accepted"
+}

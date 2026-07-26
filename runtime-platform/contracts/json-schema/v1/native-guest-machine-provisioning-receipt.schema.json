@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:native-guest-machine-provisioning-receipt",
+  "title": "NativeGuestMachineProvisioningReceipt",
+  "description": "C63 selected native Platform Provider-owned durable evidence that one C62 configuration created its declared VM definition and runtime storage from one verified C65 native Guest artifact manifest. Receipt presence is the only authority to retain existing runtime storage on a later provision attempt; it is not Guest boot, Guest Runtime readiness, or package-installation evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "configurationId", "configurationSHA256", "providerKind", "providerId", "machineId", "guestArchitecture", "releaseArtifacts", "runtimeStorage", "completedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "configurationId": { "$ref": "#/$defs/Identifier" },
+    "configurationSHA256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "providerKind": { "type": "string", "enum": ["windows-hyperv-scm", "linux-kvm-libvirt-systemd"] },
+    "providerId": { "$ref": "#/$defs/Identifier" },
+    "machineId": { "$ref": "#/$defs/Identifier" },
+    "guestArchitecture": { "const": "amd64" },
+    "releaseArtifacts": { "$ref": "#/$defs/ReleaseArtifacts" },
+    "runtimeStorage": { "$ref": "#/$defs/RuntimeStorage" },
+    "completedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "$defs": {
+    "Identifier": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "SafeHostAbsolutePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "anyOf": [
+        { "pattern": "^/[^\\\\]*$", "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
+        { "pattern": "^[A-Za-z]:[\\\\/][^\\u0000]*$", "not": { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" } }
+      ]
+    },
+    "ArtifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sizeBytes", "sha256", "storageImageFormat"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "storageImageFormat": { "const": "raw" }
+      }
+    },
+    "NativeGuestArtifactManifestIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactSetId", "sizeBytes", "sha256"],
+      "properties": {
+        "artifactSetId": { "$ref": "#/$defs/Identifier" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "ReleaseArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nativeGuestArtifactManifest", "bootableGuestDisk", "guestProductBootstrapVolume"],
+      "properties": {
+        "nativeGuestArtifactManifest": { "$ref": "#/$defs/NativeGuestArtifactManifestIdentity" },
+        "bootableGuestDisk": {
+          "allOf": [
+            { "$ref": "#/$defs/ArtifactIdentity" },
+            { "properties": { "id": { "const": "guest-root" } }, "required": ["id"] }
+          ]
+        },
+        "guestProductBootstrapVolume": {
+          "allOf": [
+            { "$ref": "#/$defs/ArtifactIdentity" },
+            { "properties": { "id": { "const": "guest-product-bootstrap" } }, "required": ["id"] }
+          ]
+        }
+      }
+    },
+    "RuntimeStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rootDiskPath", "bootstrapVolumePath", "runtimeImageFormat"],
+      "properties": {
+        "rootDiskPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "bootstrapVolumePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "runtimeImageFormat": { "type": "string", "enum": ["qcow2", "vhdx"] }
+      }
+    }
+  }
+}

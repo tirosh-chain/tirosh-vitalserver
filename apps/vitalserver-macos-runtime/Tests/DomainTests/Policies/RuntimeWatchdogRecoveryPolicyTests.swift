@@ -94,107 +94,27 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
-    func testBootstrapObservationIssueBlocksAutomaticRecovery() {
+    func testBootstrapResultFailureReasonDoesNotBlockAutomaticRecovery() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 vmLifecycle: runningLifecycle(),
                 guestHTTP: "503",
-                failureReasons: [.guestHTTP("503"), .guestBootstrapResultMissing]
+                failureReasons: [.guestHTTP("503"), .unknown("guest-bootstrap-result-missing")]
             ),
             hostProxyLivenessHTTP: "204",
             automaticRecoveryEnabled: true
         )
 
-        XCTAssertEqual(
-            decision,
-            .unrecoverable(reason: "guest-bootstrap-result-missing")
-        )
-    }
-
-    func testObservationSourceIssueBlocksAutomaticRecovery() {
-        let decision = RuntimeWatchdogRecoveryPolicy.decision(
-            snapshot: healthSnapshot(
-                failureReasons: [.vitalDBObservationMissing]
-            ),
-            hostProxyLivenessHTTP: "204",
-            automaticRecoveryEnabled: true
-        )
-
-        XCTAssertEqual(
-            decision,
-            .unrecoverable(reason: "vitaldb-observation-missing")
-        )
-    }
-
-    func testVitalDBObservationMissingDoesNotBlockContainerRecoveryPlan() {
-        let decision = RuntimeWatchdogRecoveryPolicy.decision(
-            snapshot: healthSnapshot(
-                vmLifecycle: RuntimeVMLifecycleDocument(
-                    state: .bootstrapping,
-                    startedAt: "2026-06-29T07:46:19Z",
-                    updatedAt: "2026-06-29T07:46:19Z",
-                    deadlineAt: "2000-01-01T00:00:00Z"
-                ),
-                hostProxyHTTP: "failed",
-                guestHTTP: "failed",
-                containerObservation: RuntimeContainerObservation(
-                    recorderIngressHTTP: "failed",
-                    recorderIngressStatus: nil,
-                    containerLogsPresent: true,
-                    containerLogsBytes: 1024,
-                    composeServices: [
-                        RuntimeContainerServiceObservation(
-                            service: "app",
-                            state: "created"
-                        ),
-                    ]
-                ),
-                failureReasons: [
-                    .guestHTTPProbeFailed("failed"),
-                    .vmLifecycleDocumentStale,
-                    .hostProxyHTTP("failed"),
-                    .recorderIngressHTTP("failed"),
-                    .containerService(service: "app", state: "created"),
-                    .vitalDBObservationMissing,
-                ]
-            ),
-            hostProxyLivenessHTTP: "failed",
-            automaticRecoveryEnabled: true
-        )
-
-        XCTAssertEqual(
-            decision,
-            .recover(
-                reason: "guest-http-probe-failed-failed, vm-lifecycle-document-stale, host-proxy-http-failed, recorder-ingress-http-failed, container-service-app-state-created, vitaldb-observation-missing",
-                plan: RuntimeRecoveryPlan(
-                    canRecover: true,
-                    restartVM: false,
-                    restartGuestLogSync: false,
-                    restartProxy: true,
-                    reconcileGuestCompose: true,
-                    actionReasons: [
-                        .containerFailureRequiresComposeReconcile,
-                        .hostProxyLivenessUnhealthy("failed"),
-                    ]
-                )
-            )
-        )
-    }
-
-    func testNonStaleContainerObservationReadIssueBlocksAutomaticRecovery() {
-        let decision = RuntimeWatchdogRecoveryPolicy.decision(
-            snapshot: healthSnapshot(
-                vmLifecycle: runningLifecycle(),
-                failureReasons: [.containerObservationReadFailed("guest-runtime-state-invalid")]
-            ),
-            hostProxyLivenessHTTP: "204",
-            automaticRecoveryEnabled: true
-        )
-
-        XCTAssertEqual(
-            decision,
-            .unrecoverable(reason: "container-observation-read-failed-guest-runtime-state-invalid")
-        )
+        guard case .recover(let reason, let plan) = decision else {
+            return XCTFail("Expected recovery plan, got \(decision)")
+        }
+        XCTAssertEqual(reason, "guest-http-503, guest-bootstrap-result-missing")
+        XCTAssertTrue(plan.restartVM)
+        XCTAssertTrue(plan.restartProxy)
+        XCTAssertEqual(plan.actionReasonCodes, [
+            "guest-http-unhealthy-503",
+            "vm-restart-requires-proxy-restart",
+        ])
     }
 
     func testReportsUnrecoverableWhenInstalledArtifactsAreMissing() {
@@ -225,12 +145,12 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 reason: "host-proxy-http-502, guest-http-503",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
-                    restartVM: false,
-                    restartGuestLogSync: false,
-                    restartProxy: false,
-                    reconcileGuestCompose: true,
+                    restartVM: true,
+                    restartGuestLogSync: true,
+                    restartProxy: true,
                     actionReasons: [
                         .guestHTTPUnhealthy("503"),
+                        .vmRestartRequiresProxyRestart,
                     ]
                 )
             )
@@ -250,7 +170,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 hostProxyHTTP: "failed",
                 guestHTTP: RuntimeHTTPStatusText.missingVMIP,
                 failureReasons: [
-                    .guestRuntimeStateStale,
+                    .guestHTTP(RuntimeHTTPStatusText.missingVMIP),
                     .vmLifecycleDocumentStale,
                     .hostProxyHTTP("failed"),
                     .unknown("recorder-ingress-http-failed"),
@@ -263,7 +183,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         XCTAssertEqual(
             decision,
             .recover(
-                reason: "guest-runtime-state-stale, vm-lifecycle-document-stale, host-proxy-http-failed, recorder-ingress-http-failed",
+                reason: "guest-http-missing-vm-ip, vm-lifecycle-document-stale, host-proxy-http-failed, recorder-ingress-http-failed",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
                     restartVM: true,
@@ -280,27 +200,17 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
-    func testStaleGuestRuntimeStateContainerObservationCanRecoverWithVMAndProxyRestart() {
+    func testMissingGuestAddressCanRecoverWithVMAndProxyRestart() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 vmLifecycle: runningLifecycle(),
                 vmIP: nil,
                 hostProxyHTTP: "http-probe-command-failed exitCode=7",
                 guestHTTP: RuntimeHTTPStatusText.missingVMIP,
-                containerObservation: RuntimeContainerObservation(
-                    recorderIngressHTTP: "failed",
-                    recorderIngressStatus: nil,
-                    recorderIngressStatusReadError: "failed",
-                    containerLogsPresent: true,
-                    containerLogsBytes: 128,
-                    composeServicesReadState: .stale,
-                    composeServicesReadError: "guest-runtime-state-stale"
-                ),
                 failureReasons: [
-                    .guestRuntimeStateStale,
+                    .guestHTTP(RuntimeHTTPStatusText.missingVMIP),
                     .hostProxyHTTP("http-probe-command-failed exitCode=7"),
                     .recorderIngressHTTP("failed"),
-                    .containerObservationReadFailed("guest-runtime-state-stale"),
                 ]
             ),
             hostProxyLivenessHTTP: "failed",
@@ -310,7 +220,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         XCTAssertEqual(
             decision,
             .recover(
-                reason: "guest-runtime-state-stale, host-proxy-http-http-probe-command-failed exitCode=7, recorder-ingress-http-failed, container-observation-read-failed-guest-runtime-state-stale",
+                reason: "guest-http-missing-vm-ip, host-proxy-http-http-probe-command-failed exitCode=7, recorder-ingress-http-failed",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
                     restartVM: true,
@@ -327,7 +237,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
-    func testMissingVMLifecycleDoesNotBlockGuestComposeReconcile() {
+    func testMissingVMLifecycleBlocksRuntimeReadinessVMRestart() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 guestHTTP: "503",
@@ -339,19 +249,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             decision,
-            .recover(
-                reason: "guest-http-503",
-                plan: RuntimeRecoveryPlan(
-                    canRecover: true,
-                    restartVM: false,
-                    restartGuestLogSync: false,
-                    restartProxy: false,
-                    reconcileGuestCompose: true,
-                    actionReasons: [
-                        .guestHTTPUnhealthy("503"),
-                    ]
-                )
-            )
+            .unrecoverable(reason: "recovery-blocked-missing-vm-lifecycle-for-vm-restart")
         )
     }
 
@@ -437,7 +335,6 @@ private func healthSnapshot(
     guestHTTP: String = "200",
     redisUIHTTP: String = "200",
     swaggerUIHTTP: String = "200",
-    containerObservation: RuntimeContainerObservation? = nil,
     failureReasons: [RuntimeFailureReason] = []
 ) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
@@ -457,7 +354,6 @@ private func healthSnapshot(
         guestHTTP: guestHTTP,
         redisUIHTTP: redisUIHTTP,
         swaggerUIHTTP: swaggerUIHTTP,
-        containerObservation: containerObservation,
         failureReasons: failureReasons
     )
 }

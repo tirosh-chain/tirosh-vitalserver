@@ -100,6 +100,8 @@ public enum RuntimeHealthWaiter {
     ) -> RuntimeFailureReason {
         let stateToken = serviceStateFailureToken(state)
         switch service {
+        case .platformAgent:
+            return .unknown("platform-agent-service-\(stateToken)")
         case .vm:
             return .vmService(stateToken)
         case .guestLogSync:

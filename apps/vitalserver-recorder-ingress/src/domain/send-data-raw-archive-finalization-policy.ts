@@ -3,6 +3,7 @@ export type SendDataRawArchiveFinalizationState =
   | "open"
   | "inactive_candidate"
   | "finalizable_by_inactivity"
+  | "finalizable_by_explicit_request"
   | "finalizable_by_shutdown"
   | "already_exported";
 
@@ -18,7 +19,7 @@ export type SendDataRawArchiveFinalizationReason =
 
 export type SendDataRawArchiveFinalizationInput = {
   vrcode: string;
-  trigger?: "inactivity" | "shutdown";
+  trigger?: "inactivity" | "shutdown" | "explicit";
   hasJoined: boolean;
   rawArchiveRecords: number;
   activeConnections: number;
@@ -50,6 +51,8 @@ function decideSendDataRawArchiveFinalization(
   const inactiveForMs = ageMs(input.lastRawArchivedAt, input.nowMs);
   const reasons: SendDataRawArchiveFinalizationReason[] = [];
   const shutdownRequested = input.trigger === "shutdown";
+  const explicitRequested = input.trigger === "explicit";
+  const immediateFinalizationRequested = shutdownRequested || explicitRequested;
 
   if (!input.hasJoined) {
     return decision(input, "not_observed", false, quietWindowMs, inactiveForMs, ["recorder_not_observed"]);
@@ -65,10 +68,10 @@ function decideSendDataRawArchiveFinalization(
   }
   if (inactiveForMs === null) {
     reasons.push("last_archive_timestamp_missing");
-  } else if (!shutdownRequested && inactiveForMs < quietWindowMs) {
+  } else if (!immediateFinalizationRequested && inactiveForMs < quietWindowMs) {
     reasons.push("quiet_window_not_elapsed");
   }
-  if (!shutdownRequested && !input.archiveCursorStable) {
+  if (!immediateFinalizationRequested && !input.archiveCursorStable) {
     reasons.push("archive_cursor_not_stable");
   }
   if (!input.realtimeReplayDrained) {
@@ -78,7 +81,11 @@ function decideSendDataRawArchiveFinalization(
   if (reasons.length === 0) {
     return decision(
       input,
-      shutdownRequested ? "finalizable_by_shutdown" : "finalizable_by_inactivity",
+      shutdownRequested
+        ? "finalizable_by_shutdown"
+        : explicitRequested
+          ? "finalizable_by_explicit_request"
+          : "finalizable_by_inactivity",
       true,
       quietWindowMs,
       inactiveForMs,

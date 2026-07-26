@@ -96,6 +96,11 @@ public enum VitalDBAnomalySeverity: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeVitalRecordVisibility: String, Codable, Equatable, Sendable {
+    case visible
+    case hidden
+}
+
 public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
     public let vrcode: String
     public let ip: String?
@@ -105,6 +110,7 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
     public let config: String?
     public let online: Bool
     public let stale: Bool
+    public let visibility: RuntimeVitalRecordVisibility?
     public let activity: VitalDBRecorderActivityObservation?
 
     public init(
@@ -115,7 +121,8 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
         info: String? = nil,
         config: String? = nil,
         online: Bool,
-        stale: Bool = false
+        stale: Bool = false,
+        visibility: RuntimeVitalRecordVisibility? = nil
     ) {
         self.init(
             vrcode: vrcode,
@@ -126,6 +133,7 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
             config: config,
             online: online,
             stale: stale,
+            visibility: visibility,
             activity: nil
         )
     }
@@ -139,6 +147,7 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
         config: String? = nil,
         online: Bool,
         stale: Bool = false,
+        visibility: RuntimeVitalRecordVisibility? = nil,
         activity: VitalDBRecorderActivityObservation?
     ) {
         self.vrcode = vrcode
@@ -149,6 +158,7 @@ public struct VitalDBRecorderObservation: Codable, Equatable, Sendable {
         self.config = config
         self.online = online
         self.stale = stale
+        self.visibility = visibility
         self.activity = activity
     }
 }
@@ -317,6 +327,7 @@ public struct VitalDBBedObservation: Codable, Equatable, Sendable {
     public let lastSeenAt: String?
     public let patientConnected: Bool?
     public let online: Bool
+    public let visibility: RuntimeVitalRecordVisibility?
 
     public init(
         bedID: String,
@@ -324,7 +335,8 @@ public struct VitalDBBedObservation: Codable, Equatable, Sendable {
         vrcode: String? = nil,
         lastSeenAt: String? = nil,
         patientConnected: Bool? = nil,
-        online: Bool
+        online: Bool,
+        visibility: RuntimeVitalRecordVisibility? = nil
     ) {
         self.bedID = bedID
         self.name = name
@@ -332,6 +344,7 @@ public struct VitalDBBedObservation: Codable, Equatable, Sendable {
         self.lastSeenAt = lastSeenAt
         self.patientConnected = patientConnected
         self.online = online
+        self.visibility = visibility
     }
 }
 

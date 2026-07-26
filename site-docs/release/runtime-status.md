@@ -53,8 +53,8 @@ Overall health는 Helper runtime을 현재 사용할 수 있는지 요약합니�
 실제 관측 상태는 Recorders/Beds 화면에서 확인합니다.
 
 처음 설치할 때는 VM 생성, service 등록, guest 준비, health 확인이 순서대로 진행됩니다. `Installing`은
-설치 작업 자체를 뜻하고, `Initializing`은 설치/provision 산출물이 준비된 뒤 runtime service와 guest가 사용 가능 상태로 올라오는 중이라는 뜻입니다. 이 구간에 Advanced의 일부 service나 HTTP endpoint가
-아직 준비되지 않아도 해당 active operation 상태를 우선 표시합니다.
+runtime state가 설치 작업 구간임을 뜻하고, `Initializing`은 설치/provision 산출물이 준비된 뒤 runtime service와 guest가 사용 가능 상태로 올라오는 중이라는 뜻입니다. 이 구간에 Advanced의 일부 service나 HTTP endpoint가
+아직 준비되지 않아도 RuntimeStatus의 runtime state와 별도 operation-state read model을 함께 확인합니다. Active operation은 operation-state owner가 제공하며, RuntimeStatus나 status projection에서 다시 계산하지 않습니다.
 
 ## 3. Runtime service
 
@@ -94,8 +94,8 @@ service가 `Stopped`라도 항상 장애는 아닙니다. install, initializatio
 
 Service liveness 표시 순서는 operation service와 guest observation service를 먼저 보여주고, 브라우저로 열 수 있는 URL endpoint는 아래 묶음으로 모읍니다. URL endpoint 묶음은 `VitalServer`, `Network access`, `Redis UI`, `Swagger UI` 순서로 표시합니다.
 
-Guest container service 상태는 guest runtime-state의 `containerServices` 계약에서 옵니다. 컨테이너가 restart 중일 때 `docker compose ps`가 빈 결과를 내보내면 empty success로 취급하지 않고 `read-failed` container observation으로 올립니다.
-Advanced 화면에서 service가 `Not reported`와 다른 상태를 반복해서 오가면, 먼저 `runtime-status.json`의 `containerObservation.composeServicesReadState`와 `composeServicesReadError`를 확인합니다. 이 값이 `read-failed`, `missing`, `stale`이면 UI 표시 문제가 아니라 guest service 관측 계약이 명시적으로 실패하거나 아직 보고되지 않은 상태입니다.
+Guest product service 상태는 Guest Control API가 제공하는 service/stack status 계약에서 옵니다. 컨테이너가 restart 중일 때 compose read가 실패하면 empty success로 취급하지 않고 Guest Control read state를 `failed` 또는 `unavailable`로 유지합니다.
+Advanced 화면에서 service가 `Not reported`와 다른 상태를 반복해서 오가면, 먼저 Guest Control service read state와 operation read state를 확인합니다. 이 값이 `failed`, `unavailable`, `notReported`이면 UI 표시 문제가 아니라 Guest service 관측 계약이 명시적으로 실패하거나 아직 보고되지 않은 상태입니다.
 
 Redis Relay는 optional service입니다. Settings에서 relay가 꺼져 있으면 `Disabled`가 정상 상태입니다.
 Relay가 켜져 있을 때 `running_with_errors`는 relay container가 살아 있지만 target Redis publish 일부가
@@ -147,7 +147,29 @@ read model에 명시적인 status evaluation time을 전달해 `Last seen`이 th
 `Stale`로 계산하는 것입니다. 예방 원칙은 presentation이 시간 상태를 추측하지 않고, status 계산
 시각을 adapter/read boundary에서 명시적으로 공급하는 것입니다.
 
-### 4-2. Bed 상태
+### 4-2. Recorder Observer health와 incident
+
+Recorder Detail의 Health report는 VRecorder connection activity와 별개인
+Recorder 장비 자체의 관측 자료입니다.
+
+| 표시 | 의미 |
+|---|---|
+| Evidence health | boot ledger, power summary, journal과 pstore를 마지막으로 읽은 bounded 상태 |
+| Incident assessment | 현재 observation이 보고한 boot-loop와 반복 저전압 assessment |
+| Active Recorder incidents | 현재 assessment 중 warning 또는 critical인 signal |
+| Recent reported incidents | 최근 30일 동안 수신된 kernel/boot incident history |
+| Boot `nonOrderable` | boot epoch/ordinal 근거가 없어 순서를 안전하게 비교할 수 없음 |
+
+현재 assessment와 history는 같은 뜻이 아닙니다. 현재 assessment가 정상으로
+돌아와도 과거 incident는 history에 남을 수 있고, history가 비어 있어도
+evidence health가 degraded 또는 failed일 수 있습니다.
+
+`boot-loop`과 `repeated-undervoltage`는 Recorder가 보고한 bounded evidence
+분류입니다. 전원 어댑터, 케이블, hardware reset 또는 kernel hang 가운데 하나를
+원인으로 확정하지 않습니다. 장비 원인 분석에는 Recorder 원본 archive와 현장
+전원/AP 자료를 함께 사용합니다.
+
+### 4-3. Bed 상태
 
 | 표시 | 의미 |
 |---|---|
@@ -162,7 +184,7 @@ Beds 화면에서는 `Bed ID`, `Name`, `VRecorder`, `Status`, `Last seen`, `Anom
 Bed 상세의 `VRecorder status`, `VRecorder IP`, `VRecorder last seen`은 bed가 연결된 VRecorder
 read model에서 온 명시 상태입니다. Bed 화면은 VRecorder 상태를 임의로 추정하지 않습니다.
 
-### 4-3. Stale과 Offline을 볼 때
+### 4-4. Stale과 Offline을 볼 때
 
 `Stale`은 activity가 오래되었다는 뜻이고, `Offline`은 현재 online으로 보이지 않는다는 뜻입니다.
 둘 다 바로 장애 원인을 확정하지 않습니다.
@@ -203,20 +225,20 @@ Status의 data directory는 saved settings가 아니라 현재 VM runtime에 적
 | `runtime-events.jsonl`의 `configure` 직후 event | 설정 apply가 실제로 runtime restart를 요청했는지 확인 |
 | `vm-lifecycle.json` | VM이 `stopping`, `stopped`, `failed` 중 어디에 머물렀는지 확인 |
 | `launchd.out.log`의 guest shutdown 로그 | Docker/containerd stop, filesystem remount, poweroff 실패 여부 확인 |
-| `prepare-update-shutdown.request` | Settings apply인데 update shutdown request가 남아 반복 실행되는지 확인 |
-| failure reasons | `host-proxy-http-*`, `recorder-ingress-http-failed`, `guest-runtime-state-stale`이 연쇄인지 확인 |
+| Guest Control update-shutdown operation | Settings apply인데 update shutdown operation이 반복 실행되거나 terminal state 없이 남는지 확인 |
+| failure reasons | `host-proxy-http-*`, `recorder-ingress-http-failed`, `guest-http-*`, VM lifecycle/storage reason이 연쇄인지 확인 |
 
-증상이 `configure` 직후 VM stop 요청, guest runtime state stale, host proxy HTTP 실패 순서로 이어지면 Host proxy만 복구할 문제가 아닐 수 있습니다. VM shutdown 과정에서 guest service 또는 filesystem I/O가 아직 남아 있으면 디스크 오류가 드러나거나 악화될 수 있습니다.
+증상이 `configure` 직후 VM stop 요청, Guest readiness/VM lifecycle 지연, host proxy HTTP 실패 순서로 이어지면 Host proxy만 복구할 문제가 아닐 수 있습니다. VM shutdown 과정에서 guest service 또는 filesystem I/O가 아직 남아 있으면 디스크 오류가 드러나거나 악화될 수 있습니다.
 
 예방 원칙은 Settings restart, Update, Stop/Repair service가 같은 VM shutdown contract를 사용하게 하는 것입니다. Host는 VM 내부 상태를 추측하지 않고, guest가 명시적으로 shutdown 준비와 poweroff
 요청 상태를 보고한 뒤 Host service stop/restart를 진행해야 합니다.
 
 Settings apply가 guest shutdown worker를 공유하더라도 update bundle 적용으로 보지 않습니다. Settings restart progress는 `configure` operation으로 해석하고, update bundle 적용은 `apply-bundle` operation과 Update 탭의 progress로 따로 확인합니다.
 
-`status=Recovering`, `operation=configure`인데 `prepare-update-shutdown-result.json`이
-`prepare-update-shutdown` running/prepared 상태로 남고 같은 request ID가 반복 로그에 나타나면, 이전 update shutdown request가 VM reboot 뒤 다시 실행된 것입니다. Guest shutdown request는 single-shot contract이므로 worker가 request를 로드하고 running result를 쓴 뒤 즉시 request file을 소비해야 합니다.
-request file을 poweroff 직전까지 남겨두면 Settings restart, watchdog restart, service start가 모두 update shutdown 경로를 다시 밟아 guest services를 내려버릴 수 있습니다.
+`status=Recovering`, `operation=configure`인데 Guest Control update-shutdown operation이
+`running`/`prepared` 상태로 남고 같은 operation ID가 반복 로그에 나타나면, 이전 update shutdown command가 VM reboot 뒤 다시 실행된 것입니다. Guest shutdown command는 single-shot operation이므로 Guest Control API가 accepted/running/terminal state를 보존하고 같은 command를 다시 dispatch하지 않아야 합니다.
+operation trigger를 poweroff 직전까지 재사용 가능한 상태로 남겨두면 Settings restart, watchdog restart, service start가 모두 update shutdown 경로를 다시 밟아 guest services를 내려버릴 수 있습니다.
 
-`launchd.out.log`에 `Failed to execute shutdown binary`가 있고 `vm-lifecycle.json`이 `stopping`에 머물러 있으면 Guest는 poweroff target까지 갔지만 Host VM process가 종료되지 않은 상태입니다. 이때 Status는 `guest-runtime-state-stale`, `missing-vm-ip`, `host-proxy-http-*`를 연쇄로 표시할 수 있습니다.
+`launchd.out.log`에 `Failed to execute shutdown binary`가 있고 `vm-lifecycle.json`이 `stopping`에 머물러 있으면 Guest는 poweroff target까지 갔지만 Host VM process가 종료되지 않은 상태입니다. 이때 Status는 `guest-http-*`, `missing-vm-ip`, `host-proxy-http-*`, VM lifecycle/storage reason을 연쇄로 표시할 수 있습니다. Legacy `guest-runtime-state-*` raw string이 남아 있으면 historical diagnostics로만 보고, current recovery owner로 승격하지 않습니다.
 원인은 proxy 단독 장애가 아니라 VM stop 교착이므로, Settings restart 또는 watchdog recovery가 VM
 runtime services force-stop 후 start/health wait로 빠져나왔는지 확인합니다.

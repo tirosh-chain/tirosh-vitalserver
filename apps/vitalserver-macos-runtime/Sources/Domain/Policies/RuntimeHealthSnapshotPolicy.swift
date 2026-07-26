@@ -25,17 +25,12 @@ public enum RuntimeHealthSnapshotPolicy {
             || snapshot.proxyService != .loaded
             || snapshot.watchdogService != .loaded
             || !snapshot.vmErrors.isEmpty
-            || snapshot.vmIP == nil
             || !isSuccessfulHTTPStatus(snapshot.hostProxyHTTP)
-            || !isSuccessfulHTTPStatus(snapshot.guestHTTP)
-            || hasCriticalObservationFailure(snapshot)
+            || hasGuestHTTPFailure(snapshot.guestHTTP)
     }
 
-    private static func hasCriticalObservationFailure(_ snapshot: RuntimeHealthSnapshot) -> Bool {
-        !RuntimeObservationHealthPolicy.failureReasons(
-            containerObservation: snapshot.containerObservation.map(RuntimeObservationInput.loaded) ?? .notReported,
-            vitalDBObservation: snapshot.vitalDBObservation.map(RuntimeObservationInput.loaded) ?? .notReported
-        ).isEmpty
+    private static func hasGuestHTTPFailure(_ value: String) -> Bool {
+        value != RuntimeHTTPStatusText.notRead && !isSuccessfulHTTPStatus(value)
     }
 
     private static func isSuccessfulHTTPStatus(_ value: String) -> Bool {

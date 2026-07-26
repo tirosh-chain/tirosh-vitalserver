@@ -38,11 +38,12 @@
 ├── apps/vitalserver/           # upstream vitalserver-old를 감싼 제품 실행 app
 │   ├── docker/                 # Docker image 배포 target
 │   └── runtime/                # 배포 방식과 무관한 실행 shim
+├── apps/vitalserver-lab/       # Product Lab scenario/session/.vital replay service
 ├── infra/swagger-ui/           # Swagger UI reverse proxy 설정
 ├── make/                       # Makefile target group
 ├── docs/                       # 문서 지도, 제품화 문서, OpenAPI, Redis 구조
 ├── packages/vitalserver-testkit/
-│   └── src/                    # 운영 검증용 Python CLI/package
+│   └── src/                    # dev/load 검증용 Python CLI/package
 └── vendor/vitalserver/         # original vitaldb/vitalserver submodule
 ```
 
@@ -141,17 +142,17 @@ make proxy/plist
 
 실시간 수집 흐름:
 
-1. Vital Recorder 또는 testkit이 Socket.IO `send_data` event를 보냅니다.
+1. Vital Recorder 또는 dev testkit이 Socket.IO `send_data` event를 보냅니다.
 2. payload는 `{vrcode, ver, rooms}` 형태의 JSON을 zlib으로 압축한 값입니다.
 3. VitalServer는 payload를 해제하고 room을 bed로 등록합니다.
 4. Redis에 bed 상태, device metadata, timestamp index, 압축 frame을 저장합니다.
 5. Web Monitoring client에는 `recv_data` event를 emit합니다.
 
-testkit은 기본적으로 simulated room map payload를 생성하고, 필요하면 실제 장비에서 캡처한 JSON payload를 upstream이 기대하는 형태로 감싼 뒤 전송합니다.
+dev testkit은 기본적으로 simulated room map payload를 생성하고, 필요하면 실제 장비에서 캡처한 JSON payload를 upstream이 기대하는 형태로 감싼 뒤 전송합니다. Runtime v2 제품 runtime의 virtual recorder와 `.vital` replay 기능은 Product Lab service가 소유합니다.
 
 제품화 검증의 첫 기준은 단순 전송 성공이 아니라, 전송 후 VitalServer의 UI용 endpoint에서 bed metadata가 조회되는 것입니다.
 
-여러 recorder machine이 동시에 붙는 상황, 반복 전송량, 장시간 streaming 검증은 testkit scenario로 재현합니다. 실제 실행 명령과 config 예시는 [testkit 사용법](../testkit/usage.md)에 모읍니다.
+여러 recorder machine이 동시에 붙는 상황, 반복 전송량, 장시간 streaming 검증은 dev testkit scenario로 재현합니다. 실제 실행 명령과 config 예시는 [testkit 사용법](../testkit/usage.md)에 모읍니다.
 
 Redis에 저장되는 핵심 key는 아래입니다.
 
@@ -205,7 +206,7 @@ Redis에 저장되는 핵심 key는 아래입니다.
 - container health와 log를 확인할 수 있어야 합니다.
 - Redis key 증가, TTL, active bed 수를 관측할 수 있어야 합니다.
 - 장시간 실행 중 memory, Redis size, frame 처리량을 기록할 수 있어야 합니다.
-- 실패율과 처리량은 testkit summary로 남깁니다.
+- 실패율과 처리량은 dev testkit summary 또는 Product Lab read model로 남깁니다.
 
 ## 현재 비어 있는 부분
 

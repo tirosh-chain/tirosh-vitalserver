@@ -22,6 +22,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .diskGiB(96),
                 .network(.shared),
                 .proxyPort(18080),
+                .runtimeControlPort(18444),
                 .vitalFilesDirectory(URL(fileURLWithPath: "/data/vital-files")),
                 .publicHost("stale.example"),
                 .publicPort(8080),
@@ -42,6 +43,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertTrue(result.restart)
         XCTAssertEqual(harness.resizedDisks, [96])
         XCTAssertEqual(harness.proxyPorts, [18080])
+        XCTAssertEqual(harness.platformAgentRestartCount, 1)
         XCTAssertEqual(harness.startOnBootValues, [false])
         XCTAssertEqual(harness.systemSleepPreventionValues, [false])
         XCTAssertEqual(harness.restrictedFiles, [harness.paths.guestRuntimeConfig])
@@ -74,6 +76,12 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestSettings.recorderIngressSendDataReplayBatchSize, 8)
         XCTAssertEqual(guestSettings.recorderIngressSendDataReplayMaxMiBPerSecond, 12)
         XCTAssertEqual(guestSettings.backupRetentionCount, 20)
+        let runtimeControlSettingsData = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
+        let runtimeControlSettings = try JSONDecoder().decode(
+            RuntimeControlSettingsDocument.self,
+            from: runtimeControlSettingsData
+        )
+        XCTAssertEqual(runtimeControlSettings.runtimeControlPort, 18444)
     }
 
     func testConfigureWritesLogArchiveSettingsWithoutRestartRequirement() throws {
@@ -97,6 +105,37 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(settings, RuntimeControlSettingsDocument(logArchiveRetentionDays: 21, logArchiveMaximumGiB: 4))
     }
 
+    func testExplicitVMRuntimeRestartRunsWhenSavedConfigurationAlreadyMatches() throws {
+        let harness = try Harness()
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [],
+            activation: .restartVMRuntime
+        ))
+
+        XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .vmRuntime)
+        XCTAssertEqual(harness.restartCount, 1)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 0)
+    }
+
+    func testExplicitVMRuntimeRestartDoesNotCallGuestStackReconcileWhenSavedSettingsAreResubmitted() throws {
+        let harness = try Harness()
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [
+                .memoryGiB(4),
+                .recorderIngressSendDataReplayMaxMiBPerSecond(25),
+            ],
+            activation: .restartVMRuntime
+        ))
+
+        XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .vmRuntime)
+        XCTAssertEqual(harness.restartCount, 1)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 0)
+    }
+
     func testConfigureMergesSingleLogArchiveSettingChangeWithExistingDocument() throws {
         let harness = try Harness()
         harness.fileStore.files[harness.paths.runtimeControlSettings] = try JSONEncoder().encode(
@@ -112,84 +151,17 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(settings, RuntimeControlSettingsDocument(logArchiveRetentionDays: 12, logArchiveMaximumGiB: 2))
     }
 
-    func testConfigureWritesRedisRelayConfigAndSecretWithoutExposingPasswordInReadSettings() throws {
+    func testConfigureRejectsInvalidRuntimeControlPortBeforeWritingDocuments() throws {
         let harness = try Harness()
-        let relaySettingsFile = URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
-        harness.fileStore.files[relaySettingsFile] = Data("""
-        {
-          "enabled": true,
-          "target": {
-            "url": "redis://redis-hub.internal:6380/2",
-            "username": "relay",
-            "password": "secret-password",
-            "clearPassword": false,
-            "passwordConfigured": false,
-            "tls": true
-          },
-          "scope": "vital_reconstruction",
-          "includeRecorderNetworkContext": true,
-          "intervalSeconds": 0.5,
-          "scanCount": 500
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.runtimeControlPort(65_536)]
+        ))) { error in
+            XCTAssertTrue(String(describing: error).contains("--runtime-control-port must be between 1 and 65535"))
         }
-        """.utf8)
 
-        let result = try harness.runner.configure(RuntimeConfigureCommand(
-            changes: [.redisRelaySettingsFile(relaySettingsFile)]
-        ))
-
-        XCTAssertFalse(result.restart)
-        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelayConfigDirectory))
-        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelaySecretsDirectory))
-        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelayStatusDirectory))
-        XCTAssertEqual(
-            String(data: try XCTUnwrap(harness.fileStore.files[harness.paths.redisRelayTargetPassword]), encoding: .utf8),
-            "secret-password"
-        )
-        let toml = String(
-            data: try XCTUnwrap(harness.fileStore.files[harness.paths.redisRelayConfig]),
-            encoding: .utf8
-        )
-        XCTAssertTrue(toml?.contains("enabled = true") == true)
-        XCTAssertTrue(toml?.contains("url = \"rediss://relay@redis-hub.internal:6380/2\"") == true)
-        XCTAssertTrue(toml?.contains("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"") == true)
-        XCTAssertTrue(toml?.contains("[publish]") == true)
-        XCTAssertTrue(toml?.contains("event_stream_key = \"vitalserver:relay:events\"") == true)
-
-        let data = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
-        let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)
-        XCTAssertTrue(settings.redisRelay.enabled)
-        XCTAssertEqual(settings.redisRelay.target.url, "redis://redis-hub.internal:6380/2")
-        XCTAssertEqual(settings.redisRelay.target.username, "relay")
-        XCTAssertTrue(settings.redisRelay.target.tls)
-        XCTAssertTrue(settings.redisRelay.target.passwordConfigured)
-        XCTAssertEqual(settings.redisRelay.target.password, "")
-    }
-
-    func testConfigureReconcilesGuestComposeForRedisRelayChangeWhenRestartIsRequested() throws {
-        let harness = try Harness()
-        let relaySettingsFile = URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
-        harness.fileStore.files[relaySettingsFile] = Data("""
-        {
-          "enabled": true,
-          "target": {
-            "url": "redis://redis-hub.internal:6380/2"
-          },
-          "scope": "vital_reconstruction",
-          "includeRecorderNetworkContext": false,
-          "intervalSeconds": 1.0,
-          "scanCount": 1000
-        }
-        """.utf8)
-
-        let result = try harness.runner.configure(RuntimeConfigureCommand(
-            changes: [.redisRelaySettingsFile(relaySettingsFile)],
-            restart: true
-        ))
-
-        XCTAssertTrue(result.restart)
-        XCTAssertEqual(result.restartRequirement, .containerServices)
-        XCTAssertEqual(harness.reconcileComposeCount, 1)
-        XCTAssertEqual(harness.restartCount, 0)
+        XCTAssertNil(harness.fileStore.files[harness.paths.runtimeControlSettings])
+        XCTAssertEqual(harness.platformAgentRestartCount, 0)
     }
 
     func testConfigureReconcilesGuestComposeForRecorderIngressReplayThroughputChangeWhenRestartIsRequested() throws {
@@ -201,8 +173,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         ))
 
         XCTAssertTrue(result.restart)
-        XCTAssertEqual(result.restartRequirement, .containerServices)
-        XCTAssertEqual(harness.reconcileComposeCount, 1)
+        XCTAssertEqual(result.restartRequirement, .guestStack)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 1)
         XCTAssertEqual(harness.restartCount, 0)
 
         let data = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
@@ -244,8 +216,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         ))
 
         XCTAssertTrue(result.restart)
-        XCTAssertEqual(result.restartRequirement, .containerServices)
-        XCTAssertEqual(harness.reconcileComposeCount, 1)
+        XCTAssertEqual(result.restartRequirement, .guestStack)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 1)
 
         let data = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
         let settings = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: data)
@@ -365,6 +337,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
     final class Harness {
         let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
+        private let hostSettingsRepository = RuntimeHostSettingsRepositorySpy()
         let vmConfigURL: URL
         var resizedDisks: [Int] = []
         var proxyPorts: [Int] = []
@@ -372,8 +345,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         var startOnBootValues: [Bool] = []
         var systemSleepPreventionValues: [Bool] = []
         var automaticBackupSchedules: [(enabled: Bool, scheduleTimes: [String])] = []
-        var reconcileComposeCount = 0
+        var reconcileGuestStackCount = 0
         var restartCount = 0
+        var platformAgentRestartCount = 0
         var runner: RuntimeConfigureRunner!
 
         init() throws {
@@ -410,6 +384,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     setInstalledProxyPort: { [weak self] port in
                         self?.proxyPorts.append(port)
                     },
+                    restartPlatformAgent: { [weak self] in
+                        self?.platformAgentRestartCount += 1
+                    },
                     readSecretFile: { url in
                         guard let data = self.fileStore.files[url],
                               let value = String(data: data, encoding: .utf8) else {
@@ -429,8 +406,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     setAutomaticBackupSchedule: { [weak self] enabled, scheduleTimes in
                         self?.automaticBackupSchedules.append((enabled: enabled, scheduleTimes: scheduleTimes))
                     },
-                    reconcileGuestComposeServices: { [weak self] in
-                        self?.reconcileComposeCount += 1
+                    reconcileGuestStackServices: { [weak self] in
+                        self?.reconcileGuestStackCount += 1
                     },
                     restartRuntimeServices: { [weak self] in
                         self?.restartCount += 1
@@ -440,6 +417,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 maximumAllowedMemoryGiB: Constants.Defaults.maximumAllowedMemoryGiB(
                     physicalMemoryBytes: 16 * 1_073_741_824
                 ),
+                prepareHostStateStore: {},
+                hostSettingsRepository: hostSettingsRepository,
                 log: { _ in }
             )
         }
@@ -450,16 +429,122 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 redisHost: Constants.Guest.redisHost,
                 redisPort: Constants.Guest.redisPort,
                 trustProxy: true,
-                vitalServerURL: "",
-                remoteConsoleURL: "",
-                publicHost: "",
+                vitalServerURL: "http://127.0.0.1:80/",
+                remoteConsoleURL: "http://127.0.0.1:18322/",
+                publicHost: "127.0.0.1",
                 publicPort: Constants.Guest.publicPort,
                 adminPassword: Constants.Guest.defaultAdminPassword,
                 vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 redisUiPort: Constants.Guest.redisUIPort,
-                swaggerUiPort: Constants.Guest.swaggerUIPort,
-                testkitEnabled: Constants.testkitContainerIncluded
+                swaggerUiPort: Constants.Guest.swaggerUIPort
             )
         }
+    }
+}
+
+private final class RuntimeHostSettingsRepositorySpy: RuntimeHostSettingsRepository, @unchecked Sendable {
+    private var record: RuntimeHostSettingsRecord?
+
+    func loadHostSettings() -> RuntimeHostSettingsReadResult {
+        record.map(RuntimeHostSettingsReadResult.loaded) ?? .missing
+    }
+
+    func initializeDesiredHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        desiredAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        guard record == nil else {
+            throw RuntimeHostSettingsStateTransitionError.alreadyExists(revision: record!.revision)
+        }
+        let next = RuntimeHostSettingsRecord(
+            payload: payload,
+            revision: 1,
+            desiredAt: desiredAt
+        )
+        record = next
+        return next
+    }
+
+    func importMaterializedHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        importedAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        guard record == nil else {
+            throw RuntimeHostSettingsStateTransitionError.alreadyExists(revision: record!.revision)
+        }
+        let next = RuntimeHostSettingsRecord(
+            payload: payload,
+            revision: 1,
+            desiredAt: importedAt,
+            materializedRevision: 1,
+            materializedAt: importedAt
+        )
+        record = next
+        return next
+    }
+
+    func saveDesiredHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        expectedRevision: Int,
+        desiredAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        guard let current = record else { throw RuntimeHostSettingsStateTransitionError.missingState }
+        guard current.revision == expectedRevision else {
+            throw RuntimeHostSettingsStateTransitionError.staleRevision(
+                expected: expectedRevision,
+                actual: current.revision
+            )
+        }
+        let next = RuntimeHostSettingsRecord(
+            payload: payload,
+            revision: current.revision + 1,
+            desiredAt: desiredAt,
+            appliedRevision: current.appliedRevision,
+            appliedRunID: current.appliedRunID,
+            appliedAt: current.appliedAt
+        )
+        record = next
+        return next
+    }
+
+    func markHostSettingsMaterialized(
+        revision: Int,
+        materializedAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        guard let current = record else { throw RuntimeHostSettingsStateTransitionError.missingState }
+        guard current.revision == revision else {
+            throw RuntimeHostSettingsStateTransitionError.staleRevision(
+                expected: revision,
+                actual: current.revision
+            )
+        }
+        let next = RuntimeHostSettingsRecord(
+            payload: current.payload,
+            revision: current.revision,
+            desiredAt: current.desiredAt,
+            materializedRevision: revision,
+            materializedAt: materializedAt,
+            appliedRevision: current.appliedRevision,
+            appliedRunID: current.appliedRunID,
+            appliedAt: current.appliedAt
+        )
+        record = next
+        return next
+    }
+
+    func recordHostSettingsBoot(
+        revision: Int,
+        runID: String,
+        startedAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        throw RuntimeHostSettingsStateTransitionError.invalidRunID
+    }
+
+    func markHostSettingsApplied(
+        revision: Int,
+        runID: String,
+        appliedAt: String
+    ) throws -> RuntimeHostSettingsRecord {
+        throw RuntimeHostSettingsStateTransitionError.invalidRunID
     }
 }

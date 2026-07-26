@@ -1,0 +1,17 @@
+{
+  "name": "@tirosh-chain/runtime-console-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared renderer for the VitalServer Runtime Console",
+  "dependencies": {
+    "@tirosh-chain/runtime-console-control-contract": "file:../runtime-console-control-contract",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
+  }
+}

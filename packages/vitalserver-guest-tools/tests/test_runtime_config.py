@@ -16,7 +16,6 @@ def valid_runtime_config() -> dict[str, object]:
         "publicPort": 80,
         "redisHost": "redis",
         "redisPort": 6379,
-        "testkitEnabled": True,
         "trustProxy": True,
         "vitalFilesDirectory": "/mnt/tirosh-vital-files",
     }
@@ -29,10 +28,10 @@ def write_config(path: Path, document: dict[str, object]) -> None:
 def test_load_config_requires_host_owned_fields(tmp_path: Path) -> None:
     config_path = tmp_path / "runtime-config.json"
     document = valid_runtime_config()
-    del document["testkitEnabled"]
+    del document["vitalFilesDirectory"]
     write_config(config_path, document)
 
-    with pytest.raises(GuestContractError, match="testkitEnabled") as error:
+    with pytest.raises(GuestContractError, match="vitalFilesDirectory") as error:
         load_config(config_path)
     assert error.value.code == "runtime-config-field-missing"
 
@@ -55,4 +54,4 @@ def test_load_config_returns_explicit_contract_values(tmp_path: Path) -> None:
     config = load_config(config_path)
 
     assert config.redis_host == "redis"
-    assert config.testkit_enabled is True
+    assert config.vital_files_directory == "/mnt/tirosh-vital-files"

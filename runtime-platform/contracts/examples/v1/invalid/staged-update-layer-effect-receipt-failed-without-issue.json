@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "v1",
+  "updateId": "host-update-20260717",
+  "layer": "guest-runtime",
+  "effectExecutorId": "guest-runtime-update-executor-020",
+  "operation": "apply",
+  "artifactSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "state": "failed",
+  "observedAt": "2026-07-17T00:01:10Z",
+  "evidence": { "kind": "guest-runtime-update-effect", "id": "guest-runtime-proof" }
+}

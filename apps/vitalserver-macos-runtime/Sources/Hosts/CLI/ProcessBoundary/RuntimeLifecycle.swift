@@ -6,6 +6,7 @@ import Domain
 import OutboundAdapters
 import InboundAdapters
 import Errors
+import RuntimeControl
 import Workflow
 
 struct RuntimeLifecycle {
@@ -19,7 +20,9 @@ struct RuntimeLifecycle {
     let statusReporter: RuntimeStatusReporter
     let healthChecker: RuntimeHealthChecker
     let serviceController: RuntimeServiceController
-    let guestGateway: RuntimeGuestGateway
+    let guestAddressProvider: any RuntimeGuestAddressProvider
+    let guestControlGatewayFactory: (() throws -> any RuntimeGuestControlGateway)?
+    let runtimeOperationLeaseOwnerFactory: () -> any RuntimeOperationLeaseOwner
     let fileStore: RuntimeFileStore
 
     init(
@@ -29,8 +32,11 @@ struct RuntimeLifecycle {
         commandRunner: RuntimeCommandRunner = SystemRuntimeCommandRunner(),
         httpProber: RuntimeHTTPProber? = nil,
         serviceManager: RuntimeServiceManager? = nil,
-        runtimeStatusRepository: RuntimeStatusRepository? = nil,
-        guestGateway: RuntimeGuestGateway? = nil,
+        runtimeStatusArtifactSink: RuntimeStatusArtifactSink? = nil,
+        runtimeProgressArtifactSink: RuntimeProgressArtifactSink? = nil,
+        guestAddressProvider: (any RuntimeGuestAddressProvider)? = nil,
+        runtimeOperationLeaseOwnerFactory: (() -> any RuntimeOperationLeaseOwner)? = nil,
+        guestControlGatewayFactory: (() throws -> any RuntimeGuestControlGateway)? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) {
         let lifecycleLog: (String) -> Void = { message in
@@ -43,8 +49,9 @@ struct RuntimeLifecycle {
             commandRunner: commandRunner,
             httpProber: httpProber,
             serviceManager: serviceManager,
-            runtimeStatusRepository: runtimeStatusRepository,
-            guestGateway: guestGateway,
+            runtimeStatusArtifactSink: runtimeStatusArtifactSink,
+            runtimeProgressArtifactSink: runtimeProgressArtifactSink,
+            guestAddressProvider: guestAddressProvider,
             fileStore: fileStore,
             plistBuddyPath: Constants.Commands.plistBuddy,
             lsofPath: Constants.Commands.lsof,
@@ -89,7 +96,13 @@ struct RuntimeLifecycle {
         self.httpProber = container.httpProber
         self.fileStore = container.fileStore
         self.statusReporter = container.statusReporter
-        self.guestGateway = container.guestGateway
+        self.guestAddressProvider = container.guestAddressProvider
+        self.guestControlGatewayFactory = guestControlGatewayFactory
+        self.runtimeOperationLeaseOwnerFactory = runtimeOperationLeaseOwnerFactory ?? {
+            SQLiteRuntimeOperationLeaseRepository(
+                databaseURL: container.installedPaths.runtimeStateDatabase
+            )
+        }
         self.healthChecker = container.healthChecker
         self.serviceController = container.serviceController
     }
@@ -108,10 +121,6 @@ struct RuntimeLifecycle {
 
     var logsDirectory: URL {
         installedPaths.centralRuntimeLogsDirectory
-    }
-
-    var runtimeStatus: URL {
-        installedPaths.runtimeStatus
     }
 
     var rootfsBase: URL {
@@ -134,10 +143,10 @@ struct RuntimeLifecycle {
         switch try RuntimeLifecycleCommand.parse(arguments) {
         case .install:
             try install()
-        case .installProvision:
-            try installProvision()
-        case .preinstallCheck:
-            try preinstallCheck()
+        case .installProvision(let packageInstallContract):
+            try installProvision(packageInstallContract: packageInstallContract)
+        case .preinstallCheck(let packageInstallContract):
+            try preinstallCheck(packageInstallContract: packageInstallContract)
         case .status:
             printStatus()
         case .health:
@@ -152,8 +161,8 @@ struct RuntimeLifecycle {
             try verifyBundle(bundleURL)
         case .stageBundle(let bundleURL):
             _ = try stageBundle(bundleURL)
-        case .applyBundle(let bundleURL):
-            try applyBundle(bundleURL)
+        case .applyBundle(let command):
+            try applyBundle(command)
         case .rollback(let command):
             try rollback(command)
         case .redisBackup:
@@ -178,12 +187,20 @@ struct RuntimeLifecycle {
             try startServices()
         case .stopServices:
             try stopServices()
-        case .startTestKit:
-            try controlTestKitContainer(composeAction: .testkitUp)
-        case .stopTestKit:
-            try controlTestKitContainer(composeAction: .testkitStop)
-        case .restartTestKit:
-            try controlTestKitContainer(composeAction: .testkitRestart)
+        case .stopPackageServices:
+            try stopRuntimeServicesForUninstall()
+        case .guestStackStatus(let command):
+            try printGuestStackStatus(command)
+        case .guestServiceStart(let command):
+            try startGuestService(command)
+        case .guestServiceStop(let command):
+            try stopGuestService(command)
+        case .guestServiceRestart(let command):
+            try restartGuestService(command)
+        case .vitalDB(let command):
+            try runVitalDBCommand(command)
+        case .lab(let command):
+            try runLabCommand(command)
         case .uninstall(let command):
             try uninstall(command)
         case .help:
@@ -199,19 +216,32 @@ struct RuntimeLifecycle {
         try runtimeInstallComposition().install()
     }
 
-    func installProvision() throws {
+    func installProvision(packageInstallContract: URL) throws {
+        _ = try loadPackageInstallContract(from: packageInstallContract)
         try runtimeInstallComposition().installProvision()
     }
 
-    func preinstallCheck() throws {
+    func preinstallCheck(packageInstallContract: URL) throws {
         let document = runtimeFreshInstallPreflight()
+        let targetVersion = try packageTargetVersion()
         let data = try JSONEncoder.pretty.encode(document)
         if let text = String(data: data, encoding: .utf8) {
             print(text)
         }
-        guard document.passed else {
+        switch RuntimePackageInstallPreflightPolicy.disposition(
+            document: document,
+            targetVersion: targetVersion
+        ) {
+        case .fresh:
+            try writePackageInstallContract(
+                targetVersion: targetVersion,
+                intent: .fresh,
+                to: packageInstallContract
+            )
+            print("package install disposition=fresh targetVersion=\(targetVersion.rawValue)")
+        case .blocked(let blockers):
             throw LauncherError.runtimeOperationFailed(
-                "fresh install preflight blocked blockers=\(document.blockers.joined(separator: ","))"
+                "package install preflight blocked blockers=\(blockers.joined(separator: ","))"
             )
         }
     }
@@ -272,8 +302,8 @@ struct RuntimeLifecycle {
         switch requirement {
         case .none:
             return "runtime configuration updated"
-        case .containerServices:
-            return "runtime configuration updated; container services reconcile required"
+        case .guestStack:
+            return "runtime configuration updated; guest stack reconcile required"
         case .vmRuntime:
             return "runtime configuration updated; VM runtime restart required"
         }
@@ -288,8 +318,11 @@ struct RuntimeLifecycle {
         try runtimeBundleComposition().stageBundle(bundleURL)
     }
 
-    func applyBundle(_ bundleURL: URL) throws {
-        try runtimeBundleComposition().applyBundle(bundleURL)
+    func applyBundle(_ command: RuntimeApplyBundleCommand) throws {
+        try runtimeBundleComposition().applyBundle(
+            command.bundleURL,
+            trustIntent: command.trustIntent
+        )
     }
 
     func repairDatastore() throws {
@@ -301,24 +334,25 @@ struct RuntimeLifecycle {
     }
 
     func createRedisBackup() throws {
-        do {
-            let result = try runtimeRedisBackupComposition().createBackup()
-            print(result.message)
-            if let archive = result.archive, !archive.isEmpty {
-                print("archive: \(archive)")
-            }
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            throw LauncherError.runtimeOperationFailed(message)
+        let operation = try createRedisBackupThroughGuestControl()
+        print("redis backup completed")
+        print("operation: \(operation.operationId)")
+        if let archive = operation.result?.archive, !archive.isEmpty {
+            print("archive: \(archive)")
         }
     }
 
     func createRuntimeDataBackup() throws {
         do {
-            let backup = try runtimeDataBackupComposition().createBackup()
+            let result = try runtimeDataBackupComposition().createBackup()
             print("runtime data backup completed")
-            print("backup: \(backup.path)")
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            throw LauncherError.runtimeOperationFailed(message)
+            print("backup: \(result.backup.path)")
+            for failure in result.cleanupFailures {
+                print(
+                    "maintenance archive cleanup failed: "
+                        + "\(failure.archive.path): \(failure.reason)"
+                )
+            }
         } catch let error as RuntimeDataBackupStoreError {
             throw LauncherError.runtimeOperationFailed(error.description)
         }
@@ -327,23 +361,26 @@ struct RuntimeLifecycle {
     func createAutomaticBackup() throws {
         do {
             let result = try runtimeDataBackupComposition().createAutomaticBackup()
-            print(result)
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            throw LauncherError.runtimeOperationFailed(message)
+            print(result.message)
         } catch let error as RuntimeDataBackupStoreError {
             throw LauncherError.runtimeOperationFailed(error.description)
         }
     }
 
     func restoreRedisBackup(_ archive: URL) throws {
-        do {
-            try runtimeDataBackupComposition().restoreRedisBackup(archive)
-            print("redis restore completed")
-            print("archive: \(archive.path)")
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            throw LauncherError.runtimeOperationFailed(message)
-        } catch let error as RuntimeDataBackupStoreError {
-            throw LauncherError.runtimeOperationFailed(error.description)
+        let stagedRedisArchive = try runtimeDataBackupComposition()
+            .stageRedisArchiveForGuestRestore(archive)
+        defer {
+            try? fileStore.removeItem(at: stagedRedisArchive.hostURL)
+        }
+        let operation = try restoreRedisBackupThroughGuestControl(
+            guestArchivePath: stagedRedisArchive.guestPath
+        )
+        print("redis restore completed")
+        print("operation: \(operation.operationId)")
+        if let restoredArchive = operation.result?.restoredArchive,
+           !restoredArchive.isEmpty {
+            print("archive: \(restoredArchive)")
         }
     }
 
@@ -365,9 +402,6 @@ struct RuntimeLifecycle {
             )
             print("runtime data restore completed")
             print("backup: \(backup.path)")
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            publishRuntimeDataRestoreFailure(step: step, backup: backup, message: message)
-            throw LauncherError.runtimeOperationFailed(message)
         } catch let error as RuntimeDataBackupStoreError {
             publishRuntimeDataRestoreFailure(step: step, backup: backup, message: error.description)
             throw LauncherError.runtimeOperationFailed(error.description)
@@ -398,12 +432,128 @@ struct RuntimeLifecycle {
         try runtimeServiceControlRunner().run(.stopAll)
     }
 
+    func restartGuestService(_ command: RuntimeGuestServiceControlCommand) throws {
+        try runGuestServiceCommand(command, action: .restart)
+    }
+
+    func startGuestService(_ command: RuntimeGuestServiceControlCommand) throws {
+        try runGuestServiceCommand(command, action: .start)
+    }
+
+    func stopGuestService(_ command: RuntimeGuestServiceControlCommand) throws {
+        try runGuestServiceCommand(command, action: .stop)
+    }
+
+    func printGuestStackStatus(_ command: RuntimeGuestControlReadCommand) throws {
+        do {
+            let gateway = try HTTPRuntimeGuestControlGateway(
+                baseURL: try resolvedGuestControlBaseURL(command.guestControlBaseURL)
+            )
+            try printJSON(gateway.stackStatus())
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    private func runGuestServiceCommand(
+        _ command: RuntimeGuestServiceControlCommand,
+        action: GuestProductServiceAction
+    ) throws {
+        do {
+            let gateway = try HTTPRuntimeGuestControlGateway(
+                baseURL: try resolvedGuestControlBaseURL(command.guestControlBaseURL)
+            )
+            let usecase = RuntimeGuestProductServiceControlUseCase()
+            let operation: RuntimeGuestControlServiceOperation
+            switch action {
+            case .start:
+                operation = try usecase.startService(command.service, gateway: gateway)
+            case .stop:
+                operation = try usecase.stopService(command.service, gateway: gateway)
+            case .restart:
+                operation = try usecase.restartService(command.service, gateway: gateway)
+            case .reconcile:
+                operation = try usecase.reconcileServices(gateway: gateway)
+            }
+            try printJSON(operation)
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func runLabCommand(_ command: RuntimeLabControlCommand) throws {
+        do {
+            let gateway = try HTTPRuntimeGuestControlGateway(
+                baseURL: try resolvedGuestControlBaseURL(command.guestControlBaseURL)
+            )
+            switch command.action {
+            case .scenarios:
+                try printJSON(gateway.labScenarios())
+            case .beds:
+                try printJSON(gateway.labBeds())
+            case .recorders:
+                try printJSON(gateway.labRecorders())
+            case .createSession(let request):
+                try printJSON(gateway.createLabSession(request))
+            case .getSession(let sessionId):
+                try printJSON(gateway.labSession(sessionId))
+            case .startSession(let sessionId):
+                try printJSON(gateway.startLabSession(sessionId))
+            case .stopSession(let sessionId):
+                try printJSON(gateway.stopLabSession(sessionId))
+            case .finishSession(let sessionId):
+                try printJSON(gateway.finishLabSession(sessionId))
+            case .replayVitalFile(let request):
+                try printJSON(gateway.replayLabVitalFile(request))
+            }
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func runVitalDBCommand(_ command: RuntimeVitalDBReadCommand) throws {
+        do {
+            let gateway = try HTTPRuntimeGuestControlGateway(
+                baseURL: try resolvedGuestControlBaseURL(command.guestControlBaseURL)
+            )
+            switch command.action {
+            case .observation:
+                try printJSON(gateway.latestVitalDBObservation())
+            case .recorders:
+                try printJSON(gateway.vitalDBRecorders())
+            case .recorderActivity(let vrcode):
+                try printJSON(gateway.vitalDBRecorderActivity(vrcode))
+            case .beds:
+                try printJSON(gateway.vitalDBBeds())
+            case .relationships:
+                try printJSON(gateway.vitalDBRelationships())
+            }
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    private func printJSON<T: Encodable>(_ value: T) throws {
+        let data = try JSONEncoder.pretty.encode(value)
+        if let text = String(data: data, encoding: .utf8) {
+            print(text)
+        }
+    }
+
     func uninstall(_ command: RuntimeUninstallCommand) throws {
         try runtimeUninstallRunner().run(command)
     }
 
     func rollback(_ command: RuntimeRollbackCommand) throws {
-        try runtimeRollbackComposition().rollback(command)
+        try runtimeRollbackComposition().rollback(
+            command,
+            invocation: .standalone(
+                operationID: UUID().uuidString.lowercased(),
+                startedAt: ISO8601DateFormatter().string(from: clock.now)
+            )
+        )
     }
 
     func refreshCloudInitSeedIfNeeded(_ manifest: UpdateBundleManifest) throws {
@@ -467,6 +617,15 @@ private extension RuntimeLifecycle {
     }
 }
 
+
+private enum GuestProductServiceAction {
+    case start
+    case stop
+    case restart
+    case reconcile
+}
+
+
 private extension RuntimeLifecycle {
     static func prepareServiceForStop(
         _ service: RuntimeManagedService,
@@ -492,10 +651,26 @@ private extension RuntimeLifecycle {
         )
         log("VM process stopped before launchd unload")
         do {
-            try RuntimeVMLifecycleStore(
-                url: paths.installed.vmLifecycle,
-                fileStore: fileStore
-            ).write(state: .stopped, message: "VM process stopped before launchd unload")
+            let owner = SQLiteRuntimeVMLifecycleResourceStore(
+                databaseURL: paths.installed.runtimeStateDatabase,
+                transitionDecider: RuntimeVMLifecycleTransitionUseCase()
+            )
+            let read = owner.loadVMLifecycleResource()
+            guard read.state == .loaded, let current = read.document else {
+                log("skipped VM lifecycle stopped write after process stop state=\(read.state.rawValue) error=\(read.readError ?? "none")")
+                return
+            }
+            _ = try owner.putVMLifecycleResource(RuntimeVMLifecycleDocument(
+                state: .stopped,
+                operation: current.operation,
+                operationID: current.operationID,
+                bootID: current.bootID,
+                startedAt: current.startedAt,
+                updatedAt: ISO8601DateFormatter().string(from: Date()),
+                deadlineAt: nil,
+                terminalReason: nil,
+                message: "VM process stopped before launchd unload"
+            ))
         } catch {
             log("failed to write VM lifecycle stopped state after process stop error=\(error)")
         }
@@ -519,5 +694,10 @@ private extension RuntimeLifecycle {
             )
         )
         log("VM process exited after guest poweroff request pid=\(expectedVMProcessID)")
+        try RuntimeVMLifecycleProcessExitReconciler.reconcile(
+            expectedVMProcessID: expectedVMProcessID,
+            paths: paths,
+            log: log
+        )
     }
 }

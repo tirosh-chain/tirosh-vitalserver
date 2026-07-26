@@ -16,13 +16,18 @@ public enum RuntimeGuestCapabilityRequirementPlan: Equatable, Sendable {
     case failed(RuntimeGuestCapabilityCheckError)
 }
 
+public enum RuntimeGuestCapabilityReadResult: Equatable, Sendable {
+    case loaded(RuntimeGuestControlCapabilities)
+    case failed(String)
+}
+
 public struct RuntimeGuestCapabilityRequirementOperations {
-    public let loadRuntimeState: () -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>
+    public let loadCapabilities: () -> RuntimeGuestCapabilityReadResult
 
     public init(
-        loadRuntimeState: @escaping () -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>
+        loadCapabilities: @escaping () -> RuntimeGuestCapabilityReadResult
     ) {
-        self.loadRuntimeState = loadRuntimeState
+        self.loadCapabilities = loadCapabilities
     }
 }
 
@@ -34,7 +39,7 @@ public struct RequireRuntimeGuestCapabilityUseCase {
         operations: RuntimeGuestCapabilityRequirementOperations
     ) throws {
         let plan = guestCapabilityRequirementPlan(
-            loadResult: operations.loadRuntimeState(),
+            readResult: operations.loadCapabilities(),
             capability: capability
         )
         switch plan {
@@ -46,29 +51,22 @@ public struct RequireRuntimeGuestCapabilityUseCase {
     }
 
     public func guestCapabilityDecision(
-        loadResult: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>,
+        readResult: RuntimeGuestCapabilityReadResult,
         capability: RuntimeGuestCapabilityRequirement
     ) -> RuntimeGuestCapabilityDecision {
-        switch loadResult {
-        case .loaded(let state):
-            guard let capabilities = state.capabilities,
-                  capability.isSupported(by: capabilities)
-            else {
+        switch readResult {
+        case .loaded(let capabilities):
+            guard capability.isSupported(by: capabilities) else {
                 return RuntimeGuestCapabilityDecision(
                     isSupported: false,
                     failure: .missingCapability(capability.rawValue)
                 )
             }
             return RuntimeGuestCapabilityDecision(isSupported: true, failure: nil)
-        case .missing:
-            return RuntimeGuestCapabilityDecision(
-                isSupported: false,
-                failure: .missingRuntimeState(capability.rawValue)
-            )
         case .failed(let message):
             return RuntimeGuestCapabilityDecision(
                 isSupported: false,
-                failure: .runtimeStateReadFailed(
+                failure: .capabilitiesReadFailed(
                     capability: capability.rawValue,
                     reason: message
                 )
@@ -77,11 +75,11 @@ public struct RequireRuntimeGuestCapabilityUseCase {
     }
 
     public func guestCapabilityRequirementPlan(
-        loadResult: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>,
+        readResult: RuntimeGuestCapabilityReadResult,
         capability: RuntimeGuestCapabilityRequirement
     ) -> RuntimeGuestCapabilityRequirementPlan {
         let decision = guestCapabilityDecision(
-            loadResult: loadResult,
+            readResult: readResult,
             capability: capability
         )
         guard let failure = decision.failure else {

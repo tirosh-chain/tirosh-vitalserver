@@ -12,12 +12,25 @@ class InvalidVitalFilenameError(VitalServerCoreError, ValueError):
 
     def __init__(self, filenames: tuple[str, ...]) -> None:
         self.filenames = filenames
-        super().__init__(
-            "invalid .vital filename(s): " + ", ".join(filenames)
-        )
+        super().__init__("invalid .vital filename(s): " + ", ".join(filenames))
+
+
+class RawArchiveDecodeError(VitalServerCoreError, ValueError):
+    """Raised when a recorder-ingress raw archive record is invalid."""
+
+
+class VitalFileFormatError(VitalServerCoreError, ValueError):
+    """Raised when a `.vital` format contract cannot be decoded."""
+
+    def __init__(self, *, code: str, detail: str) -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}")
 
 
 __all__ = [
     "InvalidVitalFilenameError",
+    "RawArchiveDecodeError",
+    "VitalFileFormatError",
     "VitalServerCoreError",
 ]

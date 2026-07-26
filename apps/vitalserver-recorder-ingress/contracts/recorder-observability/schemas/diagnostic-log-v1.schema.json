@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tirosh.local/contracts/vitalrecorder-diagnostic-log-v1.schema.json",
+  "title": "Allowlisted Vital Recorder diagnostic log v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "deviceId", "bootId", "kind", "source", "deviceObservedAt", "message"],
+  "properties": {
+    "schemaVersion": {"const": "v1"},
+    "eventId": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "deviceId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"},
+    "bootId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "kind": {"const": "diagnostic-log"},
+    "source": {"enum": ["kernel", "chrony", "systemd", "auth", "reboot-intent", "recovery-script", "vital-recorder", "heartbeat", "boot", "power", "observer", "maintenance"]},
+    "deviceObservedAt": {"type": "string", "format": "date-time"},
+    "monotonicTimestampMicroseconds": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+    "priority": {"type": ["string", "integer"]},
+    "category": {"enum": ["wifi", "usb", "power", "storage", "memory", "watchdog", "time", "service", "heartbeat", "boot", "other"]},
+    "code": {"type": "string", "pattern": "^[a-z0-9._-]{1,128}$"},
+    "interface": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"},
+    "message": {"type": "string", "minLength": 1, "maxLength": 16384}
+  }
+}

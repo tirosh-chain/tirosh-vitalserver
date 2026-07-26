@@ -1,8 +1,17 @@
 # tirosh-vitalserver-testkit
 
-VitalServer 제품화 과정에서 실시간 수집, `.vital` 업로드, UI-visible 상태를 검증하기 위한
+`tirosh-vitalserver-testkit`은 dev-only smoke/load 검증 도구입니다. Runtime v2 product
+surface, Guest Control API, Product Lab API, macOS Helper UI, PWA가 소유하는 product
+기능이 아니며, product runtime stack에 포함되면 안 됩니다.
+
+VitalServer 개발/검증 과정에서 실시간 수집, `.vital` 업로드, UI-visible 상태를 확인하기 위한
 Python 패키지입니다. upstream VitalServer를 직접 수정하지 않고, simulated recorder data나
 외부 payload를 흘려보내고 처리량과 실패율을 확인하는 데 집중합니다.
+
+Runtime v2의 virtual recorder scenario, Lab session, `.vital` replay product 계약은
+`apps/vitalserver-lab`과 Guest Control `/runtime/lab/*`가 소유합니다. TestKit 구현은 필요한
+동안 개발용 검증 CLI/API로만 남기며, `/dev/testkit` 또는 TestKit container를 product-facing
+runtime 기능으로 다시 노출하지 않습니다.
 
 ## 빠른 실행
 
@@ -158,20 +167,20 @@ room name을 다시 선택하거나 session의 target URL과 vrcode를 기준으
 남은 VitalServer recorder 등록을 정리하는 registry로 사용합니다.
 
 Persisted state files are versioned contracts. `sessions.json` writes
-`schema_version: 2`; `bed-registry.json` writes `schema_version: 1`. Missing
-`schema_version` is treated as a legacy v1 document only at the store boundary.
-After a legacy session is loaded and saved again, the store writes the current
-schema and materializes `.vital` state explicitly. Newer schema versions,
-invalid schema values, corrupt JSON, and missing fields in the current schema
-must fail visibly rather than becoming an empty registry or default success.
+`schema_version: 4`; `bed-registry.json` writes `schema_version: 1`. A missing
+state *file* is the explicit first-run empty registry and a read does not create
+that file. Every existing state document must carry `schema_version`; a missing
+or invalid version, corrupt JSON, wrong scalar type, or missing required field
+fails visibly. Legacy documents are not inferred or silently migrated by the
+store, and unreadable state never becomes an empty registry or default success.
 
 Troubleshooting: update 직후 `testkit` container가 반복 재시작하고 로그에
 `session_store.load_record.failed`와 `KeyError: 'vital_state'`가 보이면, 이전 버전의
-`sessions.json`이 `.vital` export 상태 필드가 추가되기 전 schema로 남아 있는 것입니다.
-수정 방향은 저장소 로더에서 `vital_state`가 없는 legacy session document만 명시적으로 migrate해
-`not-requested` 상태를 채우는 것입니다. `vital_state: null`이나 다른 필수 session/recorder 필드
-누락은 invalid contract로 실패해야 합니다. 예방 원칙은 optional migration을 필드 단위로 한정하고,
-missing, invalid, failed state를 같은 empty/default success로 합치지 않는 것입니다.
+`sessions.json`이 현재 `.vital` export 상태 계약보다 오래된 것입니다. 수정 방향은 문제 파일을
+보존한 뒤 별도 migration 또는 reset을 명시적으로 수행하는 것입니다. 로더가 `vital_state`를
+`not-requested`로 채우거나 `vital_state: null`과 다른 필수 session/recorder 필드 누락을
+정상 상태로 바꾸면 안 됩니다. 예방 원칙은 missing, invalid, failed state를 같은 empty/default
+success로 합치지 않는 것입니다.
 
 Troubleshooting: 여러 virtual VRecorder session을 오래 실행할 때 TestKit API의 session은
 `running`이지만 `vitaldb-observer`가 일부 recorder를 `stale-recorder`로 보고하면, 먼저
@@ -393,17 +402,17 @@ adapter 경계를 검증합니다. 실제 VitalServer와 Redis까지 붙는 end-
 사용합니다.
 
 ```sh
-make testkit-smoke
-make testkit-load
-make testkit-stream
+make testkit/smoke
+make testkit/load
+make testkit/stream
 ```
 
-`make testkit-stream`은 Web Monitoring 확인용으로 Ctrl+C 전까지 계속 데이터를 보냅니다.
+`make testkit/stream`은 Web Monitoring 확인용으로 Ctrl+C 전까지 계속 데이터를 보냅니다.
 
 다른 설정 파일을 쓰려면 `TESTKIT_CONFIG`를 지정합니다.
 
 ```sh
-TESTKIT_CONFIG=config/load-test.toml make testkit-load
+TESTKIT_CONFIG=config/load-test.toml make testkit/load
 ```
 
 `scripts/test_vitalserver.py`는 설치된 `vitalserver-testkit` command를 우선 사용하고, 없으면
@@ -411,12 +420,12 @@ TESTKIT_CONFIG=config/load-test.toml make testkit-load
 prefix를 지정할 수 있습니다.
 
 ```sh
-TESTKIT_CLI="uv run vitalserver-testkit" make testkit-smoke
+TESTKIT_CLI="uv run vitalserver-testkit" make testkit/smoke
 ```
 
-dev profile macOS Helper의 Test 탭은 Runtime Control browser console과 Testkit API 상태를 확인하는
-용도입니다. Testkit 컨테이너/API가 package에 포함될지는 release manifest의 optional container service
-정책으로 결정하고, Test 탭의 route와 API contract는 Test 탭/API 구현이 소유합니다.
+Runtime v2에서 TestKit은 dev/load 검증 도구입니다. macOS Helper, PWA, CLI의 정식
+Lab 기능은 `apps/vitalserver-lab`과 Guest Control `/runtime/lab/*` 계약이 소유하며,
+TestKit route나 TestKit API를 product-facing runtime 기능으로 다시 노출하지 않습니다.
 
 ## 관련 문서
 

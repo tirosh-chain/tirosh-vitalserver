@@ -5,39 +5,22 @@ import Errors
 
 final class RuntimeOperationReportingUseCaseTests: XCTestCase {
     func testBuildStatusDocumentUseCaseMapsExplicitSnapshotToStatusDocument() {
-        let progress = RuntimeProgressDocument(
-            operation: .applyBundle,
-            phase: .running,
-            step: .activateGuestUpdate,
-            stepStatus: .started,
-            message: "Waiting for VM update activation",
-            reasonCodes: ["guest-activation-pending"],
-            startedAt: nil,
-            updatedAt: "2026-05-21T12:34:00Z"
-        )
         let document = BuildRuntimeStatusDocumentUseCase().build(RuntimeStatusDocumentBuildInput(
             product: "VitalServerHelper",
             status: .updating,
-            operation: .applyBundle,
-            message: "bundle apply started",
-            updatedAt: "2026-05-21T12:33:57Z",
             productRoot: "/product",
             runtimeHome: "/product/vm",
             runtimeVersion: "0.1.4",
             healthSnapshot: healthSnapshot(),
-            latestBackup: "/product/backups/latest",
-            progress: progress
+            latestBackup: "/product/backups/latest"
         ))
 
         XCTAssertEqual(document.schemaVersion, 2)
         XCTAssertEqual(document.product, "VitalServerHelper")
         XCTAssertEqual(document.status, .updating)
-        XCTAssertEqual(document.operation, .applyBundle)
         XCTAssertEqual(document.runtimeVersion, "0.1.4")
-        XCTAssertEqual(document.vmState, .running)
         XCTAssertEqual(document.vmIP, "192.168.64.2")
         XCTAssertEqual(document.latestBackup, "/product/backups/latest")
-        XCTAssertEqual(document.progress, progress)
     }
 
     func testOperationReportingMessagesComeFromUseCase() {
@@ -86,6 +69,11 @@ final class RuntimeOperationReportingUseCaseTests: XCTestCase {
             guestHTTP: "200",
             redisUIHTTP: "200",
             swaggerUIHTTP: "200",
+            vitalDBObservation: VitalDBObservationDocument(
+                observedAt: "2026-05-30T00:00:00Z",
+                ready: true,
+                recorderOnlineThresholdSeconds: 30
+            ),
             failureReasons: []
         )
     }

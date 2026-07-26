@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "recorder-expectation-set-1",
+  "state": "persisted",
+  "event": {
+    "resourceType": "recorder-expectation-event",
+    "resourceId": "recorder-expectation-event-1"
+  },
+  "recorder": {
+    "resourceType": "recorder",
+    "resourceId": "recorder-legacy-1"
+  },
+  "revision": 1,
+  "persistedAt": "2026-07-24T00:00:00Z"
+}

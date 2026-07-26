@@ -15,19 +15,37 @@ type RecordedRequest = {
 };
 
 describe("RuntimeControlApiClient", () => {
+  it("schedules a managed Platform support export without a caller path", async () => {
+    const operation = {
+      ...platformWorkflowOperation("update-verify"),
+      operationId: "support-export-1",
+      kind: "support-export" as const,
+      state: "accepted" as const
+    };
+    const { client, requests } = clientWithResponses({
+      "/platform/support-exports": operation
+    });
+
+    await expect(client.createPlatformSupportExport()).resolves.toEqual(operation);
+    expect(requests[0]?.init.method).toBe("POST");
+    expect(requests[0]?.init.body).toBeUndefined();
+  });
+
   it("sends authenticated GET requests with query parameters", async () => {
     const { client, requests } = clientWithResponses({
       "/runtime/events": { events: [], nextCursor: null, matchingCount: 0 }
     });
 
-    await expect(client.getRuntimeEvents({ limit: 5, type: "update" })).resolves.toEqual({
+    await expect(
+      client.getRuntimeEvents({ limit: 5, type: "operation-completed" })
+    ).resolves.toEqual({
       events: [],
       nextCursor: null,
       matchingCount: 0
     });
 
     expect(requests[0]?.url).toBe(
-      "http://helper.local/runtime/events?limit=5&type=update"
+      "http://helper.local/runtime/events?limit=5&type=operation-completed"
     );
     expect(requests[0]?.init.method).toBe("GET");
     expect(requests[0]?.init.headers).toMatchObject({
@@ -36,18 +54,231 @@ describe("RuntimeControlApiClient", () => {
     });
   });
 
-  it("sends JSON bodies for runtime command endpoints", async () => {
+  it("forwards bounded Recorder observability history queries", async () => {
     const { client, requests } = clientWithResponses({
-      "/runtime/settings": commandResponse(),
-      "/runtime/uninstall": commandResponse(),
-      "/runtime/services/repair-proxy": commandResponse(),
-      "DELETE /host/backups/update": commandResponse(),
-      "DELETE /host/backups/vitalserver-helper": commandResponse()
+      "/runtime/vitaldb/recorders/VR_A/observability/timeline": {
+        state: "notReported",
+        vrcode: "VR_A",
+        supportState: "supported",
+        timeBasis: "receivedAt",
+        query: {
+          from: "2026-07-23T00:00:00Z",
+          until: "2026-07-24T00:00:00Z",
+          bucketSeconds: 900
+        },
+        buckets: [],
+        readError: null
+      },
+      "/runtime/vitaldb/recorders/VR_A/observability/incidents": {
+        state: "loaded",
+        vrcode: "VR_A",
+        timeBasis: "receivedAt",
+        incidents: [],
+        nextCursor: null,
+        readError: null
+      }
     });
 
-    await client.applySettings({ settings: fullSettings({ proxyPort: 18080 }) });
+    await client.getRecorderObservabilityTimeline({
+      vrcode: "VR_A",
+      from: "2026-07-23T00:00:00Z",
+      until: "2026-07-24T00:00:00Z",
+      bucketSeconds: 900
+    });
+    await client.getRecorderObservabilityIncidents({
+      vrcode: "VR_A",
+      from: "2026-07-01T00:00:00Z",
+      until: "2026-07-24T00:00:00Z",
+      type: "panic",
+      cursor: "opaque",
+      limit: 25
+    });
+
+    expect(new URL(requests[0]!.url).searchParams.get("bucketSeconds")).toBe("900");
+    expect(new URL(requests[1]!.url).searchParams.get("type")).toBe("panic");
+    expect(new URL(requests[1]!.url).searchParams.get("cursor")).toBe("opaque");
+    expect(new URL(requests[1]!.url).searchParams.get("limit")).toBe("25");
+  });
+
+  it("preserves a Guest operation-ledger 503 response", async () => {
+    const { client } = clientWithResponses(
+      {
+        "/runtime/events": {
+          code: "guestControlUnavailable",
+          message: "Guest operation event ledger is unavailable"
+        }
+      },
+      503
+    );
+
+    await expect(client.getRuntimeEvents()).rejects.toMatchObject({
+      kind: "api",
+      status: 503,
+      body: JSON.stringify({
+        code: "guestControlUnavailable",
+        message: "Guest operation event ledger is unavailable"
+      })
+    });
+  });
+
+  it("uses an opaque same-origin browser session instead of a shipped API token", async () => {
+    const requests: RecordedRequest[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, init: init ?? {} });
+      if (new URL(url).pathname === "/platform/browser-session") {
+        return new Response(null, { status: 204 });
+      }
+      return new Response(JSON.stringify(platformCapabilities()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }) as typeof fetch;
+    const client = new RuntimeControlApiClient({
+      token: "",
+      useBrowserSession: true,
+      fetchImpl
+    });
+
+    await expect(client.getPlatformCapabilities()).resolves.toEqual(platformCapabilities());
+
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/platform/browser-session",
+      "/platform/capabilities"
+    ]);
+    for (const request of requests) {
+      expect(request.init.credentials).toBe("same-origin");
+      expect(request.init.headers).toEqual({ Accept: "application/json" });
+    }
+  });
+
+  it("reestablishes the browser session once after an unauthorized response", async () => {
+    const requests: RecordedRequest[] = [];
+    let platformRequestCount = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const path = new URL(url).pathname;
+      requests.push({ url, init: init ?? {} });
+      if (path === "/platform/browser-session") {
+        return new Response(null, { status: 204 });
+      }
+      platformRequestCount += 1;
+      if (platformRequestCount === 1) {
+        return new Response(
+          JSON.stringify({ code: "unauthorized", message: "session expired" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(JSON.stringify(platformCapabilities()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }) as typeof fetch;
+    const client = new RuntimeControlApiClient({
+      token: "",
+      useBrowserSession: true,
+      fetchImpl
+    });
+
+    await expect(client.getPlatformCapabilities()).resolves.toEqual(platformCapabilities());
+
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/platform/browser-session",
+      "/platform/capabilities",
+      "/platform/browser-session",
+      "/platform/capabilities"
+    ]);
+  });
+
+  it("reads and applies Runtime-owned Redis Relay settings", async () => {
+    const read = {
+      state: "loaded",
+      settings: {
+        enabled: false,
+        target: {
+          url: "redis://redis.example:6379/0",
+          username: "",
+          passwordConfigured: false,
+          tls: false
+        },
+        scope: "vital_reconstruction",
+        includeRecorderNetworkContext: false,
+        intervalSeconds: 1,
+        scanCount: 1000
+      },
+      readError: null
+    };
+    const apply = {
+      enabled: true,
+      target: {
+        url: "redis://relay.example:6379/1",
+        username: "relay",
+        password: "secret",
+        clearPassword: false,
+        tls: true
+      },
+      scope: "waveform_trend_only" as const,
+      includeRecorderNetworkContext: true,
+      intervalSeconds: 0.5,
+      scanCount: 250
+    };
+    const { client, requests } = clientWithResponses({
+      "/runtime/redis-relay/settings": read,
+      "PUT /runtime/redis-relay/settings": runtimeSettingsOperation()
+    });
+
+    await expect(client.getRuntimeRedisRelaySettings()).resolves.toEqual(read);
+    await client.applyRuntimeRedisRelaySettings(apply);
+
+    expect(requests.map((request) => request.init.method)).toEqual(["GET", "PUT"]);
+    expect(JSON.parse(String(requests[1]?.init.body))).toEqual(apply);
+  });
+
+  it("parses all Runtime settings apply operation responses at the HTTP boundary", async () => {
+    const adminOperation = runtimeSettingsOperation(
+      "apply-admin-password",
+      "runtime-admin"
+    );
+    const relayOperation = runtimeSettingsOperation(
+      "apply-redis-relay-settings",
+      "redis-relay-settings"
+    );
+    const { client } = clientWithResponses({
+      "POST /runtime/admin-password": adminOperation,
+      "PUT /runtime/redis-relay/settings": relayOperation
+    });
+
+    await expect(
+      client.applyRuntimeAdminPassword({ password: "new-admin-secret" })
+    ).resolves.toEqual(adminOperation);
+    await expect(
+      client.applyRuntimeRedisRelaySettings({
+        enabled: false,
+        target: {
+          url: "redis://relay.example:6379/0",
+          username: "",
+          password: "",
+          clearPassword: false,
+          tls: false
+        },
+        scope: "vital_reconstruction",
+        includeRecorderNetworkContext: false,
+        intervalSeconds: 1,
+        scanCount: 1000
+      })
+    ).resolves.toEqual(relayOperation);
+  });
+
+  it("sends JSON bodies only for endpoints with request payloads", async () => {
+    const { client, requests } = clientWithResponses({
+      "/runtime/settings": runtimeSettingsOperation(),
+      "/platform/uninstall": platformWorkflowOperation("uninstall"),
+      "DELETE /platform/backups/update": commandResponse(),
+      "DELETE /platform/backups/runtime-data": commandResponse()
+    });
+
+    await client.applyRuntimeProductSettings({ settings: productSettings() });
     await client.uninstallRuntime({ mode: "clean" });
-    await client.repairProxy(18080);
     await client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/update" } });
     await client.deleteRuntimeDataBackup({
       backup: { kind: "localPath", value: "/tmp/runtime-data" }
@@ -56,15 +287,11 @@ describe("RuntimeControlApiClient", () => {
     expect(requests.map((request) => request.init.method)).toEqual([
       "PUT",
       "POST",
-      "POST",
       "DELETE",
       "DELETE"
     ]);
     expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
-      settings: fullSettings({ proxyPort: 18080 })
-    });
-    expect(JSON.parse(String(requests[2]?.init.body))).toEqual({
-      proxyPort: 18080
+      settings: productSettings()
     });
     expect(requests[0]?.init.headers).toMatchObject({
       "Content-Type": "application/json"
@@ -73,23 +300,57 @@ describe("RuntimeControlApiClient", () => {
 
   it("keeps absent JSON bodies distinct from explicit JSON command payloads", async () => {
     const { client, requests } = clientWithResponses({
-      "/runtime/services/start": commandResponse(),
-      "/runtime/services/repair-proxy": commandResponse()
+      "/platform/backups/redis": commandResponse(),
+      "/platform/runtime-provider/restart": runtimeProviderCommandResponse()
     });
 
-    await client.startRuntimeServices();
-    await client.repairProxy(18080);
+    await client.createRedisBackup();
+    await client.restartRuntimeProvider();
 
+    for (const request of requests) {
+      expect(request.init.body).toBeUndefined();
+      expect(request.init.headers).not.toMatchObject({
+        "Content-Type": "application/json"
+      });
+    }
+  });
+
+  it("preserves the typed Runtime Provider failure returned with 503", async () => {
+    const failed = runtimeProviderCommandResponse("failed");
+    const { client } = clientWithResponses(
+      { "/platform/runtime-provider/restart": failed },
+      503
+    );
+
+    await expect(client.restartRuntimeProvider()).resolves.toEqual(failed);
+  });
+
+  it("reports an unavailable Runtime Provider command without treating it as a failed effect", async () => {
+    const { client } = clientWithResponses(
+      {
+        "/platform/runtime-provider/restart": {
+          code: "platformAffordanceUnavailable",
+          message: "Runtime Provider control is unavailable."
+        }
+      },
+      501
+    );
+
+    await expect(client.restartRuntimeProvider()).rejects.toMatchObject({
+      status: 501
+    });
+  });
+
+  it("accepts the Guest datastore repair operation response", async () => {
+    const operation = guestServiceOperation("repair-datastore", "datastore-repair");
+    const { client, requests } = clientWithResponses(
+      { "/runtime/maintenance/datastore/repair": operation },
+      202
+    );
+
+    await expect(client.repairDatastore()).resolves.toEqual(operation);
+    expect(requests[0]?.init.method).toBe("POST");
     expect(requests[0]?.init.body).toBeUndefined();
-    expect(requests[0]?.init.headers).not.toMatchObject({
-      "Content-Type": "application/json"
-    });
-    expect(JSON.parse(String(requests[1]?.init.body))).toEqual({
-      proxyPort: 18080
-    });
-    expect(requests[1]?.init.headers).toMatchObject({
-      "Content-Type": "application/json"
-    });
   });
 
   it("rejects undefined query values instead of dropping them", async () => {
@@ -103,84 +364,347 @@ describe("RuntimeControlApiClient", () => {
     expect(requests).toHaveLength(0);
   });
 
+  it("rejects non-operation event types before requesting the Guest ledger", async () => {
+    const { client, requests } = clientWithResponses({
+      "/runtime/events": { events: [], nextCursor: null, matchingCount: 0 }
+    });
+
+    await expect(
+      client.getRuntimeEvents({ limit: 5, type: "status-changed" as never })
+    ).rejects.toBeInstanceOf(RuntimeControlValidationError);
+    expect(requests).toHaveLength(0);
+  });
+
   it("covers read endpoints and host affordance endpoints", async () => {
-    const session = testKitSession();
-    const { client } = clientWithResponses({
-      "/runtime/capabilities": fullCapabilities(),
-      "/runtime/overview": fullRuntimeOverview(),
-      "/runtime/status": { runtimeState: "healthy" },
-      "/runtime/settings": fullSettings({ proxyPort: 80 }),
-      "/vitaldb/recorders": fullVitalRecorderHistory(),
-      "/vitaldb/beds": [],
-      "/vitaldb/relationships": {
+    const { client, requests } = clientWithResponses({
+      "/platform/capabilities": platformCapabilities(),
+      "/runtime/capabilities": {
+        schemaVersion: 1,
+        capabilities: [
+          "services:start",
+          "services:stop",
+          "services:restart",
+          "lab:scenarios",
+          "lab:sessions:list",
+          "lab:recorders:start",
+          "lab:recorders:stop",
+          "maintenance:datastore-repair:create"
+        ]
+      },
+      "/runtime/vitaldb/observations/latest": {
+        state: "unavailable",
+        observation: null,
+        readError: "not observed"
+      },
+      "/platform": { runtimeInstallationState: "executable", services: platformServices(), platformHealth: "healthy" },
+      "/runtime/redis-relay/status": {
+        readState: "readFailed",
+        document: null,
+        readError: "owner unavailable"
+      },
+      "/platform/operations": {
+        activeOperation: "apply-bundle",
+        install: {
+          state: "unavailable",
+          document: null,
+          readError: null
+        },
+        lease: {
+          state: "stale",
+          document: {
+            schemaVersion: 1,
+            operationId: "operation-1",
+            operation: "apply-bundle",
+            ownerPID: 123,
+            startedAt: "2026-07-08T00:00:00Z",
+            heartbeatAt: "2026-07-08T00:00:01Z",
+            expiresAt: "2026-07-08T00:00:02Z",
+            message: "applying bundle"
+          },
+          readError: null,
+          staleReason: "expired"
+        }
+      },
+      "/runtime/settings": {
+        state: "loaded",
+        settings: productSettings(),
+        readError: null
+      },
+      "/runtime/lab/scenarios": {
+        state: "loaded",
+        scenarios: [{ scenarioId: "baseline", name: "Baseline", category: "generated" }],
+        readError: null
+      },
+      "/runtime/lab/beds": {
+        state: "loaded",
+        beds: [
+          {
+            bedId: "lab-1-bed-1",
+            sessionId: "lab-1",
+            name: "OR-A",
+            state: "running",
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00"
+          }
+        ],
+        readError: null
+      },
+      "/runtime/lab/recorders": {
+        state: "loaded",
+        recorders: [
+          {
+            recorderId: "lab-1-recorder-1",
+            sessionId: "lab-1",
+            bedId: "lab-1-bed-1",
+            vrcode: "LAB-lab-1-1",
+            state: "running",
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            messagesSent: 1,
+            lastSendState: "sent",
+            lastSendAt: "2026-07-01T00:00:01+00:00",
+            lastSendError: null
+          }
+        ],
+        readError: null
+      },
+      "GET /runtime/lab/sessions": {
+        state: "loaded",
+        sessions: [labSessionResponse().session],
+        readError: null
+      },
+      "POST /runtime/lab/sessions": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1/start": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1/stop": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1/finish": labSessionResponse(),
+      "/runtime/lab/sessions/lab-1/recorders/lab-1-recorder-1/start":
+        labRecorderResponse("running"),
+      "/runtime/lab/sessions/lab-1/recorders/lab-1-recorder-1/stop":
+        labRecorderResponse("stopped"),
+      "/runtime/lab/vital-files": {
+        state: "loaded",
+        vitalFiles: [
+          {
+            displayName: "case.vital",
+            relativePath: "case.vital",
+            guestPath: "/mnt/tirosh-vital-files/case.vital",
+            sizeBytes: 1024,
+            modifiedAt: "2026-07-01T00:00:00+00:00"
+          }
+        ],
+        readError: null
+      },
+      "/runtime/lab/vital-files/upload": {
+        state: "completed",
+        files: [
+          { fileName: "case.vital", relativePath: "case.vital", sizeBytes: 4 },
+          { fileName: "other.vital", relativePath: "other.vital", sizeBytes: 5 }
+        ],
+        failedFiles: []
+      },
+      "/runtime/lab/vital-files/replay": labSessionResponse(),
+      "/runtime/stack": {
+        state: "loaded",
+        observedAt: "2026-07-01T00:00:00+00:00",
+        services: [
+          {
+            service: "app",
+            state: "running",
+            health: "healthy",
+            observedAt: "2026-07-01T00:00:00+00:00"
+          }
+        ],
+        probeErrors: []
+      },
+      "/runtime/services/app/resource": guestServiceResource(),
+      "/runtime/services/app/start": guestServiceOperation("start"),
+      "/runtime/services/app/stop": guestServiceOperation("stop"),
+      "/runtime/services/app/restart": guestServiceOperation("restart"),
+      "/runtime/vitaldb/recorders": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/recorders/VR_A/vital-files": {
+        state: "loaded",
+        vrcode: "VR_A",
+        files: [],
+        unattributedCount: 0,
+        sources: {
+          nativeUpload: { state: "loaded", readError: null },
+          coldPathRecovery: { state: "loaded", readError: null }
+        },
+        readError: null
+      },
+      "/runtime/vitaldb/recorders/VR_A/observability":
+        unavailableRecorderObservability(),
+      "/runtime/vitaldb/recorders/hide": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/recorders/unhide": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/recorders/delete": fullVitalRecorderHistory(),
+      "/runtime/vitaldb/beds": fullVitalBedHistory(),
+      "/runtime/vitaldb/beds/hide": fullVitalBedHistory(),
+      "/runtime/vitaldb/beds/unhide": fullVitalBedHistory(),
+      "/runtime/vitaldb/beds/delete": fullVitalBedHistory(),
+      "/runtime/vitaldb/relationships": {
         state: "loaded",
         assignments: [],
         events: [],
+        eventTotalCount: 0,
+        eventLimit: 100,
         readError: null
       },
-      "/dev/testkit/status": testKitStatus(),
-      "/dev/testkit/beds/create": [{ roomName: "OR-A", bedId: "bed-a" }],
-      "/dev/testkit/beds/delete": [{ roomName: "OR-A", bedId: "bed-a" }],
-      "/dev/testkit/beds/reset": [],
-      "/dev/testkit/virtual-recorders/start": session,
-      "/dev/testkit/virtual-recorders/stop": session,
-      "/dev/testkit/virtual-recorders/pause": session,
-      "/dev/testkit/virtual-recorders/resume": session,
-      "/dev/testkit/virtual-recorders/restart": session,
-      "/dev/testkit/virtual-recorders/delete": session,
-      "/dev/testkit/virtual-recorders/reset": testKitStatus(),
-      "/dev/testkit/virtual-recorders/delete-orphan": {
-        vrcode: "VR_A",
-        targetUrl: "http://edge/",
-        deleted: true,
-        error: null
+      "/platform/logs/read": { text: "log" },
+      "/platform/logs/export": { destination: "file:///tmp/logs.zip" },
+      "/platform/workflows/current": {
+        state: "missing",
+        operation: null,
+        readError: null
       },
-      "/host/logs/read": { text: "log" },
-      "/host/logs/export": { destination: "file:///tmp/logs.zip" },
-      "/host/update-bundles/summary": { summary: "ok" },
-      "/host/update-bundles/verify": commandResponse(),
-      "/host/update-bundles/apply": commandResponse(),
-      "/host/backups": [{ path: "/tmp/backup", sizeBytes: 1 }],
-      "/host/backups/redis": [{ path: "/tmp/redis", sizeBytes: null }],
-      "/host/backups/vitalserver-helper": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
-      "/host/backups/rollback": commandResponse(),
-      "DELETE /host/backups/update": commandResponse(),
-      "DELETE /host/backups/vitalserver-helper": commandResponse(),
-      "/host/backups/redis/restore": commandResponse(),
-      "/host/backups/vitalserver-helper/restore": commandResponse(),
-      "/runtime/redis/backups": commandResponse(),
-      "/runtime/data/backups": commandResponse(),
-      "/runtime/services/start": commandResponse(),
-      "/runtime/services/stop": commandResponse(),
-      "/runtime/services/repair-runtime": commandResponse(),
-      "/runtime/services/repair-datastore": commandResponse(),
-      "/runtime/services/repair-vm-disk": commandResponse()
+      "/platform/update-bundles/summary": { summary: "ok" },
+      "/platform/update-bundles/verify": platformWorkflowOperation("update-verify"),
+      "/platform/update-bundles/apply": platformWorkflowOperation("update-apply"),
+      "/platform/releases/rollback": platformWorkflowOperation("rollback"),
+      "/platform/backups": [{ path: "/tmp/backup", sizeBytes: 1 }],
+      "/platform/backups/redis": [{ path: "/tmp/redis", sizeBytes: null }],
+      "/platform/backups/runtime-data": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
+      "/platform/backups/rollback": commandResponse(),
+      "DELETE /platform/backups/update": commandResponse(),
+      "DELETE /platform/backups/runtime-data": commandResponse(),
+      "/platform/backups/redis/restore": commandResponse(),
+      "/platform/backups/runtime-data/restore": commandResponse(),
+      "POST /platform/backups/redis": commandResponse(),
+      "POST /platform/backups/runtime-data": commandResponse(),
+      "/platform/runtime-provider/restart": runtimeProviderCommandResponse(),
+      "/runtime/maintenance/datastore/repair": guestServiceOperation(
+        "repair-datastore",
+        "datastore-repair"
+      )
     });
 
-    await expect(client.getCapabilities()).resolves.toMatchObject({ canUseTestTools: true });
-    await expect(client.getOverview()).resolves.toMatchObject({ status: { runtimeState: "healthy" } });
-    await expect(client.getStatus()).resolves.toMatchObject({ runtimeState: "healthy" });
-    await expect(client.getSettings()).resolves.toMatchObject({ proxyPort: 80 });
+    await expect(client.getCapabilities()).resolves.toMatchObject({
+      canUseLab: true,
+      canListLabSessions: true,
+      canControlLabRecorders: true,
+      canRepairRuntimeDatastore: true
+    });
+    await expect(client.getLatestVitalDBObservation()).resolves.toEqual({
+      state: "unavailable",
+      observation: null,
+      readError: "not observed"
+    });
+    await expect(client.getPlatformState()).resolves.toMatchObject({ platformHealth: "healthy" });
+    await expect(client.getRedisRelayStatus()).resolves.toEqual({
+      readState: "readFailed",
+      document: null,
+      readError: "owner unavailable"
+    });
+    await expect(client.getOperationState()).resolves.toMatchObject({
+      activeOperation: "apply-bundle",
+      lease: { state: "stale", staleReason: "expired" }
+    });
+    await expect(client.getRuntimeProductSettings()).resolves.toMatchObject({
+      state: "loaded",
+      settings: { publicPort: 80 }
+    });
+    await expect(client.getLabScenarios()).resolves.toMatchObject({ state: "loaded" });
+    await expect(client.getLabBeds()).resolves.toMatchObject({ beds: [{ name: "OR-A" }] });
+    await expect(client.getLabRecorders()).resolves.toMatchObject({
+      recorders: [{ vrcode: "LAB-lab-1-1", messagesSent: 1, lastSendState: "sent" }]
+    });
+    await expect(client.getLabSessions()).resolves.toMatchObject({
+      sessions: [{ sessionId: "lab-1" }]
+    });
+    await expect(client.createLabSession({
+      scenarioId: "baseline",
+      name: "Lab A",
+      recorderCount: 2,
+      targetURL: null
+    })).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
+    await expect(client.getLabSession("lab-1")).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
+    await expect(client.startLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
+    await expect(client.stopLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
+    await expect(client.finishLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
+    await expect(
+      client.startLabRecorder("lab-1", "lab-1-recorder-1")
+    ).resolves.toMatchObject({ recorder: { state: "running" } });
+    await expect(
+      client.stopLabRecorder("lab-1", "lab-1-recorder-1")
+    ).resolves.toMatchObject({ recorder: { state: "stopped" } });
+    await expect(client.getLabVitalFiles()).resolves.toMatchObject({
+      vitalFiles: [{ displayName: "case.vital" }]
+    });
+    const uploadResult = await client.uploadLabVitalFiles({
+      files: [
+        new File(["case"], "case.vital"),
+        new File(["other"], "other.vital")
+      ]
+    });
+    expect(uploadResult.state).toBe("completed");
+    expect(uploadResult.files.map((file) => file.fileName)).toEqual(["case.vital", "other.vital"]);
+    const uploadBody = requests.find(
+      (request) => new URL(request.url).pathname === "/runtime/lab/vital-files/upload"
+    )?.init.body;
+    expect(uploadBody).toBeInstanceOf(FormData);
+    expect((uploadBody as FormData).getAll("files").map((entry) => (entry as File).name)).toEqual([
+      "case.vital",
+      "other.vital"
+    ]);
+    await expect(client.replayLabVitalFile({
+      vitalFileRelativePath: "sample.vital",
+      sessionName: "Replay",
+      targetURL: null,
+      resourceSelection: { mode: "quickCreate" },
+      repeatPolicy: { mode: "once" }
+    })).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
+    await expect(client.getRuntimeStack()).resolves.toMatchObject({
+      state: "loaded",
+      services: [{ service: "app" }]
+    });
+    await expect(client.getGuestServiceResource("app")).resolves.toMatchObject({
+      service: "app",
+      spec: { desiredState: "running" },
+      status: { observedState: "running" },
+      lastOperationId: "op-app"
+    });
+    await expect(client.startGuestService({ service: "app" })).resolves.toMatchObject({ command: "start" });
+    await expect(client.stopGuestService({ service: "app" })).resolves.toMatchObject({ command: "stop" });
+    await expect(client.restartGuestService({ service: "app" })).resolves.toMatchObject({ command: "restart" });
     await expect(client.getRecorders()).resolves.toMatchObject({ recorders: [] });
-    await expect(client.getBeds()).resolves.toEqual([]);
+    await expect(client.getRecorderVitalFiles("VR_A")).resolves.toMatchObject({
+      vrcode: "VR_A",
+      files: []
+    });
+    expect(requests.some(
+      (request) =>
+        new URL(request.url).pathname ===
+        "/runtime/vitaldb/recorders/VR_A/vital-files"
+    )).toBe(true);
+    await expect(client.getRecorderObservability("VR_A")).resolves.toMatchObject({
+      state: "unavailable",
+      vrcode: "VR_A",
+      report: { state: "readFailed" }
+    });
+    expect(requests.some(
+      (request) =>
+        new URL(request.url).pathname ===
+        "/runtime/vitaldb/recorders/VR_A/observability"
+    )).toBe(true);
+    await expect(client.hideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
+    await expect(client.unhideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
+    await expect(client.deleteRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
+    await expect(client.getBeds()).resolves.toMatchObject({ beds: [] });
+    await expect(client.hideBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
+    await expect(client.unhideBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
+    await expect(client.deleteBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
     await expect(client.getRelationships()).resolves.toMatchObject({ assignments: [] });
-    await expect(client.getTestKitStatus()).resolves.toMatchObject({ enabled: true });
-    await expect(client.createTestKitBeds({ count: 1, roomNames: [], prefix: "OR", adminUserId: "admin" })).resolves.toHaveLength(1);
-    await expect(client.deleteTestKitBeds({ roomNames: ["OR-A"] })).resolves.toHaveLength(1);
-    await expect(client.resetTestKitBeds()).resolves.toEqual([]);
-    await expect(client.startTestKitVirtualRecorders(testKitStartRequest())).resolves.toMatchObject({ id: "s1" });
-    await expect(client.stopTestKitVirtualRecorders({ sessionID: "s1" })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.pauseTestKitVirtualRecorders({ sessionID: "s1" })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.resumeTestKitVirtualRecorders({ sessionID: "s1" })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.restartTestKitVirtualRecorders({ sessionID: "s1", bedRoomNames: ["OR-A"] })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.deleteTestKitVirtualRecorders({ sessionID: "s1" })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.resetTestKitVirtualRecorders()).resolves.toMatchObject({ enabled: true });
-    await expect(client.deleteTestKitOrphanVRecorder({ vrcode: "VR_A" })).resolves.toMatchObject({ deleted: true });
     await expect(client.readLogs({ source: "containers", helperMessage: "", lineLimit: 100 })).resolves.toEqual({ text: "log" });
     await expect(client.exportLogs({ destination: { kind: "localPath", value: "/tmp/logs.zip" } })).resolves.toEqual({ destination: "file:///tmp/logs.zip" });
+    await expect(client.getPlatformWorkflow()).resolves.toEqual({
+      state: "missing",
+      operation: null,
+      readError: null
+    });
     await expect(client.summarizeUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual({ summary: "ok" });
-    await expect(client.verifyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(commandResponse());
-    await expect(client.applyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(commandResponse());
+    await expect(client.verifyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(platformWorkflowOperation("update-verify"));
+    await expect(client.applyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(platformWorkflowOperation("update-apply"));
+    await expect(client.rollbackRelease()).resolves.toEqual(platformWorkflowOperation("rollback"));
     await expect(client.listHostBackups()).resolves.toHaveLength(1);
     await expect(client.listRedisBackups()).resolves.toHaveLength(1);
     await expect(client.listRuntimeDataBackups()).resolves.toHaveLength(1);
@@ -191,48 +715,29 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.restoreRuntimeDataBackup({ backup: { kind: "localPath", value: "/tmp/runtime-data" } })).resolves.toEqual(commandResponse());
     await expect(client.createRedisBackup()).resolves.toEqual(commandResponse());
     await expect(client.createRuntimeDataBackup()).resolves.toEqual(commandResponse());
-    await expect(client.startRuntimeServices()).resolves.toEqual(commandResponse());
-    await expect(client.stopRuntimeServices()).resolves.toEqual(commandResponse());
-    await expect(client.repairRuntime()).resolves.toEqual(commandResponse());
-    await expect(client.repairDatastore()).resolves.toEqual(commandResponse());
-    await expect(client.repairVMDisk()).resolves.toEqual(commandResponse());
-  });
-
-  it("accepts explicit null bridged interface in runtime overview settings", async () => {
-    const { client } = clientWithResponses({
-      "/runtime/overview": {
-        ...fullRuntimeOverview(),
-        settings: fullSettings({ bridgedInterface: null })
-      }
-    });
-
-    await expect(client.getOverview()).resolves.toMatchObject({
-      settings: {
-        bridgedInterface: null
-      }
-    });
+    await expect(client.restartRuntimeProvider()).resolves.toEqual(
+      runtimeProviderCommandResponse()
+    );
+    await expect(client.repairDatastore()).resolves.toEqual(
+      guestServiceOperation("repair-datastore", "datastore-repair")
+    );
   });
 
   it("throws API, contract, and network errors", async () => {
-    const api = clientWithResponses({ "/runtime/status": { message: "nope" } }, 500);
-    await expect(api.client.getStatus()).rejects.toBeInstanceOf(RuntimeControlAPIError);
+    const api = clientWithResponses({ "/platform": { message: "nope" } }, 500);
+    await expect(api.client.getPlatformState()).rejects.toBeInstanceOf(RuntimeControlAPIError);
 
-    const contract = clientWithResponses({ "/dev/testkit/status": { enabled: true } });
-    await expect(contract.client.getTestKitStatus()).rejects.toBeInstanceOf(
-      RuntimeControlContractError
-    );
-
-    const logContract = clientWithResponses({ "/host/logs/read": {} });
+    const logContract = clientWithResponses({ "/platform/logs/read": {} });
     await expect(
       logContract.client.readLogs({ source: "containers", helperMessage: null, lineLimit: 100 })
     ).rejects.toBeInstanceOf(RuntimeControlContractError);
 
-    const exportContract = clientWithResponses({ "/host/logs/export": {} });
+    const exportContract = clientWithResponses({ "/platform/logs/export": {} });
     await expect(
       exportContract.client.exportLogs({ destination: { kind: "localPath", value: "/tmp/logs.zip" } })
     ).rejects.toBeInstanceOf(RuntimeControlContractError);
 
-    const updateSummaryContract = clientWithResponses({ "/host/update-bundles/summary": {} });
+    const updateSummaryContract = clientWithResponses({ "/platform/update-bundles/summary": {} });
     await expect(
       updateSummaryContract.client.summarizeUpdateBundle({
         bundle: { kind: "localPath", value: "/tmp/u.zip" }
@@ -245,24 +750,26 @@ describe("RuntimeControlApiClient", () => {
         throw new Error("offline");
       }) as typeof fetch
     });
-    await expect(network.getStatus()).rejects.toBeInstanceOf(RuntimeControlNetworkError);
+    await expect(network.getPlatformState()).rejects.toBeInstanceOf(RuntimeControlNetworkError);
   });
 
   it("keeps PWA API contract chaos failures typed by boundary", async () => {
     const api = clientWithResponses(
-      { "/runtime/status": { code: "handlerFailed", message: "permission denied" } },
+      { "/platform": { code: "handlerFailed", message: "permission denied" } },
       500
     );
-    await expect(api.client.getStatus()).rejects.toMatchObject({
+    await expect(api.client.getPlatformState()).rejects.toMatchObject({
       kind: "api",
       status: 500,
       body: JSON.stringify({ code: "handlerFailed", message: "permission denied" })
     });
 
-    const contract = clientWithResponses({ "/runtime/status": { runtimeState: 42 } });
-    await expect(contract.client.getStatus()).rejects.toMatchObject({
+    const contract = clientWithResponses({
+      "/platform": { runtimeInstallationState: "executable", services: platformServices(), platformHealth: 42 }
+    });
+    await expect(contract.client.getPlatformState()).rejects.toMatchObject({
       kind: "contract",
-      path: "/runtime/status"
+      path: "/platform"
     });
 
     const network = new RuntimeControlApiClient({
@@ -271,13 +778,13 @@ describe("RuntimeControlApiClient", () => {
         throw new TypeError("fetch failed");
       }) as typeof fetch
     });
-    await expect(network.getStatus()).rejects.toMatchObject({
+    await expect(network.getPlatformState()).rejects.toMatchObject({
       kind: "network",
-      url: "http://helper.local/runtime/status"
+      url: "http://helper.local/platform"
     });
 
     const summary = summarizeRuntimeControlError(
-      new RuntimeControlContractError("/runtime/status", new Error("invalid shape"))
+      new RuntimeControlContractError("/platform", new Error("invalid shape"))
     );
     expect(summary).toMatchObject({
       kind: "contract",
@@ -318,16 +825,31 @@ function fullCapabilities() {
     canUninstallRuntime: true,
     canApplyBundle: true,
     canRollback: true,
-    canEditVMResources: true,
+    canRollbackRelease: true,
+    canEditRuntimeProviderResources: true,
     canEditNetworkExposure: true,
     canResetAdminPassword: true,
     canOpenLocalFiles: true,
     canStreamLogs: true,
     canControlRuntimeServices: true,
+    canControlGuestServices: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseTestTools: true
+    canUseLab: true,
+    canListLabSessions: true,
+    canControlLabRecorders: true
   };
+}
+
+function platformCapabilities() {
+  const {
+    canControlGuestServices: _,
+    canUseLab: __,
+    canListLabSessions: ___,
+    canControlLabRecorders: ____,
+    ...platform
+  } = fullCapabilities();
+  return platform;
 }
 
 function fullSettings(overrides: Partial<ReturnType<typeof fullSettingsShape>> = {}) {
@@ -335,6 +857,58 @@ function fullSettings(overrides: Partial<ReturnType<typeof fullSettingsShape>> =
     ...fullSettingsShape(),
     ...overrides
   };
+}
+
+function productSettings() {
+  const settings = fullSettings({ publicPort: 80 });
+  return {
+    automaticBackupEnabled: settings.automaticBackupEnabled,
+    backupRetentionCount: settings.backupRetentionCount,
+    backupScheduleTimes: settings.backupScheduleTimes,
+    containerMemoryLimitsEnabled: settings.containerMemoryLimitsEnabled,
+    publicHost: settings.publicHost,
+    publicPort: settings.publicPort,
+    recorderIngress: settings.recorderIngress,
+    recorderIngressContainerMemoryLimitMiB:
+      settings.recorderIngressContainerMemoryLimitMiB,
+    recorderIngressSendDataMode: settings.recorderIngressSendDataMode,
+    recorderIngressSendDataReplayBatchSize:
+      settings.recorderIngressSendDataReplayBatchSize,
+    recorderIngressSendDataReplayMaxMiBPerSecond:
+      settings.recorderIngressSendDataReplayMaxMiBPerSecond,
+    redisContainerMemoryLimitMiB: settings.redisContainerMemoryLimitMiB,
+    remoteConsoleURL: settings.remoteConsoleURL,
+    vitalServerContainerMemoryLimitMiB:
+      settings.vitalServerContainerMemoryLimitMiB,
+    vitalServerURL: settings.vitalServerURL
+  };
+}
+
+function runtimeSettingsOperation(
+  command:
+    | "apply-settings"
+    | "apply-admin-password"
+    | "apply-redis-relay-settings" = "apply-settings",
+  service = "runtime-settings"
+) {
+  return {
+    operationId: "op_settings_1",
+    service,
+    command,
+    state: "completed",
+    createdAt: "2026-07-01T00:00:00Z",
+    updatedAt: "2026-07-01T00:00:01Z"
+  };
+}
+
+function platformServices() {
+  return [
+    { role: "runtime-provider", state: "running", readError: null },
+    { role: "public-proxy", state: "running", readError: null },
+    { role: "log-sync", state: "running", readError: null },
+    { role: "sleep-prevention", state: "running", readError: null },
+    { role: "watchdog", state: "running", readError: null }
+  ];
 }
 
 function fullSettingsShape() {
@@ -416,34 +990,139 @@ function recorderIngressSettings() {
   };
 }
 
-function fullRuntimeOverview() {
+function commandResponse() {
   return {
-    status: {
-      runtimeState: "healthy"
-    },
-    settings: fullSettings(),
-    release: {},
-    install: {},
-    vitalDBObservation: null,
-    vitalDBObservationSnapshot: {
-      state: "unavailable",
-      observation: null,
-      readError: null
-    },
-    vitalRecorder: {
-      source: "unavailable",
-      observedAt: null,
-      latestRecorder: null
+    result: {
+      exitCode: 0,
+      stdout: "ok",
+      stderr: "",
+      outputIssues: [],
+      executionIssue: null
     }
   };
 }
 
-function commandResponse() {
-  return { result: { exitCode: 0, stdout: "ok", stderr: "" } };
+function platformWorkflowOperation(kind: "update-verify" | "update-apply" | "rollback" | "uninstall") {
+  return {
+    schemaVersion: 1,
+    operationId: `${kind}-1`,
+    kind,
+    state: "completed" as const,
+    startedAt: "2026-07-01T00:00:00Z",
+    updatedAt: "2026-07-01T00:00:01Z",
+    release: null,
+    artifact: null,
+    failure: null
+  };
+}
+
+function guestServiceOperation(
+  command: "start" | "stop" | "restart" | "repair-datastore",
+  service = "app"
+) {
+  return {
+    operationId: `${command}-${service}`,
+    service,
+    command,
+    state: "completed" as const,
+    createdAt: "2026-07-01T00:00:00+00:00",
+    updatedAt: "2026-07-01T00:00:01+00:00",
+    failure: null
+  };
+}
+
+function runtimeProviderCommandResponse(state: "completed" | "failed" = "completed") {
+  return {
+    operationId: "provider-restart-1",
+    action: "restart" as const,
+    state,
+    provider: {
+      state: "missing" as const,
+      document: null,
+      readError: null
+    },
+    failure:
+      state === "failed"
+        ? {
+            kind: "systemd-restart-failed",
+            message: "systemd could not restart vitalserver"
+          }
+        : null
+  };
+}
+
+function guestServiceResource() {
+  return {
+    service: "app",
+    spec: {
+      state: "configured",
+      desiredState: "running",
+      updatedAt: "2026-07-01T00:00:00+00:00"
+    },
+    status: {
+      state: "loaded",
+      observedState: "running",
+      observedAt: "2026-07-01T00:00:01+00:00",
+      serviceStatus: {
+        service: "app",
+        state: "running",
+        health: "healthy",
+        observedAt: "2026-07-01T00:00:01+00:00"
+      }
+    },
+    conditions: [
+      {
+        type: "Reconciled",
+        status: "true",
+        reason: "DesiredStateObserved",
+        message: "matched desired state",
+        observedAt: "2026-07-01T00:00:01+00:00"
+      }
+    ],
+    lastOperationId: "op-app"
+  };
+}
+
+function labSessionResponse() {
+  return {
+    state: "loaded" as const,
+    operationId: "op-1",
+    labOperationId: "lab-op-1",
+    readError: null,
+    session: {
+      sessionId: "lab-1",
+      state: "accepted" as const,
+      scenarioId: "baseline",
+      name: "Lab A",
+      recorderCount: 2,
+      targetURL: "http://edge/",
+      createdAt: null,
+      updatedAt: null
+    }
+  };
+}
+
+function labRecorderResponse(state: "running" | "stopped") {
+  return {
+    state: "loaded" as const,
+    operationId: `op-recorder-${state}`,
+    labOperationId: `lab-op-recorder-${state}`,
+    readError: null,
+    recorder: {
+      recorderId: "lab-1-recorder-1",
+      sessionId: "lab-1",
+      bedId: "lab-1-bed-1",
+      vrcode: "LAB-lab-1-1",
+      state,
+      messagesSent: 1,
+      lastSendState: "sent" as const
+    }
+  };
 }
 
 function fullVitalRecorderHistory() {
   return {
+    state: "loaded",
     updatedAt: null,
     recorders: [],
     beds: [],
@@ -466,76 +1145,103 @@ function fullVitalRecorderHistory() {
       latestBucketStartedAt: null,
       readError: null
     },
+    recorderIngressStatusRead: null,
     readError: null
   };
 }
 
-function testKitStartRequest() {
-  return {
-    scenario: "normal" as const,
-    signalProfile: "normal" as const,
-    recorders: 1,
-    bedRoomNames: ["OR-A"],
-    vrcode: "VR_A",
-    version: "testkit",
-    intervalSeconds: 1,
-    durationSeconds: null,
-    maxMessages: null,
-    shiftTime: true,
-    generateFrames: true,
-    exportVital: true,
-    uploadVital: true,
-    vitalUploadEndpoint: "/upload"
+function unavailableRecorderObservability() {
+  const missing = {
+    state: "missing",
+    value: null,
+    detail: "health observation is unavailable",
+    observedAt: null
   };
-}
-
-function testKitStatus() {
   return {
-    enabled: true,
-    state: "running",
-    serviceName: "testkit",
-    apiBaseURL: "http://testkit.local",
-    recorderTargetURL: "http://edge/",
-    startedAt: null,
-    activeSession: null,
-    sessions: [],
-    beds: [],
-    lastError: null
-  };
-}
-
-function testKitSession() {
-  return {
-    id: "s1",
-    state: "running",
-    targetUrl: "http://edge/",
-    recordersRequested: 1,
-    bedsRequested: 1,
-    bedRoomNames: ["OR-A"],
+    state: "unavailable",
     vrcode: "VR_A",
-    version: "testkit",
-    intervalSeconds: 1,
-    durationSeconds: null,
-    maxMessages: null,
-    shiftTime: true,
-    generateFrames: true,
-    scenario: "normal",
-    defaultScenario: "normal",
-    createdAt: null,
-    startedAt: null,
-    stoppedAt: null,
-    messagesSent: 0,
-    bytesSent: 0,
-    lastError: null,
-    cleanupErrors: [],
-    vital: {
-      exportStatus: "not-requested",
-      uploadStatus: "not-requested",
-      exportError: null,
-      uploadError: null,
-      artifact: null,
-      uploadResult: null
+    support: {
+      state: "unknown",
+      source: null,
+      expectedSince: null,
+      recorderVersion: null,
+      producerVersion: null,
+      protocolVersion: null
     },
-    recorders: []
+    report: {
+      state: "readFailed",
+      receivedAt: null,
+      deviceObservedAt: null,
+      collectionState: null,
+      readIssueCount: 0
+    },
+    profile: {
+      state: "missing",
+      receivedAt: null,
+      deviceObservedAt: null,
+      deviceId: null,
+      bootId: null,
+      software: {},
+      collection: null,
+      capabilities: {}
+    },
+    boot: {
+      state: "notReported",
+      orderingState: "unknown",
+      bootId: null,
+      startedAt: null,
+      cleanShutdownAt: null
+    },
+    evidenceHealth: {
+      state: "notReported",
+      checkedAt: null,
+      checkCount: 0,
+      detail: null
+    },
+    incidentState: {
+      state: "notReported",
+      policyVersion: null,
+      bootLoopState: null,
+      repeatedUndervoltageState: null,
+      evidenceState: null,
+      consecutiveUnexpectedBoots: null,
+      undervoltageBootsConsidered: null
+    },
+    operationalHealth: {
+      state: "unknown",
+      evaluatedAt: null,
+      issueCount: 0,
+      issues: []
+    },
+    readings: {
+      temperatureCelsius: missing,
+      memoryAvailableBytes: missing,
+      memoryTotalBytes: missing,
+      rootUsedPercent: missing,
+      dataUsedPercent: missing,
+      recorderActiveState: missing,
+      publisherActiveState: missing,
+      publisherBufferBytes: missing,
+      publisherBufferLimitBytes: missing,
+      networkInterfaces: []
+    },
+    readIssues: [],
+    readError: "Recorder observability owner is unavailable."
+  };
+}
+
+function fullVitalBedHistory() {
+  return {
+    state: "loaded",
+    updatedAt: null,
+    beds: [],
+    summary: {
+      knownBeds: 0,
+      onlineBeds: 0,
+      staleBeds: 0,
+      bedAssignments: 0,
+      bedAnomalies: 0
+    },
+    readError: null
   };
 }

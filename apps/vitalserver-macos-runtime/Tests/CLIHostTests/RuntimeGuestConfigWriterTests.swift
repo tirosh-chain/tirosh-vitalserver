@@ -61,8 +61,27 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         XCTAssertEqual(document.adminPassword, Constants.Guest.defaultAdminPassword)
     }
 
+    func testWriteRejectsConfigThatCannotBeDecodedBeforePersistingAnyDocument() {
+        let fileStore = RuntimeFileStoreSpy()
+        let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        var restricted: [URL] = []
+        let writer = RuntimeGuestConfigWriter(
+            installedPaths: paths,
+            fileStore: fileStore,
+            restrictSecretFile: { restricted.append($0) }
+        )
+
+        XCTAssertThrowsError(
+            try writer.write(runtimeConfig: makeRuntimeConfig(publicHost: "", adminPassword: "secret"))
+        )
+
+        XCTAssertNil(fileStore.files[paths.guestRuntimeConfig])
+        XCTAssertNil(fileStore.files[paths.guestRuntimeSettings])
+        XCTAssertEqual(restricted, [])
+    }
+
     private func makeRuntimeConfig(
-        publicHost: String = "",
+        publicHost: String = "127.0.0.1",
         publicPort: Int = Constants.Guest.publicPort,
         adminPassword: String
     ) -> GuestRuntimeConfigDocument {
@@ -71,15 +90,14 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
             redisHost: Constants.Guest.redisHost,
             redisPort: Constants.Guest.redisPort,
             trustProxy: true,
-            vitalServerURL: "",
-            remoteConsoleURL: "",
+            vitalServerURL: "http://127.0.0.1:80/",
+            remoteConsoleURL: "http://127.0.0.1:18322/",
             publicHost: publicHost,
             publicPort: publicPort,
             adminPassword: adminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             redisUiPort: Constants.Guest.redisUIPort,
-            swaggerUiPort: Constants.Guest.swaggerUIPort,
-            testkitEnabled: Constants.testkitContainerIncluded
+            swaggerUiPort: Constants.Guest.swaggerUIPort
         )
     }
 }

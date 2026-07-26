@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-handoff-supervisor-configuration",
+  "title": "HostUpdateHandoffSupervisorConfiguration",
+  "description": "C56 deployment-owned configuration for the process that consumes a durable C31 handoff, verifies only C25's selected updater bytes, and invokes that updater with Host-owned C28/C55/C52 paths. It does not contain C26 data or a caller-defined command.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "stagingDirectory", "handoffQueueDirectory", "executionEvidenceDirectory", "layerEffectReceiptDirectory", "hostLocalAdministrationDescriptorPath", "layerEffectTimeoutMilliseconds", "completionTimeoutMilliseconds", "servicePollIntervalMilliseconds"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "stagingDirectory": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+    "handoffQueueDirectory": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+    "executionEvidenceDirectory": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+    "layerEffectReceiptDirectory": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+    "hostLocalAdministrationDescriptorPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+    "layerEffectTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 86400000 },
+    "completionTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 120000 },
+    "servicePollIntervalMilliseconds": { "type": "integer", "minimum": 100, "maximum": 86400000 }
+  },
+  "$defs": {
+    "SafeHostAbsolutePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "anyOf": [
+        { "pattern": "^/[^\\\\]*$", "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
+        { "pattern": "^[A-Za-z]:[\\\\/][^\\u0000]*$", "not": { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" } }
+      ]
+    }
+  }
+}

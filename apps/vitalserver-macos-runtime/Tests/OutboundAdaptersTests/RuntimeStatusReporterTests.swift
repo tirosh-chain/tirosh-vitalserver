@@ -9,45 +9,36 @@ import Errors
 final class RuntimeStatusReporterTests: XCTestCase {
     private let productIdentifier = "VitalServerHelper"
 
-    func testWritesStatusDocumentThroughRepository() throws {
-        let repository = RuntimeStatusRepositorySpy()
+    func testWritesStatusDocumentThroughArtifactSink() throws {
+        let sink = RuntimeStatusArtifactSinkSpy()
         let reporter = makeReporter(
-            repository: repository,
+            statusArtifactSink: sink,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
 
         try reporter.writeStatus(
             .healthy,
-            operation: .health,
-            message: "runtime health check passed",
-            updatedAt: "2026-05-22T00:00:00Z",
             runtimeVersion: "0.1.0",
             healthSnapshot: healthSnapshot(),
             latestBackup: URL(fileURLWithPath: "/product/backups/latest")
         )
 
-        let document = try XCTUnwrap(repository.saved)
+        let document = try XCTUnwrap(sink.saved)
         XCTAssertEqual(document.status, .healthy)
-        XCTAssertEqual(document.operation, .health)
         XCTAssertEqual(document.productRoot, "/product")
         XCTAssertEqual(document.runtimeHome, "/product/vm")
         XCTAssertEqual(document.runtimeVersion, "0.1.0")
-        XCTAssertEqual(document.vmState, .running)
-        XCTAssertEqual(document.vmErrors ?? [], [])
         XCTAssertEqual(document.latestBackup, "/product/backups/latest")
     }
 
     func testWritesInjectedStatusDocumentWithoutOwningBuildPolicy() throws {
-        let repository = RuntimeStatusRepositorySpy()
+        let sink = RuntimeStatusArtifactSinkSpy()
         var receivedInput: RuntimeStatusDocumentBuildInput?
         let injectedDocument = RuntimeStatusDocument(
             schemaVersion: 2,
             product: "InjectedProduct",
             status: .degraded,
-            operation: .watchdog,
-            message: "injected",
-            updatedAt: "2026-05-22T00:00:00Z",
             productRoot: "/injected/product",
             runtimeHome: "/injected/runtime",
             runtimeVersion: "9.9.9",
@@ -62,11 +53,10 @@ final class RuntimeStatusReporterTests: XCTestCase {
             swaggerUIHTTP: nil,
             rootfsBase: .missing,
             vmDisk: .missing,
-            failureReasons: [.vmService("not-loaded")],
             latestBackup: nil
         )
         let reporter = makeReporter(
-            repository: repository,
+            statusArtifactSink: sink,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm"),
             makeStatusDocument: { input in
@@ -77,9 +67,6 @@ final class RuntimeStatusReporterTests: XCTestCase {
 
         try reporter.writeStatus(
             .healthy,
-            operation: .health,
-            message: "runtime health check passed",
-            updatedAt: "2026-05-22T00:00:00Z",
             runtimeVersion: "0.1.0",
             healthSnapshot: healthSnapshot(),
             latestBackup: nil
@@ -87,127 +74,81 @@ final class RuntimeStatusReporterTests: XCTestCase {
 
         XCTAssertEqual(receivedInput?.product, productIdentifier)
         XCTAssertEqual(receivedInput?.productRoot, "/product")
-        XCTAssertEqual(repository.saved, injectedDocument)
+        XCTAssertEqual(sink.saved, injectedDocument)
     }
 
     func testWritesProgressAsTypedWorkflowStep() throws {
-        let repository = RuntimeStatusRepositorySpy()
-        repository.loaded = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
-            product: "VitalServerHelper",
-            status: .healthy,
-            operation: .health,
-            message: "runtime health check passed",
-            updatedAt: "2026-05-22T00:00:00Z",
-            productRoot: "/product",
-            runtimeHome: "/product/vm",
-            runtimeVersion: "0.1.0",
-            healthSnapshot: healthSnapshot(),
-            latestBackup: nil
-        ))
+        let sink = RuntimeStatusArtifactSinkSpy()
+        let progressArtifactSink = RuntimeProgressArtifactSinkSpy()
         let reporter = makeReporter(
-            repository: repository,
+            statusArtifactSink: sink,
+            progressArtifactSink: progressArtifactSink,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
 
         try reporter.writeProgress(
-            .updating,
             operation: .applyBundle,
             step: .activateGuestUpdate,
             stepStatus: .started,
             phase: .running,
             message: "step started",
-            updatedAt: "2026-05-22T00:00:00Z",
-            runtimeVersion: "0.1.0",
-            latestBackup: nil
+            updatedAt: "2026-05-22T00:00:00Z"
         )
 
-        XCTAssertEqual(repository.saved?.vmState, .running)
-        let progress = try XCTUnwrap(repository.saved?.progress)
+        XCTAssertNil(sink.saved)
+        let progress = try XCTUnwrap(progressArtifactSink.saved)
         XCTAssertEqual(progress.operation, .applyBundle)
         XCTAssertEqual(progress.step, .activateGuestUpdate)
         XCTAssertEqual(progress.stepStatus, .started)
         XCTAssertEqual(progress.phase, .running)
     }
 
-    func testWriteProgressDoesNotPreservePreviousLatestBackupWhenCurrentReadReportsNone() throws {
-        let repository = RuntimeStatusRepositorySpy()
-        repository.loaded = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
-            product: "VitalServerHelper",
-            status: .healthy,
-            operation: .health,
-            message: "runtime health check passed",
-            updatedAt: "2026-05-22T00:00:00Z",
-            productRoot: "/product",
-            runtimeHome: "/product/vm",
-            runtimeVersion: "0.1.0",
-            healthSnapshot: healthSnapshot(),
-            latestBackup: "/product/backups/old"
-        ))
+    func testWriteProgressDoesNotReadOrCopyStatusDocument() throws {
+        let sink = RuntimeStatusArtifactSinkSpy()
+        let progressArtifactSink = RuntimeProgressArtifactSinkSpy()
         let reporter = makeReporter(
-            repository: repository,
+            statusArtifactSink: sink,
+            progressArtifactSink: progressArtifactSink,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
 
         try reporter.writeProgress(
-            .updating,
             operation: .applyBundle,
             step: .activateGuestUpdate,
             stepStatus: .started,
             phase: .running,
             message: "step started",
-            updatedAt: "2026-05-22T00:00:00Z",
-            runtimeVersion: "0.1.0",
-            latestBackup: nil
+            updatedAt: "2026-05-22T00:00:00Z"
         )
 
-        XCTAssertNil(repository.saved?.latestBackup)
+        XCTAssertEqual(progressArtifactSink.saved?.operation, .applyBundle)
+        XCTAssertNil(sink.saved)
     }
 
-    func testWriteProgressRequiresExistingStatusDocument() {
+    func testWriteProgressReportsProgressDocumentWriteFailure() {
+        let progressArtifactSink = RuntimeProgressArtifactSinkSpy()
+        progressArtifactSink.saveError = RuntimeArtifactSinkError.missingRequiredRoot(path: "/missing")
         let reporter = makeReporter(
-            repository: RuntimeStatusRepositorySpy(),
+            statusArtifactSink: RuntimeStatusArtifactSinkSpy(),
+            progressArtifactSink: progressArtifactSink,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
 
         XCTAssertThrowsError(try reporter.writeProgress(
-            .updating,
             operation: .applyBundle,
             step: .activateGuestUpdate,
             stepStatus: .started,
             phase: .running,
             message: "step started",
-            updatedAt: "2026-05-22T00:00:00Z",
-            runtimeVersion: "0.1.0",
-            latestBackup: nil
+            updatedAt: "2026-05-22T00:00:00Z"
         )) { error in
-            XCTAssertEqual(error as? RuntimeStatusReporterError, .missingStatusDocumentForProgress)
-        }
-    }
-
-    func testWriteProgressReportsStatusDocumentReadFailure() {
-        let repository = RuntimeStatusRepositorySpy()
-        repository.result = .failed("not-json")
-        let reporter = makeReporter(
-            repository: repository,
-            productRoot: URL(fileURLWithPath: "/product"),
-            runtimeHome: URL(fileURLWithPath: "/product/vm")
-        )
-
-        XCTAssertThrowsError(try reporter.writeProgress(
-            .updating,
-            operation: .applyBundle,
-            step: .activateGuestUpdate,
-            stepStatus: .started,
-            phase: .running,
-            message: "step started",
-            updatedAt: "2026-05-22T00:00:00Z",
-            runtimeVersion: "0.1.0",
-            latestBackup: nil
-        )) { error in
-            XCTAssertEqual(error as? RuntimeStatusReporterError, .statusDocumentReadFailed("not-json"))
+            XCTAssertEqual(
+                error as? RuntimeArtifactSinkError,
+                .missingRequiredRoot(path: "/missing")
+            )
         }
     }
 
@@ -233,16 +174,18 @@ final class RuntimeStatusReporterTests: XCTestCase {
     }
 
     private func makeReporter(
-        repository: RuntimeStatusRepository,
+        statusArtifactSink: RuntimeStatusArtifactSink,
+        progressArtifactSink: RuntimeProgressArtifactSink = RuntimeProgressArtifactSinkSpy(),
         productRoot: URL,
         runtimeHome: URL,
         makeStatusDocument: @escaping (RuntimeStatusDocumentBuildInput) -> RuntimeStatusDocument =
             BuildRuntimeStatusDocumentUseCase().build,
-        makeProgressDocument: @escaping (RuntimeStatusProgressUpdateInput) -> RuntimeStatusDocument =
-            BuildRuntimeStatusDocumentUseCase().progressUpdate
+        makeProgressDocument: @escaping (RuntimeStatusProgressUpdateInput) -> RuntimeProgressDocument =
+            BuildRuntimeStatusDocumentUseCase().progressDocument
     ) -> RuntimeStatusReporter {
         RuntimeStatusReporter(
-            repository: repository,
+            statusArtifactSink: statusArtifactSink,
+            progressArtifactSink: progressArtifactSink,
             productIdentifier: productIdentifier,
             productRoot: productRoot,
             runtimeHome: runtimeHome,
@@ -252,27 +195,22 @@ final class RuntimeStatusReporterTests: XCTestCase {
     }
 }
 
-private final class RuntimeStatusRepositorySpy: RuntimeStatusRepository {
-    var result: RuntimeStatusDocumentLoadResult = .missing
+private final class RuntimeStatusArtifactSinkSpy: RuntimeStatusArtifactSink {
     var saved: RuntimeStatusDocument?
 
-    var loaded: RuntimeStatusDocument? {
-        get {
-            guard case .loaded(let document) = result else {
-                return nil
-            }
-            return document
-        }
-        set {
-            result = newValue.map(RuntimeStatusDocumentLoadResult.loaded) ?? .missing
-        }
-    }
-
-    func loadResult() -> RuntimeStatusDocumentLoadResult {
-        result
-    }
-
     func save(_ document: RuntimeStatusDocument) throws {
+        saved = document
+    }
+}
+
+private final class RuntimeProgressArtifactSinkSpy: RuntimeProgressArtifactSink {
+    var saved: RuntimeProgressDocument?
+    var saveError: Error?
+
+    func save(_ document: RuntimeProgressDocument) throws {
+        if let saveError {
+            throw saveError
+        }
         saved = document
     }
 }

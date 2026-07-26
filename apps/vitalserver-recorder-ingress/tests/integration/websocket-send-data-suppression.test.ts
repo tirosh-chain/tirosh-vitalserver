@@ -44,6 +44,26 @@ test("recorder ingress keeps client send_data frames in mirror_spool mode", { ti
   }
 });
 
+test("recorder ingress preserves client send_data frames in observe_only mode", { timeout: 2000 }, async () => {
+  const fixture = await startProxyFixture("observe_only");
+  let client = null;
+  try {
+    client = await sendClientFrames(fixture.ingressPort, [
+      clientFrame('42["join_vr","VR_A"]', 1),
+      clientFrame('42["send_data","payload"]', 1),
+    ]);
+    await waitFor(() => fixture.upstreamPayloads.length >= 2);
+
+    assert.deepStrictEqual(fixture.upstreamPayloads, [
+      '42["join_vr","VR_A"]',
+      '42["send_data","payload"]',
+    ]);
+  } finally {
+    if (client) client.destroy();
+    await fixture.close();
+  }
+});
+
 async function startProxyFixture(mode) {
   const sockets = [];
   const redis: any = await listenServer(net.createServer((socket) => {
@@ -99,9 +119,23 @@ async function startProxyFixture(mode) {
 }
 
 function configFor(mode, upstreamPort, redisPort) {
+  const fixtureId = crypto.randomUUID();
   return {
     listenPort: 0,
+    observability: {
+      ledgerDirectory: `/tmp/recorder-observability-${fixtureId}`,
+      maxRequestBytes: 5 * 1024 * 1024,
+    },
     upstream: { host: "127.0.0.1", port: upstreamPort, timeoutMs: 1000 },
+    nativeVitalUploads: {
+      statePath: `/tmp/native-vital-uploads-${fixtureId}.json`,
+      reconciliation: { intervalMs: 1000, maxAttempts: 1 },
+      vitalServerIndex: {
+        baseUrl: `http://127.0.0.1:${upstreamPort}`,
+        adminPassword: "test-admin",
+        timeoutMs: 1000,
+      },
+    },
     redis: { host: "127.0.0.1", port: redisPort, timeoutMs: 1000 },
     audit: {
       enabled: false,
@@ -112,7 +146,7 @@ function configFor(mode, upstreamPort, redisPort) {
       stdout: { enabled: false, format: "json" },
     },
     spool: {
-      enabled: mode !== "passthrough",
+      enabled: mode !== "passthrough" && mode !== "observe_only",
       mode,
       storage: "redis_list",
       listKey: "send_data:pending",

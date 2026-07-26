@@ -4,6 +4,8 @@ import RuntimeControl
 import Errors
 
 public struct RuntimeVitalRecorderDisplayPolicy {
+    private static let productLabVersion = "vitalserver-lab"
+
     public enum RecorderSortOption: String, CaseIterable, Identifiable, Equatable, Sendable {
         case vrcode
         case lastSeen
@@ -85,6 +87,17 @@ public struct RuntimeVitalRecorderDisplayPolicy {
             return missing
         }
         return value
+    }
+
+    public func recorderSourceText(_ version: String?) -> String {
+        guard let version, !version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Not reported"
+        }
+        return isProductLabRecorder(version: version) ? "Lab" : "Vital Recorder"
+    }
+
+    public func isProductLabRecorder(version: String?) -> Bool {
+        version == Self.productLabVersion
     }
 
     public func recorderAnomalyText(_ recorder: RuntimeVitalRecorderRecord) -> String {

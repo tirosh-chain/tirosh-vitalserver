@@ -2,15 +2,14 @@ import Contracts
 import RuntimeControl
 
 struct RuntimeLiveDiagnosticsReader {
-    let paths: RuntimePaths
+    let runtimeLauncherPath: String
     let runtimeExecutableState: (String) -> RuntimeFileState
     let launchdServiceState: (RuntimeManagedService) -> RuntimeServiceState
 
-    func load(statusDocument document: RuntimeStatusDocument?) -> RuntimeLiveDiagnostics {
+    func load() -> RuntimeLiveDiagnostics {
         RuntimeLiveDiagnosticsAssembler.makeDiagnostics(
-            runtimeLauncherPath: paths.launcher,
-            runtimeExecutableState: runtimeExecutableState(paths.launcher),
-            statusDocument: document,
+            runtimeLauncherPath: runtimeLauncherPath,
+            runtimeExecutableState: runtimeExecutableState(runtimeLauncherPath),
             liveServiceStates: RuntimeLiveServiceStateReads(
                 vm: launchdServiceState(.vm),
                 proxy: launchdServiceState(.proxy),

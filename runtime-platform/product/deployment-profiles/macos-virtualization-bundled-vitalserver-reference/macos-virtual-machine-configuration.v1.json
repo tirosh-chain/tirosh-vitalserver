@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "v1",
+  "machineId": "vitalserver-macos-virtualization-bundled-vitalserver-reference",
+  "cpuCount": 2,
+  "memoryBytes": 4294967296,
+  "boot": {
+    "kernelPath": "/Library/Application Support/VitalServerRuntimePlatform/current/vm/assets/Image",
+    "initialRamdiskPath": "/Library/Application Support/VitalServerRuntimePlatform/current/vm/assets/initrd.img",
+    "guestRootDevicePath": "/dev/vda1",
+    "commandLine": "console=hvc0 root=/dev/vda1"
+  },
+  "guestBootConsoleCapture": {
+    "capturePath": "/Library/Application Support/VitalServerRuntimePlatform/data/virtual-machine/guest-boot-console.log",
+    "writeMode": "append"
+  },
+  "guestRuntimeDiskProvisioning": {
+    "releaseArtifactManifestPath": "/Library/Application Support/VitalServerRuntimePlatform/current/release/macos-guest-artifact-manifest.json",
+    "releaseArtifactPath": "/Library/Application Support/VitalServerRuntimePlatform/current/release/guest-root.raw",
+    "runtimeDiskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/data/virtual-machine/guest-root.raw",
+    "provisioningReceiptPath": "/Library/Application Support/VitalServerRuntimePlatform/data/virtual-machine/guest-root-provisioning-receipt.json",
+    "existingRuntimeDiskPolicy": "retain-when-receipt-matches-release-artifact"
+  },
+  "guestRuntimeControlHostLocalHTTPBridge": {
+    "hostLoopbackAddress": "127.0.0.1",
+    "hostLoopbackPort": 18443,
+    "guestVirtioSocketPort": 18443
+  },
+  "guestProductReleaseManagerHostLocalHTTPBridge": {
+    "hostLoopbackAddress": "127.0.0.1",
+    "hostLoopbackPort": 18444,
+    "guestVirtioSocketPort": 18444
+  },
+  "guestBundledUpstreamImageSetManagerHostLocalHTTPBridge": {
+    "hostLoopbackAddress": "127.0.0.1",
+    "hostLoopbackPort": 18445,
+    "guestVirtioSocketPort": 18445
+  },
+  "guestPublicServiceHostLocalHTTPBridges": [
+    {
+      "routeId": "recorder-gateway",
+      "hostLoopbackAddress": "127.0.0.1",
+      "hostLoopbackPort": 18090,
+      "guestVirtioSocketPort": 18090
+    }
+  ],
+  "storageDevices": [
+    {
+      "id": "guest-root",
+      "role": "guest-root-storage",
+      "storageImageFormat": "raw",
+      "diskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/data/virtual-machine/guest-root.raw",
+      "readOnly": false,
+      "attachmentIndex": 0
+    },
+    {
+      "id": "guest-product-bootstrap",
+      "role": "guest-product-bootstrap-volume",
+      "storageImageFormat": "raw",
+      "guestVolumeFileSystem": "iso9660",
+      "diskImagePath": "/Library/Application Support/VitalServerRuntimePlatform/current/vm/disks/guest-product-bootstrap.raw",
+      "readOnly": true,
+      "attachmentIndex": 1
+    }
+  ],
+  "network": { "attachment": "nat", "macAddress": "02:16:3e:00:00:18" }
+}

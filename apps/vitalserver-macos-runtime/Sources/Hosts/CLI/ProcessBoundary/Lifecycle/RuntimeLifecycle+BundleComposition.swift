@@ -12,6 +12,7 @@ extension RuntimeLifecycle {
     func runtimeBundleComposition() -> RuntimeBundleComposition {
         RuntimeBundleComposition(
             context: RuntimeBundleCompositionContext(
+                installedChannel: Constants.launcherChannel,
                 installedPaths: installedPaths,
                 bundlesDirectory: bundlesDirectory,
                 backupsDirectory: backupsDirectory,
@@ -23,8 +24,13 @@ extension RuntimeLifecycle {
                 fileStore: fileStore,
                 runtimeHealthSnapshot: runtimeHealthSnapshot,
                 rotateRuntimeLogs: rotateRuntimeLogs,
-                rollback: { backup in
-                    try rollback(backup.map(RuntimeRollbackCommand.specificBackup) ?? .latestBackup)
+                rollback: { backup, operationLease in
+                    try runtimeRollbackComposition().rollback(
+                        backup.map(RuntimeRollbackCommand.specificBackup) ?? .latestBackup,
+                        invocation: .applyBundleRecovery(
+                            parentOperationID: operationLease.operationId
+                        )
+                    )
                 },
                 startRuntimeServices: startRuntimeServicesThroughStateControl,
                 stopRuntimeServices: stopRuntimeServicesThroughStateControl,
@@ -32,6 +38,10 @@ extension RuntimeLifecycle {
                 isLaunchdLoaded: isLaunchdLoaded,
                 createBackup: { reason in try backupStore().createBackup(reason: reason) },
                 statusReporter: runtimeWorkflowStatusReporter(),
+                workflowOperationStateRepository: runtimeWorkflowOperationStateRepository(),
+                workflowOperationStateTimestamp: {
+                    ISO8601DateFormatter().string(from: clock.now)
+                },
                 pruneOldRuntimeArtifacts: {
                     try storageMaintenance().pruneOldRuntimeArtifacts(
                         backupsDirectory: backupsDirectory,
@@ -71,7 +81,7 @@ extension RuntimeLifecycle {
 
     private func acquireRuntimeOperationLease(_ operation: RuntimeOperation) throws -> RuntimeOperationLeaseDocument {
         let document = makeRuntimeOperationLeaseDocument(operation)
-        try JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease).acquire(document)
+        try runtimeOperationLeaseOwner().acquire(document)
         return document
     }
 
@@ -97,12 +107,11 @@ extension RuntimeLifecycle {
 
     private func heartbeatRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
         let timestamps = runtimeOperationLeaseTimestamps(now: clock.now)
-        try JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease)
-            .heartbeat(
-                operationId: document.operationId,
-                heartbeatAt: timestamps.now,
-                expiresAt: timestamps.expiresAt
-            )
+        try runtimeOperationLeaseOwner().heartbeat(
+            operationId: document.operationId,
+            heartbeatAt: timestamps.now,
+            expiresAt: timestamps.expiresAt
+        )
     }
 
     private func runtimeOperationLeaseTimestamps(now: Date) -> (now: String, expiresAt: String) {
@@ -114,7 +123,12 @@ extension RuntimeLifecycle {
     }
 
     private func releaseRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
-        try JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease)
-            .release(operationId: document.operationId)
+        try runtimeOperationLeaseOwner().release(operationId: document.operationId)
+    }
+
+    private func runtimeWorkflowOperationStateRepository() -> any RuntimeWorkflowOperationStateRepository {
+        SQLiteRuntimeWorkflowOperationStateRepository(
+            databaseURL: installedPaths.runtimeStateDatabase
+        )
     }
 }

@@ -5,4 +5,5 @@ public enum RuntimeHTTPStatusText {
     public static let missingGuestHTTP = "missing-guest-http"
     public static let missingVMIP = "missing-vm-ip"
     public static let missingProxyPort = "missing-proxy-port"
+    public static let notRead = "not-read"
 }

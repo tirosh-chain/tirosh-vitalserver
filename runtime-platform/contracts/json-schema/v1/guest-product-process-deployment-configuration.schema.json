@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-product-process-deployment-configuration",
+  "title": "GuestProductProcessDeploymentConfiguration",
+  "description": "C37 Guest-owned desired deployment input for the required Guest Runtime, Recorder Gateway, Lab recorder Runner, and optionally selected Guest telemetry Collector process. It makes every executable, listener, Guest public-service virtio bridge, durable store, C44 topology path, C46 external delivery-configuration path, archive provider configuration kind/path, secret-material path, scenario catalog, retry limit, and selected diagnostic provider explicit. The Supervisor resolves complete VitalServer packet-delivery and archive-library configuration only from those explicit inputs. It is not a claim that any process started, accepted traffic, delivered a packet, exported an archive, or that an upstream is healthy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "deploymentId", "requiredProcessExitPolicy", "guestRuntime", "recorderGateway", "labRecorderRunner"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "deploymentId": { "$ref": "#/$defs/Identifier" },
+    "requiredProcessExitPolicy": { "const": "terminate-guest-product" },
+    "guestRuntime": { "$ref": "#/$defs/GuestRuntimeProcess" },
+    "recorderGateway": { "$ref": "#/$defs/RecorderGatewayProcess" },
+    "labRecorderRunner": { "$ref": "#/$defs/LabRecorderRunnerProcess" },
+    "telemetryCollector": { "$ref": "#/$defs/GuestTelemetryCollectorProcess" }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["telemetryCollector"] },
+      "then": {
+        "properties": {
+          "guestRuntime": {
+            "properties": {
+              "telemetryPipeline": {
+                "properties": { "kind": { "const": "otlp-http" } },
+                "required": ["kind"]
+              }
+            },
+            "required": ["telemetryPipeline"]
+          }
+        },
+        "required": ["guestRuntime"]
+      }
+    }
+  ],
+  "$defs": {
+    "Identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "AbsoluteGuestPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "HostOrAddressLiteral": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9:][A-Za-z0-9._:-]*$"
+    },
+    "GuestLoopbackHTTPURL": {
+      "description": "A Guest-internal HTTP endpoint for a named local process. C37 semantic validation additionally requires an explicit valid port and no path, query, credentials, or fragment.",
+      "type": "string",
+      "minLength": 18,
+      "maxLength": 64,
+      "pattern": "^http://(127\\.0\\.0\\.1|\\[::1\\]):[0-9]+$"
+    },
+    "GuestRuntimeArchiveSourceAdmissionURL": {
+      "description": "The exact Guest Runtime internal Archive source admission route.",
+      "type": "string",
+      "minLength": 58,
+      "maxLength": 128,
+      "pattern": "^http://(127\\.0\\.0\\.1|\\[::1\\]):[0-9]+/internal/v1/archive/recorder-uploads$"
+    },
+    "Port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "Listener": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bindHost", "port"],
+      "properties": {
+        "bindHost": { "$ref": "#/$defs/HostOrAddressLiteral" },
+        "port": { "$ref": "#/$defs/Port" }
+      }
+    },
+    "ProviderCapabilityReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/Identifier" },
+        "id": { "$ref": "#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "ArchiveExportProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision"],
+      "properties": {
+        "kind": { "enum": ["archive-export-outcome-profile", "vitalserver-indexed-library"] },
+        "id": { "$ref": "#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 },
+        "outcomeMode": { "enum": ["succeed", "upload-failed", "index-failed", "upload-outcome-unknown", "index-outcome-unknown"] },
+        "credentialMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "vitalServerConfiguration": { "$ref": "#/$defs/VitalServerArchiveProviderConfiguration" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "archive-export-outcome-profile" } }, "required": ["kind"] },
+          "then": { "required": ["outcomeMode"], "not": { "anyOf": [{ "required": ["credentialMaterialPath"] }, { "required": ["vitalServerConfiguration"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "vitalserver-indexed-library" } }, "required": ["kind"] },
+          "then": { "required": ["credentialMaterialPath", "vitalServerConfiguration"], "not": { "required": ["outcomeMode"] } }
+        }
+      ]
+    },
+    "VitalServerArchiveProviderConfiguration": {
+      "description": "The explicit desired document read by Guest Runtime's indexed-library adapter. C46 is an externally-administered target; C44 is the release-owned bundled target. The kind is never inferred from a loopback address.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "configurationPath"],
+      "properties": {
+        "kind": { "enum": ["external-vitalserver-delivery-configuration", "bundled-vitalserver-topology-deployment"] },
+        "configurationPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    },
+    "ExternalUpstreamObservationProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision"],
+      "properties": {
+        "kind": { "enum": ["external-capability-profile", "external-vitalserver-http"] },
+        "id": { "$ref": "#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 },
+        "outcomeMode": { "enum": ["available", "unavailable", "failed", "unsupported", "outcome-unknown"] },
+        "externalVitalServerDeliveryConfigurationPath": { "$ref": "#/$defs/RecorderGatewayExternalVitalServerDeliveryConfigurationPath" },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 60000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "external-capability-profile" } }, "required": ["kind"] },
+          "then": { "required": ["outcomeMode"], "not": { "anyOf": [{ "required": ["externalVitalServerDeliveryConfigurationPath"] }, { "required": ["requestTimeoutMilliseconds"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "external-vitalserver-http" } }, "required": ["kind"] },
+          "then": { "required": ["externalVitalServerDeliveryConfigurationPath", "requestTimeoutMilliseconds"], "not": { "required": ["outcomeMode"] } }
+        }
+      ]
+    },
+    "OutboundRelayObservationProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "capabilityRevision", "outcomeMode"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/Identifier" },
+        "id": { "$ref": "#/$defs/Identifier" },
+        "capabilityRevision": { "type": "integer", "minimum": 1 },
+        "outcomeMode": { "enum": ["available", "unavailable", "failed", "unsupported", "outcome-unknown"] }
+      }
+    },
+    "GuestTimeAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guestNodeId", "timeAuthorityId", "kind"],
+      "properties": {
+        "guestNodeId": { "$ref": "#/$defs/Identifier" },
+        "timeAuthorityId": { "$ref": "#/$defs/Identifier" },
+        "kind": { "enum": ["time-authority-outcome-profile", "chrony-tracking"] },
+        "chronyExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "ntpServerHost": {
+          "description": "Explicit Chrony NTP server hostname or IPv4 address. It is consumed only when C39 selects the Chrony Guest time-synchronization service.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$"
+        },
+        "ntpServerPort": { "$ref": "#/$defs/Port" },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 60000 },
+        "probeOutcomeMode": { "enum": ["synchronized", "synchronizing", "unsynchronized", "stale", "failed", "unsupported", "outcome-unknown"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "time-authority-outcome-profile" } }, "required": ["kind"] },
+          "then": { "required": ["probeOutcomeMode"], "not": { "anyOf": [{ "required": ["chronyExecutablePath"] }, { "required": ["requestTimeoutMilliseconds"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "chrony-tracking" } }, "required": ["kind"] },
+          "then": { "required": ["chronyExecutablePath", "requestTimeoutMilliseconds"], "not": { "required": ["probeOutcomeMode"] } }
+        }
+      ]
+    },
+    "GuestTelemetryPipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["telemetry-export-outcome-profile", "otlp-http"] },
+        "collectorBaseEndpoint": { "type": "string", "minLength": 8, "maxLength": 2048 },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 60000 },
+        "collectorProbeOutcomeMode": { "enum": ["ready", "unavailable", "failed", "unsupported", "outcome-unknown"] },
+        "exportOutcomeMode": { "enum": ["exported", "dropped", "unavailable", "failed", "outcome-unknown"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "telemetry-export-outcome-profile" } }, "required": ["kind"] },
+          "then": { "required": ["collectorProbeOutcomeMode", "exportOutcomeMode"], "not": { "anyOf": [{ "required": ["collectorBaseEndpoint"] }, { "required": ["requestTimeoutMilliseconds"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "otlp-http" } }, "required": ["kind"] },
+          "then": { "required": ["collectorBaseEndpoint", "requestTimeoutMilliseconds"], "not": { "anyOf": [{ "required": ["collectorProbeOutcomeMode"] }, { "required": ["exportOutcomeMode"] }] } }
+        }
+      ]
+    },
+    "GuestTelemetryCollectorProcess": {
+      "description": "Optional Guest-local OpenTelemetry Collector selected only with the live otlp-http pipeline. Its one loopback OTLP listener is a desired process binding, not Collector readiness or backend delivery evidence.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executablePath", "configurationPath", "otlpHttpListener"],
+      "properties": {
+        "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "configurationPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "otlpHttpListener": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bindHost", "port"],
+          "properties": {
+            "bindHost": { "const": "127.0.0.1" },
+            "port": { "$ref": "#/$defs/Port" }
+          }
+        }
+      }
+    },
+    "GuestRuntimeProcess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executablePath", "listener", "controlVirtioSocketListener", "publicServiceVirtioSocketBridges", "stateDatabasePath", "recorderCatalogDatabaseUrlMaterialPath", "recorderCatalogMigrationReceiptPath", "recorderCatalogAdmissionBearerTokenMaterialPath", "recorderObservationMaxReportAgeSeconds", "archiveSourceAdmissionBearerTokenMaterialPath", "archiveArtifactObjectRootDirectory", "archiveSourceMaximumBytes", "labReplaySourceObjectRootDirectory", "labReplaySourceMaximumBytes", "labReplaySpoolRootDirectory", "labReplayStringTrackPolicy", "labReplayGapPolicy", "labReplayFrameBatchSize", "recorderAttributionPolicyKind", "serviceVersion", "instanceId", "archiveExportProvider", "recorderGatewayColdPathSourceEndpoint", "labRecorderRunnerEndpoint", "externalUpstreamObservationProvider", "outboundRelayObservationProvider", "timeAuthority", "telemetryPipeline", "operationalStateBackup"],
+      "properties": {
+        "executablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "listener": { "$ref": "#/$defs/Listener" },
+        "controlVirtioSocketListener": { "$ref": "#/$defs/GuestRuntimeControlVirtioSocketListener" },
+        "publicServiceVirtioSocketBridges": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/GuestPublicServiceVirtioSocketBridge" }
+        },
+        "stateDatabasePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "recorderCatalogDatabaseUrlMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "recorderCatalogMigrationReceiptPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "recorderCatalogAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "recorderObservationMaxReportAgeSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "archiveSourceAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "archiveArtifactObjectRootDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "archiveSourceMaximumBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 },
+        "labReplaySourceObjectRootDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "labReplaySourceMaximumBytes": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+        "labReplaySpoolRootDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "labReplayStringTrackPolicy": { "enum": ["reject", "skip"] },
+        "labReplayGapPolicy": { "enum": ["omit-track", "fail-frame"] },
+        "labReplayFrameBatchSize": { "const": 1 },
+        "recorderAttributionPolicyKind": { "const": "recorder-assignment-owner" },
+        "serviceVersion": { "$ref": "#/$defs/Identifier" },
+        "instanceId": { "$ref": "#/$defs/Identifier" },
+        "archiveExportProvider": { "$ref": "#/$defs/ArchiveExportProvider" },
+        "recorderGatewayColdPathSourceEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
+        "labRecorderRunnerEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
+        "externalUpstreamObservationProvider": { "$ref": "#/$defs/ExternalUpstreamObservationProvider" },
+        "outboundRelayObservationProvider": { "$ref": "#/$defs/OutboundRelayObservationProvider" },
+        "timeAuthority": { "$ref": "#/$defs/GuestTimeAuthority" },
+        "telemetryPipeline": { "$ref": "#/$defs/GuestTelemetryPipeline" },
+        "operationalStateBackup": { "$ref": "#/$defs/GuestOperationalStateBackup" },
+        "operationalStateRestore": { "$ref": "#/$defs/GuestOperationalStateRestore" }
+      }
+    },
+    "GuestOperationalStateBackup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rootDirectory", "ledgerDatabasePath", "destinationReference", "pgDumpExecutablePath", "pgRestoreExecutablePath"],
+      "properties": {
+        "rootDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "ledgerDatabasePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "destinationReference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resourceType", "resourceId"],
+          "properties": {
+            "resourceType": { "$ref": "#/$defs/Identifier" },
+            "resourceId": { "$ref": "#/$defs/Identifier" }
+          }
+        },
+        "pgDumpExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "pgRestoreExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    },
+    "GuestOperationalStateRestore": {
+      "description": "Optional maintenance-only restore target. Its SQLite path must be absent and its PostgreSQL URL material must name an explicitly provisioned empty database; the live Guest Runtime stores are never valid targets.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetReference", "sqliteTargetPath", "postgresqlDatabaseUrlMaterialPath"],
+      "properties": {
+        "targetReference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resourceType", "resourceId"],
+          "properties": {
+            "resourceType": { "const": "guest-restore-target" },
+            "resourceId": { "$ref": "#/$defs/Identifier" }
+          }
+        },
+        "sqliteTargetPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "postgresqlDatabaseUrlMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    },
+    "GuestRuntimeControlVirtioSocketListener": {
+      "description": "Guest-owned virtio-socket listener for the Host-declared Guest Runtime control bridge. It is a transport binding, not a Guest Runtime readiness observation.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": {
+        "port": { "$ref": "#/$defs/Port" }
+      }
+    },
+    "GuestPublicServiceVirtioSocketBridge": {
+      "description": "Guest Runtime transport adapter declaration for one C36 public route. It accepts the C32-declared virtio-socket port and forwards bytes to the Guest-loopback listener owned by the explicitly named C37 process; it is not a service readiness observation or NAT address declaration.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["routeId", "guestProductProcessName", "virtioSocketPort", "targetHost", "targetPort"],
+      "properties": {
+        "routeId": { "$ref": "#/$defs/Identifier" },
+        "guestProductProcessName": { "$ref": "#/$defs/Identifier" },
+        "virtioSocketPort": { "$ref": "#/$defs/Port" },
+        "targetHost": { "const": "127.0.0.1" },
+        "targetPort": { "$ref": "#/$defs/Port" }
+      }
+    },
+    "RecorderGatewayVitalServerTopologyDeploymentPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+    },
+    "RecorderGatewayExternalVitalServerDeliveryConfigurationPath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 1024,
+      "pattern": "^/(?!.*(?:^|/)\\.\\.(?:/|$)).+"
+    },
+    "RecorderGatewayReplayPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intervalMilliseconds", "maximumAttempts", "retryDelayMilliseconds", "leaseDurationMilliseconds"],
+      "properties": {
+        "intervalMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 },
+        "maximumAttempts": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "retryDelayMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 },
+        "leaseDurationMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 }
+      }
+    },
+    "RecorderGatewayDeliveryReplayAdmissionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumPendingItems", "maximumPendingBytes"],
+      "properties": {
+        "maximumPendingItems": { "type": "integer", "minimum": 1, "maximum": 10000000 },
+        "maximumPendingBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 }
+      }
+    },
+    "RecorderGatewayColdPathCapturePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumRetainedPackets", "maximumRetainedPayloadBytes"],
+      "properties": {
+        "maximumRetainedPackets": { "type": "integer", "minimum": 1, "maximum": 10000000 },
+        "maximumRetainedPayloadBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 }
+      }
+    },
+    "RecorderGatewayVitalUploadPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumBytes", "recoveryIntervalMilliseconds", "recoveryMaximumItems"],
+      "properties": {
+        "maximumBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 },
+        "recoveryIntervalMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 },
+        "recoveryMaximumItems": { "type": "integer", "minimum": 1, "maximum": 1000 }
+      }
+    },
+    "RecorderGatewayProcess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeExecutablePath", "programPath", "listener", "durableIngressStateDirectory", "vitalServerTopologyDeploymentPath", "deliveryReplayAdmissionPolicy", "coldPathCapturePolicy", "replayPolicy", "guestRuntimeObservationCatalogEndpoint", "observationCatalogBearerTokenMaterialPath", "vitalUploadPolicy", "guestRuntimeArchiveSourceAdmissionEndpoint", "archiveSourceAdmissionBearerTokenMaterialPath", "archiveSourceAdmissionRequestTimeoutMilliseconds"],
+      "properties": {
+        "nodeExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "programPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "listener": { "$ref": "#/$defs/Listener" },
+        "durableIngressStateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "vitalServerTopologyDeploymentPath": { "$ref": "#/$defs/RecorderGatewayVitalServerTopologyDeploymentPath" },
+        "externalVitalServerDeliveryConfigurationPath": { "$ref": "#/$defs/RecorderGatewayExternalVitalServerDeliveryConfigurationPath" },
+        "deliveryReplayAdmissionPolicy": { "$ref": "#/$defs/RecorderGatewayDeliveryReplayAdmissionPolicy" },
+        "coldPathCapturePolicy": { "$ref": "#/$defs/RecorderGatewayColdPathCapturePolicy" },
+        "replayPolicy": { "$ref": "#/$defs/RecorderGatewayReplayPolicy" },
+        "guestRuntimeObservationCatalogEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
+        "observationCatalogBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "vitalUploadPolicy": { "$ref": "#/$defs/RecorderGatewayVitalUploadPolicy" },
+        "guestRuntimeArchiveSourceAdmissionEndpoint": { "$ref": "#/$defs/GuestRuntimeArchiveSourceAdmissionURL" },
+        "archiveSourceAdmissionBearerTokenMaterialPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "archiveSourceAdmissionRequestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 300000 }
+      }
+    },
+    "LabRecorderRunnerProcess": {
+      "description": "Guest-local virtual-recorder Socket.IO execution process. It publishes Recorder observations only through the declared Recorder Gateway loopback endpoint; it never bypasses Gateway to write the Guest Runtime Catalog.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeExecutablePath", "programPath", "listener", "recorderGatewayEndpoint", "scenarioCatalogPath", "replayStateDirectory"],
+      "properties": {
+        "nodeExecutablePath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "programPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "listener": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bindHost", "port"],
+          "properties": {
+            "bindHost": { "const": "127.0.0.1" },
+            "port": { "$ref": "#/$defs/Port" }
+          }
+        },
+        "recorderGatewayEndpoint": { "$ref": "#/$defs/GuestLoopbackHTTPURL" },
+        "scenarioCatalogPath": { "$ref": "#/$defs/AbsoluteGuestPath" },
+        "replayStateDirectory": { "$ref": "#/$defs/AbsoluteGuestPath" }
+      }
+    }
+  }
+}

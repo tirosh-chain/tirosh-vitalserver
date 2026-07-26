@@ -1,0 +1,53 @@
+guestHostname = "vitalserver-linux"
+
+[shares]
+runtimeTag = "native-runtime"
+runtimeMount = "/var/lib/vitalserver"
+runtimeMountMode = "native"
+vitalFilesTag = "native-vital-files"
+vitalFilesMount = "/var/lib/vitalserver/data/vital-files"
+vitalFilesMountMode = "native"
+
+[paths]
+deployDir = "/opt/vitalserver/current/runtime-bundle"
+runtimeDir = "/var/lib/vitalserver/run"
+controlStateDir = "/var/lib/vitalserver/control"
+composeFile = "/opt/vitalserver/current/runtime-bundle/compose.yaml"
+runtimeConfigFile = "/etc/vitalserver/runtime-config.json"
+runtimeSettingsFile = "/etc/vitalserver/runtime-settings.json"
+redisRelayConfigFile = "/etc/vitalserver/redis-relay/redis-relay.toml"
+redisRelayPasswordFile = "/etc/vitalserver/secrets/redis-relay/redis-relay-target-password"
+composeRuntimeLimitsFile = "/var/lib/vitalserver/run/compose.runtime-limits.yaml"
+guestToolsHome = "/opt/vitalserver/current/runtime-controller"
+pythonWheelDir = "/opt/vitalserver/current/runtime-controller/python-wheels"
+commandBinDir = "/opt/vitalserver/current/bin"
+
+[controlStore]
+root = "/var/lib/vitalserver"
+requiresMount = false
+
+[compose]
+projectName = "vitalserver"
+environmentFile = "/etc/vitalserver/runtime.env"
+stopTimeoutSeconds = 120
+
+[intervals]
+commandPollSeconds = 3
+runtimeObservationSeconds = 5
+observabilitySeconds = 10
+
+[containerLogs]
+intervalSeconds = 5
+tailLines = "1000"
+maxBytes = 10485760
+retainedFiles = 5
+rotateCheckLines = 20
+
+[observability]
+vitaldbObserverUrl = "http://127.0.0.1:18084/api/v1/observations"
+
+[logging]
+format = "json"
+level = "info"
+streamEnabled = true
+fileEnabled = true

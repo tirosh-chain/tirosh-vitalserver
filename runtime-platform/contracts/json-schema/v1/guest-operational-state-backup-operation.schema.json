@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-backup-operation",
+  "title": "GuestOperationalStateBackupOperation",
+  "description": "Durable C76 backup or empty-target restore workflow state. Stage evidence is explicit and terminal failure remains readable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "requestId", "resourceRevision", "kind", "state", "stageReceipts", "createdAt", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "resourceRevision": { "type": "integer", "minimum": 1 },
+    "kind": { "enum": ["backup", "restore"] },
+    "state": {
+      "enum": [
+        "requested",
+        "snapshotting-sqlite",
+        "snapshotting-postgresql",
+        "inventorying-artifacts",
+        "publishing",
+        "validating-backup",
+        "proving-empty-target",
+        "restoring-sqlite",
+        "restoring-postgresql",
+        "verifying-owner-reads",
+        "succeeded",
+        "failed"
+      ]
+    },
+    "destinationReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+    "manifestReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+    "manifestSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "targetReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+    "stageReceipts": {
+      "type": "array",
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/StageReceipt" }
+    },
+    "failure": { "$ref": "#/$defs/Failure" },
+    "createdAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "updatedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "backup" } }, "required": ["kind"] },
+      "then": {
+        "required": ["destinationReference"],
+        "not": { "required": ["targetReference"] }
+      },
+      "else": {
+        "required": ["manifestReference", "manifestSha256", "targetReference"],
+        "not": { "required": ["destinationReference"] }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "failed" } }, "required": ["state"] },
+      "then": { "required": ["failure"] },
+      "else": { "not": { "required": ["failure"] } }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": { "const": "backup" },
+          "state": { "const": "succeeded" }
+        },
+        "required": ["kind", "state"]
+      },
+      "then": { "required": ["manifestReference", "manifestSha256"] },
+      "else": {
+        "if": { "properties": { "kind": { "const": "backup" } }, "required": ["kind"] },
+        "then": {
+          "not": {
+            "anyOf": [
+              { "required": ["manifestReference"] },
+              { "required": ["manifestSha256"] }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "StageReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "evidenceReference", "evidenceSha256", "completedAt"],
+      "properties": {
+        "stage": {
+          "enum": [
+            "sqlite-snapshot",
+            "postgresql-snapshot",
+            "artifact-inventory",
+            "manifest-publication",
+            "backup-validation",
+            "empty-target-proof",
+            "sqlite-restore",
+            "postgresql-restore",
+            "owner-read-verification"
+          ]
+        },
+        "evidenceReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+        "evidenceSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "completedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    },
+    "Failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "code", "message", "failedAt"],
+      "properties": {
+        "stage": {
+          "enum": [
+            "sqlite-snapshot",
+            "postgresql-snapshot",
+            "artifact-inventory",
+            "manifest-publication",
+            "backup-validation",
+            "empty-target-proof",
+            "sqlite-restore",
+            "postgresql-restore",
+            "owner-read-verification"
+          ]
+        },
+        "code": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "failedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+      }
+    }
+  }
+}

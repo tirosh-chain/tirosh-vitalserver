@@ -4,36 +4,45 @@ import XCTest
 import Errors
 
 final class ContractsTests: XCTestCase {
-    func testRuntimeFileModifiedAtReadResultPreservesExplicitReadState() {
-        XCTAssertEqual(
-            RuntimeFileModifiedAtReadResult.notRead().readState,
-            .notRead
+    func testLabArchiveFinalizationPreservesRequiredNullableFields() throws {
+        let finalization = RuntimeLabArchiveFinalization(
+            state: .exported,
+            updatedAt: nil,
+            readError: nil
         )
+
+        let data = try JSONEncoder().encode(finalization)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(object["state"] as? String, "exported")
+        XCTAssertTrue(object["updatedAt"] is NSNull)
+        XCTAssertTrue(object["readError"] is NSNull)
         XCTAssertEqual(
-            RuntimeFileModifiedAtReadResult(updatedAt: "2026-06-08T00:00:00Z", readError: nil).readState,
-            .loaded
-        )
-        XCTAssertEqual(
-            RuntimeFileModifiedAtReadResult(updatedAt: nil, readError: "mtime-read-failed").readState,
-            .readFailed
+            try JSONDecoder().decode(RuntimeLabArchiveFinalization.self, from: data),
+            finalization
         )
     }
 
-    func testRuntimeContainerObservationPreservesRuntimeStateFileMetadataReadState() throws {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            runtimeStateFileMetadataReadState: .notRead,
-            containerLogsPresent: false,
-            containerLogsBytes: nil
+    func testLabArchiveFinalizationRejectsMissingRequiredNullableFields() throws {
+        let missingUpdatedAt = Data(
+            #"{"state":"exported","readError":null}"#.utf8
+        )
+        let missingReadError = Data(
+            #"{"state":"published","updatedAt":null}"#.utf8
         )
 
-        let data = try JSONEncoder().encode(observation)
-        let decoded = try JSONDecoder().decode(RuntimeContainerObservation.self, from: data)
-
-        XCTAssertEqual(decoded.runtimeStateFileMetadataReadState, .notRead)
-        XCTAssertNil(decoded.runtimeStateFileUpdatedAt)
-        XCTAssertNil(decoded.runtimeStateFileMetadataError)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeLabArchiveFinalization.self,
+                from: missingUpdatedAt
+            )
+        )
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeLabArchiveFinalization.self,
+                from: missingReadError
+            )
+        )
     }
 
     func testRecorderIngressStatusReadResultPreservesExplicitReadState() {
@@ -57,27 +66,10 @@ final class ContractsTests: XCTestCase {
             RuntimeRecorderIngressStatusReadResult(
                 httpStatus: RuntimeHTTPStatusText.missingProxyPort,
                 document: nil,
-                readError: RuntimeHTTPStatusText.missingProxyPort
+                readError: nil
             ).readState,
-            .skippedMissingProxyPort
+            .notRead
         )
-    }
-
-    func testRuntimeContainerObservationPreservesRecorderIngressStatusReadState() throws {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: RuntimeHTTPStatusText.failed,
-            recorderIngressStatus: nil,
-            recorderIngressStatusReadState: .commandFailed,
-            recorderIngressStatusReadError: "command-failed-7",
-            containerLogsPresent: false,
-            containerLogsBytes: nil
-        )
-
-        let data = try JSONEncoder().encode(observation)
-        let decoded = try JSONDecoder().decode(RuntimeContainerObservation.self, from: data)
-
-        XCTAssertEqual(decoded.recorderIngressStatusReadState, .commandFailed)
-        XCTAssertEqual(decoded.recorderIngressStatusReadError, "command-failed-7")
     }
 
     func testRecorderIngressStatusDecodesSpoolAndReplayStateWithoutDefaultingMissingQueueState() throws {
@@ -85,6 +77,28 @@ final class ContractsTests: XCTestCase {
         {
           "activeWebSockets": 1,
           "activeRecorderConnections": 1,
+          "recorders": [
+            {
+              "vrcode": "VR001",
+              "activeConnections": 1,
+              "spool": {
+                "pendingItems": 3
+              },
+              "replay": {
+                "retryableFailures": 1
+              }
+            }
+          ],
+          "httpRequests": 0,
+          "socketIoEventsSeen": 0,
+          "socketIoParseFailures": 0,
+          "auditWriteFailures": 0,
+          "auditFileWriteFailures": 0,
+          "auditStdoutWriteFailures": 0,
+          "failureLogWriteFailures": 0,
+          "redisIpWriteFailures": 0,
+          "redisIpVerifyFailures": 0,
+          "redisIpVerifyMismatches": 0,
           "spool": {
             "mode": "spool_and_replay",
             "status": "ready",
@@ -175,7 +189,25 @@ final class ContractsTests: XCTestCase {
 
         let legacy = try JSONDecoder().decode(
             RuntimeRecorderIngressStatusDocument.self,
-            from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1}"#.utf8)
+            from: Data(
+                """
+                {
+                  "activeWebSockets": 1,
+                  "activeRecorderConnections": 1,
+                  "recorders": [],
+                  "httpRequests": 0,
+                  "socketIoEventsSeen": 0,
+                  "socketIoParseFailures": 0,
+                  "auditWriteFailures": 0,
+                  "auditFileWriteFailures": 0,
+                  "auditStdoutWriteFailures": 0,
+                  "failureLogWriteFailures": 0,
+                  "redisIpWriteFailures": 0,
+                  "redisIpVerifyFailures": 0,
+                  "redisIpVerifyMismatches": 0
+                }
+                """.utf8
+            )
         )
         XCTAssertNil(legacy.spool)
         XCTAssertNil(legacy.replay)
@@ -183,7 +215,37 @@ final class ContractsTests: XCTestCase {
         XCTAssertThrowsError(
             try JSONDecoder().decode(
                 RuntimeRecorderIngressStatusDocument.self,
-                from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1,"replay":{"adaptive":{"memoryGuardStatus":"not-ready"}}}"#.utf8)
+                from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1}"#.utf8)
+            )
+        )
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeRecorderIngressStatusDocument.self,
+                from: Data(
+                    """
+                    {
+                      "activeWebSockets": 1,
+                      "activeRecorderConnections": 1,
+                      "recorders": [],
+                      "httpRequests": 0,
+                      "socketIoEventsSeen": 0,
+                      "socketIoParseFailures": 0,
+                      "auditWriteFailures": 0,
+                      "auditFileWriteFailures": 0,
+                      "auditStdoutWriteFailures": 0,
+                      "failureLogWriteFailures": 0,
+                      "redisIpWriteFailures": 0,
+                      "redisIpVerifyFailures": 0,
+                      "redisIpVerifyMismatches": 0,
+                      "replay": {
+                        "adaptive": {
+                          "memoryGuardStatus": "not-ready"
+                        }
+                      }
+                    }
+                    """.utf8
+                )
             )
         )
     }
@@ -193,23 +255,21 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertNil(document.schemaVersion)
         XCTAssertEqual(document.status, .healthy)
-        XCTAssertEqual(document.operation, .health)
         XCTAssertEqual(document.proxyPort, 80)
-        XCTAssertNil(document.vmState)
-        XCTAssertNil(document.vmErrors)
-        XCTAssertEqual(document.failureReasons, [])
-        XCTAssertNil(document.progress)
     }
 
-    func testDecodesRuntimeStatusV2Progress() throws {
-        let document = try decodeFixture(RuntimeStatusDocument.self, named: "runtime-status-v2-updating")
+    func testDecodesRuntimeStatusV2IgnoringLegacyEmbeddedProgress() throws {
+        let document = try decodeFixture(RuntimeStatusDocument.self, named: "runtime-status-updating")
 
         XCTAssertEqual(document.schemaVersion, 2)
         XCTAssertEqual(document.status, .updating)
-        XCTAssertEqual(document.progress?.operation, .applyBundle)
-        XCTAssertEqual(document.progress?.step, .activateGuestUpdate)
-        XCTAssertEqual(document.progress?.stepStatus, .started)
-        XCTAssertEqual(document.progress?.reasonCodes, ["guest-activation-pending"])
+
+        let encoded = try JSONEncoder().encode(document)
+        let encodedObject = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(encodedObject["progress"])
+        XCTAssertNil(encodedObject["operation"])
+        XCTAssertNil(encodedObject["message"])
+        XCTAssertNil(encodedObject["updatedAt"])
     }
 
     func testRuntimeServiceOperationsRoundTrip() throws {
@@ -302,74 +362,17 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.reportedVMErrors, [.diskAttachmentInvalid])
     }
 
-    func testDecodesGuestRuntimeState() throws {
-        let document = try decodeFixture(GuestRuntimeStateDocument.self, named: "runtime-state-ready")
+    func testDecodesGuestRuntimeObservation() throws {
+        let document = try decodeFixture(GuestRuntimeObservationDocument.self, named: "runtime-observation-ready")
 
         XCTAssertEqual(document.vmIP, "192.168.64.2")
         XCTAssertEqual(document.bootID, "7b6a6afd-64f8-4dd5-91f1-6dcbf58f8f7d")
         XCTAssertEqual(document.memory?.percent, 25.0)
         XCTAssertEqual(document.systemDisk?.percent, 31.25)
         XCTAssertEqual(document.vitalFilesDisk?.percent, 25.0)
-        XCTAssertEqual(
-            document.capabilities,
-            GuestRuntimeCapabilities(
-                prepareUpdateShutdown: true,
-                activateUpdate: true,
-                redisBackup: true,
-                redisRestore: true,
-                repairDatastore: true
-            )
-        )
     }
 
-    func testDecodesGuestRuntimeStateContainerServices() throws {
-        let json = """
-        {
-          "schemaVersion": 1,
-          "vmIP": "192.168.64.2",
-          "guestHTTP": "200",
-          "redisUIHTTP": "200",
-          "swaggerUIHTTP": "200",
-          "updatedAt": "2026-05-24T00:00:00Z",
-          "containerServices": [
-            {
-              "service": "recorder-ingress",
-              "name": "vitalserver-recorder-ingress-1",
-              "state": "running",
-              "health": "healthy",
-              "exitCode": 0,
-              "containerID": "container-1",
-              "error": "",
-              "finishedAt": "2026-06-11T01:00:00Z",
-              "memoryUsedBytes": 536870912,
-              "memoryLimitBytes": 4294967296,
-              "oomKilled": true,
-              "restartCount": 2
-            }
-          ]
-        }
-        """
-        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
-
-        XCTAssertEqual(document.containerServices, [
-            RuntimeContainerServiceObservation(
-                service: "recorder-ingress",
-                containerID: "container-1",
-                name: "vitalserver-recorder-ingress-1",
-                state: "running",
-                health: "healthy",
-                exitCode: 0,
-                error: "",
-                finishedAt: "2026-06-11T01:00:00Z",
-                memoryUsedBytes: 536870912,
-                memoryLimitBytes: 4294967296,
-                oomKilled: true,
-                restartCount: 2
-            ),
-        ])
-    }
-
-    func testDecodesGuestRuntimeStateProbeErrors() throws {
+    func testDecodesGuestRuntimeObservationProbeErrors() throws {
         let json = """
         {
           "schemaVersion": 1,
@@ -386,7 +389,7 @@ final class ContractsTests: XCTestCase {
           ]
         }
         """
-        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
+        let document = try JSONDecoder().decode(GuestRuntimeObservationDocument.self, from: Data(json.utf8))
 
         XCTAssertNil(document.vmIP)
         XCTAssertEqual(document.probeErrors, [
@@ -397,7 +400,7 @@ final class ContractsTests: XCTestCase {
         ])
     }
 
-    func testDecodesGuestRuntimeStateDiskHealth() throws {
+    func testDecodesGuestRuntimeObservationDiskHealth() throws {
         let json = """
         {
           "schemaVersion": 1,
@@ -414,161 +417,12 @@ final class ContractsTests: XCTestCase {
           }
         }
         """
-        let document = try JSONDecoder().decode(GuestRuntimeStateDocument.self, from: Data(json.utf8))
+        let document = try JSONDecoder().decode(GuestRuntimeObservationDocument.self, from: Data(json.utf8))
 
         XCTAssertEqual(document.diskHealth, GuestDiskHealthDocument(
             rootFilesystemReadOnly: true,
             kernelErrors: ["EXT4-fs error (device vda1): checksum invalid"]
         ))
-    }
-
-    func testRuntimeContainerObservationPreservesReadErrors() throws {
-        let json = """
-        {
-          "recorderIngressHTTP": "invalid-response",
-          "recorderIngressStatus": null,
-          "recorderIngressStatusReadError": "decode-failed",
-          "runtimeStateFileUpdatedAt": null,
-          "runtimeStateFileMetadataError": "mtime-read-failed",
-          "containerLogsPresent": true,
-          "containerLogsBytes": null,
-          "containerLogsMetadataError": "size-read-failed",
-          "composeServicesReadState": "invalid",
-          "composeServices": [],
-          "composeServicesReadError": "guest-runtime-state-invalid"
-        }
-        """
-
-        let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
-
-        XCTAssertEqual(observation.recorderIngressStatusReadError, "decode-failed")
-        XCTAssertEqual(observation.recorderIngressStatusReadState, .invalidResponse)
-        XCTAssertEqual(observation.runtimeStateFileMetadataError, "mtime-read-failed")
-        XCTAssertEqual(observation.containerLogsMetadataError, "size-read-failed")
-        XCTAssertEqual(observation.composeServicesReadState, .invalid)
-        XCTAssertEqual(observation.composeServices, [])
-        XCTAssertEqual(observation.composeServicesReadError, "guest-runtime-state-invalid")
-
-        let encoded = try JSONDecoder().decode(
-            RuntimeContainerObservation.self,
-            from: JSONEncoder().encode(observation)
-        )
-        XCTAssertEqual(encoded, observation)
-    }
-
-    func testRuntimeContainerObservationDoesNotInferComposeReadStateFromReadErrorText() throws {
-        for readError in [
-            "guest-runtime-state-invalid",
-            "guest-runtime-state-stale",
-            "guest-runtime-state-missing",
-        ] {
-            let json = """
-            {
-              "recorderIngressHTTP": "200",
-              "recorderIngressStatus": null,
-              "containerLogsPresent": true,
-              "containerLogsBytes": null,
-              "composeServices": [],
-              "composeServicesReadError": "\(readError)"
-            }
-            """
-
-            let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
-
-            XCTAssertEqual(
-                observation.composeServicesReadState,
-                .readFailed,
-                "Compose services state must come from composeServicesReadState, not readError text: \(readError)"
-            )
-            XCTAssertEqual(observation.composeServicesReadError, readError)
-        }
-    }
-
-    func testRuntimeContainerObservationDecodesMissingComposeServicesAsMissingWhenStateAbsent() throws {
-        let json = """
-        {
-          "recorderIngressHTTP": "200",
-          "recorderIngressStatus": null,
-          "containerLogsPresent": true,
-          "containerLogsBytes": null
-        }
-        """
-
-        let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
-
-        XCTAssertEqual(observation.composeServicesReadState, .missing)
-        XCTAssertEqual(observation.composeServices, [])
-        XCTAssertNil(observation.composeServicesReadError)
-    }
-
-    func testRuntimeContainerObservationDistinguishesLoadedEmptyComposeServicesFromMissingState() throws {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: false,
-            containerLogsBytes: nil,
-            composeServicesReadState: .loaded,
-            composeServices: []
-        )
-
-        XCTAssertEqual(observation.composeServicesReadState, .loaded)
-        XCTAssertEqual(observation.composeServices, [])
-        XCTAssertNil(observation.composeServicesReadError)
-
-        let encoded = try JSONDecoder().decode(
-            RuntimeContainerObservation.self,
-            from: JSONEncoder().encode(observation)
-        )
-        XCTAssertEqual(encoded.composeServicesReadState, .loaded)
-        XCTAssertEqual(encoded.composeServices, [])
-        XCTAssertNil(encoded.composeServicesReadError)
-    }
-
-    func testDecodesActivationResultV1() throws {
-        let document = try decodeFixture(
-            GuestUpdateActivationResultDocument.self,
-            named: "activate-update-result-v1-completed"
-        )
-
-        XCTAssertNil(document.schemaVersion)
-        XCTAssertTrue(document.completed)
-        XCTAssertFalse(document.failed)
-        XCTAssertEqual(document.status, .completed)
-    }
-
-    func testDecodesActivationResultV2() throws {
-        let document = try decodeFixture(
-            GuestUpdateActivationResultDocument.self,
-            named: "activate-update-result-v2-running"
-        )
-
-        XCTAssertEqual(document.schemaVersion, 2)
-        XCTAssertEqual(document.requestId, "4A3D7063-5E81-4BA1-9E74-74E44347F6E5")
-        XCTAssertEqual(document.operation, .activateGuestUpdate)
-        XCTAssertEqual(document.step, "load-docker-images")
-        XCTAssertFalse(document.completed)
-        XCTAssertFalse(document.failed)
-    }
-
-    func testDecodesDatastoreRepairResultV2() throws {
-        let json = """
-        {
-          "schemaVersion": 2,
-          "requestId": "repair-1",
-          "operation": "repair-datastore",
-          "status": "running",
-          "message": "Datastore repair is running.",
-          "updatedAt": "2026-05-21T12:33:57Z"
-        }
-        """
-        let document = try JSONDecoder().decode(DatastoreRepairResultDocument.self, from: Data(json.utf8))
-
-        XCTAssertEqual(document.schemaVersion, 2)
-        XCTAssertEqual(document.requestId, "repair-1")
-        XCTAssertEqual(document.operation, .repairDatastore)
-        XCTAssertEqual(document.status, .running)
-        XCTAssertFalse(document.completed)
-        XCTAssertFalse(document.failed)
     }
 
     func testUnknownEnumValuesRoundTrip() throws {
@@ -587,7 +441,7 @@ final class ContractsTests: XCTestCase {
           "proxyService": "loaded",
           "watchdogService": "loaded",
           "vmState": "hibernating",
-          "vmErrors": ["vm-runtime-state-stale", "vm-service-state-paused"],
+          "vmErrors": ["vm-future-error", "vm-service-state-paused"],
           "vmIP": null,
           "proxyPort": 80,
           "hostProxyHTTP": "failed",
@@ -613,22 +467,23 @@ final class ContractsTests: XCTestCase {
         let document = try JSONDecoder().decode(RuntimeStatusDocument.self, from: Data(json.utf8))
 
         XCTAssertEqual(document.status.rawValue, "paused")
-        XCTAssertEqual(document.operation.rawValue, "future-operation")
         XCTAssertEqual(document.vmService, .loaded)
-        XCTAssertEqual(document.vmState?.rawValue, "hibernating")
-        XCTAssertEqual(document.vmErrors ?? [], [.runtimeStateStale, .serviceNotLoaded("paused")])
         XCTAssertEqual(document.rootfsBase, .present)
-        XCTAssertEqual(document.progress?.phase.rawValue, "future-phase")
-        XCTAssertEqual(document.progress?.stepStatus?.rawValue, "future-step-status")
 
         let encoded = try JSONEncoder().encode(document)
+        let encodedObject = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(encodedObject["progress"])
+        XCTAssertNil(encodedObject["vmState"])
+        XCTAssertNil(encodedObject["vmErrors"])
+        XCTAssertNil(encodedObject["failureReasons"])
+        XCTAssertNil(encodedObject["domainErrors"])
+        XCTAssertNil(encodedObject["operation"])
+        XCTAssertNil(encodedObject["message"])
+        XCTAssertNil(encodedObject["updatedAt"])
         let roundTripped = try JSONDecoder().decode(RuntimeStatusDocument.self, from: encoded)
         XCTAssertEqual(roundTripped.status.rawValue, "paused")
         XCTAssertEqual(roundTripped.vmService.rawValue, "loaded")
-        XCTAssertEqual(roundTripped.vmState?.rawValue, "hibernating")
-        XCTAssertEqual(roundTripped.vmErrors ?? [], [.runtimeStateStale, .serviceNotLoaded("paused")])
         XCTAssertEqual(roundTripped.rootfsBase.rawValue, "present")
-        XCTAssertEqual(roundTripped.progress?.phase.rawValue, "future-phase")
     }
 
     func testRuntimeVMStateDefinesObservedStatesAndPreservesUnknownValues() throws {
@@ -665,9 +520,6 @@ final class ContractsTests: XCTestCase {
             .missingDisk,
             .serviceNotLoaded("not loaded"),
             .missingIPAddress,
-            .runtimeStateMissing,
-            .runtimeStateInvalid,
-            .runtimeStateStale,
             .launchFailed("virtualization"),
             .invalidConfiguration("network"),
             .hostResourceUnavailable("memory"),
@@ -677,8 +529,6 @@ final class ContractsTests: XCTestCase {
             .guestDiskIO,
             .guestHTTP("failed"),
             .guestHTTPProbeFailed("failed"),
-            .guestBootstrapResultMissing,
-            .guestBootstrapResultUnavailable,
             .guestBootstrapMissingRuntimePackages,
             .guestBootstrapDockerRuntimeFailed,
             .guestBootstrapFailed,
@@ -690,9 +540,6 @@ final class ContractsTests: XCTestCase {
             "vm-missing-disk",
             "vm-service-state-not loaded",
             "vm-missing-ip-address",
-            "vm-runtime-state-missing",
-            "vm-runtime-state-invalid",
-            "vm-runtime-state-stale",
             "vm-launch-failed-virtualization",
             "vm-invalid-configuration-network",
             "vm-host-resource-unavailable-memory",
@@ -702,8 +549,6 @@ final class ContractsTests: XCTestCase {
             "vm-guest-disk-io-error",
             "vm-guest-http-failed",
             "vm-guest-http-probe-failed-failed",
-            "vm-guest-bootstrap-result-missing",
-            "vm-guest-bootstrap-result-unavailable",
             "vm-guest-bootstrap-missing-runtime-packages",
             "vm-guest-bootstrap-docker-runtime-failed",
             "vm-guest-bootstrap-failed",
@@ -720,128 +565,50 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeVMError.diskAttachmentInvalid.recoveryAction, .backupAndRecreateVM)
         XCTAssertTrue(RuntimeVMError.diskAttachmentInvalid.requiresDataPreservationBeforeRecovery)
 
-        XCTAssertEqual(RuntimeVMError.runtimeStateMissing.category, .guestAgent)
-        XCTAssertEqual(RuntimeVMError.runtimeStateMissing.recoveryAction, .restartGuestAgent)
-        XCTAssertFalse(RuntimeVMError.runtimeStateMissing.requiresDataPreservationBeforeRecovery)
-        XCTAssertEqual(RuntimeVMError.runtimeStateInvalid.category, .guestAgent)
-        XCTAssertEqual(RuntimeVMError.runtimeStateInvalid.recoveryAction, .restartGuestAgent)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-future-error").category, .unknown)
+        XCTAssertEqual(RuntimeVMError.unknown("vm-future-error").recoveryAction, .inspectLogs)
+        XCTAssertFalse(RuntimeVMError.unknown("vm-future-error").requiresDataPreservationBeforeRecovery)
         XCTAssertEqual(RuntimeVMError.guestHTTPProbeFailed("failed").category, .networking)
         XCTAssertEqual(RuntimeVMError.guestHTTPProbeFailed("failed").recoveryAction, .waitForGuest)
-
-        XCTAssertEqual(RuntimeVMError.guestBootstrapResultMissing.category, .guestBootstrap)
-        XCTAssertEqual(RuntimeVMError.guestBootstrapResultMissing.recoveryAction, .waitForGuest)
-        XCTAssertEqual(RuntimeVMError.guestBootstrapResultUnavailable.category, .guestBootstrap)
-        XCTAssertEqual(RuntimeVMError.guestBootstrapResultUnavailable.recoveryAction, .inspectLogs)
     }
 
     func testRuntimeFailureReasonsDecodeAsTypedCodes() throws {
-        let json = """
-        [
-          "missing-vm-bin",
-          "vm-service-not loaded",
-          "guest-log-sync-service-not-loaded",
-          "host-proxy-http-502",
-          "guest-http-probe-failed-failed",
-          "recorder-ingress-http-failed",
-          "container-service-app-state-unhealthy",
-          "container-observation-missing",
-          "container-observation-read-failed-permission_denied",
-          "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
-          "vitaldb-observation-missing",
-          "vitaldb-observation-read-failed-decode_failed",
-          "proxy-port-80-in-use-by-nginx-1234",
-          "host-proxy-listener-scan-unavailable",
-          "host-proxy-listener-scan-inspection-failed-path=/usr/sbin/lsof reason=permission denied",
-          "host-proxy-listener-scan-failed-port-80-exit-1",
-          "guest-bootstrap-result-missing",
-          "guest-bootstrap-result-unavailable",
-          "guest-bootstrap-missing-runtime-packages",
-          "guest-bootstrap-docker-runtime-failed",
-          "vm-runtime-state-missing",
-          "vm-disk-attachment-invalid",
-          "guest-runtime-state-load-failed-decode_failed",
-          "guest-runtime-state-metadata-read-failed-stat_permission_denied",
-          "vm-launch-failed-virtualization",
-          "vm-invalid-configuration-network",
-          "vm-host-resource-unavailable-memory",
-          "guest-filesystem-error",
-          "guest-filesystem-read-only",
-          "guest-disk-io-error",
-          "future-reason"
+        let cases: [(String, RuntimeFailureReason)] = [
+            ("missing-vm-bin", .missingVMBin),
+            ("vm-service-not loaded", .vmService("not loaded")),
+            ("guest-log-sync-service-not-loaded", .guestLogSyncService("not-loaded")),
+            ("host-proxy-http-502", .hostProxyHTTP("502")),
+            ("guest-http-probe-failed-failed", .guestHTTPProbeFailed("failed")),
+            ("recorder-ingress-http-failed", .recorderIngressHTTP("failed")),
+            ("container-service-app-state-unhealthy", .containerService(service: "app", state: "unhealthy")),
+            ("vitaldb-anomaly-duplicate-ip-subject-10.0.0.10", .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10")),
+            ("proxy-port-80-in-use-by-nginx-1234", .proxyPortInUse(port: 80, listeners: "nginx-1234")),
+            ("host-proxy-listener-scan-unavailable", .hostProxyListenerScanUnavailable),
+            (
+                "host-proxy-listener-scan-inspection-failed-path=/usr/sbin/lsof reason=permission denied",
+                .hostProxyListenerScanInspectionFailed("path=/usr/sbin/lsof reason=permission denied")
+            ),
+            ("host-proxy-listener-scan-failed-port-80-exit-1", .hostProxyListenerScanFailed(port: 80, exitCode: 1)),
+            ("guest-bootstrap-missing-runtime-packages", .guestBootstrapMissingRuntimePackages),
+            ("guest-bootstrap-docker-runtime-failed", .guestBootstrapDockerRuntimeFailed),
+            ("vm-disk-attachment-invalid", .vmDiskAttachmentInvalid),
+            ("vm-launch-failed-virtualization", .vmLaunchFailed("virtualization")),
+            ("vm-invalid-configuration-network", .vmConfigurationInvalid("network")),
+            ("vm-host-resource-unavailable-memory", .hostResourceUnavailable("memory")),
+            ("guest-filesystem-error", .guestFilesystemError),
+            ("guest-filesystem-read-only", .guestFilesystemReadOnly),
+            ("guest-disk-io-error", .guestDiskIO),
+            ("future-reason", .unknown("future-reason")),
         ]
-        """
-        let reasons = try JSONDecoder().decode([RuntimeFailureReason].self, from: Data(json.utf8))
+        let rawValues = cases.map { $0.0 }
+        let json = try JSONSerialization.data(withJSONObject: rawValues)
+        let reasons = try JSONDecoder().decode([RuntimeFailureReason].self, from: json)
 
-        XCTAssertEqual(reasons[0], .missingVMBin)
-        XCTAssertEqual(reasons[1], .vmService("not loaded"))
-        XCTAssertEqual(reasons[2], .guestLogSyncService("not-loaded"))
-        XCTAssertEqual(reasons[3], .hostProxyHTTP("502"))
-        XCTAssertEqual(reasons[4], .guestHTTPProbeFailed("failed"))
-        XCTAssertEqual(reasons[5], .recorderIngressHTTP("failed"))
-        XCTAssertEqual(reasons[6], .containerService(service: "app", state: "unhealthy"))
-        XCTAssertEqual(reasons[7], .containerObservationMissing)
-        XCTAssertEqual(reasons[8], .containerObservationReadFailed("permission_denied"))
-        XCTAssertEqual(reasons[9], .vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10"))
-        XCTAssertEqual(reasons[10], .vitalDBObservationMissing)
-        XCTAssertEqual(reasons[11], .vitalDBObservationReadFailed("decode_failed"))
-        XCTAssertEqual(reasons[12], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
-        XCTAssertEqual(reasons[13], .hostProxyListenerScanUnavailable)
-        XCTAssertEqual(
-            reasons[14],
-            .hostProxyListenerScanInspectionFailed("path=/usr/sbin/lsof reason=permission denied")
-        )
-        XCTAssertEqual(reasons[15], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
-        XCTAssertEqual(reasons[16], .guestBootstrapResultMissing)
-        XCTAssertEqual(reasons[17], .guestBootstrapResultUnavailable)
-        XCTAssertEqual(reasons[18], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[19], .guestBootstrapDockerRuntimeFailed)
-        XCTAssertEqual(reasons[20], .guestRuntimeStateMissing)
-        XCTAssertEqual(reasons[21], .vmDiskAttachmentInvalid)
-        XCTAssertEqual(reasons[22], .guestRuntimeStateLoadFailed("decode_failed"))
-        XCTAssertEqual(reasons[23], .guestRuntimeStateMetadataReadFailed("stat_permission_denied"))
-        XCTAssertEqual(reasons[24], .vmLaunchFailed("virtualization"))
-        XCTAssertEqual(reasons[25], .vmConfigurationInvalid("network"))
-        XCTAssertEqual(reasons[26], .hostResourceUnavailable("memory"))
-        XCTAssertEqual(reasons[27], .guestFilesystemError)
-        XCTAssertEqual(reasons[28], .guestFilesystemReadOnly)
-        XCTAssertEqual(reasons[29], .guestDiskIO)
-        XCTAssertEqual(reasons[30], .unknown("future-reason"))
+        XCTAssertEqual(reasons, cases.map { $0.1 })
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
-        XCTAssertEqual(roundTripped.map(\.rawValue), [
-            "missing-vm-bin",
-            "vm-service-not loaded",
-            "guest-log-sync-service-not-loaded",
-            "host-proxy-http-502",
-            "guest-http-probe-failed-failed",
-            "recorder-ingress-http-failed",
-            "container-service-app-state-unhealthy",
-            "container-observation-missing",
-            "container-observation-read-failed-permission_denied",
-            "vitaldb-anomaly-duplicate-ip-subject-10.0.0.10",
-            "vitaldb-observation-missing",
-            "vitaldb-observation-read-failed-decode_failed",
-            "proxy-port-80-in-use-by-nginx-1234",
-            "host-proxy-listener-scan-unavailable",
-            "host-proxy-listener-scan-inspection-failed-path=/usr/sbin/lsof reason=permission denied",
-            "host-proxy-listener-scan-failed-port-80-exit-1",
-            "guest-bootstrap-result-missing",
-            "guest-bootstrap-result-unavailable",
-            "guest-bootstrap-missing-runtime-packages",
-            "guest-bootstrap-docker-runtime-failed",
-            "vm-runtime-state-missing",
-            "vm-disk-attachment-invalid",
-            "guest-runtime-state-load-failed-decode_failed",
-            "guest-runtime-state-metadata-read-failed-stat_permission_denied",
-            "vm-launch-failed-virtualization",
-            "vm-invalid-configuration-network",
-            "vm-host-resource-unavailable-memory",
-            "guest-filesystem-error",
-            "guest-filesystem-read-only",
-            "guest-disk-io-error",
-            "future-reason",
-        ])
+        XCTAssertEqual(roundTripped.map(\.rawValue), rawValues)
     }
 
     func testRuntimeFailureReasonsDefineDomainClassificationAndRecovery() {
@@ -850,7 +617,7 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.proxyPortInUse(port: 80, listeners: "nginx-1234").domainSeverity, .critical)
 
         XCTAssertEqual(RuntimeFailureReason.recorderIngressHTTP("failed").domainCategory, .container)
-        XCTAssertEqual(RuntimeFailureReason.recorderIngressHTTP("failed").recoveryAction, .restartContainerServices)
+        XCTAssertEqual(RuntimeFailureReason.recorderIngressHTTP("failed").recoveryAction, .reconcileGuestStack)
 
         XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").domainCategory, .vitalDB)
         XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").domainSeverity, .warning)
@@ -867,19 +634,9 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(RuntimeFailureReason(rawValue: "vm-disk-attachment-invalid"), .vmDiskAttachmentInvalid)
 
-        XCTAssertEqual(RuntimeFailureReason(vmError: .runtimeStateMissing), .guestRuntimeStateMissing)
-        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateMissing.domainCategory, .guestAgent)
-        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateMissing.recoveryAction, .restartGuestAgent)
-        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateLoadFailed("decode_failed").domainCategory, .guestAgent)
-        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateLoadFailed("decode_failed").recoveryAction, .restartGuestAgent)
-        XCTAssertEqual(
-            RuntimeFailureReason.guestRuntimeStateMetadataReadFailed("stat_permission_denied").domainCategory,
-            .guestAgent
-        )
-        XCTAssertEqual(
-            RuntimeFailureReason.guestRuntimeStateMetadataReadFailed("stat_permission_denied").recoveryAction,
-            .restartGuestAgent
-        )
+        XCTAssertEqual(RuntimeFailureReason(vmError: .unknown("future-vm-error")), .unknown("future-vm-error"))
+        XCTAssertEqual(RuntimeFailureReason.unknown("future-reason").domainCategory, .unknown)
+        XCTAssertEqual(RuntimeFailureReason.unknown("future-reason").recoveryAction, .inspectLogs)
 
         XCTAssertEqual(RuntimeFailureReason(vmError: .diskAttachmentInvalid), .vmDiskAttachmentInvalid)
         XCTAssertEqual(RuntimeFailureReason.vmDiskAttachmentInvalid.domainCategory, .guestStorage)
@@ -913,10 +670,6 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").domainSeverity, .warning)
         XCTAssertEqual(RuntimeFailureReason.guestHTTPProbeFailed("failed").recoveryAction, .waitForGuest)
 
-        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.domainCategory, .observability)
-        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.domainSeverity, .critical)
-        XCTAssertEqual(RuntimeFailureReason.runtimeStatusDocumentInvalid.recoveryAction, .inspectLogs)
-
         XCTAssertEqual(RuntimeFailureReason.launchdServiceCrashed(service: "vm", exitCode: 78).domainCategory, .vmLifecycle)
         XCTAssertEqual(RuntimeFailureReason.launchdServiceCrashed(service: "vm", exitCode: 78).recoveryAction, .restartVMService)
 
@@ -936,25 +689,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanFailed(port: 80, exitCode: 1).recoveryAction, .inspectLogs)
 
         XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").domainCategory, .container)
-        XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").recoveryAction, .restartContainerServices)
+        XCTAssertEqual(RuntimeFailureReason.containerRestartLoop(service: "redis").recoveryAction, .reconcileGuestStack)
 
-        XCTAssertEqual(RuntimeFailureReason.containerObservationMissing.domainCategory, .observability)
-        XCTAssertEqual(RuntimeFailureReason.containerObservationMissing.domainSeverity, .warning)
-        XCTAssertEqual(RuntimeFailureReason.containerObservationMissing.recoveryAction, .inspectLogs)
-
-        XCTAssertEqual(RuntimeFailureReason.vitalDBObservationReadFailed("decode_failed").domainCategory, .vitalDB)
-        XCTAssertEqual(RuntimeFailureReason.vitalDBObservationReadFailed("decode_failed").domainSeverity, .warning)
-        XCTAssertEqual(
-            RuntimeFailureReason.vitalDBObservationReadFailed("decode_failed").recoveryAction,
-            .inspectVitalDBObservation
-        )
-
-        XCTAssertEqual(RuntimeFailureReason.vitalDBObservationStale.domainSeverity, .warning)
-
-        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultMissing.domainCategory, .guestBootstrap)
-        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultMissing.recoveryAction, .waitForGuest)
-        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultUnavailable.domainCategory, .guestBootstrap)
-        XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultUnavailable.recoveryAction, .inspectLogs)
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed.domainCategory, .guestBootstrap)
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed.recoveryAction, .repairGuestBootstrap)
     }
@@ -1050,6 +786,21 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(query.before, cursor)
     }
 
+    func testRuntimeOperationEventQueryKeepsGuestLedgerEventTypesSeparate() {
+        XCTAssertEqual(RuntimeOperationEventQuery().limit, 100)
+        let query = RuntimeOperationEventQuery(
+            limit: 25,
+            eventType: .interrupted,
+            since: "2026-05-24T00:00:00Z",
+            cursor: "event:12"
+        )
+
+        XCTAssertEqual(query.limit, 25)
+        XCTAssertEqual(query.eventType, .interrupted)
+        XCTAssertEqual(query.since, "2026-05-24T00:00:00Z")
+        XCTAssertEqual(query.cursor, "event:12")
+    }
+
     func testRuntimeEventDocumentAllowsEventsWithoutRuntimeStatusContext() throws {
         let json = """
         {
@@ -1075,6 +826,27 @@ final class ContractsTests: XCTestCase {
         let roundTripped = try JSONDecoder().decode(RuntimeEventDocument.self, from: try JSONEncoder().encode(event))
         XCTAssertNil(roundTripped.status)
         XCTAssertNil(roundTripped.operation)
+    }
+
+    func testRuntimeOperationEventHistoryRequiresAndWritesExplicitNullablePagination() throws {
+        let history = RuntimeOperationEventHistory(
+            events: [],
+            nextCursor: nil,
+            matchingCount: nil
+        )
+        let encoded = try JSONEncoder().encode(history)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        XCTAssertTrue(object["nextCursor"] is NSNull)
+        XCTAssertTrue(object["matchingCount"] is NSNull)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeOperationEventHistory.self,
+                from: Data(#"{"events":[]}"#.utf8)
+            )
+        )
     }
 
     private func decodeFixture<T: Decodable>(_ type: T.Type, named name: String) throws -> T {

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v1",
+  "updateId": "host-update-20260717",
+  "requestId": "host-update-request-20260717",
+  "expectedHandoffJournalRevision": 3,
+  "bootstrapEnvelopeId": "release-bootstrap-20260717",
+  "updateSpecificationSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "layerOrder": ["guest-runtime", "container", "host-platform"],
+  "specificationRelativePath": "payload/product-update.json"
+}

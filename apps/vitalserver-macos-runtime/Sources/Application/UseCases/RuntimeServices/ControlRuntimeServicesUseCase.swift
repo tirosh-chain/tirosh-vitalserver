@@ -147,18 +147,18 @@ public struct ControlRuntimeServicesUseCase {
                 stopServices: RuntimeManagedService.stopOrder,
                 requiredStartedServices: allRequiredServices,
                 requiredStoppedServices: RuntimeManagedService.stopOrder,
-                requestedLogMessage: "runtime services repair requested",
+                requestedLogMessage: "host runtime services repair requested",
                 requestedStatusPlan: RuntimeServiceControlStatusPlan(
-                    logMessage: "runtime services repair requested",
+                    logMessage: "host runtime services repair requested",
                     status: .recovering,
                     operation: .repairServices,
-                    statusMessage: "runtime services repair requested"
+                    statusMessage: "host runtime services repair requested"
                 ),
                 completedStatusPlan: RuntimeServiceControlStatusPlan(
-                    logMessage: "runtime services repaired",
+                    logMessage: "host runtime services repaired",
                     status: .healthy,
                     operation: .repairServices,
-                    statusMessage: "runtime services repaired"
+                    statusMessage: "host runtime services repaired"
                 )
             )
         case .repairProxy:
@@ -197,18 +197,18 @@ public struct ControlRuntimeServicesUseCase {
                 stopServices: [],
                 requiredStartedServices: allRequiredServices,
                 requiredStoppedServices: [],
-                requestedLogMessage: "runtime services start requested",
+                requestedLogMessage: "host runtime services start requested",
                 requestedStatusPlan: RuntimeServiceControlStatusPlan(
-                    logMessage: "runtime services start requested",
+                    logMessage: "host runtime services start requested",
                     status: .recovering,
                     operation: .startServices,
-                    statusMessage: "runtime services start requested"
+                    statusMessage: "host runtime services start requested"
                 ),
                 completedStatusPlan: RuntimeServiceControlStatusPlan(
-                    logMessage: "runtime services started",
+                    logMessage: "host runtime services started",
                     status: .healthy,
                     operation: .startServices,
-                    statusMessage: "runtime services started"
+                    statusMessage: "host runtime services started"
                 )
             )
         case .stopAll:
@@ -219,13 +219,13 @@ public struct ControlRuntimeServicesUseCase {
                 stopServices: RuntimeManagedService.stopOrder,
                 requiredStartedServices: [],
                 requiredStoppedServices: RuntimeManagedService.stopOrder,
-                requestedLogMessage: "runtime services stop requested",
+                requestedLogMessage: "host runtime services stop requested",
                 requestedStatusPlan: nil,
                 completedStatusPlan: RuntimeServiceControlStatusPlan(
-                    logMessage: "runtime services stopped",
+                    logMessage: "host runtime services stopped",
                     status: .degraded,
                     operation: .stopServices,
-                    statusMessage: "runtime services stopped"
+                    statusMessage: "host runtime services stopped"
                 )
             )
         }

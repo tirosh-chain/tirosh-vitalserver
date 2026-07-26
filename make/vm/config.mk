@@ -35,3 +35,4 @@ VM_SWIFT_COVERAGE_PROFILE ?= $(VM_SWIFT_DEBUG_DIR)/codecov/default.profdata
 VM_SWIFT_COVERAGE_REPORT ?= $(VM_SWIFT_DEBUG_DIR)/codecov/coverage-report.txt
 VM_SWIFT_COVERAGE_MIN ?= 85
 VM_SWIFT_COVERAGE_IGNORE ?= /.build/|/Tests/|/Sources/(Contracts|HostCLI|MacRuntimeControlApp)/
+VM_RUNTIME_PROOF_SWIFT_FOCUSED_FILTER ?= RuntimeControlContractsTests|HTTPRuntimeGuestControlGatewayTests|EvaluateRuntimeHealthUseCaseTests|RuntimeSettingsReaderTests

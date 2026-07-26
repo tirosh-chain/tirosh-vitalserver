@@ -9,6 +9,7 @@ final class RuntimeRequiredServicePolicyTests: XCTestCase {
         XCTAssertEqual(
             RuntimeManagedService.startOrder,
             [
+                .platformAgent,
                 .vm,
                 .guestLogSync,
                 .watchdog,

@@ -21,14 +21,15 @@ struct RuntimeSettingsPanel: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 settingsReadIssuesSection
-                settingsSection(AppConstants.Labels.sectionVM) {
+                if viewModel.canDisplayPlatformSettings {
+                    settingsSection(AppConstants.Labels.sectionVM) {
                     settingSlider(
                         AppConstants.Labels.cpu,
                         value: $viewModel.settings.cpuCount,
                         range: cpuCountRange,
                         suffix: AppConstants.Labels.unitVCPU
                     )
-                    .disabled(!viewModel.capabilities.canEditVMResources)
+                    .disabled(!viewModel.capabilities.canEditRuntimeProviderResources)
                     settingSlider(
                         AppConstants.Labels.memory,
                         value: $viewModel.settings.memoryGiB,
@@ -36,7 +37,7 @@ struct RuntimeSettingsPanel: View {
                         step: AppConstants.SettingsLimits.memoryStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
-                    .disabled(!viewModel.capabilities.canEditVMResources)
+                    .disabled(!viewModel.capabilities.canEditRuntimeProviderResources)
                     settingHelp(AppConstants.Labels.memoryAllocationHelp)
                     settingSlider(
                         AppConstants.Labels.disk,
@@ -45,7 +46,7 @@ struct RuntimeSettingsPanel: View {
                         step: AppConstants.SettingsLimits.diskStepGiB,
                         suffix: AppConstants.Labels.unitGiB
                     )
-                    .disabled(!viewModel.capabilities.canEditVMResources)
+                    .disabled(!viewModel.capabilities.canEditRuntimeProviderResources)
                     settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp(viewModel.settings.minimumDiskGiB))
                 }
                 settingsSection(AppConstants.Labels.sectionNetwork) {
@@ -62,6 +63,7 @@ struct RuntimeSettingsPanel: View {
                     settingToggle(AppConstants.Labels.recorderIngressLoadControl, isOn: recorderLoadControlBinding)
                     .disabled(!viewModel.capabilities.canControlRuntimeServices)
                     settingHelp(AppConstants.Labels.recorderIngressLoadControlHelp)
+                    settingWarning(AppConstants.Labels.recorderIngressLoadControlRisk)
                     settingSlider(
                         AppConstants.Labels.recorderIngressMaxReplayThroughput,
                         value: $viewModel.settings.recorderIngressSendDataReplayMaxMiBPerSecond,
@@ -189,18 +191,21 @@ struct RuntimeSettingsPanel: View {
                     }
                 }
                 restartRuntimeSection
-                applyActionRow
+                    applyActionRow
+                }
             }
             .frame(maxWidth: 760, alignment: .leading)
             .padding(16)
         }
         .onAppear {
+            guard viewModel.canDisplayPlatformSettings else {
+                return
+            }
             clampCPUCountToSystemLimit()
             clampMemoryToSystemLimit()
             clampReplayThroughput()
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
-            normalizeRecorderLoadControlMode()
             normalizeRecorderArchiveDefaults()
         }
         .onChange(of: viewModel.settings.cpuCount) {
@@ -213,35 +218,34 @@ struct RuntimeSettingsPanel: View {
         }
         .onChange(of: viewModel.settings.recorderIngressSendDataReplayMaxMiBPerSecond) {
             clampReplayThroughput()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.recorderIngressSendDataMode) {
-            normalizeRecorderLoadControlMode()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.recorderIngress) {
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.containerMemoryLimitsEnabled) {
             if viewModel.settings.containerMemoryLimitsEnabled {
                 normalizeContainerMemoryLimitTotal()
             }
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.vitalServerContainerMemoryLimitMiB) {
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.recorderIngressContainerMemoryLimitMiB) {
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.redisContainerMemoryLimitMiB) {
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.proxyPort) {
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
@@ -253,9 +257,9 @@ struct RuntimeSettingsPanel: View {
 
     @ViewBuilder
     private var settingsReadIssuesSection: some View {
-        if !viewModel.settings.readIssues.isEmpty {
+        if !viewModel.platformSettingsReadIssues.isEmpty {
             settingsSection(AppConstants.Labels.settingsReadIssues) {
-                ForEach(viewModel.settings.readIssues, id: \.source) { issue in
+                ForEach(viewModel.platformSettingsReadIssues, id: \.source) { issue in
                     Text("\(issue.source): \(issue.message)")
                         .font(.caption)
                         .foregroundStyle(.red)
@@ -291,25 +295,16 @@ struct RuntimeSettingsPanel: View {
     private var recorderLoadControlBinding: Binding<Bool> {
         Binding(
             get: {
-                viewModel.settings.recorderIngressSendDataMode != .passthrough
+                viewModel.settings.recorderIngressSendDataMode == .spoolAndReplay
             },
             set: { enabled in
-                viewModel.settings.recorderIngressSendDataMode = enabled ? .spoolAndReplay : .passthrough
+                viewModel.settings.recorderIngressSendDataMode = enabled ? .spoolAndReplay : .observeOnly
             }
         )
     }
 
     private var recorderLoadControlEnabled: Bool {
-        viewModel.settings.recorderIngressSendDataMode != .passthrough
-    }
-
-    private func normalizeRecorderLoadControlMode() {
-        switch viewModel.settings.recorderIngressSendDataMode {
-        case .passthrough, .spoolAndReplay:
-            return
-        case .mirrorSpool, .spoolOnly:
-            viewModel.settings.recorderIngressSendDataMode = .spoolAndReplay
-        }
+        viewModel.settings.recorderIngressSendDataMode == .spoolAndReplay
     }
 
     private func normalizeRecorderArchiveDefaults() {
@@ -317,9 +312,9 @@ struct RuntimeSettingsPanel: View {
         viewModel.settings.recorderIngress.rawArchiveAutoExportEnabled = true
     }
 
-    private func enableContainerReconcileActivationWhenNeeded() {
+    private func enableGuestStackReconcileActivationWhenNeeded() {
         let decision = restartNoticePolicy.decision(draft: viewModel.settings, runtime: viewModel.runtimeSettings)
-        if decision.requiresContainerServicesReconcile && !decision.requiresRestart {
+        if decision.requiresGuestStackReconcile && !decision.requiresRestart {
             viewModel.settings.restartAfterSave = true
         }
     }
@@ -416,7 +411,7 @@ struct RuntimeSettingsPanel: View {
     }
 
     private var canApplySettingsForCurrentConnection: Bool {
-        viewModel.capabilities.canEditVMResources
+        viewModel.capabilities.canEditRuntimeProviderResources
             || viewModel.capabilities.canEditNetworkExposure
             || viewModel.capabilities.canOpenLocalFiles
             || viewModel.capabilities.canResetAdminPassword
@@ -505,7 +500,7 @@ struct RuntimeSettingsPanel: View {
                 requiresRestart
                     ? AppConstants.Labels.requiresVMRestart
                     : requiresActivation
-                        ? AppConstants.Labels.requiresContainerReconcile
+                        ? AppConstants.Labels.requiresGuestStackReconcile
                         : AppConstants.StatusText.noVMRuntimeRestartRequired,
                 systemImage: requiresActivation
                     ? "arrow.clockwise.circle.fill"

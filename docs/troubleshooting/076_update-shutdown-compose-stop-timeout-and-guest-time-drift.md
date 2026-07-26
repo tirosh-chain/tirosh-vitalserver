@@ -30,6 +30,8 @@ Older Guest shutdown used one whole-stack `docker compose stop` call. When one o
 
 Guest time drift is a separate but related boot contract issue. Host writes explicit `host-time.json`, but if Guest only applies it during first bootstrap, a later restart or rollback that reuses the VM disk can keep the image/rootfs clock.
 
+2026-07-15 재현에서는 Guest와 Host 시계가 모두 정상 속도로 진행했지만 Guest가 약 12분 뒤에 있었습니다. 설치본의 `host-time.json.updatedAt`은 설정 Apply보다 12분 앞선 시각이었고, 설정 restart의 bulk service-start 경로와 launchd `RunAtLoad` 경로가 기존 계약을 그대로 둔 채 `vitalserver-vm start`를 실행했습니다. Guest boot service는 계약을 정확히 적용했지만 입력 자체가 stale했으므로 Host가 stale state를 제공한 문제였습니다.
+
 ## Fix Direction
 
 - Stop Guest compose services in an explicit update shutdown order: `testkit`, `edge`, `swagger-ui`, `redis-ui`, `recorder-ingress`, `vitaldb-observer`, `app`, then `redis`.
@@ -37,6 +39,7 @@ Guest time drift is a separate but related boot contract issue. Host writes expl
 - On timeout, write typed failure details into `prepare-update-shutdown-result.json`: `failedService`, `remainingServices`, `serviceStates`, stop timeouts, and `failureSnapshotPath`.
 - Keep the Host update wait timeout larger than the maximum Guest shutdown path.
 - Run Guest host-time synchronization on every boot before Docker, runtime-state, observability, command polling, compose, and TestKit services start.
+- Write `host-time.json` in the actual `vitalserver-vm start` entrypoint immediately before the VM lifecycle run begins. Service-controller wrappers are not sufficient because launchd `RunAtLoad` and `KeepAlive` can invoke the launcher directly.
 - Preserve compose stop timeout as a typed Guest dependency failure. Do not infer success from partial logs or missing status.
 
 ## Diagnosis
@@ -71,3 +74,4 @@ Then inspect the snapshot referenced by `failureSnapshotPath`. It is Guest-owned
 - Update shutdown must report the service that failed to stop. A generic compose timeout is not enough to diagnose rollback cause.
 - UI should display Guest-provided timestamps as observed state. It must not correct Guest time drift by formatting with Host time.
 - Guest time synchronization must consume the Host-owned `host-time.json` contract. Missing, unreadable, invalid, or stale host time is a contract failure, not a display fallback.
+- Continuous Host/Guest synchronization is a separate NTP service concern. The boot contract remains required for the pre-network boot phase; NTP unavailability must be reported as unsynchronized/degraded and must not be converted into boot-contract success.

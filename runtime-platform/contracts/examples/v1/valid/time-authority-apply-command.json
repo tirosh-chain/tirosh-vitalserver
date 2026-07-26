@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "guest-time-apply-1",
+  "authorityId": "guest-time-authority",
+  "expectedResourceRevision": 0,
+  "node": {
+    "kind": "guest",
+    "id": "guest-runtime-0001"
+  },
+  "spec": {
+    "profile": "enterprise-ntp",
+    "source": {
+      "profile": "enterprise-ntp",
+      "sourceId": "ntp-source-primary"
+    }
+  }
+}

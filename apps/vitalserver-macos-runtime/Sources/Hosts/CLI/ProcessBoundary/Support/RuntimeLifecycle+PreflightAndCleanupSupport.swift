@@ -17,18 +17,22 @@ extension RuntimeLifecycle {
             ),
             operations: RuntimeUninstallCompositionOperations(
                 fileStore: fileStore,
-                configuredExternalVitalFilesDirectory: configuredExternalVitalFilesDirectory,
+                configuredVitalFilesDirectories: configuredVitalFilesDirectories,
                 serviceState: { service in
                     healthChecker.launchdState(service)
                 },
-                createRedisBackup: createRedisBackup,
+                createVitalServerBackup: {
+                    _ = try runtimeDataBackupComposition().createBackup(
+                        reason: "uninstall"
+                    )
+                },
                 disableAutomaticBackupScheduler: {
                     try setAutomaticBackupSchedule(enabled: false, scheduleTimes: [])
                 },
                 disableRuntimeServicesForUninstall: {
                     try serviceController.disableRuntimeServicesForUninstall()
                 },
-                stopRuntimeServices: stopRuntimeServicesThroughStateControl,
+                stopRuntimeServicesForUninstall: stopRuntimeServicesForUninstall,
                 forceStopRuntimeServicesForUninstall: stopRuntimeServicesForCleanUninstallRecovery,
                 clearLaunchdDisabledOverridesAfterUninstall: {
                     try serviceController.clearDisabledOverridesAfterUninstall()

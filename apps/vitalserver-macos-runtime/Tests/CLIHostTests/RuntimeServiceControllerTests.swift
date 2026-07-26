@@ -12,6 +12,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
     func testStopsLoadedRuntimeServicesInDependencyOrder() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let loaded = Set([
+            RuntimeManagedService.platformAgent,
             RuntimeManagedService.vm,
             RuntimeManagedService.proxy,
             RuntimeManagedService.guestLogSync,
@@ -33,6 +34,25 @@ final class RuntimeServiceControllerTests: XCTestCase {
             RuntimeManagedService.proxy.label,
             RuntimeManagedService.vm.label,
         ])
+    }
+
+    func testStopsLoadedRuntimeServicesForUninstallIncludingPlatformAgentLast() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let loaded = Set(RuntimeManagedService.uninstallOrder)
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        try controller.stopRuntimeServicesForUninstall()
+
+        XCTAssertEqual(
+            serviceManager.stoppedLabels,
+            RuntimeManagedService.uninstallOrder.map(\.label)
+        )
     }
 
     func testWaitsAfterEachLoadedServiceStops() throws {
@@ -63,7 +83,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
-    func testPreparesVMProcessBeforeLaunchdStop() throws {
+    func testUnloadsVMWithoutPreStopSignalSoLaunchdCannotRelaunchIt() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let loaded = Set([RuntimeManagedService.vm])
         var events: [String] = []
@@ -81,7 +101,6 @@ final class RuntimeServiceControllerTests: XCTestCase {
         try controller.stopRuntimeServices()
 
         XCTAssertEqual(events, [
-            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
         ])
@@ -126,19 +145,23 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.stoppedLabels, [])
     }
 
-    func testStopRuntimeServicesPropagatesVMPrepareFailureWithoutLaunchdStop() {
+    func testStopRuntimeServicesDoesNotInvokeVMPrepareHookBeforeLaunchdUnload() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set([RuntimeManagedService.vm])
+        serviceManager.onStop = { loaded.remove($0) }
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            serviceState: { $0 == .vm ? .loaded : .notLoaded },
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("VM graceful stop failed") },
+            waitUntilStopped: { _ in },
             launchDaemonPlist: { $0.launchDaemonPlist },
             launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try controller.stopRuntimeServices())
-        XCTAssertEqual(serviceManager.stoppedLabels, [])
+        try controller.stopRuntimeServices()
+
+        XCTAssertEqual(serviceManager.stoppedLabels, [RuntimeManagedService.vm.label])
     }
 
     func testStopRuntimeServicesBlocksWhenLaunchdStateReadFails() {
@@ -259,8 +282,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         try controller.disableRuntimeServicesForUninstall()
 
-        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.stopOrder.map(\.label))
-        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: false, count: RuntimeManagedService.stopOrder.count))
+        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.uninstallOrder.map(\.label))
+        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: false, count: RuntimeManagedService.uninstallOrder.count))
     }
 
     func testDisableRuntimeServicesForUninstallStopsAtFirstFailure() {
@@ -298,8 +321,8 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         try controller.clearDisabledOverridesAfterUninstall()
 
-        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.stopOrder.map(\.label))
-        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: true, count: RuntimeManagedService.stopOrder.count))
+        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.uninstallOrder.map(\.label))
+        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: true, count: RuntimeManagedService.uninstallOrder.count))
     }
 
     func testClearDisabledOverridesAfterUninstallStopsAtFirstFailure() {
@@ -582,7 +605,6 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",
-            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
         ])
@@ -660,6 +682,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "wait:\(RuntimeManagedService.proxy.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
+            "wait-vm-process:123",
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",
@@ -669,7 +692,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
-    func testStopRuntimeServicesAfterGuestPoweroffDoesNotWaitForCapturedPIDWhileLaunchdOwnsVM() throws {
+    func testStopRuntimeServicesAfterGuestPoweroffWaitsForCapturedPIDAfterUnloadingLaunchdVM() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var loaded = Set([
             RuntimeManagedService.vm,
@@ -686,8 +709,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
             prepareForStop: { events.append("prepare:\($0.label)") },
             waitUntilStopped: { events.append("wait:\($0.label)") },
             waitForVMProcessExitAfterGuestPoweroff: { pid in
-                XCTFail("VM pid \(pid) must not be waited while launchd VM service is still loaded")
-                throw LauncherError.runtimeOperationFailed("launchd still owns VM process")
+                events.append("wait-vm-process:\(pid)")
             },
             launchDaemonPlist: { $0.launchDaemonPlist },
             launchctlPath: Constants.Commands.launchctl,
@@ -699,6 +721,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(events, [
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
+            "wait-vm-process:123",
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",
@@ -790,6 +813,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
 
         XCTAssertThrowsError(try controller.setStartOnBoot(true))
         XCTAssertEqual(serviceManager.setEnabledLabels, [
+            RuntimeManagedService.platformAgent.label,
             RuntimeManagedService.vm.label,
             RuntimeManagedService.guestLogSync.label,
             RuntimeManagedService.watchdog.label,

@@ -24,6 +24,12 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case runtimeCommandStarted
     case runtimeCommandCompleted
     case runtimeCommandFailed
+    case operationAccepted
+    case operationRunning
+    case operationCompleted
+    case operationFailed
+    case operationCancelled
+    case operationInterrupted
     case unknown(String)
 
     public static let knownTypes: [RuntimeEventType] = [
@@ -50,6 +56,12 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
         .runtimeCommandStarted,
         .runtimeCommandCompleted,
         .runtimeCommandFailed,
+        .operationAccepted,
+        .operationRunning,
+        .operationCompleted,
+        .operationFailed,
+        .operationCancelled,
+        .operationInterrupted,
     ]
 
     public init(rawValue: String) {
@@ -100,6 +112,18 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .runtimeCommandCompleted
         case "runtime-command-failed":
             self = .runtimeCommandFailed
+        case "operation-accepted":
+            self = .operationAccepted
+        case "operation-running":
+            self = .operationRunning
+        case "operation-completed":
+            self = .operationCompleted
+        case "operation-failed":
+            self = .operationFailed
+        case "operation-cancelled":
+            self = .operationCancelled
+        case "operation-interrupted":
+            self = .operationInterrupted
         default:
             self = .unknown(rawValue)
         }
@@ -153,6 +177,18 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "runtime-command-completed"
         case .runtimeCommandFailed:
             return "runtime-command-failed"
+        case .operationAccepted:
+            return "operation-accepted"
+        case .operationRunning:
+            return "operation-running"
+        case .operationCompleted:
+            return "operation-completed"
+        case .operationFailed:
+            return "operation-failed"
+        case .operationCancelled:
+            return "operation-cancelled"
+        case .operationInterrupted:
+            return "operation-interrupted"
         case .unknown(let value):
             return value
         }
@@ -185,7 +221,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
     public let vmErrors: [RuntimeVMError]?
     public let failureReasons: [RuntimeFailureReason]
     public let domainErrors: [RuntimeDomainError]?
-    public let containerObservation: RuntimeContainerObservation?
     public let vitalDBObservation: VitalDBObservationDocument?
     public let progress: RuntimeProgressDocument?
 
@@ -205,7 +240,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         vmErrors: [RuntimeVMError]? = nil,
         failureReasons: [RuntimeFailureReason],
         domainErrors: [RuntimeDomainError]? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil,
         progress: RuntimeProgressDocument?
     ) {
@@ -224,7 +258,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         self.vmErrors = vmErrors
         self.failureReasons = failureReasons
         self.domainErrors = domainErrors ?? (failureReasons.isEmpty ? nil : failureReasons.map(RuntimeDomainError.init))
-        self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation
         self.progress = progress
     }
@@ -244,7 +277,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         vmState: RuntimeVMState? = nil,
         vmErrors: [RuntimeVMError]? = nil,
         failureReasons: [RuntimeFailureReason],
-        containerObservation: RuntimeContainerObservation? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil,
         progress: RuntimeProgressDocument?
     ) {
@@ -264,7 +296,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
             vmErrors: vmErrors,
             failureReasons: failureReasons,
             domainErrors: nil,
-            containerObservation: containerObservation,
             vitalDBObservation: vitalDBObservation,
             progress: progress
         )

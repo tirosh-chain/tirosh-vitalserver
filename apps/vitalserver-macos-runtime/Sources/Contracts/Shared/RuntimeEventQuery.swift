@@ -16,17 +16,20 @@ public struct RuntimeEventQuery: Equatable, Sendable {
     public let eventType: RuntimeEventType?
     public let since: String?
     public let before: RuntimeEventCursor?
+    public let cursor: String?
 
     public init(
         limit: Int = defaultLimit,
         eventType: RuntimeEventType? = nil,
         since: String? = nil,
-        before: RuntimeEventCursor? = nil
+        before: RuntimeEventCursor? = nil,
+        cursor: String? = nil
     ) {
         self.limit = min(max(limit, 1), Self.maximumLimit)
         self.eventType = eventType
         self.since = since
         self.before = before
+        self.cursor = cursor
     }
 }
 

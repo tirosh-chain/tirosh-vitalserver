@@ -24,20 +24,13 @@ mount_share() {
 }
 
 install_guest_tools_runtime() {
-  local wheel
-
-  wheel="$(find "${PYTHON_WHEEL_DIR}" -maxdepth 1 -name 'tirosh_vitalserver_guest_tools-*.whl' -type f | sort | tail -n 1 || true)"
-  if [ -z "${wheel}" ]; then
-    printf "error: missing guest tools wheel under %s\n" "${PYTHON_WHEEL_DIR}" >&2
-    exit 1
-  fi
-
-  mkdir -p "${GUEST_TOOLS_HOME}"
-  python3 -m venv --clear "${GUEST_TOOLS_VENV}"
-  "${GUEST_TOOLS_VENV}/bin/pip" install --no-index --no-deps "${wheel}"
+  python3 "${DEPLOY_DIR}/install-guest-tools-runtime.py" \
+    --wheel-dir "${PYTHON_WHEEL_DIR}" \
+    --guest-tools-home "${GUEST_TOOLS_HOME}"
   "${GUEST_TOOLS_VENV}/bin/tirosh-guest-tools-install-config"
 }
 
 mount_share "${MOUNT_TAG}" "${MOUNT_POINT}"
+python3 "${DEPLOY_DIR}/pre_bootstrap_quiesce.py"
 install_guest_tools_runtime
 exec "${GUEST_TOOLS_VENV}/bin/tirosh-vitalserver-bootstrap"

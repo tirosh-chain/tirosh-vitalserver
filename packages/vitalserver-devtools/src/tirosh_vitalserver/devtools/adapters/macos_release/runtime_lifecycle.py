@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 import urllib.error
@@ -18,13 +19,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     sign_runtime_cli_with_entitlements,
     sync_release,
 )
-from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
-    RuntimeStateReadError,
-    read_runtime_state,
-    read_runtime_state_guest_http,
-    read_runtime_state_string,
-    read_runtime_state_vm_ip,
-    runtime_state_file,
+from tirosh_vitalserver.devtools.adapters.macos_release.runtime_paths import (
     vm_home_path,
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
@@ -35,6 +30,7 @@ from tirosh_vitalserver.devtools.application.inputs import (
     RuntimeBootSmokeRunInput,
     RuntimeBuildInput,
     RuntimeControlInput,
+    RuntimeGuestAddressOwnerInput,
     RuntimeHealthInput,
     RuntimeSignInput,
     RuntimeSyncReleaseInput,
@@ -55,9 +51,13 @@ from tirosh_vitalserver.devtools.core.preflight import (
     print_preflight_report,
 )
 
-APT_SNAPSHOT_PROBE_ATTEMPTS = 2
-APT_SNAPSHOT_PROBE_RETRY_DELAY_SECONDS = 2
+APT_SNAPSHOT_PROBE_ATTEMPTS = 4
+APT_SNAPSHOT_PROBE_RETRY_DELAY_SECONDS = 3
 APT_SNAPSHOT_PROBE_TIMEOUT_SECONDS = 30
+
+VM_LIFECYCLE_STATES = frozenset(
+    {"starting", "bootstrapping", "running", "stopping", "stopped", "failed"}
+)
 
 ROOTFS_REQUIRED_STAGES = (
     "runtime-data-mount",
@@ -99,10 +99,12 @@ ROOTFS_TERMINAL_LOG_PATTERNS = (
 
 RUNTIME_BOOT_SMOKE_REQUIRED_STAGES = (
     "bootstrap-result",
-    "runtime-state",
+    "runtime-observation",
     "systemd-units",
+    "runtime-data",
     "http",
     "compose-services",
+    "guest-control-api",
     "disk-health",
     "capabilities",
     "command-dispatch",
@@ -339,6 +341,7 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
         data_run_dir / "rootfs-runtime-manifest.json",
         data_run_dir / "rootfs-smoke-diagnostics",
         data_run_dir / "rootfs-failure.json",
+        data_run_dir / "rootfs-apt-progress.json",
         data_run_dir / "rootfs-apt-plan.json",
         data_run_dir / "rootfs-apt-plan.txt",
         data_run_dir / "rootfs-apt-installed.json",
@@ -354,14 +357,16 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
             removed.append(str(path))
 
     runtime_config = load_guest_runtime_config(load_build_toml(config_path))
-    runtime_data = prepare_ephemeral_runtime_data_disk(
-        runtime_data_disk_plan(
-            config_path=config_path,
-            vm_home=vm_home,
-            runtime_config=runtime_config,
-        )
+    runtime_data_plan = runtime_data_disk_plan(
+        config_path=config_path,
+        vm_home=vm_home,
+        runtime_config=runtime_config,
     )
-    write_vm_config_runtime_data_disk_path(vm_home, str(runtime_data["path"]))
+    require_vm_config_runtime_data_disk_path(
+        vm_home,
+        str(runtime_data_plan.disk_image),
+    )
+    runtime_data = prepare_ephemeral_runtime_data_disk(runtime_data_plan)
 
     context = {
         "schemaVersion": 1,
@@ -378,8 +383,8 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
     print(f"Golden rootfs run started: runId={input.run_id}")
     if removed:
         print("Invalidated stale rootfs proof:")
-        for path in removed:
-            print(f"  {path}")
+        for removed_path in removed:
+            print(f"  {removed_path}")
     return 0
 
 
@@ -389,14 +394,16 @@ def prepare_runtime_data_disk(input: RuntimeVmHomeInput) -> int:
     vm_home = resolve_path(root, input.vm_home)
     require_vm_config(vm_home)
     runtime_config = load_guest_runtime_config(load_build_toml(config_path))
-    runtime_data = prepare_ephemeral_runtime_data_disk(
-        runtime_data_disk_plan(
-            config_path=config_path,
-            vm_home=vm_home,
-            runtime_config=runtime_config,
-        )
+    runtime_data_plan = runtime_data_disk_plan(
+        config_path=config_path,
+        vm_home=vm_home,
+        runtime_config=runtime_config,
     )
-    write_vm_config_runtime_data_disk_path(vm_home, str(runtime_data["path"]))
+    require_vm_config_runtime_data_disk_path(
+        vm_home,
+        str(runtime_data_plan.disk_image),
+    )
+    runtime_data = prepare_ephemeral_runtime_data_disk(runtime_data_plan)
     print(f"Runtime data disk is ready: {runtime_data['path']}")
     return 0
 
@@ -407,6 +414,7 @@ def preflight_golden_rootfs(input: GoldenRootfsPreflightInput) -> int:
     report = golden_rootfs_preflight_report(
         vm_home=vm_home,
         expected_run_id=input.expected_run_id,
+        apt_source=input.apt_source,
     )
     print_preflight_report(report)
     if report.passed:
@@ -418,6 +426,7 @@ def golden_rootfs_preflight_report(
     *,
     vm_home: Path,
     expected_run_id: str,
+    apt_source: str = "network",
 ) -> PreflightReport:
     checks: list[PreflightCheck] = []
     rootfs_input = vm_home / "data/deploy/build-metadata/rootfs-input.json"
@@ -432,8 +441,26 @@ def golden_rootfs_preflight_report(
     checks.append(metadata_check)
     checks.extend(check_rootfs_preflight_proof_absence(vm_home))
     snapshot = read_metadata_apt_snapshot(metadata)
-    if snapshot:
+    if apt_source == "verified-cache":
+        checks.append(
+            PreflightCheck(
+                name="apt-source",
+                status=PreflightStatus.PASSED,
+                message="APT state source is an explicitly verified local cache",
+                detail="network snapshot preflight is not required",
+            )
+        )
+    elif apt_source == "network" and snapshot:
         checks.extend(check_apt_snapshot_available(snapshot))
+    elif apt_source != "network":
+        checks.append(
+            PreflightCheck(
+                name="apt-source",
+                status=PreflightStatus.INVALID,
+                message="golden rootfs APT source is invalid",
+                detail=f"aptSource={apt_source}",
+            )
+        )
     return PreflightReport(
         name="golden-rootfs",
         checks=tuple(checks),
@@ -650,6 +677,7 @@ def check_rootfs_preflight_proof_absence(vm_home: Path) -> list[PreflightCheck]:
         "rootfs-ready": run_dir / "rootfs-ready",
         "rootfs-runtime-manifest": run_dir / "rootfs-runtime-manifest.json",
         "rootfs-failure": run_dir / "rootfs-failure.json",
+        "rootfs-apt-progress": run_dir / "rootfs-apt-progress.json",
         "rootfs-apt-plan": run_dir / "rootfs-apt-plan.json",
     }
     checks: list[PreflightCheck] = []
@@ -766,7 +794,7 @@ def probe_apt_snapshot_url_once(
     )
 
 
-def write_vm_config_runtime_data_disk_path(
+def require_vm_config_runtime_data_disk_path(
     vm_home: Path,
     runtime_data_disk_path: str,
 ) -> None:
@@ -780,11 +808,17 @@ def write_vm_config_runtime_data_disk_path(
         ) from error
     if not isinstance(document, dict):
         raise SystemExit(f"error: VM config is invalid: expected object: {config_path}")
-    document["runtimeDataDiskPath"] = runtime_data_disk_path
-    config_path.write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    configured_path = document.get("runtimeDataDiskPath")
+    if not isinstance(configured_path, str) or not configured_path:
+        raise SystemExit(
+            f"error: VM config runtime data disk path is missing: {config_path}"
+        )
+    if configured_path != runtime_data_disk_path:
+        raise SystemExit(
+            "error: VM config runtime data disk path does not match build contract: "
+            f"path={config_path} actual={configured_path} "
+            f"expected={runtime_data_disk_path}"
+        )
 
 
 def require_vm_config(vm_home: Path) -> None:
@@ -806,6 +840,7 @@ def begin_runtime_boot_smoke_run(input: RuntimeBootSmokeRunInput) -> int:
 
     stale_paths = [
         data_run_dir / "runtime-boot-smoke-manifest.json",
+        data_run_dir / "bootstrap-result.json",
         run_dir / "vm-lifecycle.json",
     ]
     removed: list[str] = []
@@ -831,55 +866,215 @@ def begin_runtime_boot_smoke_run(input: RuntimeBootSmokeRunInput) -> int:
     print(f"Runtime boot smoke run started: runId={input.run_id}")
     if removed:
         print("Invalidated stale runtime boot smoke proof:")
-        for path in removed:
-            print(f"  {path}")
+        for removed_path in removed:
+            print(f"  {removed_path}")
     return 0
+
+
+class RuntimeBootstrapAddressReadError(Exception):
+    pass
+
+
+def runtime_vm_ip_file(vm_home: str | Path) -> Path:
+    return vm_home_path(vm_home) / "data/run/vm-ip"
+
+
+def read_runtime_bootstrap_vm_ip(vm_home: str | Path) -> str:
+    address_file = runtime_vm_ip_file(vm_home)
+    if not address_file.exists():
+        raise RuntimeBootstrapAddressReadError(
+            f"missing VM IP bootstrap file: {address_file}"
+        )
+    if not address_file.is_file():
+        raise RuntimeBootstrapAddressReadError(
+            f"invalid VM IP bootstrap path: not a file: {address_file}"
+        )
+    try:
+        value = address_file.read_text(encoding="utf-8")
+    except OSError as error:
+        raise RuntimeBootstrapAddressReadError(
+            f"failed to read VM IP bootstrap file: {address_file}: {error}"
+        ) from error
+    value = value.strip()
+    if not value:
+        raise RuntimeBootstrapAddressReadError(
+            f"invalid VM IP bootstrap file: empty address: {address_file}"
+        )
+    return value
+
+
+def print_runtime_guest_address_proxy_upstream(
+    input: RuntimeGuestAddressOwnerInput,
+) -> int:
+    bootstrap_address = read_runtime_bootstrap_vm_ip(input.vm_home)
+    runtime_control_guest_address_request(
+        input,
+        method="PUT",
+        path="/platform/runtime-endpoint",
+        body={"address": bootstrap_address},
+    )
+    state = runtime_control_guest_address_request(
+        input,
+        method="GET",
+        path="/platform/runtime-endpoint",
+        body=None,
+    )
+    address = loaded_guest_address_from_owner_state(state)
+    print(f"{address}:80")
+    return 0
+
+
+def runtime_control_guest_address_request(
+    input: RuntimeGuestAddressOwnerInput,
+    *,
+    method: str,
+    path: str,
+    body: dict[str, str] | None,
+) -> dict[str, object]:
+    base_url = input.runtime_control_api_base_url.rstrip("/")
+    request_body = None
+    headers = {
+        "Accept": "application/json",
+        input.runtime_control_api_token_header: input.runtime_control_api_token,
+    }
+    if body is not None:
+        request_body = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(
+        f"{base_url}{path}",
+        data=request_body,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=input.runtime_control_api_timeout,
+        ) as response:
+            payload = response.read()
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise SystemExit(
+            "error: Runtime Control Guest address owner request failed: "
+            f"method={method} path={path} status={error.code} detail={detail}"
+        ) from error
+    except urllib.error.URLError as error:
+        raise SystemExit(
+            "error: Runtime Control Guest address owner is unavailable: "
+            f"method={method} path={path} reason={error.reason}"
+        ) from error
+    except TimeoutError as error:
+        raise SystemExit(
+            "error: Runtime Control Guest address owner request timed out: "
+            f"method={method} path={path}"
+        ) from error
+    try:
+        decoded = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            "error: Runtime Control Guest address owner returned invalid JSON: "
+            f"method={method} path={path} error={error}"
+        ) from error
+    if not isinstance(decoded, dict):
+        raise SystemExit(
+            "error: Runtime Control Guest address owner returned invalid payload: "
+            f"method={method} path={path}"
+        )
+    return decoded
+
+
+def loaded_guest_address_from_owner_state(state: dict[str, object]) -> str:
+    resource_state = state.get("state")
+    read = state.get("read")
+    if resource_state != "loaded" or not isinstance(read, dict):
+        raise SystemExit(
+            "error: Runtime Control Guest address owner is not loaded: "
+            f"state={resource_state!r} readError={state.get('readError')!r}"
+        )
+    read_state = read.get("state")
+    address = read.get("address")
+    if read_state != "loaded" or not isinstance(address, str) or not address.strip():
+        raise SystemExit(
+            "error: Runtime Control Guest address owner returned invalid loaded "
+            f"read: state={read_state!r} address={address!r}"
+        )
+    return address.strip()
+
+
+def probe_guest_runtime_http(vm_ip: str) -> tuple[bool, str]:
+    root_url = f"http://{vm_ip}:80/"
+    recorder_url = f"http://{vm_ip}:80/recorder-ingress/health"
+    root_ready, root_status = probe_http_request(root_url, method="HEAD")
+    if not root_ready:
+        return False, f"root={root_status}"
+    recorder_ready, recorder_status = probe_http_request(recorder_url, method="GET")
+    if not recorder_ready:
+        return False, f"root={root_status} recorder-ingress={recorder_status}"
+    return True, f"root={root_status} recorder-ingress={recorder_status}"
+
+
+def probe_http_request(url: str, *, method: str) -> tuple[bool, str]:
+    request = urllib.request.Request(url, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            status = response.status
+    except urllib.error.HTTPError as error:
+        status = error.code
+    except urllib.error.URLError as error:
+        return False, f"unreachable:{error.reason}"
+    except TimeoutError:
+        return False, "timeout"
+    except OSError as error:
+        return False, f"failed:{error}"
+    return 200 <= status < 400, str(status)
 
 
 def print_runtime_ip(input: RuntimeVmHomeInput) -> int:
     try:
-        print(read_runtime_state_vm_ip(input.vm_home))
-    except RuntimeStateReadError as error:
+        print(read_runtime_bootstrap_vm_ip(input.vm_home))
+    except RuntimeBootstrapAddressReadError as error:
         raise SystemExit(str(error)) from error
     return 0
 
 
 def wait_for_runtime_ip(input: RuntimeWaitInput) -> int:
-    state_file = runtime_state_file(input.vm_home)
-    print(f"Waiting for runtime-state VM IP: {state_file}")
+    address_file = runtime_vm_ip_file(input.vm_home)
+    print(f"Waiting for VM IP bootstrap file: {address_file}")
     deadline = time.monotonic() + input.timeout
     last_error = "not-started"
     while time.monotonic() < deadline:
         try:
-            vm_ip = read_runtime_state_vm_ip(input.vm_home)
+            vm_ip = read_runtime_bootstrap_vm_ip(input.vm_home)
             print(f"VM IP: {vm_ip}")
             return 0
-        except RuntimeStateReadError as error:
+        except RuntimeBootstrapAddressReadError as error:
             last_error = str(error)
         time.sleep(2)
     raise SystemExit(
-        f"error: timed out waiting for VM IP in runtime state: {state_file} "
+        f"error: timed out waiting for VM IP bootstrap file: {address_file} "
         f"last={last_error}\nCheck {launcher_log(input.vm_home)}"
     )
 
 
 def wait_for_runtime_http(input: RuntimeWaitInput) -> int:
-    state_file = runtime_state_file(input.vm_home)
-    print(f"Waiting for runtime-state guestHTTP: {state_file}")
+    address_file = runtime_vm_ip_file(input.vm_home)
+    print(f"Waiting for VM HTTP through bootstrap address: {address_file}")
     deadline = time.monotonic() + input.timeout
     last_status = "not-started"
     while time.monotonic() < deadline:
         try:
-            status = read_runtime_state_guest_http(input.vm_home)
-            if successful_http_status(status):
-                print(f"VM HTTP ready: guestHTTP={status}")
+            vm_ip = read_runtime_bootstrap_vm_ip(input.vm_home)
+            ready, status = probe_guest_runtime_http(vm_ip)
+            if ready:
+                print(f"VM HTTP ready: upstream=http://{vm_ip}:80 status={status}")
                 return 0
             last_status = status
-        except RuntimeStateReadError as error:
+        except RuntimeBootstrapAddressReadError as error:
             last_status = str(error)
         time.sleep(2)
     raise SystemExit(
-        f"error: timed out waiting for VM HTTP in runtime state: {state_file} "
+        "error: timed out waiting for VM HTTP through bootstrap address: "
+        f"{address_file} "
         f"last={last_status}\n"
         f"Check guest bootstrap in {launcher_log(input.vm_home)}"
     )
@@ -889,6 +1084,7 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
     marker = vm_home_path(input.vm_home) / "data/run/rootfs-ready"
     manifest = vm_home_path(input.vm_home) / "data/run/rootfs-runtime-manifest.json"
     failure = vm_home_path(input.vm_home) / "data/run/rootfs-failure.json"
+    apt_progress = vm_home_path(input.vm_home) / "data/run/rootfs-apt-progress.json"
     apt_plan = vm_home_path(input.vm_home) / "data/run/rootfs-apt-plan.json"
     expected_run_id = expected_rootfs_run_id(input.vm_home, input.expected_run_id)
     print(f"Waiting for air-gapped rootfs marker: {marker}")
@@ -896,6 +1092,7 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         print(f"Expected golden rootfs runId: {expected_run_id}")
     deadline = time.monotonic() + input.timeout
     last_state = "not-started"
+    last_progress: tuple[str, ...] = ()
     while time.monotonic() < deadline:
         failure_result = inspect_rootfs_failure_marker(
             failure,
@@ -905,6 +1102,14 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
             raise SystemExit(str(failure_result["message"]))
         if failure_result["message"]:
             last_state = str(failure_result["message"])
+        apt_progress_result = inspect_rootfs_apt_progress(
+            apt_progress,
+            expected_run_id=expected_run_id,
+        )
+        if apt_progress_result["terminal"]:
+            raise SystemExit(str(apt_progress_result["message"]))
+        if apt_progress_result["message"]:
+            last_state = str(apt_progress_result["message"])
         apt_plan_result = inspect_rootfs_apt_plan(
             apt_plan,
             expected_run_id=expected_run_id,
@@ -919,7 +1124,41 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         )
         if manifest_result["terminal"]:
             raise SystemExit(str(manifest_result["message"]))
-        last_state = str(manifest_result["message"])
+        current_progress = tuple(
+            token
+            for token in (
+                rootfs_document_progress_token(
+                    apt_progress,
+                    expected_run_id=expected_run_id,
+                    timestamp_field="updatedAt",
+                ),
+                rootfs_document_progress_token(
+                    apt_plan,
+                    expected_run_id=expected_run_id,
+                    timestamp_field="generatedAt",
+                ),
+                rootfs_manifest_progress_token(
+                    manifest,
+                    expected_run_id=expected_run_id,
+                ),
+            )
+            if token is not None
+        )
+        if current_progress and current_progress != last_progress:
+            last_progress = current_progress
+            deadline = time.monotonic() + input.timeout
+        manifest_message = str(manifest_result["message"])
+        apt_progress_message = str(apt_progress_result["message"])
+        apt_plan_message = str(apt_plan_result["message"])
+        last_state = "; ".join(
+            message
+            for message in (
+                apt_progress_message,
+                apt_plan_message,
+                manifest_message,
+            )
+            if message
+        )
         if marker.is_file() and marker.stat().st_size > 0:
             marker_result = inspect_rootfs_ready_marker(
                 marker,
@@ -933,9 +1172,7 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
                 print(f"  manifest={manifest}")
                 print("  manifestStatus=passed")
                 return 0
-            last_state = (
-                f"{marker_result['message']}; {manifest_result['message']}"
-            )
+            last_state = f"{marker_result['message']}; {manifest_result['message']}"
         fail_if_runtime_lifecycle_failed(input.vm_home)
         fail_if_rootfs_launcher_log_has_terminal_failure(
             input.vm_home,
@@ -943,13 +1180,53 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
         )
         time.sleep(3)
     raise SystemExit(
-        f"error: timed out waiting for {marker}: last={last_state}\n"
+        f"error: timed out waiting for {marker}: last={last_state} "
+        f"progress={','.join(last_progress) or 'none'}\n"
         f"Check VM launcher log: {launcher_log(input.vm_home)}"
     )
 
 
+def rootfs_manifest_progress_token(
+    manifest: Path,
+    *,
+    expected_run_id: str | None,
+) -> str | None:
+    return rootfs_document_progress_token(
+        manifest,
+        expected_run_id=expected_run_id,
+        timestamp_field="updatedAt",
+    )
+
+
+def rootfs_document_progress_token(
+    document_path: Path,
+    *,
+    expected_run_id: str | None,
+    timestamp_field: str,
+) -> str | None:
+    if not document_path.is_file():
+        return None
+    try:
+        document = json.loads(document_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    run_id = document.get("runId")
+    timestamp = document.get(timestamp_field)
+    if not isinstance(run_id, str) or not run_id:
+        return None
+    if expected_run_id is not None and run_id != expected_run_id:
+        return None
+    if not isinstance(timestamp, str) or not timestamp:
+        return None
+    return f"{document_path.name}:{run_id}:{timestamp}"
+
+
 def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
-    manifest = vm_home_path(input.vm_home) / "data/run/runtime-boot-smoke-manifest.json"
+    data_run_dir = vm_home_path(input.vm_home) / "data/run"
+    manifest = data_run_dir / "runtime-boot-smoke-manifest.json"
+    bootstrap_result = data_run_dir / "bootstrap-result.json"
     expected_run_id = input.expected_run_id
     print(f"Waiting for runtime boot smoke manifest: {manifest}")
     if expected_run_id:
@@ -957,6 +1234,17 @@ def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
     deadline = time.monotonic() + input.timeout
     last_state = "not-started"
     while time.monotonic() < deadline:
+        bootstrap_state = inspect_runtime_bootstrap_result(
+            bootstrap_result,
+            expected_run_id=expected_run_id,
+        )
+        if bootstrap_state["terminal"]:
+            raise SystemExit(
+                f"{bootstrap_state['message']}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
+            )
+        if bootstrap_state["message"]:
+            last_state = str(bootstrap_state["message"])
         result = inspect_runtime_boot_smoke_manifest(
             manifest,
             expected_run_id=expected_run_id,
@@ -983,36 +1271,77 @@ def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
 
 def wait_for_runtime_stopped(input: RuntimeWaitInput) -> int:
     vm_home = vm_home_path(input.vm_home)
-    lifecycle = vm_home / "run/vm-lifecycle.json"
-    print(f"Waiting for VM lifecycle stopped: {lifecycle}")
+    lifecycle_database = vm_home / "runtime/runtime-state.sqlite"
+    print(
+        f"Waiting for VM lifecycle and launcher process stopped: {lifecycle_database}"
+    )
     deadline = time.monotonic() + input.timeout
-    last_state = "not-started"
-    while time.monotonic() < deadline:
-        try:
-            document = json.loads(lifecycle.read_text(encoding="utf-8"))
-            state = document.get("state")
-            if state == "stopped":
-                print("VM lifecycle is stopped")
-                return 0
-            if state == "failed":
-                terminal_reason = document.get("terminalReason", "unknown")
-                message = document.get("message", "")
-                raise SystemExit(
-                    "error: VM lifecycle failed while waiting for stopped: "
-                    f"terminalReason={terminal_reason} message={message}\n"
-                    f"Check VM launcher log: {launcher_log(input.vm_home)}"
-                )
-            last_state = str(state)
-        except (OSError, json.JSONDecodeError) as error:
-            last_state = str(error)
-        if not running_vm_processes_for_home(vm_home):
+    while True:
+        state, terminal_reason, message = read_vm_lifecycle_owner(lifecycle_database)
+        running_processes = running_vm_processes_for_home(vm_home)
+        pid_text = ",".join(str(pid) for pid in running_processes) or "none"
+        if state == "failed":
+            raise SystemExit(
+                "error: VM lifecycle failed while waiting for stopped: "
+                f"terminalReason={terminal_reason or 'unknown'} "
+                f"message={message or ''}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
+            )
+        if state == "stopped" and not running_processes:
+            print("VM lifecycle is stopped")
             print("VM launcher process is not running")
             return 0
+        if not running_processes:
+            raise SystemExit(
+                "error: launcher process exited before VM lifecycle reached stopped: "
+                f"state={state} database={lifecycle_database}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
+            )
+        if time.monotonic() >= deadline:
+            raise SystemExit(
+                "error: timed out waiting for VM lifecycle and launcher process "
+                "stopped: "
+                f"database={lifecycle_database} state={state} pids={pid_text}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
+            )
         time.sleep(2)
-    raise SystemExit(
-        f"error: timed out waiting for VM lifecycle stopped: {lifecycle} "
-        f"last={last_state}\nCheck VM launcher log: {launcher_log(input.vm_home)}"
-    )
+
+
+def read_vm_lifecycle_owner(database: Path) -> tuple[str, str | None, str | None]:
+    if not database.is_file():
+        raise SystemExit(f"error: VM lifecycle SQLite owner is missing: {database}")
+    try:
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            row = connection.execute(
+                """
+                SELECT state, terminal_reason, message
+                FROM vm_lifecycle
+                WHERE singleton_id = 1
+                """
+            ).fetchone()
+    except sqlite3.Error as error:
+        raise SystemExit(
+            f"error: VM lifecycle SQLite owner read failed: {database}: {error}"
+        ) from error
+    if row is None:
+        raise SystemExit(f"error: VM lifecycle SQLite state is missing: {database}")
+    state, terminal_reason, message = row
+    if not isinstance(state, str) or state not in VM_LIFECYCLE_STATES:
+        raise SystemExit(
+            "error: VM lifecycle SQLite state is invalid: "
+            f"database={database} state={state}"
+        )
+    if terminal_reason is not None and not isinstance(terminal_reason, str):
+        raise SystemExit(
+            "error: VM lifecycle SQLite terminal reason is invalid: "
+            f"database={database} terminalReason={terminal_reason}"
+        )
+    if message is not None and not isinstance(message, str):
+        raise SystemExit(
+            "error: VM lifecycle SQLite message is invalid: "
+            f"database={database} message={message}"
+        )
+    return state, terminal_reason, message
 
 
 def check_runtime_health(input: RuntimeHealthInput) -> int:
@@ -1041,24 +1370,22 @@ def check_runtime_health(input: RuntimeHealthInput) -> int:
     print("\nVM IP:")
     vm_ip = ""
     try:
-        runtime_state = read_runtime_state(vm_home)
-        vm_ip = read_runtime_state_string(runtime_state, "vmIP", vm_home)
-        guest_http = read_runtime_state_string(runtime_state, "guestHTTP", vm_home)
+        vm_ip = read_runtime_bootstrap_vm_ip(vm_home)
         print(f"  {vm_ip}")
-    except RuntimeStateReadError as error:
-        guest_http = ""
+    except RuntimeBootstrapAddressReadError as error:
         print(f"  unavailable: {error}")
         status = 1
 
     print("\nGuest HTTP:")
-    if guest_http:
-        if successful_http_status(guest_http):
-            print(f"  ok reported guestHTTP={guest_http}")
+    if vm_ip:
+        ok, code = probe_guest_runtime_http(vm_ip)
+        if ok:
+            print(f"  ok http://{vm_ip}:80 -> {code}")
         else:
-            print(f"  failed reported guestHTTP={guest_http}")
+            print(f"  failed http://{vm_ip}:80 -> {code}")
             status = 1
     else:
-        print("  skipped because runtime state guestHTTP is unavailable")
+        print("  skipped because VM IP bootstrap address is unavailable")
 
     print("\nHost proxy:")
     status |= subprocess.run(
@@ -1111,8 +1438,7 @@ def running_vm_processes_for_home(vm_home: Path) -> list[int]:
             pids.append(int(pid_text))
         except ValueError:
             raise SystemExit(
-                "error: failed to parse VM process pid before start: "
-                f"line={line}"
+                f"error: failed to parse VM process pid before start: line={line}"
             ) from None
     return pids
 
@@ -1307,15 +1633,64 @@ def inspect_rootfs_manifest(
             "message": "manifest passed",
         }
     if cleanup_status == "cleanup-failed":
+        commands = cleanup.get("commands")
+        failed_command = (
+            next(
+                (
+                    command
+                    for command in commands
+                    if isinstance(command, dict) and command.get("status") == "failed"
+                ),
+                None,
+            )
+            if isinstance(commands, list)
+            else None
+        )
+        command_name = (
+            failed_command.get("name", "unknown")
+            if isinstance(failed_command, dict)
+            else cleanup.get("activeCommand", "unknown")
+        )
+        exit_code = (
+            failed_command.get("exitCode", "unknown")
+            if isinstance(failed_command, dict)
+            else "unknown"
+        )
+        failure_text = ""
+        if isinstance(failed_command, dict):
+            for key in ("stderr", "message"):
+                value = failed_command.get(key)
+                if isinstance(value, str) and value.strip():
+                    failure_text = value
+                    break
+        failure_lines = [
+            line.strip() for line in failure_text.splitlines() if line.strip()
+        ]
+        reason = failure_lines[-1] if failure_lines else "not reported"
         return {
             "ready": False,
             "terminal": True,
-            "message": "error: rootfs cleanup failed while waiting",
+            "message": (
+                "error: rootfs cleanup failed while waiting: "
+                f"command={command_name} exitCode={exit_code} reason={reason} "
+                f"manifest={manifest}"
+            ),
         }
+    active_command = cleanup.get("activeCommand") if isinstance(cleanup, dict) else None
+    active_timeout = (
+        cleanup.get("activeCommandTimeoutSeconds")
+        if isinstance(cleanup, dict)
+        else None
+    )
     return {
         "ready": False,
         "terminal": False,
-        "message": f"waiting for rootfs cleanup: status={cleanup_status}",
+        "message": (
+            f"waiting for rootfs cleanup: status={cleanup_status}"
+            f" activeCommand={active_command or 'none'}"
+            " timeoutSeconds="
+            f"{active_timeout if active_timeout is not None else 'none'}"
+        ),
     }
 
 
@@ -1355,12 +1730,41 @@ def inspect_rootfs_ready_marker(
             "terminal": True,
             "message": f"error: rootfs ready marker is missing runId: {marker}",
         }
+    if not rootfs_guest_tools_dependency_proof_is_valid(
+        document.get("pythonDependencies")
+    ):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: rootfs ready marker is missing or has invalid Guest Tools "
+                f"dependency proof: {marker}"
+            ),
+        }
     return {
         "ready": True,
         "terminal": False,
         "runId": run_id,
         "message": "ready marker passed",
     }
+
+
+def rootfs_guest_tools_dependency_proof_is_valid(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    dependencies = value.get("dependencies")
+    return (
+        value.get("status") == "passed"
+        and isinstance(value.get("proof"), str)
+        and bool(value["proof"].strip())
+        and isinstance(value.get("target"), str)
+        and bool(value["target"].strip())
+        and isinstance(dependencies, dict)
+        and isinstance(dependencies.get("alembic"), str)
+        and bool(dependencies["alembic"].strip())
+        and isinstance(dependencies.get("sqlalchemy"), str)
+        and bool(dependencies["sqlalchemy"].strip())
+    )
 
 
 def inspect_rootfs_failure_marker(
@@ -1381,8 +1785,7 @@ def inspect_rootfs_failure_marker(
             "ready": False,
             "terminal": True,
             "message": (
-                f"error: rootfs failure marker is unreadable: "
-                f"{failure}: {error}"
+                f"error: rootfs failure marker is unreadable: {failure}: {error}"
             ),
         }
     if not isinstance(document, dict):
@@ -1404,6 +1807,7 @@ def inspect_rootfs_failure_marker(
     stage = document.get("stage", "unknown")
     exit_code = document.get("exitCode", "unknown")
     reason = document.get("reason", "unknown")
+    apt_progress_path = document.get("aptProgressPath", "")
     apt_plan_path = document.get("aptPlanPath", "")
     return {
         "ready": False,
@@ -1412,7 +1816,8 @@ def inspect_rootfs_failure_marker(
             "error: guest rootfs preparation failed while waiting for "
             f"rootfs marker: runId={run_id or 'unknown'} stage={stage} "
             f"exitCode={exit_code} reason={reason} "
-            f"failure={failure} aptPlan={apt_plan_path}"
+            f"failure={failure} aptProgress={apt_progress_path} "
+            f"aptPlan={apt_plan_path}"
         ),
     }
 
@@ -1480,6 +1885,83 @@ def inspect_rootfs_apt_plan(
     }
 
 
+def inspect_rootfs_apt_progress(
+    apt_progress: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    if not apt_progress.is_file():
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": "",
+        }
+    try:
+        document = json.loads(apt_progress.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                f"error: rootfs apt progress is unreadable: {apt_progress}: {error}"
+            ),
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (f"error: rootfs apt progress is not an object: {apt_progress}"),
+        }
+    run_id = document.get("runId")
+    if not isinstance(run_id, str) or not run_id:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (f"error: rootfs apt progress is missing runId: {apt_progress}"),
+        }
+    if expected_run_id and run_id != expected_run_id:
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": (
+                "stale rootfs apt progress runId mismatch: "
+                f"expected={expected_run_id} actual={run_id}"
+            ),
+        }
+    stage = document.get("stage")
+    status = document.get("status")
+    if not isinstance(stage, str) or not stage:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (f"error: rootfs apt progress is missing stage: {apt_progress}"),
+        }
+    if status == "failed":
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: rootfs apt command failed while waiting for rootfs "
+                f"marker: runId={run_id} stage={stage} "
+                f"aptProgress={apt_progress}"
+            ),
+        }
+    if status in {"running", "passed"}:
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": f"rootfs apt progress stage={stage} status={status}",
+        }
+    return {
+        "ready": False,
+        "terminal": True,
+        "message": (
+            "error: rootfs apt progress has unsupported status: "
+            f"status={status} aptProgress={apt_progress}"
+        ),
+    }
+
+
 def inspect_runtime_boot_smoke_manifest(
     manifest: Path,
     *,
@@ -1498,8 +1980,7 @@ def inspect_runtime_boot_smoke_manifest(
             "ready": False,
             "terminal": True,
             "message": (
-                f"error: runtime boot smoke manifest is unreadable: "
-                f"{manifest}: {error}"
+                f"error: runtime boot smoke manifest is unreadable: {manifest}: {error}"
             ),
         }
     if not isinstance(document, dict):
@@ -1548,6 +2029,34 @@ def inspect_runtime_boot_smoke_manifest(
                 f"error: runtime boot smoke manifest is missing stages: {manifest}"
             ),
         }
+    for stage in stages:
+        if not isinstance(stage, dict):
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    f"error: runtime boot smoke manifest stage is invalid: {manifest}"
+                ),
+            }
+        stage_status = stage.get("status")
+        if stage_status in {"failed", "timeout", "cleanup-failed"}:
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    "error: runtime boot smoke stage failed while waiting: "
+                    f"name={stage.get('name')} status={stage_status} "
+                    f"runId={run_id} manifest={manifest} "
+                    f"message={stage.get('message')}"
+                ),
+            }
+    if status == "passed":
+        return {
+            "ready": True,
+            "terminal": False,
+            "runId": run_id,
+            "message": "runtime boot smoke passed",
+        }
     for stage_name in RUNTIME_BOOT_SMOKE_REQUIRED_STAGES:
         stage = rootfs_stage(stages, stage_name)
         if stage is None:
@@ -1578,26 +2087,112 @@ def inspect_runtime_boot_smoke_manifest(
                 f"{stage_name} status={stage_status}"
             ),
         }
-    if status == "passed":
-        return {
-            "ready": True,
-            "terminal": False,
-            "runId": run_id,
-            "message": "runtime boot smoke passed",
-        }
     if status == "failed":
         return {
             "ready": False,
             "terminal": True,
             "message": (
-                "error: runtime boot smoke failed: "
-                f"runId={run_id} manifest={manifest}"
+                f"error: runtime boot smoke failed: runId={run_id} manifest={manifest}"
             ),
         }
     return {
         "ready": False,
         "terminal": False,
         "message": f"waiting for runtime boot smoke status: {status}",
+    }
+
+
+def inspect_runtime_bootstrap_result(
+    bootstrap_result: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    if not bootstrap_result.is_file():
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": "",
+        }
+    try:
+        document = json.loads(bootstrap_result.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap result is unreadable: "
+                f"{bootstrap_result}: {error}"
+            ),
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap result is not an object: "
+                f"{bootstrap_result}"
+            ),
+        }
+    status = document.get("status")
+    if not isinstance(status, str) or not status.strip():
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap result is missing status: "
+                f"{bootstrap_result}"
+            ),
+        }
+    if status == "failed":
+        reason_codes = document.get("reasonCodes")
+        if not isinstance(reason_codes, list) or not all(
+            isinstance(code, str) and code for code in reason_codes
+        ):
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    "error: runtime boot smoke bootstrap result has invalid "
+                    f"reasonCodes: runId={expected_run_id or 'unknown'} "
+                    f"bootstrapResult={bootstrap_result}"
+                ),
+            }
+        message = document.get("message")
+        if not isinstance(message, str) or not message.strip():
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    "error: runtime boot smoke bootstrap result has missing "
+                    f"failure message: runId={expected_run_id or 'unknown'} "
+                    f"bootstrapResult={bootstrap_result}"
+                ),
+            }
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap failed: "
+                f"runId={expected_run_id or 'unknown'} "
+                "stage=bootstrap-result "
+                f"reasonCodes={reason_codes} message={message} "
+                f"bootstrapResult={bootstrap_result}"
+            ),
+        }
+    if status not in {"running", "completed"}:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke bootstrap result has unsupported "
+                f"status: runId={expected_run_id or 'unknown'} status={status} "
+                f"bootstrapResult={bootstrap_result}"
+            ),
+        }
+    return {
+        "ready": False,
+        "terminal": False,
+        "message": f"runtime boot smoke bootstrap is {status}",
     }
 
 

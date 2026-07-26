@@ -68,18 +68,6 @@ struct RuntimeStatusPanel: View {
             statusRow(AppConstants.Labels.overallHealth) {
                 healthStatusValue
             }
-            if let statusDocumentError = viewModel.status.statusDocumentError {
-                statusRow(AppConstants.Labels.statusDocument) {
-                    Text(statusDocumentError)
-                        .foregroundStyle(.red)
-                }
-            }
-            if let guestRuntimeStateError = viewModel.status.guestRuntimeStateError {
-                statusRow(AppConstants.Labels.guestRuntimeState) {
-                    Text(guestRuntimeStateError)
-                        .foregroundStyle(.red)
-                }
-            }
             statusRow(GeneratedRelease.vitalServerName) {
                 vitalServerStatusAndURL
             }
@@ -111,28 +99,28 @@ struct RuntimeStatusPanel: View {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 resourceRow(
                     AppConstants.Labels.cpuUsage,
-                    percent: viewModel.status.cpuUsagePercent,
-                    detail: percentDetail(viewModel.status.cpuUsagePercent)
+                    percent: viewModel.runtimeStackStatus?.cpuUsagePercent,
+                    detail: percentDetail(viewModel.runtimeStackStatus?.cpuUsagePercent)
                 )
                 resourceRow(
                     AppConstants.Labels.memoryUsage,
-                    usage: viewModel.status.memory
+                    usage: viewModel.runtimeStackStatus?.memory
                 )
                 resourceRow(
                     AppConstants.Labels.vitalServerMemoryUsage,
-                    usage: viewModel.status.vitalServerMemory
+                    usage: runtimeServiceMemory("app")
                 )
                 resourceRow(
                     AppConstants.Labels.recorderIngressMemoryUsage,
-                    usage: viewModel.status.recorderIngressMemory
+                    usage: runtimeServiceMemory("recorder-ingress")
                 )
                 resourceRow(
                     AppConstants.Labels.redisMemoryUsage,
-                    usage: viewModel.status.redisMemory
+                    usage: runtimeServiceMemory("redis")
                 )
                 resourceRow(
                     AppConstants.Labels.systemDiskUsage,
-                    usage: viewModel.status.systemDisk
+                    usage: viewModel.runtimeStackStatus?.systemDisk
                 )
                 resourceRow(
                     AppConstants.Labels.dataStorageUsage,
@@ -147,7 +135,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var overallHealthValue: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.overallHealth(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+        displayPolicy.overallHealth(status: viewModel.status, operationState: viewModel.operationState)
     }
 
     private var overallHealthColor: Color {
@@ -167,28 +155,36 @@ struct RuntimeStatusPanel: View {
 
     private var recorderSummary: RuntimeStatusDisplayPolicy.RecorderSummary {
         displayPolicy.recorderSummary(
-            observation: viewModel.containerObservation,
+            recorderIngressStatusRead: viewModel.vitalRecorders.recorderIngressStatusRead,
             vitalDBObservation: viewModel.vitalDBObservationSnapshot.observation,
             now: uptimeNow
         )
     }
 
     private var recorderIngressQueueStatus: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.recorderIngressQueue(observation: viewModel.containerObservation)
+        displayPolicy.recorderIngressQueue(
+            recorderIngressStatusRead: viewModel.vitalRecorders.recorderIngressStatusRead
+        )
     }
 
     private var recorderIngressDetailItems: [RuntimeStatusDisplayPolicy.HealthItem] {
-        displayPolicy.recorderIngressDetails(observation: viewModel.containerObservation)
+        displayPolicy.recorderIngressDetails(
+            recorderIngressStatusRead: viewModel.vitalRecorders.recorderIngressStatusRead
+        )
     }
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+        displayPolicy.vitalServerAvailability(
+            status: viewModel.status,
+            operationState: viewModel.operationState,
+            now: uptimeNow
+        )
     }
 
     private var remoteConsoleAvailability: RuntimeStatusDisplayPolicy.StatusValue {
         displayPolicy.remoteConsoleAvailability(
-            http: viewModel.remoteConsoleHTTP ?? viewModel.status.runtimeControlHTTP,
-            startedAt: viewModel.remoteConsoleStartedAt ?? viewModel.status.runtimeControlStartedAt,
+            http: viewModel.remoteConsoleHTTP ?? viewModel.status.platformAPIHTTP,
+            startedAt: viewModel.remoteConsoleStartedAt ?? viewModel.status.platformAPIStartedAt,
             now: uptimeNow
         )
     }
@@ -363,19 +359,8 @@ struct RuntimeStatusPanel: View {
         )
     }
 
-    private func resourceRow(_ label: String, usage: RuntimeContainerMemoryUsage?) -> some View {
-        resourceRow(
-            label,
-            percent: usage?.percent,
-            detail: usage.map(containerMemoryDetail) ?? AppConstants.StatusText.notChecked
-        )
-    }
-
-    private func containerMemoryDetail(_ usage: RuntimeContainerMemoryUsage) -> String {
-        guard let limitBytes = usage.limitBytes else {
-            return "\(formatBytes(usage.usedBytes)) / unknown limit"
-        }
-        return "\(formatBytes(usage.usedBytes)) / \(formatBytes(limitBytes))"
+    private func runtimeServiceMemory(_ service: String) -> ResourceUsage? {
+        viewModel.runtimeStackStatus?.services.first { $0.service == service }?.memory
     }
 
     private func resourceRow(_ label: String, percent: Double?, detail: String) -> some View {

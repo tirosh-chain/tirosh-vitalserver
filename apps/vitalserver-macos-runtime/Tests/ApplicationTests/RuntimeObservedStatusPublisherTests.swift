@@ -1,42 +1,26 @@
 import Contracts
 import Application
 import XCTest
-import Errors
 
 final class RuntimeObservedStatusPublisherTests: XCTestCase {
-    func testPublishStatusProjectsReturnedVitalDBObservation() throws {
+    func testPublishStatusWritesStatusWithoutProjectingReturnedVitalDBObservation() throws {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-30T00:00:00Z",
             ready: true,
             recorderOnlineThresholdSeconds: 30
         )
-        var projected: [VitalDBObservationDocument] = []
+        var writeCalls = 0
         let publisher = RuntimeObservedStatusPublisher(
-            writeStatus: { status, operation, message, progress in
+            writeStatus: { status in
+                writeCalls += 1
                 XCTAssertEqual(status, .healthy)
-                XCTAssertEqual(operation, .health)
-                XCTAssertEqual(message, "runtime healthy")
-                XCTAssertNil(progress)
                 return self.runtimeHealthSnapshot(vitalDBObservation: observation)
-            },
-            projectObservation: { projected.append($0) }
+            }
         )
 
         try publisher.publishStatus(.healthy, operation: .health, message: "runtime healthy")
 
-        XCTAssertEqual(projected, [observation])
-    }
-
-    func testPublishStatusDoesNotProjectWhenSnapshotHasNoVitalDBObservation() throws {
-        var projected: [VitalDBObservationDocument] = []
-        let publisher = RuntimeObservedStatusPublisher(
-            writeStatus: { _, _, _, _ in self.runtimeHealthSnapshot(vitalDBObservation: nil) },
-            projectObservation: { projected.append($0) }
-        )
-
-        try publisher.publishStatus(.degraded, operation: .watchdog, message: "runtime degraded")
-
-        XCTAssertTrue(projected.isEmpty)
+        XCTAssertEqual(writeCalls, 1)
     }
 
     private func runtimeHealthSnapshot(

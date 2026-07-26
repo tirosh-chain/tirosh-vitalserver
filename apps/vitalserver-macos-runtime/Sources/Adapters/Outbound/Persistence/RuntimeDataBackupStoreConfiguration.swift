@@ -41,14 +41,17 @@ public struct RuntimeDataBackupStoreMetadata {
     public var productIdentifier: String
     public var manifestName: String
     public var redisVolumeName: String
+    public var postgresVolumeName: String
 
     public init(
         productIdentifier: String,
         manifestName: String,
-        redisVolumeName: String
+        redisVolumeName: String,
+        postgresVolumeName: String = "vitalserver_postgres-data"
     ) {
         self.productIdentifier = productIdentifier
         self.manifestName = manifestName
         self.redisVolumeName = redisVolumeName
+        self.postgresVolumeName = postgresVolumeName
     }
 }

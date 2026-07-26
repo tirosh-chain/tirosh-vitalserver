@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "v1",
+  "topologyDeploymentId": "external-vitalserver-reference-topology",
+  "topologyKind": "external-vitalserver",
+  "vitalServerDeliveryProvider": { "kind": "external-vitalserver", "id": "external-vitalserver-reference", "capabilityRevision": 1 },
+  "publicBrowserExposure": "not-exposed",
+  "externalVitalServerDeploymentConfiguration": {
+    "externalUpstreamIntegrationReference": { "resourceType": "external-upstream-integration", "resourceId": "external-vitalserver-reference" },
+    "externalVitalServerDeliveryConfigurationReference": { "resourceType": "external-vitalserver-delivery-configuration", "resourceId": "external-vitalserver-reference-delivery-configuration" }
+  }
+}

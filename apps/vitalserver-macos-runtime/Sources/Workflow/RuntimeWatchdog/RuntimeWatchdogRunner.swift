@@ -109,10 +109,7 @@ public struct RuntimeWatchdogRunner {
         log: (String) -> Void,
         printLine: (String) -> Void
     ) throws {
-        let plan = useCase.observedStatusPlan(
-            plan,
-            currentStatus: operations.currentRuntimeStatus()
-        )
+        let snapshot = completeReachableVMLifecycleIfNeeded(snapshot, operations: operations, log: log)
         if let logMessage = plan.logMessage {
             log(logMessage)
         }
@@ -122,23 +119,68 @@ public struct RuntimeWatchdogRunner {
         printLine(plan.printMessage)
     }
 
+    private func completeReachableVMLifecycleIfNeeded(
+        _ snapshot: RuntimeHealthSnapshot,
+        operations: RuntimeWatchdogActions,
+        log: (String) -> Void
+    ) -> RuntimeHealthSnapshot {
+        guard snapshot.vmService == .loaded,
+              snapshot.guestAddressRead.state == .loaded,
+              isSuccessfulHTTPStatus(snapshot.guestHTTP),
+              isSuccessfulHTTPStatus(snapshot.hostProxyHTTP)
+        else {
+            return snapshot
+        }
+        return completeVMLifecycleIfNeeded(
+            snapshot,
+            operations: operations,
+            log: log,
+            markReason: "Guest control and host proxy reported reachable",
+            eventMessage: "VM lifecycle marked running after reachable runtime observation"
+        )
+    }
+
     private func completeHealthyVMLifecycleIfNeeded(
         _ snapshot: RuntimeHealthSnapshot,
         operations: RuntimeWatchdogActions,
         log: (String) -> Void
     ) -> RuntimeHealthSnapshot {
         let plan = useCase.lifecycleMarkPlan(snapshot)
+        return completeVMLifecycleIfNeeded(
+            snapshot,
+            operations: operations,
+            log: log,
+            markReason: "Guest runtime reported healthy",
+            eventMessage: plan.eventMessage
+        )
+    }
+
+    private func completeVMLifecycleIfNeeded(
+        _ snapshot: RuntimeHealthSnapshot,
+        operations: RuntimeWatchdogActions,
+        log: (String) -> Void,
+        markReason: String,
+        eventMessage: String
+    ) -> RuntimeHealthSnapshot {
+        let plan = useCase.lifecycleMarkPlan(snapshot)
         guard let lifecycle = plan.lifecycle else {
             return snapshot
         }
         do {
-            try operations.markVMLifecycleRunning(lifecycle, "Guest runtime reported healthy")
-            operations.recordLifecycleEvent(.watchdog, plan.eventMessage, .statusChanged)
+            try operations.markVMLifecycleRunning(lifecycle, markReason)
+            operations.recordLifecycleEvent(.watchdog, eventMessage, .statusChanged)
             return operations.healthSnapshot()
         } catch {
             log(useCase.lifecycleMarkFailedLogMessage(error: error))
             return snapshot
         }
+    }
+
+    private func isSuccessfulHTTPStatus(_ value: String) -> Bool {
+        guard let code = Int(value) else {
+            return false
+        }
+        return code >= 200 && code < 300
     }
 
     private func executeRecoveryDecision(
@@ -201,22 +243,6 @@ public struct RuntimeWatchdogRunner {
             .recoveryPlanned
         )
 
-        if let composeReconcileEventMessage = plan.composeReconcileEventMessage {
-            operations.recordObservedEvent(
-                .recovering,
-                .watchdog,
-                composeReconcileEventMessage,
-                initial,
-                .serviceRestartDispatched
-            )
-            do {
-                try operations.reconcileGuestCompose()
-            } catch {
-                let failurePlan = useCase.composeReconcileFailurePlan(error: error)
-                try writeCommandFailure(failurePlan, snapshot: initial, operations: operations, log: log, printLine: printLine)
-                return
-            }
-        }
         if let vmRestartEventMessage = plan.vmRestartEventMessage {
             operations.recordObservedEvent(
                 .recovering,
@@ -283,11 +309,9 @@ public struct RuntimeWatchdogActions {
     public let rotateRuntimeLogs: () -> RuntimeBestEffortOperationResult
     public let collectGuestLogs: () -> RuntimeBestEffortOperationResult
     public let activeManagedOperation: () -> RuntimeOperation?
-    public let currentRuntimeStatus: () -> RuntimeStatusDocumentLoadResult
     public let healthSnapshot: () -> RuntimeHealthSnapshot
     public let proxyLivenessHTTP: (Int?) -> String
     public let automaticRecoveryEnabled: () throws -> Bool
-    public let reconcileGuestCompose: () throws -> Void
     public let restartVMRuntime: () throws -> Void
     public let restartService: (RuntimeManagedService) throws -> Void
     public let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -309,11 +333,9 @@ public struct RuntimeWatchdogActions {
         rotateRuntimeLogs: @escaping () -> RuntimeBestEffortOperationResult,
         collectGuestLogs: @escaping () -> RuntimeBestEffortOperationResult,
         activeManagedOperation: @escaping () -> RuntimeOperation?,
-        currentRuntimeStatus: @escaping () -> RuntimeStatusDocumentLoadResult,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         proxyLivenessHTTP: @escaping (Int?) -> String,
         automaticRecoveryEnabled: @escaping () throws -> Bool,
-        reconcileGuestCompose: @escaping () throws -> Void,
         restartVMRuntime: @escaping () throws -> Void,
         restartService: @escaping (RuntimeManagedService) throws -> Void,
         writeRuntimeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
@@ -334,11 +356,9 @@ public struct RuntimeWatchdogActions {
         self.rotateRuntimeLogs = rotateRuntimeLogs
         self.collectGuestLogs = collectGuestLogs
         self.activeManagedOperation = activeManagedOperation
-        self.currentRuntimeStatus = currentRuntimeStatus
         self.healthSnapshot = healthSnapshot
         self.proxyLivenessHTTP = proxyLivenessHTTP
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
-        self.reconcileGuestCompose = reconcileGuestCompose
         self.restartVMRuntime = restartVMRuntime
         self.restartService = restartService
         self.writeRuntimeStatus = writeRuntimeStatus

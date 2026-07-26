@@ -86,16 +86,16 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
 public struct RuntimeLogArchiveSettingsReadInput: Equatable, Sendable {
     public let retentionDays: Int
     public let maximumGiB: Int
-    public let redisRelay: RuntimeRedisRelaySettings
+    public let runtimeControlPort: Int
 
     public init(
         retentionDays: Int,
         maximumGiB: Int,
-        redisRelay: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings()
+        runtimeControlPort: Int = RuntimeSettingsInitialValues.runtimeControlPort
     ) {
         self.retentionDays = retentionDays
         self.maximumGiB = maximumGiB
-        self.redisRelay = redisRelay
+        self.runtimeControlPort = runtimeControlPort
     }
 }
 
@@ -325,7 +325,6 @@ public enum RuntimeSettingsReadPolicy {
         var next = settings
         next.logArchiveRetentionDays = input.retentionDays
         next.logArchiveMaximumGiB = input.maximumGiB
-        next.redisRelay = input.redisRelay
         if !RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(input.retentionDays) {
             next = appendReadIssue(
                 source: "logArchiveSettings.logArchiveRetentionDays",
@@ -340,11 +339,24 @@ public enum RuntimeSettingsReadPolicy {
                 to: next
             )
         }
+        if validRuntimeControlPort(input.runtimeControlPort) {
+            next.runtimeControlPort = input.runtimeControlPort
+        } else {
+            next = appendReadIssue(
+                source: "runtimeControlSettings.runtimeControlPort",
+                message: "runtimeControlPort is out of range: \(input.runtimeControlPort)",
+                to: next
+            )
+        }
         return next
     }
 
     public static func validLogArchiveMaximumGiB(_ gib: Int) -> Bool {
         (1...20).contains(gib)
+    }
+
+    public static func validRuntimeControlPort(_ port: Int) -> Bool {
+        (1...65_535).contains(port)
     }
 
     private static func validBackupRetentionCount(_ count: Int) -> Bool {

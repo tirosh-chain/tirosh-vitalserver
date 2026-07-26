@@ -3,12 +3,18 @@ from __future__ import annotations
 import os
 import plistlib
 import shutil
+import signal
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    require_rootfs_artifact_guest_deploy_match,
+    rootfs_artifact_manifest_path,
+)
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
-    stage_guest_deploy,
+    stage_materialized_guest_deploy,
     stage_rootfs_input_metadata,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
@@ -16,6 +22,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     copy_tree,
     install_file,
     remove_apple_double_files,
+    remove_staging_tree,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_templates import (
     plist_text,
@@ -43,12 +50,25 @@ RESET_TROUBLESHOOTING_CLI_NAME = "vitalserver-troubleshooting-reset-for-reinstal
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
 UPSTREAM_REDIS_SAVE_CLI_NAME = "vitalserver-troubleshooting-upstream-redis-save"
 UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
+DMG_PROCESS_INSPECTION_TIMEOUT_SECONDS = 10
+DMG_OUTPUT_RELEASE_GRACE_ATTEMPTS = 40
+DMG_OUTPUT_TERMINATE_ATTEMPTS = 8
+DMG_OUTPUT_KILL_ATTEMPTS = 8
+DMG_OUTPUT_RELEASE_POLL_SECONDS = 0.25
 
 
 @dataclass(frozen=True)
 class DmgAttachment:
     mount_point: Path
     device_entry: str | None
+
+
+@dataclass(frozen=True)
+class DmgOutputHolder:
+    pid: int
+    parent_pid: int
+    executable: Path
+    open_dmg_paths: tuple[Path, ...]
 
 
 def build_pkg(context: PackageContext) -> None:
@@ -86,7 +106,7 @@ def build_pkg(context: PackageContext) -> None:
 def build_dmg(context: PackageContext) -> None:
     staging = context.settings.dmg_staging_dir
     if staging.exists():
-        shutil.rmtree(staging)
+        remove_staging_tree(staging)
     staging.mkdir(parents=True)
     stage_troubleshooting_tools(
         settings=context.settings,
@@ -115,6 +135,244 @@ def build_dmg(context: PackageContext) -> None:
             "UDZO",
             str(context.dmg_output),
         ]
+    )
+    release_orphaned_dmg_output_helpers(context.dmg_output)
+
+
+def release_orphaned_dmg_output_helpers(
+    dmg_output: Path,
+    *,
+    grace_attempts: int = DMG_OUTPUT_RELEASE_GRACE_ATTEMPTS,
+    terminate_attempts: int = DMG_OUTPUT_TERMINATE_ATTEMPTS,
+    kill_attempts: int = DMG_OUTPUT_KILL_ATTEMPTS,
+    poll_seconds: float = DMG_OUTPUT_RELEASE_POLL_SECONDS,
+) -> None:
+    holders = wait_for_dmg_output_release(
+        dmg_output,
+        attempts=grace_attempts,
+        poll_seconds=poll_seconds,
+    )
+    if not holders:
+        return
+    require_owned_orphaned_dmg_helpers(dmg_output, holders)
+    pids = sorted(holder.pid for holder in holders)
+    print(
+        "DMG output remains open after hdiutil completed; terminating owned "
+        f"orphaned diskimages-helper processes: output={dmg_output} pids={pids}"
+    )
+    signal_dmg_output_holders(holders, signal.SIGTERM)
+    holders = wait_for_dmg_output_release(
+        dmg_output,
+        attempts=terminate_attempts,
+        poll_seconds=poll_seconds,
+    )
+    if not holders:
+        return
+    require_owned_orphaned_dmg_helpers(dmg_output, holders)
+    pids = sorted(holder.pid for holder in holders)
+    print(
+        "Owned orphaned diskimages-helper processes ignored SIGTERM; sending "
+        f"SIGKILL: output={dmg_output} pids={pids}"
+    )
+    signal_dmg_output_holders(holders, signal.SIGKILL)
+    holders = wait_for_dmg_output_release(
+        dmg_output,
+        attempts=kill_attempts,
+        poll_seconds=poll_seconds,
+    )
+    if holders:
+        raise RuntimeError(
+            "DMG output remains open after terminating owned orphaned helpers: "
+            f"output={dmg_output} holders={format_dmg_output_holders(holders)}"
+        )
+
+
+def wait_for_dmg_output_release(
+    dmg_output: Path,
+    *,
+    attempts: int,
+    poll_seconds: float,
+) -> list[DmgOutputHolder]:
+    if attempts < 1:
+        raise ValueError("DMG output release attempts must be at least one")
+    for attempt in range(attempts):
+        holders = dmg_output_holders(dmg_output)
+        if not holders:
+            return []
+        if attempt + 1 < attempts:
+            time.sleep(poll_seconds)
+    return holders
+
+
+def dmg_output_holders(dmg_output: Path) -> list[DmgOutputHolder]:
+    lsof_path = shutil.which("lsof")
+    ps_path = shutil.which("ps")
+    if lsof_path is None or ps_path is None:
+        missing = [
+            name
+            for name, path in [("lsof", lsof_path), ("ps", ps_path)]
+            if path is None
+        ]
+        raise RuntimeError(
+            "required tools are unavailable while inspecting DMG output holders: "
+            + ", ".join(missing)
+        )
+    expected_path = dmg_output.resolve(strict=False)
+    result = run_inspection_command(
+        [lsof_path, "-nP", "-t", "--", str(expected_path)],
+        description=f"processes holding DMG output {expected_path}",
+    )
+    if (
+        result.returncode == 1
+        and not result.stdout.strip()
+        and not result.stderr.strip()
+    ):
+        return []
+    if result.returncode != 0:
+        detail = (
+            result.stderr.strip() or result.stdout.strip() or str(result.returncode)
+        )
+        raise RuntimeError(
+            f"failed to inspect processes holding DMG output {expected_path}: {detail}"
+        )
+    raw_pids = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not raw_pids or any(not raw_pid.isdecimal() for raw_pid in raw_pids):
+        raise RuntimeError(
+            "lsof returned malformed DMG output holder PIDs: "
+            f"output={expected_path} stdout={result.stdout!r}"
+        )
+    holders: list[DmgOutputHolder] = []
+    for pid in sorted({int(raw_pid) for raw_pid in raw_pids}):
+        holder = inspect_dmg_output_holder(
+            pid=pid,
+            expected_path=expected_path,
+            lsof_path=lsof_path,
+            ps_path=ps_path,
+        )
+        if holder is not None:
+            holders.append(holder)
+    return holders
+
+
+def inspect_dmg_output_holder(
+    *,
+    pid: int,
+    expected_path: Path,
+    lsof_path: str,
+    ps_path: str,
+) -> DmgOutputHolder | None:
+    process = run_inspection_command(
+        [ps_path, "-p", str(pid), "-o", "ppid=", "-o", "comm="],
+        description=f"DMG output holder process {pid}",
+    )
+    if process.returncode != 0:
+        if not process.stdout.strip() and not process.stderr.strip():
+            return None
+        detail = process.stderr.strip() or process.stdout.strip()
+        raise RuntimeError(f"failed to inspect DMG output holder pid={pid}: {detail}")
+    fields = process.stdout.strip().split(maxsplit=1)
+    if len(fields) != 2 or not fields[0].isdecimal() or not fields[1]:
+        raise RuntimeError(
+            "ps returned malformed DMG output holder metadata: "
+            f"pid={pid} stdout={process.stdout!r}"
+        )
+    open_files = run_inspection_command(
+        [lsof_path, "-nP", "-p", str(pid), "-Fn"],
+        description=f"open files for DMG output holder {pid}",
+    )
+    if open_files.returncode != 0:
+        if not open_files.stdout.strip() and not open_files.stderr.strip():
+            return None
+        detail = open_files.stderr.strip() or open_files.stdout.strip()
+        raise RuntimeError(
+            f"failed to inspect open files for DMG output holder pid={pid}: {detail}"
+        )
+    open_dmg_paths = tuple(
+        sorted(
+            {
+                Path(line[1:]).resolve(strict=False)
+                for line in open_files.stdout.splitlines()
+                if line.startswith("n") and line[1:].endswith(".dmg")
+            },
+            key=str,
+        )
+    )
+    if expected_path not in open_dmg_paths:
+        return None
+    return DmgOutputHolder(
+        pid=pid,
+        parent_pid=int(fields[0]),
+        executable=Path(fields[1]),
+        open_dmg_paths=open_dmg_paths,
+    )
+
+
+def run_inspection_command(
+    command: list[str],
+    *,
+    description: str,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            text=True,
+            capture_output=True,
+            timeout=DMG_PROCESS_INSPECTION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"timed out inspecting {description} after "
+            f"{DMG_PROCESS_INSPECTION_TIMEOUT_SECONDS} seconds"
+        ) from error
+    except OSError as error:
+        raise RuntimeError(f"failed to inspect {description}: {error}") from error
+
+
+def require_owned_orphaned_dmg_helpers(
+    dmg_output: Path,
+    holders: list[DmgOutputHolder],
+) -> None:
+    expected_path = dmg_output.resolve(strict=False)
+    unsafe = [
+        holder
+        for holder in holders
+        if holder.parent_pid != 1
+        or holder.executable.name != "diskimages-helper"
+        or holder.open_dmg_paths != (expected_path,)
+    ]
+    if unsafe:
+        raise RuntimeError(
+            "DMG output remains open; refusing to signal a process whose ownership "
+            "is not limited to the exact build output: "
+            f"output={expected_path} holders={format_dmg_output_holders(unsafe)}"
+        )
+
+
+def signal_dmg_output_holders(
+    holders: list[DmgOutputHolder],
+    requested_signal: int,
+) -> None:
+    for holder in holders:
+        try:
+            os.kill(holder.pid, requested_signal)
+        except ProcessLookupError:
+            continue
+        except OSError as error:
+            raise RuntimeError(
+                "failed to signal owned orphaned DMG output helper: "
+                f"pid={holder.pid} signal={requested_signal} error={error}"
+            ) from error
+
+
+def format_dmg_output_holders(holders: list[DmgOutputHolder]) -> str:
+    return "; ".join(
+        "pid="
+        f"{holder.pid} parentPid={holder.parent_pid} "
+        f"executable={holder.executable} "
+        "openDmgPaths="
+        f"{','.join(str(path) for path in holder.open_dmg_paths)}"
+        for holder in holders
     )
 
 
@@ -160,6 +418,7 @@ def ensure_dmg_output_is_not_attached(dmg_output: Path) -> None:
 
 
 def hdiutil_verify_image(dmg_output: Path) -> None:
+    release_orphaned_dmg_output_helpers(dmg_output)
     result = subprocess.run(
         ["hdiutil", "verify", str(dmg_output)],
         check=False,
@@ -174,6 +433,29 @@ def hdiutil_verify_image(dmg_output: Path) -> None:
         if line
     )
     raise RuntimeError(detail or f"hdiutil verify exited {result.returncode}")
+
+
+def expand_pkg_payload(package: Path, destination: Path) -> Path:
+    result = subprocess.run(
+        ["pkgutil", "--expand-full", str(package), str(destination)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = "\n".join(
+            line
+            for line in [result.stdout.strip(), result.stderr.strip()]
+            if line
+        )
+        raise RuntimeError(detail or f"pkgutil expand exited {result.returncode}")
+    payload = destination / "Payload"
+    if not payload.is_dir():
+        raise RuntimeError(
+            "pkgutil expanded package without a materialized Payload directory: "
+            f"{package}"
+        )
+    return payload
 
 
 def attach_dmg_readonly(dmg_output: Path) -> DmgAttachment:
@@ -236,11 +518,18 @@ def detach_hdiutil_target(target: str) -> None:
 
 
 def attached_disk_images() -> list[dict[str, object]]:
-    result = subprocess.run(
-        ["hdiutil", "info", "-plist"],
-        check=False,
-        capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            ["hdiutil", "info", "-plist"],
+            check=False,
+            capture_output=True,
+            timeout=DMG_PROCESS_INSPECTION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            "failed to read attached disk images: hdiutil info timed out after "
+            f"{DMG_PROCESS_INSPECTION_TIMEOUT_SECONDS} seconds"
+        ) from error
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace").strip()
         raise RuntimeError(
@@ -332,7 +621,7 @@ def stage_troubleshooting_tools(
     tools_dir: Path,
 ) -> None:
     if tools_dir.exists():
-        shutil.rmtree(tools_dir)
+        remove_staging_tree(tools_dir)
     tools_dir.mkdir(parents=True, exist_ok=True)
     stage_reset_installer_command(
         settings=settings,
@@ -353,14 +642,26 @@ def stage_troubleshooting_tools(
 def stage_pkg_root(context: PackageContext) -> None:
     image = context.golden_runtime_dir / "Image"
     initrd = context.golden_runtime_dir / "initrd.img"
-    for required in [image, initrd, context.rootfs_base, context.docker_bundle]:
-        if not required.is_file():
-            raise SystemExit(f"error: missing package input: {required}")
+    rootfs_manifest = rootfs_artifact_manifest_path(context.rootfs_base)
+    required = [
+        image,
+        initrd,
+        context.rootfs_base,
+        rootfs_manifest,
+    ]
+    for required_input in required:
+        if not required_input.is_file():
+            raise SystemExit(f"error: missing package input: {required_input}")
+    if not context.guest_deploy_source.is_dir():
+        raise SystemExit(
+            "error: missing compiled Guest deploy package input: "
+            f"{context.guest_deploy_source}"
+        )
 
     if context.pkg_root.exists():
-        shutil.rmtree(context.pkg_root)
+        remove_staging_tree(context.pkg_root)
     if context.pkg_scripts.exists():
-        shutil.rmtree(context.pkg_scripts)
+        remove_staging_tree(context.pkg_scripts)
 
     mkdirs = [
         package_path(context, package_install_value(context, "applications_dir")),
@@ -426,14 +727,29 @@ def stage_pkg_root(context: PackageContext) -> None:
         package_path(context, f"{install_home(context)}/runtime/{ROOTFS_BASE_NAME}"),
     )
     install_file(
+        rootfs_manifest,
+        package_path(
+            context,
+            f"{install_home(context)}/runtime/{rootfs_manifest.name}",
+        ),
+    )
+    install_file(
         context.root / "infra/macos-nginx/vitalserver.conf.template",
         package_path(
             context,
             f"{install_home(context)}/Support/Proxy/vitalserver.conf.template",
         ),
     )
-    stage_guest_deploy(context.guest_deploy_plan)
+    package_deploy_dir = package_path(context, f"{install_home(context)}/data/deploy")
+    stage_materialized_guest_deploy(
+        context.guest_deploy_source,
+        package_deploy_dir,
+    )
     stage_rootfs_input_metadata(context.rootfs_input_metadata_plan)
+    require_rootfs_artifact_guest_deploy_match(
+        context.rootfs_base,
+        package_deploy_dir,
+    )
     render_launchd_templates(context)
     copy_executable(packaging_dir / "preinstall", context.pkg_scripts / "preinstall")
     copy_executable(

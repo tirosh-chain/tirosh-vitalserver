@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "v1",
+  "scope": "npm package-lock third-party package metadata",
+  "allowedLicenseValues": [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BlueOak-1.0.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MIT OR CC0-1.0",
+    "(MIT OR CC0-1.0)",
+    "Python-2.0",
+    "WTFPL",
+    "WTFPL OR ISC",
+    "(WTFPL OR MIT)"
+  ],
+  "forbiddenLicenseValues": [
+    "AGPL-3.0",
+    "GPL-2.0",
+    "GPL-3.0",
+    "LGPL-2.1",
+    "LGPL-3.0"
+  ],
+  "notes": "This policy validates package-lock metadata only. BlueOak-1.0.0, Python-2.0, and the listed WTFPL expressions were reviewed as no-fee permissive build-time dependency licenses on 2026-07-20; 0BSD was reviewed on 2026-07-27. Notice review still applies. Every packaged Electron binary requires a release SBOM and notice review for its shipped platform payload."
+}

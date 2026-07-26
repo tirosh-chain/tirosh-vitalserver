@@ -53,7 +53,7 @@ Examples:
 
 - `domain.observability.GuestObservabilitySnapshot`
 - `domain.runtime_config.RuntimeConfig`
-- `domain.runtime_state.GuestRuntimeState`
+- `domain.runtime_observation.GuestRuntimeObservation`
 - `domain.operations.GuestOperationResult`
 
 Outbound adapters may collect Linux values and create these domain objects.
@@ -65,8 +65,8 @@ dictionaries directly.
 Inbound adapters translate external triggers into package behavior.
 
 - `adapters/inbound/cli.py`: console script entrypoints.
-- `adapters/inbound/request_file_poller.py`: watches Host-written request
-  files and dispatches the matching systemd service.
+- Guest command request-file polling has been removed from the v2 runtime.
+  Guest commands should be exposed through Guest Control API operations.
 - `adapters/inbound/observability_daemon.py`: daemon loop started by systemd
   for periodic guest observability snapshots.
 
@@ -109,3 +109,17 @@ single source for default values.
 `/etc/tirosh/guest-tools.toml` is optional and acts as an explicit override.
 The loader merges it over the packaged defaults, so deployment-specific changes
 can stay small without duplicating the full settings document.
+
+When `VITALSERVER_RUNTIME_CONTROLLER_SETTINGS_PATH` selects a settings file,
+that file is required: missing, unreadable, and invalid TOML are distinct
+configuration failures and do not fall back to packaged settings. The Guest
+Control API and `tirosh-guest-tools-migrate-control-store` both resolve
+`paths.controlStateDir` and `[controlStore]` from this one settings contract.
+`controlStateDir` must be inside the platform-owned `controlStore.root`; the
+migration command does not accept a data-root argument, so it cannot prepare a
+different SQLite ledger from the one the API will open. At the lifecycle
+boundary it verifies that the root already exists as a real directory and, when
+`controlStore.requiresMount = true`, is mounted before creating `control.sqlite`.
+It never creates a missing platform root as a root-filesystem fallback. This is
+a mounted-at-path gate, not a substitute for a platform-owned disk-identity
+proof.

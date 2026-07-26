@@ -32,7 +32,7 @@ public struct ApplyRuntimeBundleOperations {
     public var rollback: (URL?) throws -> Void
     public var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     public var writeBestEffortStatus: (RuntimeStatusLevel, RuntimeOperation, String) -> Void
-    public var publishProgress: (RuntimeStepExecutionEvent) -> Void
+    public var publishProgress: (RuntimeStepExecutionEvent) throws -> Void
     public var pruneOldRuntimeArtifacts: () throws -> Void
     public var describeError: (Error) -> String
     public var log: (String) -> Void
@@ -57,7 +57,7 @@ public struct ApplyRuntimeBundleOperations {
         rollback: @escaping (URL?) throws -> Void,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
         writeBestEffortStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
-        publishProgress: @escaping (RuntimeStepExecutionEvent) -> Void,
+        publishProgress: @escaping (RuntimeStepExecutionEvent) throws -> Void,
         pruneOldRuntimeArtifacts: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
         log: @escaping (String) -> Void

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "v1",
+  "id": "release-bootstrap-20260717",
+  "productId": "vitalserver-runtime-platform",
+  "target": { "platform": "macos", "architecture": "arm64" },
+  "targetRelease": { "productVersion": "0.2.0", "runtimeVersion": "0.2.0" },
+  "layerOrder": ["guest-runtime", "container", "host-platform"],
+  "nextUpdaterArtifact": {
+    "id": "host-updater-020",
+    "relativePath": "payload/host-updater",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sizeBytes": 42,
+    "mediaType": "application/octet-stream"
+  },
+  "specification": {
+    "id": "product-update-spec-020",
+    "relativePath": "payload/product-update.json",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "sizeBytes": 91,
+    "mediaType": "application/json"
+  },
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "release-key-2026",
+    "signedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "value": "base64-ed25519-signature"
+  },
+  "issuedAt": "2026-07-17T00:00:00Z"
+}

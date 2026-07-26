@@ -22,8 +22,7 @@ The PWA tried http://127.0.0.1:18321/runtime/overview, but the local Runtime Con
 
 ```sh
 lsof -nP -iTCP:18321 -sTCP:LISTEN
-curl -i -H 'X-Runtime-Control-Token: vitalserver-helper-dev' \
-  http://127.0.0.1:18321/runtime/overview
+curl -i http://127.0.0.1:18321/health
 curl -i http://127.0.0.1:18321/
 curl -i http://127.0.0.1:18321/sw.js
 curl -i -X OPTIONS \
@@ -54,8 +53,8 @@ PWA 번들은 로드됐지만 Runtime Control API 호출이 브라우저에서 �
 
 수정:
 
-Runtime Control local HTTP server가 loopback origin의 CORS preflight를 `204 No Content`로 응답하고, 실제 API 응답에도 `Access-Control-Allow-Origin`을 붙이도록 했습니다. Runtime Control PWA port는 Settings에서 변경할 수 있으며, 저장 후 Helper local API server가 새 포트로 재시작됩니다. Runtime Control PWA는 Workbox app-shell precache를 사용하지 않고, 기존 service worker/cache를 제거하는 cleanup `sw.js`만 배포합니다. Helper static responder는 `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest`를 장기 캐시하지 않습니다.
+Runtime Control local HTTP server가 loopback origin의 CORS preflight를 `204 No Content`로 응답하고, 실제 API 응답에도 `Access-Control-Allow-Origin`을 붙이도록 했습니다. Runtime Control PWA port는 root-owned `runtime-control-settings.json`의 명시적 Platform Agent 설정이며, Settings의 권한 상승 configure 흐름이 이를 기록한 뒤 Platform Agent를 재시작합니다. GUI-user `UserDefaults`는 listener port owner가 아닙니다. Runtime Control PWA는 Workbox app-shell precache를 사용하지 않고, 기존 service worker/cache를 제거하는 cleanup `sw.js`만 배포합니다. Helper static responder는 `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest`를 장기 캐시하지 않습니다.
 
 ## Follow-up
 
-- Runtime Control token을 고정 dev token에서 per-install token으로 바꾸는 작업과 함께 CORS 허용 범위를 재검토합니다.
+- browser session과 root-owned automation token은 다른 credential입니다. remote administration 또는 same-user OS identity authorization은 별도 권한 모델로 설계합니다.

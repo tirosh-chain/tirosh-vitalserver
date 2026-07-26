@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "v1",
+  "id": "lab-recorder-0001",
+  "name": "LAB-baseline-monitoring-recorder-1",
+  "origin": "lab",
+  "recorderGatewayRecorderCode": "lab-recorder-0001",
+  "recorderGatewayRecorderId": "recorder-lab-recorder-0001",
+  "labRecorderRunnerRunId": "lab-run-0001",
+  "labRecorderRunnerRunRevision": 2,
+  "recorderGatewayColdPathCaptureId": "capture-0001",
+  "recorderGatewayFinalizationReceiptId": "finalization-0001",
+  "terminalArchivePolicy": "export-on-stop",
+  "terminalArchiveIntent": {
+    "state": "submitted",
+    "requestId": "lab-terminal-archive-0001",
+    "sourceResourceRevision": 3,
+    "coldPathFinalizationReceiptId": "finalization-0001",
+    "labOperationReference": {
+      "resourceType": "operation",
+      "resourceId": "lab-stop-operation-0001"
+    },
+    "archiveOperationReference": {
+      "resourceType": "operation",
+      "resourceId": "archive-operation-0001"
+    },
+    "lastAttemptAt": "2026-07-17T00:05:01Z"
+  },
+  "resourceRevision": 3,
+  "sessionReference": {
+    "resourceType": "lab-session",
+    "resourceId": "lab-session-0001"
+  },
+  "bedReference": {
+    "resourceType": "lab-bed",
+    "resourceId": "lab-bed-0001"
+  },
+  "executionState": "stopped",
+  "visibility": "visible",
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:05:00Z"
+}

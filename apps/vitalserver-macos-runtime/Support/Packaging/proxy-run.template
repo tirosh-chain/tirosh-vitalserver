@@ -9,8 +9,7 @@ product_root="$(dirname "${nginx_prefix}")"
 runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"
 proxy_nginx_access_log="${VITALSERVER_PROXY_NGINX_ACCESS_LOG:-${runtime_logs}/proxy-nginx.access.log}"
 proxy_nginx_error_log="${VITALSERVER_PROXY_NGINX_ERROR_LOG:-${runtime_logs}/proxy-nginx.error.log}"
-
-state_file="${vm_home}/data/run/runtime-state.json"
+vm_ip_file="${vm_home}/data/run/vm-ip"
 template="${vm_home}/Support/Proxy/vitalserver.conf.template"
 config="${nginx_prefix}/vitalserver.conf"
 pid_file="${nginx_prefix}/logs/nginx.pid"
@@ -105,39 +104,42 @@ apply_config() {
   return 1
 }
 
-read_state_value() {
-  local key="$1"
-  local value=""
-
-  if [ -s "${state_file}" ] && [ -x /usr/bin/plutil ]; then
-    value="$(/usr/bin/plutil -extract "${key}" raw -o - "${state_file}" 2>/dev/null || true)"
-  fi
-  if [ -z "${value}" ] && [ -s "${state_file}" ]; then
-    value="$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "${state_file}" | head -n 1)"
-  fi
-
-  printf "%s" "${value}" | tr -d '[:space:]'
-}
+bootstrap_address_state="not-read"
+bootstrap_address_reason=""
+vm_ip=""
 
 read_vm_ip() {
-  read_state_value vmIP
-}
+  bootstrap_address_state=""
+  bootstrap_address_reason=""
+  vm_ip=""
 
-read_guest_http() {
-  read_state_value guestHTTP
-}
+  if [ ! -e "${vm_ip_file}" ]; then
+    bootstrap_address_state="missing"
+    bootstrap_address_reason="vm-ip file missing path=${vm_ip_file}"
+    return
+  fi
+  if [ ! -f "${vm_ip_file}" ]; then
+    bootstrap_address_state="invalid"
+    bootstrap_address_reason="vm-ip path is not a regular file path=${vm_ip_file}"
+    return
+  fi
 
-successful_http_status() {
-  local value="$1"
+  local value=""
+  if ! value="$(cat "${vm_ip_file}" 2>/dev/null)"; then
+    bootstrap_address_state="read-failed"
+    bootstrap_address_reason="vm-ip file read failed path=${vm_ip_file}"
+    return
+  fi
 
-  case "${value}" in
-    2* | 3*)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
+  value="$(printf "%s" "${value}" | tr -d '[:space:]')"
+  if [ -z "${value}" ]; then
+    bootstrap_address_state="invalid"
+    bootstrap_address_reason="vm-ip file empty path=${vm_ip_file}"
+    return
+  fi
+
+  bootstrap_address_state="loaded"
+  vm_ip="${value}"
 }
 
 upstream_ready() {
@@ -154,28 +156,25 @@ proxy_ready() {
     && curl -fsS --max-time 3 "http://127.0.0.1:${proxy_port}/recorder-ingress/health" >/dev/null 2>&1
 }
 
-trap stop_nginx EXIT INT TERM
+cleanup() {
+  stop_nginx
+}
+
+terminate() {
+  exit 0
+}
+
+trap cleanup EXIT
+trap terminate INT TERM
 
 last_upstream=""
 last_wait_message=""
 while true; do
-  vm_ip="$(read_vm_ip)"
-  if [ -n "${vm_ip}" ]; then
+  read_vm_ip
+  if [ "${bootstrap_address_state}" = "loaded" ]; then
     upstream="${vm_ip}:80"
-    guest_http="$(read_guest_http)"
 
-    if ! successful_http_status "${guest_http}"; then
-      if nginx_is_running; then
-        log_err "VM runtime bootstrap is not ready; stopping proxy upstream=${upstream} guestHTTP=${guest_http:-missing}"
-        stop_nginx
-      fi
-      wait_key="bootstrap:${upstream}:${guest_http:-missing}"
-      if [ "${last_wait_message}" != "${wait_key}" ]; then
-        log_err "waiting for VM runtime bootstrap: upstream=http://${upstream}/ guestHTTP=${guest_http:-missing}"
-        last_wait_message="${wait_key}"
-      fi
-      last_upstream=""
-    elif upstream_ready "${upstream}"; then
+    if upstream_ready "${upstream}"; then
       if [ "${upstream}" != "${last_upstream}" ] || ! nginx_is_running; then
         if apply_config "${upstream}"; then
           last_upstream="${upstream}"
@@ -204,12 +203,15 @@ while true; do
       last_upstream=""
     fi
   elif nginx_is_running; then
-    log_err "VM runtime state is missing; stopping proxy with stale upstream: ${state_file}"
+    log_err "Platform runtime endpoint is ${bootstrap_address_state}; stopping proxy with stale upstream: ${bootstrap_address_reason}"
     stop_nginx
     last_upstream=""
-  elif [ "${last_wait_message}" != "missing-state" ]; then
-    log_err "waiting for VM runtime state: ${state_file}"
-    last_wait_message="missing-state"
+  else
+    wait_key="runtime-endpoint:${bootstrap_address_state}:${bootstrap_address_reason}"
+    if [ "${last_wait_message}" != "${wait_key}" ]; then
+      log_err "waiting for Platform runtime endpoint source: state=${bootstrap_address_state} reason=${bootstrap_address_reason}"
+      last_wait_message="${wait_key}"
+    fi
   fi
 
   sleep "${VITALSERVER_PROXY_RELOAD_INTERVAL:-2}"

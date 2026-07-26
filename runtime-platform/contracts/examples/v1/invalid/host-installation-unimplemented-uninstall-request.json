@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v1",
+  "documentKind": "host-installation-request",
+  "id": "installation-request-002",
+  "installationId": "vitalserver-runtime-platform",
+  "operation": "uninstall",
+  "expectedReleaseId": "runtime-platform-0.2.0-dev-build-001",
+  "requestedAt": "2026-07-18T03:00:00Z"
+}

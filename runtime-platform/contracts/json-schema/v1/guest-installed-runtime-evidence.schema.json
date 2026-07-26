@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-installed-runtime-evidence",
+  "title": "GuestInstalledRuntimeEvidence",
+  "description": "Release-runner evidence that an installed Guest exposed an available C77 identity through the Host facade before or after an observed Host reboot, and that a direct Recorder multipart upload was attributed to the explicit Recorder by the Archive owner. It does not infer Guest state from package, process, file, or log presence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "evidenceId",
+    "releaseDeliveryPlanId",
+    "stage",
+    "status",
+    "recordedAt",
+    "runner"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "evidenceId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "releaseDeliveryPlanId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "stage": {
+      "enum": [
+        "first-boot-checkpoint",
+        "direct-upload-lineage",
+        "post-reboot-identity"
+      ]
+    },
+    "status": {
+      "enum": [
+        "verified",
+        "failed"
+      ]
+    },
+    "recordedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "const": "guest-installed-runtime"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      }
+    },
+    "hostBootSessionIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "readinessObservedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "identity": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-identity"
+    },
+    "checkpointEvidenceId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "directUploadEvidenceId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "edgeEndpoint": {
+      "type": "string",
+      "format": "uri",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "sourceVitalFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileName",
+        "byteSize",
+        "sha256"
+      ],
+      "properties": {
+        "fileName": {
+          "type": "string",
+          "pattern": "\\.vital$",
+          "minLength": 7,
+          "maxLength": 1024
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        }
+      }
+    },
+    "uploadId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "recorderId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "reportedBedName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "declaredRecorderCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "assignmentReceipt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-assignment-evidence-receipt"
+    },
+    "artifact": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:archive-artifact-detail"
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "enum": [
+              "first-boot-checkpoint",
+              "post-reboot-identity"
+            ]
+          },
+          "status": {
+            "const": "verified"
+          }
+        },
+        "required": [
+          "stage",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "hostBootSessionIdentifier",
+          "readinessObservedAt",
+          "identity"
+        ],
+        "not": {
+          "required": [
+            "issue"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "direct-upload-lineage"
+          },
+          "status": {
+            "const": "verified"
+          }
+        },
+        "required": [
+          "stage",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "checkpointEvidenceId",
+          "edgeEndpoint",
+          "sourceVitalFile",
+          "uploadId",
+          "recorderId",
+          "reportedBedName",
+          "declaredRecorderCode",
+          "assignmentReceipt",
+          "artifact"
+        ],
+        "not": {
+          "required": [
+            "issue"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "issue"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "identity"
+              ]
+            },
+            {
+              "required": [
+                "artifact"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "enum": [
+              "direct-upload-lineage",
+              "post-reboot-identity"
+            ]
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "required": [
+          "checkpointEvidenceId"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "post-reboot-identity"
+          }
+        },
+        "required": [
+          "stage"
+        ]
+      },
+      "then": {
+        "required": [
+          "directUploadEvidenceId"
+        ]
+      }
+    }
+  ]
+}

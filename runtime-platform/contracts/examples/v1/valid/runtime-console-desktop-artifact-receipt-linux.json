@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v1",
+  "artifact": {
+    "platform": "linux",
+    "kind": "appimage",
+    "fileName": "VitalServer Runtime Console-0.1.0-x86_64.AppImage",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sizeBytes": 1048576
+  },
+  "runtimeConsoleVersion": "0.1.0",
+  "localControlBootstrapContract": {
+    "contractId": "C53",
+    "schemaVersion": "v1"
+  }
+}

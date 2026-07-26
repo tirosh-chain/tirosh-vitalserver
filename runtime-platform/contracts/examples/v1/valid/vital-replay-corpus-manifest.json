@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "v1",
+  "corpusId": "approved-vital-replay-corpus-1",
+  "approval": {
+    "decision": "approved",
+    "reviewer": {
+      "kind": "human",
+      "id": "release-data-reviewer-1"
+    },
+    "reviewedAt": "2026-07-24T12:00:00Z",
+    "evidenceReference": {
+      "kind": "release-data-review",
+      "id": "vital-corpus-review-1"
+    },
+    "assertions": {
+      "nonIdentifying": true,
+      "redistributionAuthorized": true,
+      "clinicalUseProhibited": true
+    }
+  },
+  "entries": [
+    {
+      "id": "approved-recorder-vital-v1",
+      "fileName": "approved-recorder-v1.vital",
+      "byteSize": 20480,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "formatVersion": 1,
+      "origin": {
+        "kind": "nonclinical-recorder-export",
+        "evidenceReference": {
+          "kind": "recorder-export-review",
+          "id": "approved-recorder-v1"
+        }
+      },
+      "expectedReplay": {
+        "outcome": "succeeded",
+        "minimumGraphCompatibleSignalCount": 2,
+        "trackKinds": [
+          "waveform",
+          "numeric"
+        ]
+      }
+    },
+    {
+      "id": "approved-recorder-vital-v2",
+      "fileName": "approved-recorder-v2.vital",
+      "byteSize": 21504,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "formatVersion": 2,
+      "origin": {
+        "kind": "nonclinical-recorder-export",
+        "evidenceReference": {
+          "kind": "recorder-export-review",
+          "id": "approved-recorder-v2"
+        }
+      },
+      "expectedReplay": {
+        "outcome": "succeeded",
+        "minimumGraphCompatibleSignalCount": 2,
+        "trackKinds": [
+          "waveform",
+          "numeric"
+        ]
+      }
+    },
+    {
+      "id": "approved-recorder-vital-v3",
+      "fileName": "approved-recorder-v3.vital",
+      "byteSize": 22528,
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "formatVersion": 3,
+      "origin": {
+        "kind": "nonclinical-recorder-export",
+        "evidenceReference": {
+          "kind": "recorder-export-review",
+          "id": "approved-recorder-v3"
+        }
+      },
+      "expectedReplay": {
+        "outcome": "succeeded",
+        "minimumGraphCompatibleSignalCount": 2,
+        "trackKinds": [
+          "waveform",
+          "numeric"
+        ]
+      }
+    }
+  ]
+}

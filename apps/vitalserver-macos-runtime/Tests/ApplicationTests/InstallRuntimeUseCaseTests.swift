@@ -150,7 +150,7 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
         let document = useCase.freshInstallPreflightDocument(
             settingsState: .defaulted(path: "/settings.json", proxyPort: 80),
             artifactStates: [.absent(path: "/usr/local/bin/vitalserver-vm")],
-            serviceStates: RuntimeManagedService.stopOrder.map { service in
+            serviceStates: RuntimeManagedService.uninstallOrder.map { service in
                 RuntimeFreshInstallServiceState(label: service.label, state: .notLoaded)
             },
             packageReceiptStates: [.absent(identifier: "ai.tirosh.vitalserver.helper")],
@@ -328,7 +328,7 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
             blockers: blockers,
             settingsState: .defaulted(path: "/private/tmp/tirosh-vitalserver-install.json", proxyPort: 80),
             artifactStates: [.absent(path: "/usr/local/bin/vitalserver-vm")],
-            serviceStates: RuntimeManagedService.stopOrder.map { service in
+            serviceStates: RuntimeManagedService.uninstallOrder.map { service in
                 RuntimeFreshInstallServiceState(label: service.label, state: .notLoaded)
             },
             packageReceiptStates: [

@@ -15,6 +15,7 @@ def load_release_manifest(path: Path) -> ReleaseManifest:
         raise SystemExit(f"error: invalid release manifest {path}: {exc}") from exc
     if not isinstance(release, dict):
         raise SystemExit(f"error: release manifest must be a JSON object: {path}")
+    validate_runtime_product_services(release)
     return ReleaseManifest(
         channel=required_release_string(release, "channel"),
         helper_version=required_release_string(release, "helperVersion"),
@@ -23,6 +24,8 @@ def load_release_manifest(path: Path) -> ReleaseManifest:
         vitalserver_version=required_release_string(release, "vitalServerVersion"),
         target_platform=required_release_string(release, "targetPlatform"),
         host_proxy_image=optional_service_string(release, "hostProxy", "image"),
+        lab_image=required_service_string(release, "lab", "image"),
+        postgres_image=required_service_string(release, "postgres", "image"),
         optional_container_services=optional_container_services(release),
     )
 
@@ -61,6 +64,19 @@ def optional_service_string(
     return value
 
 
+def required_service_string(
+    release: dict[str, object],
+    service: str,
+    key: str,
+) -> str:
+    value = optional_service_string(release, service, key)
+    if value is None:
+        raise SystemExit(
+            f"error: missing release field: services.{service}.{key}"
+        )
+    return value
+
+
 def optional_container_services(release: dict[str, object]) -> tuple[str, ...]:
     bundle = release.get("bundle", {})
     if bundle is None:
@@ -75,4 +91,21 @@ def optional_container_services(release: dict[str, object]) -> tuple[str, ...]:
             "error: release field bundle.optionalContainerServices must be "
             "a string list"
         )
-    return tuple(value)
+    services = tuple(value)
+    if "testkit" in services:
+        raise SystemExit(
+            "error: release field bundle.optionalContainerServices must not "
+            "include testkit; Lab is the product service"
+        )
+    return services
+
+
+def validate_runtime_product_services(release: dict[str, object]) -> None:
+    services = release.get("services")
+    if not isinstance(services, dict):
+        raise SystemExit("error: release field services must be an object")
+    if "testkit" in services:
+        raise SystemExit(
+            "error: release field services must not include testkit; Lab is "
+            "the product service"
+        )

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v1",
+  "updateId": "host-update-20260717",
+  "requestId": "host-update-request-20260717",
+  "bootstrapEnvelopeId": "release-bootstrap-20260717",
+  "nextUpdaterSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "state": "staged",
+  "observedAt": "2026-07-17T00:00:05Z",
+  "issue": { "code": "unexpected-issue" }
+}

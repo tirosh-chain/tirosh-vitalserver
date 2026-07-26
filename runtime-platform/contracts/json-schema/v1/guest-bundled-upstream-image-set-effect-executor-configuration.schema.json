@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-bundled-upstream-image-set-effect-executor-configuration",
+  "title": "GuestBundledUpstreamImageSetEffectExecutorConfiguration",
+  "description": "C66 immutable release-owned desired input for one C26 bundled-Upstream image-set effect executor. It fixes the Host-loopback C32-to-C64 bridge and the apply/rollback active-image-set compare-and-swap commands. The Host updater verifies the configuration artifact bytes but does not decode it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "effectExecutorId", "imageSetManagerEndpoint", "apply"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "effectExecutorId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "imageSetManagerEndpoint": { "$ref": "#/$defs/ImageSetManagerEndpoint" },
+    "apply": { "$ref": "#/$defs/ImageSetOperationIntent" },
+    "rollback": { "$ref": "#/$defs/ImageSetOperationIntent" }
+  },
+  "$defs": {
+    "ActiveImageSetSelection": {
+      "type": "object", "additionalProperties": false, "required": ["state"],
+      "properties": { "state": { "enum": ["unprovisioned", "active"] }, "imageSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" } },
+      "allOf": [
+        { "if": { "properties": { "state": { "const": "unprovisioned" } }, "required": ["state"] }, "then": { "not": { "required": ["imageSetId"] } } },
+        { "if": { "properties": { "state": { "const": "active" } }, "required": ["state"] }, "then": { "required": ["imageSetId"] } }
+      ]
+    },
+    "ImageSetManagerEndpoint": {
+      "description": "The C32 Host-loopback-to-C64 AF_VSOCK endpoint. It is local-only and has no guest-IP or public-network fallback.",
+      "type": "object", "additionalProperties": false,
+      "required": ["scheme", "host", "port", "path", "requestTimeoutMilliseconds"],
+      "properties": {
+        "scheme": { "const": "http" },
+        "host": { "const": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "path": { "const": "/v1/bundled-upstream-image-set-updates" },
+        "requestTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 900000 }
+      }
+    },
+    "ImageSetOperationIntent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["expectedActiveImageSet", "targetImageSetId"],
+      "properties": {
+        "expectedActiveImageSet": { "$ref": "#/$defs/ActiveImageSetSelection" },
+        "targetImageSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+      }
+    }
+  }
+}

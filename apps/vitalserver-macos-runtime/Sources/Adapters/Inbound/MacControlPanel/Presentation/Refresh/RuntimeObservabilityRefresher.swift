@@ -8,37 +8,38 @@ public protocol RuntimeObservabilitySnapshotLoading {
     func loadRuntimeEvents(query: RuntimeEventQuery) async -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() async -> RuntimeVitalDBObservationSnapshot
     func loadVitalRecorders() async -> RuntimeVitalRecorderHistory
+    func loadVitalBeds() async -> RuntimeVitalBedHistory
     func loadVitalRelationships() async -> RuntimeVitalRelationshipHistory
 }
 
 public struct RuntimeEventRefreshResult {
     public let events: RuntimeEventHistory
     public let last24HoursCount: Int
-    public let containerObservation: RuntimeContainerObservation?
 
     public init(
         events: RuntimeEventHistory,
-        last24HoursCount: Int,
-        containerObservation: RuntimeContainerObservation?
+        last24HoursCount: Int
     ) {
         self.events = events
         self.last24HoursCount = last24HoursCount
-        self.containerObservation = containerObservation
     }
 }
 
 public struct RuntimeVitalObservabilityRefreshResult {
     public let observationSnapshot: RuntimeVitalDBObservationSnapshot
     public let recorders: RuntimeVitalRecorderHistory
+    public let beds: RuntimeVitalBedHistory
     public let relationships: RuntimeVitalRelationshipHistory
 
     public init(
         observationSnapshot: RuntimeVitalDBObservationSnapshot,
         recorders: RuntimeVitalRecorderHistory,
+        beds: RuntimeVitalBedHistory,
         relationships: RuntimeVitalRelationshipHistory
     ) {
         self.observationSnapshot = observationSnapshot
         self.recorders = recorders
+        self.beds = beds
         self.relationships = relationships
     }
 }
@@ -59,8 +60,7 @@ public struct RuntimeObservabilityRefresher {
     public func refreshRuntimeEvents(
         limit: Int,
         periodRawValue: String,
-        filterRawValue: String,
-        statusContainerObservation: RuntimeContainerObservation?
+        filterRawValue: String
     ) async -> RuntimeEventRefreshResult {
         let currentTime = now()
         let events = await snapshots.loadRuntimeEvents(
@@ -78,18 +78,19 @@ public struct RuntimeObservabilityRefresher {
         )
         return RuntimeEventRefreshResult(
             events: events,
-            last24HoursCount: last24Hours.matchingCount ?? last24Hours.events.count,
-            containerObservation: statusContainerObservation
+            last24HoursCount: last24Hours.matchingCount ?? last24Hours.events.count
         )
     }
 
     public func refreshVitalObservability() async -> RuntimeVitalObservabilityRefreshResult {
         let observationSnapshot = await snapshots.loadVitalDBObservationSnapshot()
         let recorders = await snapshots.loadVitalRecorders()
+        let beds = await snapshots.loadVitalBeds()
         let relationships = await snapshots.loadVitalRelationships()
         return RuntimeVitalObservabilityRefreshResult(
             observationSnapshot: observationSnapshot,
             recorders: recorders,
+            beds: beds,
             relationships: relationships
         )
     }

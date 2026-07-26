@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "v1",
+  "bootstrapConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json",
+  "localAdministrationDescriptorPath": "https://operator.example.test:18280"
+}

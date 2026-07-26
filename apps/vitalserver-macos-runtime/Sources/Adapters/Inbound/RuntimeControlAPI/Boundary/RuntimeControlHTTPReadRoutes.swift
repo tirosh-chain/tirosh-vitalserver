@@ -10,32 +10,33 @@ struct RuntimeControlHTTPReadRoutes {
         request: RuntimeControlHTTPRequest
     ) async throws -> RuntimeControlHTTPResponse? {
         switch endpoint {
-        case .capabilities:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadCapabilities())
-        case .overview:
-            return try await RuntimeControlHTTPResponseFactory.json(loadOverview())
-        case .overviewStream:
+        case .platformCapabilities:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadPlatformCapabilities())
+        case .runtimeCapabilities:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeCapabilities())
+        case .platformState:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadPlatformState())
+        case .platformStateStream:
             return try await RuntimeControlHTTPResponseFactory.eventStream(
-                id: "runtime-overview",
-                event: "runtime-overview",
-                value: loadOverview()
+                id: "platform-state",
+                event: "platform-state",
+                value: handler.loadPlatformState()
             )
-        case .status:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadStatus())
-        case .statusStream:
-            return try await RuntimeControlHTTPResponseFactory.eventStream(
-                id: "runtime-status",
-                event: "runtime-status",
-                value: handler.loadStatus()
-            )
+        case .operationState:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadOperationState())
+        case .platformWorkflow:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadPlatformWorkflow())
+        case .guestAddress:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadGuestAddressResource())
+        case .vmLifecycle:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadVMLifecycleResource())
         case .events:
-            let query = try request.runtimeEventQuery()
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadEvents(query: query))
-        case .eventStream:
-            let query = try request.runtimeEventQuery()
-            return try await RuntimeControlHTTPResponseFactory.eventStream(handler.loadEvents(query: query))
+            let query = try request.runtimeOperationEventQuery()
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeOperationEvents(query: query))
         case .vitalDBObservation:
-            return try await RuntimeControlHTTPResponseFactory.json(loadVitalDBObservation())
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadVitalDBObservationSnapshot()
+            )
         case .vitalDBObservationStream:
             return try await RuntimeControlHTTPResponseFactory.eventStream(
                 id: "vitaldb-observation",
@@ -56,11 +57,35 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(
                 handler.loadVitalDBRecorderActivityWindow(query: query)
             )
+        case .vitalDBRecorderVitalFiles:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadVitalDBRecorderVitalFiles(
+                    vrcode: try request.vitalDBRecorderVitalFilesCode()
+                )
+            )
+        case .vitalDBRecorderObservability:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadRecorderObservabilityDetail(
+                    vrcode: try request.recorderObservabilityDetailCode()
+                )
+            )
+        case .vitalDBRecorderObservabilityTimeline:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadRecorderObservabilityTimeline(
+                    query: try request.recorderObservabilityTimelineQuery()
+                )
+            )
+        case .vitalDBRecorderObservabilityIncidents:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadRecorderObservabilityIncidents(
+                    query: try request.recorderObservabilityIncidentQuery()
+                )
+            )
         case .vitalDBBeds:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBRecorders().beds)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBBeds())
         case .vitalDBBed:
             let bedID = try request.vitalDBBedID()
-            let beds = try await handler.loadVitalDBRecorders().beds
+            let beds = try await handler.loadVitalDBBeds().beds
             guard let bed = beds.first(where: { $0.bedID == bedID }) else {
                 return RuntimeControlHTTPResponseFactory.resourceNotFound("VitalDB bed not found: \(bedID)")
             }
@@ -69,12 +94,44 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBRelationships())
         case .health:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadHealthStatus())
+        case .platformSettings:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimePlatformSettings())
         case .settings:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadSettings())
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeProductSettings())
         case .release:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadReleaseInfo())
         case .installInfo:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadInstallInfo())
+        case .labScenarios:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabScenarios())
+        case .labVitalFiles:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabVitalFiles())
+        case .labBeds:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabBeds())
+        case .labRecorders:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabRecorders())
+        case .labSessions:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabSessions())
+        case .labSession:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadLabSession(sessionId: try request.runtimeLabSessionID())
+            )
+        case .guestStackStatus:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.guestStackStatus())
+        case .guestServices:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.listGuestServices())
+        case .guestServiceStatus:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.guestServiceStatus(try request.runtimeGuestServiceName())
+            )
+        case .guestServiceResource:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.guestServiceResource(try request.runtimeGuestServiceName())
+            )
+        case .redisRelayStatus:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRedisRelayStatus())
+        case .redisRelaySettings:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeRedisRelaySettings())
         case .logText:
             let logRequest = try request.decodedBody(RuntimeLogTextRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadLogText(request: logRequest))
@@ -91,12 +148,34 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRedisBackups())
         case .runtimeDataBackups:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeDataBackups())
-        case .applySettings,
-             .startServices,
-             .stopServices,
-             .startTestKitService,
-             .stopTestKitService,
-             .restartTestKitService,
+        case .applyPlatformSettings,
+             .applySettings,
+             .applyAdminPassword,
+             .applyRedisRelaySettings,
+             .createLabBeds,
+             .deleteLabBeds,
+             .resetLabBeds,
+             .createLabRecorders,
+             .deleteLabRecorders,
+             .resetLabRecorders,
+             .hideVitalDBRecorders,
+             .applyRecorderObservabilityExpectation,
+             .unhideVitalDBRecorders,
+             .deleteVitalDBRecorders,
+             .hideVitalDBBeds,
+             .unhideVitalDBBeds,
+             .deleteVitalDBBeds,
+             .createLabSession,
+             .startLabSession,
+             .stopLabSession,
+             .finishLabSession,
+             .startLabRecorder,
+             .stopLabRecorder,
+             .replayLabVitalFile,
+             .uploadLabVitalFile,
+             .startGuestService,
+             .stopGuestService,
+             .restartGuestService,
              .repairRuntimeServices,
              .repairProxy,
              .repairDatastore,
@@ -106,24 +185,25 @@ struct RuntimeControlHTTPReadRoutes {
              .updateBundleSummary,
              .verifyUpdateBundle,
              .applyUpdateBundle,
+             .rollbackRelease,
              .rollbackBackup,
              .deleteBackup,
              .deleteUpdateBackup,
              .deleteRuntimeDataBackup,
              .exportLogs,
+             .createSupportExport,
+             .acquireOperationLease,
+             .heartbeatOperationLease,
+             .releaseOperationLease,
+             .putGuestAddress,
+             .putVMLifecycle,
+             .startRuntimeProvider,
+             .stopRuntimeProvider,
+             .restartRuntimeProvider,
              .uninstall,
              .restoreRedisBackup,
              .restoreRuntimeDataBackup:
             return nil
         }
-    }
-
-    private func loadOverview() async throws -> RuntimeControlOverview {
-        try await RuntimeControlOverviewAssembler(handler: handler).load()
-    }
-
-    private func loadVitalDBObservation() async throws -> VitalDBObservationDocument? {
-        let snapshot = try await handler.loadVitalDBObservationSnapshot()
-        return snapshot.observation
     }
 }

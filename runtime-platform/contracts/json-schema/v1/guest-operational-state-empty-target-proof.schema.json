@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-empty-target-proof",
+  "title": "GuestOperationalStateEmptyTargetProof",
+  "description": "Owner-provided proof that one explicitly selected restore target has no SQLite state and no PostgreSQL owner state. A missing or failed probe is not an empty target.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "operationId",
+    "targetReference",
+    "sqliteTarget",
+    "postgresqlTarget",
+    "provedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "operationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "targetReference": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+    },
+    "sqliteTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "const": "absent" }
+      }
+    },
+    "postgresqlTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "ownerSchemaCount",
+        "alembicVersionTablePresent"
+      ],
+      "properties": {
+        "state": { "const": "empty" },
+        "ownerSchemaCount": { "const": 0 },
+        "alembicVersionTablePresent": { "const": false }
+      }
+    },
+    "provedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  }
+}

@@ -70,7 +70,7 @@ final class RuntimeHealthWaitWorkflowTests: XCTestCase {
                 "runtime health timed out reasons=host-proxy-http-000, guest-http-000"
             )
         }
-        XCTAssertEqual(timedOut.events.filter { $0 == "sleep:3.0" }.count, 1)
+        XCTAssertEqual(timedOut.events.filter { $0 == "sleep:3.0" }.count, 2)
     }
 
     func testWaitRejectsInvalidConfigurationWithoutSleepingOrReadingState() {
@@ -99,6 +99,33 @@ final class RuntimeHealthWaitWorkflowTests: XCTestCase {
         }
         XCTAssertTrue(invalidPoll.events.allSatisfy { !$0.hasPrefix("sleep:") })
     }
+
+    func testWaitUsesWallClockDeadlineIncludingHealthProbeDuration() {
+        let timedOut = HealthWaitWorkflowHarness(
+            snapshots: [healthSnapshot(reasons: [.hostProxyHTTP("000")])],
+            healthSnapshotDurationSeconds: 4
+        )
+
+        XCTAssertThrowsError(try timedOut.workflow.wait(
+            policy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: false,
+                restartProxy: false,
+                restartWatchdog: false
+            ),
+            context: timedOut.context,
+            actions: timedOut.actions
+        )) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "runtime health timed out reasons=host-proxy-http-000"
+            )
+        }
+
+        XCTAssertEqual(timedOut.healthSnapshotReads, 1)
+        XCTAssertEqual(timedOut.events.filter { $0.hasPrefix("sleep:") }, ["sleep:2.0"])
+        XCTAssertEqual(timedOut.elapsedSeconds, 6)
+    }
 }
 
 private final class HealthWaitWorkflowHarness {
@@ -110,6 +137,9 @@ private final class HealthWaitWorkflowHarness {
     )
     var snapshots: [RuntimeHealthSnapshot]
     var events: [String] = []
+    var elapsedSeconds: TimeInterval = 0
+    var healthSnapshotReads = 0
+    let healthSnapshotDurationSeconds: TimeInterval
     var serviceStates: [RuntimeManagedService: RuntimeServiceState] = [
         .vm: .loaded,
         .guestLogSync: .loaded,
@@ -124,6 +154,8 @@ private final class HealthWaitWorkflowHarness {
             })
         },
         healthSnapshot: {
+            self.healthSnapshotReads += 1
+            self.elapsedSeconds += self.healthSnapshotDurationSeconds
             if self.snapshots.count > 1 {
                 return self.snapshots.removeFirst()
             }
@@ -132,16 +164,24 @@ private final class HealthWaitWorkflowHarness {
         writeStatusBestEffort: { status, operation, message in
             self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
         },
+        now: {
+            Date(timeIntervalSince1970: self.elapsedSeconds)
+        },
         sleep: { seconds in
             self.events.append("sleep:\(seconds)")
+            self.elapsedSeconds += seconds
         },
         log: { message in
             self.events.append("log:\(message)")
         }
     )
 
-    init(snapshots: [RuntimeHealthSnapshot]) {
+    init(
+        snapshots: [RuntimeHealthSnapshot],
+        healthSnapshotDurationSeconds: TimeInterval = 0
+    ) {
         self.snapshots = snapshots
+        self.healthSnapshotDurationSeconds = healthSnapshotDurationSeconds
     }
 }
 

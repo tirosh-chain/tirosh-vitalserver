@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
@@ -9,6 +8,7 @@ from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
 from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     copy_executable,
     copy_tree,
+    remove_staging_tree,
     tar_directory,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_templates import (
@@ -35,7 +35,7 @@ def stage_update_artifacts(
     guest_deploy_plan: GuestDeployPlan,
 ) -> StagedUpdateArtifacts:
     if artifact_dir.exists():
-        shutil.rmtree(artifact_dir)
+        remove_staging_tree(artifact_dir)
     runtime_tools_dir = artifact_dir / "runtime-tools"
     deploy_dir = artifact_dir / "deploy"
     runtime_tools_dir.mkdir(parents=True)

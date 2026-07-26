@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.application import inputs as usecase_inputs
@@ -131,6 +132,29 @@ def main() -> int:
         )
     )
 
+    rootfs_artifact_deploy_verify = subparsers.add_parser(
+        "rootfs-artifact-verify-deploy",
+        help="verify a staged Guest deploy against a rootfs artifact receipt",
+    )
+    rootfs_artifact_deploy_verify.add_argument(
+        "--rootfs-base",
+        type=Path,
+        required=True,
+    )
+    rootfs_artifact_deploy_verify.add_argument(
+        "--deploy-dir",
+        type=Path,
+        required=True,
+    )
+    rootfs_artifact_deploy_verify.set_defaults(
+        handler=lambda args: guest_image_usecases.verify_rootfs_artifact_deploy(
+            usecase_inputs.RootfsArtifactDeployVerifyInput(
+                rootfs_base=args.rootfs_base,
+                deploy_dir=args.deploy_dir,
+            )
+        )
+    )
+
     nginx_bundle = subparsers.add_parser(
         "nginx-bundle",
         help="build a self-contained nginx bundle for the macOS host proxy",
@@ -190,6 +214,20 @@ def main() -> int:
     guest_deploy.add_argument("--deploy-dir", type=Path)
     guest_deploy.add_argument("--docker-bundle", type=Path)
     guest_deploy.add_argument("--rootfs-run-id")
+    guest_deploy.add_argument(
+        "--source-deploy-dir",
+        type=Path,
+        help="copy an already compiled Guest deploy bundle before writing run metadata",
+    )
+    guest_deploy.add_argument(
+        "--rootfs-artifact",
+        type=Path,
+        help="require the staged Guest deploy to match this rootfs artifact receipt",
+    )
+    guest_deploy.add_argument(
+        "--runtime-boot-smoke-run-id",
+        help="enable runtime boot smoke in staged metadata with this explicit run ID",
+    )
     guest_deploy.set_defaults(
         handler=lambda args: guest_services_usecases.stage_guest_deployment(
             usecase_inputs.GuestDeploymentInput(
@@ -199,6 +237,9 @@ def main() -> int:
                 deploy_dir=args.deploy_dir,
                 docker_bundle=args.docker_bundle,
                 rootfs_run_id=args.rootfs_run_id,
+                source_deploy_dir=args.source_deploy_dir,
+                rootfs_artifact=args.rootfs_artifact,
+                runtime_boot_smoke_run_id=args.runtime_boot_smoke_run_id,
             )
         )
     )
@@ -255,7 +296,10 @@ def main() -> int:
 
     installed_status = subparsers.add_parser(
         "macos-installed-status",
-        help="print installed macOS runtime files and launchd status",
+        help=(
+            "check the installed Helper app executable, runtime executables, "
+            "and required launchd jobs"
+        ),
     )
     installed_status.add_argument(
         "--fail-on-unhealthy",
@@ -272,7 +316,7 @@ def main() -> int:
 
     installed_health = subparsers.add_parser(
         "macos-installed-health",
-        help="check installed macOS runtime HTTP health",
+        help="check installed status plus guest and host proxy HTTP health",
     )
     installed_health.add_argument("--proxy-port", required=True)
     installed_health.set_defaults(
@@ -288,7 +332,10 @@ def main() -> int:
 
     installed_smoke = subparsers.add_parser(
         "macos-installed-smoke",
-        help="run installed macOS runtime smoke checks",
+        help=(
+            "check installed status, HTTP health, and the installed "
+            "runtime CLI health contract"
+        ),
     )
     installed_smoke.add_argument("--proxy-port", required=True)
     installed_smoke.set_defaults(
@@ -322,7 +369,7 @@ def main() -> int:
 
     runtime_sync_release = subparsers.add_parser(
         "macos-runtime-sync-release",
-        help="sync release metadata into generated Swift sources",
+        help="validate release inputs and generate derived Swift release sources",
     )
     runtime_sync_release.add_argument("--release-file", type=Path, required=True)
     runtime_sync_release.set_defaults(
@@ -442,12 +489,19 @@ def main() -> int:
     )
     runtime_rootfs_preflight.add_argument("--vm-home", type=Path, required=True)
     runtime_rootfs_preflight.add_argument("--expected-run-id", required=True)
+    runtime_rootfs_preflight.add_argument(
+        "--apt-source",
+        choices=("network", "verified-cache"),
+        default="network",
+        help="explicit owner of APT package state for this compile",
+    )
     runtime_rootfs_preflight.set_defaults(
         handler=lambda args: macos_runtime_usecases.preflight_golden_rootfs(
             usecase_inputs.GoldenRootfsPreflightInput(
                 config=args.config,
                 vm_home=args.vm_home,
                 expected_run_id=args.expected_run_id,
+                apt_source=args.apt_source,
             )
         ),
     )
@@ -492,6 +546,41 @@ def main() -> int:
             usecase_inputs.RuntimeVmHomeInput(
                 config=args.config,
                 vm_home=args.vm_home,
+            )
+        )
+    )
+
+    runtime_proxy_upstream = subparsers.add_parser(
+        "macos-runtime-guest-address-proxy-upstream",
+        help="publish VM IP evidence and print owner-backed proxy upstream",
+    )
+    runtime_proxy_upstream.add_argument("--vm-home", type=Path, required=True)
+    runtime_proxy_upstream.add_argument(
+        "--runtime-control-api-base-url",
+        default="http://127.0.0.1:18321",
+    )
+    runtime_proxy_upstream.add_argument(
+        "--runtime-control-api-token",
+        required=True,
+    )
+    runtime_proxy_upstream.add_argument(
+        "--runtime-control-api-token-header",
+        default="X-Runtime-Control-Token",
+    )
+    runtime_proxy_upstream.add_argument(
+        "--runtime-control-api-timeout",
+        type=float,
+        default=2.0,
+    )
+    runtime_proxy_upstream.set_defaults(
+        handler=lambda args: macos_runtime_usecases.print_guest_address_proxy_upstream(
+            usecase_inputs.RuntimeGuestAddressOwnerInput(
+                config=args.config,
+                vm_home=args.vm_home,
+                runtime_control_api_base_url=args.runtime_control_api_base_url,
+                runtime_control_api_token=args.runtime_control_api_token,
+                runtime_control_api_token_header=args.runtime_control_api_token_header,
+                runtime_control_api_timeout=args.runtime_control_api_timeout,
             )
         )
     )
@@ -589,6 +678,10 @@ def main() -> int:
         "--requires-two-phase-update",
         type=parse_bool,
         default=False,
+        help=(
+            "explicitly declare that an Updater bridge must be applied first; "
+            "never inferred from bundle kind or rootfs inclusion"
+        ),
     )
     update_bundle.add_argument(
         "--bundle-kind",
@@ -640,6 +733,10 @@ def main() -> int:
         "--requires-two-phase-update",
         type=parse_bool,
         default=False,
+        help=(
+            "explicitly declare that an Updater bridge must be applied first; "
+            "never inferred from bundle kind or rootfs inclusion"
+        ),
     )
     release_update_bundle.add_argument("--compression-threads", type=int)
     release_update_bundle.add_argument("--sdkroot")
@@ -733,6 +830,29 @@ def main() -> int:
         handler=lambda args: macos_package_usecases.build_dmg(
             release_package_input(args)
         ),
+    )
+
+    release_package_environment_preflight = subparsers.add_parser(
+        "release-package-environment-preflight",
+        help="check macOS package tools and output state before rootfs compile",
+    )
+    release_package_environment_preflight.add_argument(
+        "--release-file",
+        type=Path,
+        required=True,
+    )
+    release_package_environment_preflight.add_argument("--output", type=Path)
+    release_package_environment_preflight.add_argument(
+        "--output-kind",
+        choices=["pkg", "dmg"],
+        required=True,
+    )
+    release_package_environment_preflight.set_defaults(
+        handler=(
+            lambda args: macos_package_usecases.preflight_release_package_environment(
+                release_package_environment_preflight_input(args)
+            )
+        )
     )
 
     release_dmg_verify = subparsers.add_parser(
@@ -975,6 +1095,13 @@ def main() -> int:
 
     try:
         return args.handler(args)
+    except KeyboardInterrupt:
+        print(
+            "interrupted by user while running vitalserver-devtools; "
+            "Docker may report context canceled after the interrupt",
+            file=sys.stderr,
+        )
+        return 130
     except DomainError as exc:
         raise SystemExit(str(exc)) from exc
 
@@ -1113,6 +1240,7 @@ def release_package_input(
         nginx_binary=args.nginx_binary,
         nginx_expected_version=args.nginx_expected_version,
         docker_platform=args.docker_platform,
+        guest_deploy_source=args.guest_deploy_source,
     )
 
 
@@ -1126,6 +1254,17 @@ def release_troubleshooting_tools_input(
         sdkroot=args.sdkroot,
         clang_module_cache=args.clang_module_cache,
         codesign_identity=args.codesign_identity,
+    )
+
+
+def release_package_environment_preflight_input(
+    args: argparse.Namespace,
+) -> usecase_inputs.ReleasePackageEnvironmentPreflightInput:
+    return usecase_inputs.ReleasePackageEnvironmentPreflightInput(
+        config=args.config,
+        release_file=args.release_file,
+        output=args.output,
+        output_kind=args.output_kind,
     )
 
 
@@ -1143,6 +1282,12 @@ def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nginx-binary")
     parser.add_argument("--nginx-expected-version")
     parser.add_argument("--docker-platform")
+    parser.add_argument(
+        "--guest-deploy-source",
+        type=Path,
+        required=True,
+        help="exact Guest deploy bundle exercised by the rootfs compile",
+    )
 
 
 def add_release_troubleshooting_tools_arguments(

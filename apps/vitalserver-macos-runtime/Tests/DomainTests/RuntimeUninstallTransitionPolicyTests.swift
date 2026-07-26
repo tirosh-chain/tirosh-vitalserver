@@ -52,7 +52,10 @@ final class DomainRuntimeUninstallTransitionPolicyTests: XCTestCase {
         let blocked = try RuntimeUninstallTransitionPolicy.transition(
             from: .receiptsForgetStarted,
             event: .packageReceiptsObserved([
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
             ])
         )
 
@@ -77,7 +80,7 @@ final class DomainRuntimeUninstallTransitionPolicyTests: XCTestCase {
         serviceState: RuntimeServiceState = .notLoaded
     ) -> RuntimeUninstallReadinessInput {
         RuntimeUninstallReadinessInput(
-            serviceStates: Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { service in
+            serviceStates: Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map { service in
                 (service, service == .watchdog || service == .vm ? serviceState : .notLoaded)
             }),
             vmProcessState: vmProcessState

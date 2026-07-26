@@ -69,23 +69,21 @@ def test_session_vital_export_writes_vitaldb_readable_file(tmp_path: Path) -> No
     assert vital_file.dtend >= vital_file.dtstart
     assert "TestKit/METADATA" in vital_file.get_track_names()
     assert any(
-        track_name.endswith("/HR")
-        for track_name in vital_file.get_track_names()
+        track_name.endswith("/HR") for track_name in vital_file.get_track_names()
     )
-    legacy_dtstart, legacy_dtend = legacy_vitalserver_dt_range(
+    packet_dtstart, packet_dtend = vital_packet_dt_range(
         Path(exported.vital_state.artifact.path)
     )
-    assert legacy_dtstart > 0
-    assert legacy_dtend >= legacy_dtstart
+    assert packet_dtstart > 0
+    assert packet_dtend >= packet_dtstart
 
-    webview_dtstart, webview_dtend, webview_tracks = (
-        legacy_vitalserver_webview_preview(Path(exported.vital_state.artifact.path))
+    webview_dtstart, webview_dtend, webview_tracks = vital_packet_preview(
+        Path(exported.vital_state.artifact.path)
     )
     assert webview_dtstart > 0
     assert webview_dtend >= webview_dtstart
     assert any(
-        track.dname == "OR-A_Demo" and track.records > 0
-        for track in webview_tracks
+        track.dname == "OR-A_Demo" and track.records > 0 for track in webview_tracks
     )
     assert any(
         track.dname == "OR-A_Lab" and track.tname == "HCT" and track.records > 0
@@ -303,7 +301,7 @@ class VitalUploadHttpHandler(BaseHTTPRequestHandler):
 
 
 @dataclass(frozen=True)
-class LegacyWebviewTrack:
+class VitalPacketTrack:
     dname: str
     tname: str
     montype: int
@@ -365,14 +363,14 @@ def live_vitalserver_file_records(
     return tuple(cast(dict[str, object], record) for record in payload)
 
 
-def legacy_vitalserver_dt_range(path: Path) -> tuple[float, float]:
-    """Return the dt range as parsed by bundled VitalServer's old JS reader."""
+def vital_packet_dt_range(path: Path) -> tuple[float, float]:
+    """Return the record range using the declared Vital header length."""
 
     payload = gzip.decompress(path.read_bytes())
     assert payload[:4] == b"VITA"
-    assert int.from_bytes(payload[8:10], byteorder="little") == 10
+    assert int.from_bytes(payload[4:8], byteorder="little") == 3
 
-    offset = 20
+    offset = 10 + int.from_bytes(payload[8:10], byteorder="little")
     dtstart = 0.0
     dtend = 0.0
     while offset + 5 <= len(payload):
@@ -398,19 +396,20 @@ def legacy_vitalserver_dt_range(path: Path) -> tuple[float, float]:
     return dtstart, dtend
 
 
-def legacy_vitalserver_webview_preview(
+def vital_packet_preview(
     path: Path,
-) -> tuple[float, float, tuple[LegacyWebviewTrack, ...]]:
-    """Return tracks as parsed by bundled VitalServer's webview reader."""
+) -> tuple[float, float, tuple[VitalPacketTrack, ...]]:
+    """Return track preview using the declared Vital header length."""
 
     payload = gzip.decompress(path.read_bytes())
     assert payload[:4] == b"VITA"
-    assert int.from_bytes(payload[8:10], byteorder="little") == 10
+    assert int.from_bytes(payload[4:8], byteorder="little") == 3
 
     devs: dict[int, str] = {}
     tracks: dict[int, tuple[int, str, int]] = {}
     tid_to_did: dict[int, int] = {}
-    offset = 20
+    packet_offset = 10 + int.from_bytes(payload[8:10], byteorder="little")
+    offset = packet_offset
     while offset + 5 <= len(payload):
         packet_type = payload[offset]
         packet_len = int.from_bytes(
@@ -421,10 +420,10 @@ def legacy_vitalserver_webview_preview(
         assert len(packet) == packet_len
 
         if packet_type == 9:
-            did, dname = legacy_vitalserver_device(packet)
+            did, dname = vital_packet_device(packet)
             devs[did] = dname
         elif packet_type == 0:
-            tid, did, tname, montype = legacy_vitalserver_track(packet)
+            tid, did, tname, montype = vital_packet_track(packet)
             tracks[tid] = (did, tname, montype)
             tid_to_did[tid] = did
 
@@ -433,7 +432,7 @@ def legacy_vitalserver_webview_preview(
     dtstart = 0.0
     dtend = 0.0
     records_by_tid: dict[int, int] = {}
-    offset = 20
+    offset = packet_offset
     while offset + 5 <= len(payload):
         packet_type = payload[offset]
         packet_len = int.from_bytes(
@@ -456,7 +455,7 @@ def legacy_vitalserver_webview_preview(
         offset += 5 + packet_len
 
     webview_tracks = tuple(
-        LegacyWebviewTrack(
+        VitalPacketTrack(
             dname=devs[did],
             tname=tname,
             montype=montype,
@@ -469,7 +468,7 @@ def legacy_vitalserver_webview_preview(
     return dtstart, dtend, webview_tracks
 
 
-def legacy_vitalserver_device(packet: bytes) -> tuple[int, str]:
+def vital_packet_device(packet: bytes) -> tuple[int, str]:
     offset = 0
     did = struct.unpack_from("<i", packet, offset)[0]
     offset += 4
@@ -484,7 +483,7 @@ def legacy_vitalserver_device(packet: bytes) -> tuple[int, str]:
     return did, dname
 
 
-def legacy_vitalserver_track(packet: bytes) -> tuple[int, int, str, int]:
+def vital_packet_track(packet: bytes) -> tuple[int, int, str, int]:
     offset = 0
     tid = struct.unpack_from("<h", packet, offset)[0]
     offset += 2

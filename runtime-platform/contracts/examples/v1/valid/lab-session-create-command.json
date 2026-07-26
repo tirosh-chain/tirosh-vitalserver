@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "create-lab-session-0001",
+  "sessionId": "lab-session-0001",
+  "expectedSessionRevision": 0,
+  "name": "LAB-baseline-monitoring",
+  "scenario": "baseline-monitoring",
+  "recorderCount": 2
+}

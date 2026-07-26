@@ -95,9 +95,20 @@ class VirtualRecorderSessionManager:
                 recorded_frame_source_provider=self._recorded_frame_source_provider,
                 snapshot_handler=self._save_snapshot,
             )
+            self._save_snapshot(session.snapshot())
+            try:
+                session.start()
+            except Exception as start_error:
+                try:
+                    self._delete_stored_snapshot(session_id)
+                except Exception as cleanup_error:
+                    raise RuntimeError(
+                        "session start failed after a session snapshot was "
+                        f"persisted: {start_error}; cleanup of that persisted "
+                        f"snapshot also failed: {cleanup_error}"
+                    ) from cleanup_error
+                raise
             self._sessions[session_id] = session
-            self._stored_sessions[session_id] = session.snapshot()
-        self._save_snapshot(session.snapshot())
 
         emit_testkit_event(
             "session.created",
@@ -111,11 +122,7 @@ class VirtualRecorderSessionManager:
             max_messages=request.max_messages,
             scenario=request.scenario.value,
         )
-        session.start()
-
-        snapshot = session.snapshot()
-        self._save_snapshot(snapshot)
-        return snapshot
+        return session.snapshot()
 
     def list_sessions(self) -> tuple[VirtualRecorderSessionSnapshot, ...]:
         """Return snapshots for every known session."""
@@ -147,11 +154,15 @@ class VirtualRecorderSessionManager:
         with self._lock:
             snapshots = self._active_snapshots_locked()
 
-        return tuple(sorted({
-            room_name
-            for snapshot in snapshots
-            for room_name in snapshot.request.bed_room_names
-        }))
+        return tuple(
+            sorted(
+                {
+                    room_name
+                    for snapshot in snapshots
+                    for room_name in snapshot.request.bed_room_names
+                }
+            )
+        )
 
     def has_active_sessions(self) -> bool:
         """Return whether any managed or stored session is still active."""
@@ -345,10 +356,9 @@ class VirtualRecorderSessionManager:
                     target_url=snapshot.request.target_url,
                     error=error,
                 )
-                for vrcode in sorted({
-                    recorder.vrcode
-                    for recorder in snapshot.recorders
-                })
+                for vrcode in sorted(
+                    {recorder.vrcode for recorder in snapshot.recorders}
+                )
             )
 
         errors: list[VirtualRecorderCleanupError] = []
@@ -399,10 +409,7 @@ class VirtualRecorderSessionManager:
                 beds=len(beds),
                 error=error,
             )
-            return tuple(
-                f"{bed.room_name}({bed.bed_id}): {error}"
-                for bed in beds
-            )
+            return tuple(f"{bed.room_name}({bed.bed_id}): {error}" for bed in beds)
 
         errors: list[str] = []
         for bed in beds:
@@ -602,28 +609,24 @@ class VirtualRecorderSessionManager:
             snapshots[session_id] = session.refresh_runtime_liveness()
 
         return tuple(
-            snapshot
-            for snapshot in snapshots.values()
-            if session_is_active(snapshot)
+            snapshot for snapshot in snapshots.values() if session_is_active(snapshot)
         )
 
     def _save_snapshot(self, snapshot: VirtualRecorderSessionSnapshot) -> None:
+        if self._session_store is not None:
+            try:
+                self._session_store.save_session(snapshot)
+            except Exception as exc:
+                emit_testkit_event(
+                    "session_store.save.failed",
+                    level=logging.WARNING,
+                    session_id=snapshot.session_id,
+                    error=str(exc),
+                )
+                raise
+
         with self._lock:
             self._stored_sessions[snapshot.session_id] = snapshot
-
-        if self._session_store is None:
-            return
-
-        try:
-            self._session_store.save_session(snapshot)
-        except Exception as exc:
-            emit_testkit_event(
-                "session_store.save.failed",
-                level=logging.WARNING,
-                session_id=snapshot.session_id,
-                error=str(exc),
-            )
-            raise
 
     def _delete_stored_snapshot(self, session_id: str) -> None:
         if self._session_store is None:
@@ -656,8 +659,7 @@ def load_stored_sessions(
 
     try:
         return {
-            snapshot.session_id: snapshot
-            for snapshot in session_store.load_sessions()
+            snapshot.session_id: snapshot for snapshot in session_store.load_sessions()
         }
     except Exception as exc:
         emit_testkit_event(
@@ -714,6 +716,8 @@ def active_bed_room_conflicts(
         for room_name in requested_room_names
         if room_name in active_room_names
     )
+
+
 def snapshot_with_cleanup_errors(
     snapshot: VirtualRecorderSessionSnapshot,
     cleanup_errors: tuple[VirtualRecorderCleanupError, ...],

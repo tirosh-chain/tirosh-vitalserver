@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-operational-state-backup-manifest",
+  "title": "GuestOperationalStateBackupManifest",
+  "description": "Immutable successful C76 backup evidence. Artifact metadata is inventoried; raw artifact object bytes are deliberately outside v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "operationId",
+    "destinationReference",
+    "sqliteSnapshot",
+    "postgresqlSnapshot",
+    "artifactInventory",
+    "objectBytesIncluded",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "operationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "destinationReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+    "sqliteSnapshot": { "$ref": "#/$defs/SQLiteSnapshotReceipt" },
+    "postgresqlSnapshot": { "$ref": "#/$defs/PostgreSQLSnapshotReceipt" },
+    "artifactInventory": { "$ref": "#/$defs/ArtifactInventoryReceipt" },
+    "objectBytesIncluded": { "const": false },
+    "createdAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "$defs": {
+    "SnapshotArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "byteSize", "sha256"],
+      "properties": {
+        "reference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+        "byteSize": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "SQLiteSnapshotReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["databaseId", "schemaVersion", "snapshot"],
+      "properties": {
+        "databaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "schemaVersion": { "type": "integer", "minimum": 1 },
+        "snapshot": { "$ref": "#/$defs/SnapshotArtifact" }
+      }
+    },
+    "PostgreSQLSnapshotReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["databaseId", "alembicRevision", "includedOwnerSchemas", "snapshot"],
+      "properties": {
+        "databaseId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "alembicRevision": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "includedOwnerSchemas": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "recorder_catalog",
+              "archive_export",
+              "recorder_assignment",
+              "guest_operational_state"
+            ]
+          }
+        },
+        "snapshot": { "$ref": "#/$defs/SnapshotArtifact" }
+      }
+    },
+    "ArtifactInventoryReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactCount", "inventory"],
+      "properties": {
+        "artifactCount": { "type": "integer", "minimum": 0 },
+        "inventory": { "$ref": "#/$defs/SnapshotArtifact" }
+      }
+    }
+  }
+}

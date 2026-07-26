@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:catalog-observation-command",
+  "title": "CatalogObservationIngestCommand",
+  "description": "A request to persist an immutable Recorder self-observation projection. Catalog assigns receivedAt/persistedAt and preserves device occurredAt unchanged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "observationId",
+    "envelope"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "observationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "envelope": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observation-envelope"
+    }
+  }
+}

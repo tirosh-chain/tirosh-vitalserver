@@ -13,9 +13,10 @@ final class RuntimeRollbackCompositionTests: XCTestCase {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let backup = URL(fileURLWithPath: "/product/backups/before-1.2.3")
         fileStore.directories.insert(backup)
-        fileStore.files[backup.appendingPathComponent(RuntimeFileNames.backupManifest)] = try JSONEncoder().encode(backupManifest())
-        fileStore.files[backup.appendingPathComponent(RuntimeFileNames.rootfsBase)] = Data("rootfs".utf8)
+        fileStore.files[backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)] = try JSONEncoder().encode(backupManifest())
+        fileStore.files[backup.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)] = Data("rootfs".utf8)
         var events: [String] = []
+        let stateRepository = RuntimeWorkflowOperationStateRepositorySpy()
 
         let workflow = RuntimeRollbackComposition.make(
             context: RuntimeRollbackCompositionContext(installedPaths: installedPaths),
@@ -47,11 +48,19 @@ final class RuntimeRollbackCompositionTests: XCTestCase {
                 },
                 writeStatus: { _, _, _ in },
                 writeProgress: { _ in },
+                workflowOperationStateRepository: stateRepository,
+                workflowOperationStateTimestamp: { "2026-05-31T00:00:01Z" },
                 log: { _ in }
             )
         )
 
-        try workflow.rollback(.specificBackup(backup))
+        try workflow.rollback(
+            .specificBackup(backup),
+            invocation: .standalone(
+                operationID: "rollback-1",
+                startedAt: "2026-05-31T00:00:00Z"
+            )
+        )
 
         XCTAssertEqual(events, [
             "stop",
@@ -64,6 +73,10 @@ final class RuntimeRollbackCompositionTests: XCTestCase {
             "start:true:true:true",
             "wait:true:true:true",
         ])
+        let state = try XCTUnwrap(stateRepository.states["rollback-1"])
+        XCTAssertEqual(state.operation, .rollback)
+        XCTAssertEqual(state.phase, .completed)
+        XCTAssertNotNil(state.completedAt)
     }
 }
 
@@ -72,7 +85,7 @@ private func backupManifest() -> BackupManifest {
         product: "ai.tirosh.vitalserver.helper",
         createdAt: "2026-05-31T00:00:00Z",
         reason: "before-1.2.3",
-        rootfsBase: RuntimeFileNames.rootfsBase,
+        rootfsBase: RuntimePackageArtifactFileNames.rootfsBase,
         vmDisk: "vm-disk.img",
         vmDiskPreserved: true
     )

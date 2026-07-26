@@ -13,7 +13,6 @@ struct RuntimePresentationSnapshotLoader {
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
     let snapshotReader: (any RuntimeViewModelSnapshotReading)?
-    let localAPISettings: (any RuntimeControlLocalAPISettingsApplying)?
 
     func loadSettings() async -> RuntimeSettings {
         let loadedSettings: RuntimeSettings
@@ -22,17 +21,24 @@ struct RuntimePresentationSnapshotLoader {
         } else {
             loadedSettings = controlClient.loadSettings()
         }
-        return localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
+        return loadedSettings
     }
 
-    func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadPlatformState(settings: RuntimeSettings) async -> PlatformState {
         if let snapshotReader {
-            return await snapshotReader.loadStatus(settings: settings)
+            return await snapshotReader.loadPlatformState(settings: settings)
         }
-        return controlClient.loadStatus(settings: settings)
+        return controlClient.loadPlatformState(settings: settings)
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadOperationState() async -> PlatformOperationState {
+        if let snapshotReader {
+            return await snapshotReader.loadOperationState()
+        }
+        return controlClient.loadOperationState()
+    }
+
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
         if let snapshotReader {
             return await snapshotReader.loadHealthStatus(settings: settings)
         }
@@ -60,6 +66,13 @@ struct RuntimePresentationSnapshotLoader {
         return controlClient.loadVitalDBRecorderSummaries()
     }
 
+    func loadVitalBeds() async -> RuntimeVitalBedHistory {
+        if let snapshotReader {
+            return await snapshotReader.loadVitalDBBeds()
+        }
+        return controlClient.loadVitalDBBeds()
+    }
+
     func loadVitalRecorderActivityWindow(
         query: RuntimeVitalRecorderActivityWindowQuery
     ) async -> RuntimeVitalRecorderActivityWindow {
@@ -67,6 +80,33 @@ struct RuntimePresentationSnapshotLoader {
             return await snapshotReader.loadVitalDBRecorderActivityWindow(query: query)
         }
         return controlClient.loadVitalDBRecorderActivityWindow(query: query)
+    }
+
+    func loadVitalRecorderVitalFiles(
+        vrcode: String
+    ) async -> RuntimeVitalRecorderVitalFileHistory {
+        if let snapshotReader {
+            return await snapshotReader.loadVitalDBRecorderVitalFiles(vrcode: vrcode)
+        }
+        return controlClient.loadVitalDBRecorderVitalFiles(vrcode: vrcode)
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) async -> RuntimeRecorderObservabilityDetail {
+        if let snapshotReader {
+            return await snapshotReader.loadRecorderObservabilityDetail(vrcode: vrcode)
+        }
+        return controlClient.loadRecorderObservabilityDetail(vrcode: vrcode)
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async -> RuntimeRecorderObservabilityIncidents {
+        if let snapshotReader {
+            return await snapshotReader.loadRecorderObservabilityIncidents(query: query)
+        }
+        return controlClient.loadRecorderObservabilityIncidents(query: query)
     }
 
     func loadVitalRelationships() async -> RuntimeVitalRelationshipHistory {

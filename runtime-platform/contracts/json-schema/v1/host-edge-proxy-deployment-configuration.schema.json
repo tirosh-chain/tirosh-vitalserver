@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-edge-proxy-deployment-configuration",
+  "title": "HostEdgeProxyDeploymentConfiguration",
+  "description": "C36 Host-owned desired deployment input for one public HTTP/WebSocket edge proxy. Every listener, route target, request boundary, and client-identity policy is explicit. It is neither Guest readiness nor an upstream-health observation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "proxyId", "listener", "readinessPath", "clientIdentityHeaderPolicy", "routes"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "proxyId": { "$ref": "#/$defs/DeploymentIdentifier" },
+    "listener": { "$ref": "#/$defs/HostListener" },
+    "readinessPath": { "$ref": "#/$defs/RequestPathPrefix" },
+    "clientIdentityHeaderPolicy": { "const": "replace-with-remote-address" },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/ProxyRoute" }
+    }
+  },
+  "$defs": {
+    "DeploymentIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "HostOrAddressLiteral": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9:][A-Za-z0-9._:-]*$"
+    },
+    "Port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "HostListener": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "bindHost", "port"],
+      "properties": {
+        "protocol": { "const": "http" },
+        "bindHost": { "$ref": "#/$defs/HostOrAddressLiteral" },
+        "port": { "$ref": "#/$defs/Port" }
+      }
+    },
+    "RequestPathPrefix": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^/[^?#]*$",
+      "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+    },
+    "HTTPUpstreamEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "host", "port"],
+      "properties": {
+        "scheme": { "type": "string", "enum": ["http", "https"] },
+        "host": { "$ref": "#/$defs/HostOrAddressLiteral" },
+        "port": { "$ref": "#/$defs/Port" }
+      }
+    },
+    "ProxyRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "requestPathPrefix", "target", "forwardingProtocol", "requestHostHeaderPolicy", "maximumRequestBodyBytes", "upstreamResponseHeaderTimeoutMilliseconds"],
+      "properties": {
+        "id": { "$ref": "#/$defs/DeploymentIdentifier" },
+        "requestPathPrefix": { "$ref": "#/$defs/RequestPathPrefix" },
+        "target": { "$ref": "#/$defs/HTTPUpstreamEndpoint" },
+        "forwardingProtocol": { "const": "http-and-websocket" },
+        "requestHostHeaderPolicy": { "type": "string", "enum": ["preserve-client-host", "target-host"] },
+        "maximumRequestBodyBytes": { "type": "integer", "minimum": 1, "maximum": 2147483648 },
+        "upstreamResponseHeaderTimeoutMilliseconds": { "type": "integer", "minimum": 1, "maximum": 3600000 }
+      }
+    }
+  }
+}

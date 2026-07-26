@@ -58,7 +58,7 @@ Refactor in this order:
 ## Implementation Result
 
 - Contracts now define `RuntimeInstallStateDocument`, `RuntimeInstallState`, and `RuntimeInstallMode`.
-- `RuntimeFileNames` and `InstalledRuntimePaths` expose a dedicated `/private/tmp/tirosh-vitalserver-install-state.json` state path.
+- `RuntimeWorkflowArtifactFileNames` and `InstalledRuntimePaths` expose a dedicated `/private/tmp/tirosh-vitalserver-install-state.json` workflow artifact path. This document records install workflow progress/failure evidence; it is not a Runtime Control current status owner.
 - Core now defines install workflow state, event, command, transition decision, and transition policy types.
 - Core validates install mode/plan invariants:
   - full install must include `wait-install-runtime-health`
@@ -80,7 +80,7 @@ Refactor in this order:
 ## Verification
 
 - `swift test --filter 'RuntimeInstallTransitionPolicyTests|RuntimeInstallWorkflowTests'`
-- `swift test --filter 'RuntimeInstallTransitionPolicyTests|RuntimeInstallWorkflowTests|RuntimeInstallStateStoreTests|RuntimeInstallStepExecutorTests|RuntimeFreshInstallPreflightPolicyTests|RuntimeFreshInstallPreflightRunnerTests|InstalledRuntimePathsTests|RuntimeLifecycleProgressEventTests|RuntimeLifecycleCommandTests'`
+- `swift test --filter 'RuntimeInstallTransitionPolicyTests|RuntimeInstallWorkflowTests|RuntimeInstallWorkflowStateArtifactStoreTests|RuntimeInstallStepExecutorTests|RuntimeFreshInstallPreflightPolicyTests|RuntimeFreshInstallPreflightRunnerTests|InstalledRuntimePathsTests|RuntimeLifecycleProgressEventTests|RuntimeLifecycleCommandTests'`
 - `swift test --filter 'ContractsTests|CoreTests|RuntimeWorkflowTests|HostInfrastructureTests|HostCLITests'`
 - `uv run pytest packages/vitalserver-devtools/tests/unit/test_packaging_templates.py`
 - `bash -n apps/vitalserver-macos-runtime/Support/Packaging/preinstall`

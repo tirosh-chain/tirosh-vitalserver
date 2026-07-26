@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
-  useExportHostLogs,
+  useCreatePlatformSupportExport,
   useHostLogs,
-  useRuntimeCapabilities
+  useControlCapabilities,
+  usePlatformWorkflow
 } from "@/console/hooks";
 import type { RuntimeLogSource } from "@/domain/runtime-control/contracts/runtimeControlTypes";
-import { validateHostLogExportPath } from "@/domain/runtime-control/paths/runtimePathPolicy";
 import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";
 
@@ -25,20 +25,30 @@ const logSources: Array<{ id: RuntimeLogSource; label: string }> = [
 ];
 
 const lineLimits = [100, 500, 1000];
-const defaultExportPath = "/tmp/vitalserver-logs.zip";
-
 export function LogsPage() {
   const [source, setSource] = useState<RuntimeLogSource>("containers");
   const [lineLimit, setLineLimit] = useState(500);
   const [live, setLive] = useState(true);
-  const [exportPath, setExportPath] = useState(defaultExportPath);
   const outputRef = useRef<HTMLPreElement>(null);
 
-  const capabilities = useRuntimeCapabilities();
-  const logs = useHostLogs({ source, lineLimit, live });
-  const exportLogs = useExportHostLogs();
-  const logText = logs.data?.text ?? null;
+  const capabilities = useControlCapabilities();
   const capabilityData = capabilities.data ?? null;
+  const canStreamLogs =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    capabilityData?.canStreamLogs === true;
+  const logCapabilityMissing =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    (capabilityData === null || capabilityData.canStreamLogs === undefined);
+  const logStreamingUnsupported =
+    !capabilities.isPending &&
+    !capabilities.isError &&
+    capabilityData?.canStreamLogs === false;
+  const logs = useHostLogs({ source, lineLimit, live, enabled: canStreamLogs });
+  const exportLogs = useCreatePlatformSupportExport();
+  const workflow = usePlatformWorkflow();
+  const logText = logs.data?.text ?? null;
   const canExportLogs =
     !capabilities.isPending &&
     !capabilities.isError &&
@@ -53,12 +63,12 @@ export function LogsPage() {
     !capabilities.isError &&
     capabilityData !== null &&
     capabilityData.canExportLogs === false;
-  const exportPathValidation = validateHostLogExportPath(exportPath);
-
-  const exportDestination = useMemo(() => {
-    const destination = exportLogs.data?.destination;
-    return destination ? destination.replace(/^file:\/\//, "") : "";
-  }, [exportLogs.data?.destination]);
+  const supportOperation =
+    workflow.data?.operation?.kind === "support-export"
+      ? workflow.data.operation
+      : exportLogs.data?.kind === "support-export"
+        ? exportLogs.data
+        : null;
 
   useEffect(() => {
     if (live && outputRef.current) {
@@ -74,7 +84,7 @@ export function LogsPage() {
           <button
             type="button"
             onClick={() => logs.refetch()}
-            disabled={logs.isFetching}
+            disabled={logs.isFetching || !canStreamLogs}
           >
             Refresh
           </button>
@@ -122,7 +132,27 @@ export function LogsPage() {
           </span>
         </div>
 
-        {logs.isPending ? (
+        {capabilities.isPending ? (
+          <p className="empty-state">Loading log streaming capability...</p>
+        ) : capabilities.isError ? (
+          <ErrorState
+            title="Failed to read log streaming capability"
+            error={capabilities.error}
+          />
+        ) : logCapabilityMissing ? (
+          <ErrorState
+            title="Log streaming capability response is incomplete"
+            error={
+              new Error(
+                "Runtime Control API did not return log streaming capability."
+              )
+            }
+          />
+        ) : logStreamingUnsupported ? (
+          <p className="muted">
+            Log streaming is not supported by this Runtime Control API.
+          </p>
+        ) : logs.isPending ? (
           <p className="empty-state">Loading logs...</p>
         ) : logs.isError ? (
           <ErrorState title="Failed to read logs" error={logs.error} />
@@ -140,26 +170,12 @@ export function LogsPage() {
 
       <Panel title="Export logs">
         <div className="inline-form">
-          <label>
-            Destination
-            <input
-              type="text"
-              value={exportPath}
-              aria-invalid={exportPathValidation ? "true" : "false"}
-              disabled={!canExportLogs}
-              onChange={(event) => setExportPath(event.target.value)}
-            />
-          </label>
           <button
             type="button"
-            onClick={() => exportLogs.mutate(exportPath)}
-            disabled={
-              exportLogs.isPending ||
-              exportPathValidation !== null ||
-              !canExportLogs
-            }
+            onClick={() => exportLogs.mutate()}
+            disabled={exportLogs.isPending || !canExportLogs}
           >
-            Export Logs
+            Create Support Bundle
           </button>
         </div>
         {capabilities.isPending ? (
@@ -186,19 +202,24 @@ export function LogsPage() {
             Log export is not supported by this Runtime Control API.
           </p>
         ) : null}
-        {exportPathValidation ? (
-          <p className="error-state">{exportPathValidation}</p>
-        ) : null}
         {exportLogs.isError ? (
-          <ErrorState title="Failed to export logs" error={exportLogs.error} />
+          <ErrorState title="Failed to create support bundle" error={exportLogs.error} />
         ) : null}
-        {exportDestination ? (
-          <p className="muted">Exported to {exportDestination}</p>
+        {supportOperation?.state === "completed" && supportOperation.artifact ? (
+          <p className="muted">
+            Created {supportOperation.artifact.path} ({supportOperation.artifact.sizeBytes} bytes, SHA-256 {supportOperation.artifact.sha256})
+          </p>
+        ) : supportOperation?.state === "failed" ? (
+          <p className="error-state">
+            Support export failed: {supportOperation.failure?.message ?? "failure evidence is missing"}
+          </p>
+        ) : supportOperation ? (
+          <p className="muted">
+            Support export {supportOperation.state} (operation {supportOperation.operationId}).
+          </p>
         ) : (
           <p className="muted">
-            The archive is created on the Mac running Runtime Control API. The
-            Remote Console cannot open Finder directly; use the exported path on
-            the host.
+            The Platform Agent creates the archive in its managed support directory and publishes its path and digest after completion.
           </p>
         )}
       </Panel>

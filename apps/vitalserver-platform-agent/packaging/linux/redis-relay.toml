@@ -1,0 +1,22 @@
+[redis_relay]
+enabled = false
+scope = "vital_reconstruction"
+include_recorder_network_context = false
+interval_seconds = 1.0
+scan_count = 1000
+
+[source]
+host = "redis"
+port = 6379
+database = 0
+
+[target]
+url = "redis://redis.example:6379/0"
+
+[publish]
+target_key_prefix = "vitalserver:"
+event_stream_key = "vitalserver:relay:events"
+fingerprint_hash_key = "vitalserver:relay:fingerprints"
+publish_dedupe_hash_key = "vitalserver:relay:published"
+event_stream_maxlen = 100000
+publisher_id = "vitalserver-helper-relay"

@@ -15,6 +15,7 @@ public enum RuntimeDataBackupStoreError: Error, Equatable, CustomStringConvertib
     case artifactPathInvalid(id: RuntimeDataBackupArtifactID, path: String)
     case artifactChecksumMismatch(id: RuntimeDataBackupArtifactID, path: String)
     case artifactSizeMismatch(id: RuntimeDataBackupArtifactID, path: String)
+    case optionalArtifactInvalid(id: RuntimeDataBackupArtifactID, path: String, reason: String)
     case restoreDestinationInspectionFailed(id: RuntimeDataBackupArtifactID, path: String, reason: String)
     case restoreDestinationUnexpectedState(id: RuntimeDataBackupArtifactID, path: String, state: String)
     case restoreWriteFailed(id: RuntimeDataBackupArtifactID, path: String, reason: String)
@@ -41,6 +42,8 @@ public enum RuntimeDataBackupStoreError: Error, Equatable, CustomStringConvertib
             return "runtime data backup artifact checksum mismatch id=\(id.rawValue) path=\(path)"
         case .artifactSizeMismatch(let id, let path):
             return "runtime data backup artifact size mismatch id=\(id.rawValue) path=\(path)"
+        case .optionalArtifactInvalid(let id, let path, let reason):
+            return "optional runtime data backup artifact is invalid id=\(id.rawValue) path=\(path) reason=\(reason)"
         case .restoreDestinationInspectionFailed(let id, let path, let reason):
             return "runtime data restore destination inspection failed id=\(id.rawValue) path=\(path) reason=\(reason)"
         case .restoreDestinationUnexpectedState(let id, let path, let state):
@@ -53,13 +56,16 @@ public enum RuntimeDataBackupStoreError: Error, Equatable, CustomStringConvertib
 
 public struct RuntimeDataBackupRestoreResult: Equatable, Sendable {
     public let redisArchive: URL
+    public let postgresArchive: URL
     public let startOnBootState: RuntimeDataBackupStartOnBootStateDocument
 
     public init(
         redisArchive: URL,
+        postgresArchive: URL,
         startOnBootState: RuntimeDataBackupStartOnBootStateDocument
     ) {
         self.redisArchive = redisArchive
+        self.postgresArchive = postgresArchive
         self.startOnBootState = startOnBootState
     }
 }
@@ -93,6 +99,7 @@ public struct RuntimeDataBackupStore {
     public func createBackup(
         reason: String,
         redisArchive: URL,
+        postgresArchive: URL,
         startOnBootState: Data
     ) throws -> URL {
         let stamp = timestamp()
@@ -121,6 +128,16 @@ public struct RuntimeDataBackupStore {
                 source: redisArchive,
                 sourceVolumeName: metadata.redisVolumeName,
                 destination: artifactsDirectory.appendingPathComponent(RuntimeDataBackupArtifactID.redisData.defaultBackupName)
+            ))
+            artifacts.append(try archiveRequiredFile(
+                id: .postgresDatabase,
+                owner: .guest,
+                sourceKind: .postgresBackupArchive,
+                source: postgresArchive,
+                sourceVolumeName: metadata.postgresVolumeName,
+                destination: artifactsDirectory.appendingPathComponent(
+                    RuntimeDataBackupArtifactID.postgresDatabase.defaultBackupName
+                )
             ))
             artifacts.append(try archiveRequiredFile(
                 id: .runtimeVMConfig,
@@ -200,8 +217,29 @@ public struct RuntimeDataBackupStore {
         }
 
         let artifacts = Dictionary(uniqueKeysWithValues: manifest.artifacts.map { ($0.id, $0) })
-        let redisArtifact = try requiredVerifiedArtifact(.redisData, artifacts: artifacts, backup: backup)
-        let startOnBootArtifact = try requiredVerifiedArtifact(.startOnBootState, artifacts: artifacts, backup: backup)
+        var verifiedRequired: [RuntimeDataBackupArtifactID: URL] = [:]
+        for id in RuntimeDataBackupArtifactID.requiredForRecovery {
+            verifiedRequired[id] = try requiredVerifiedArtifact(
+                id,
+                artifacts: artifacts,
+                backup: backup
+            )
+        }
+        for id in RuntimeDataBackupArtifactID.optionalForDiagnosticsContinuity {
+            _ = try optionalVerifiedArtifact(id, artifacts: artifacts, backup: backup)
+        }
+        guard let redisArtifact = verifiedRequired[.redisData],
+              let postgresArtifact = verifiedRequired[.postgresDatabase],
+              let startOnBootArtifact = verifiedRequired[.startOnBootState] else {
+            throw RuntimeDataBackupStoreError.manifestInvalid(
+                path: manifestURL.path,
+                errors: ["verified required artifact index is incomplete"]
+            )
+        }
+        let startOnBootState = try JSONDecoder().decode(
+            RuntimeDataBackupStartOnBootStateDocument.self,
+            from: fileStore.readData(startOnBootArtifact)
+        )
 
         try restoreRequiredFile(.runtimeVMConfig, artifacts: artifacts, backup: backup, destination: paths.vmConfig)
         try restoreRequiredFile(.guestRuntimeConfig, artifacts: artifacts, backup: backup, destination: paths.guestRuntimeConfig)
@@ -212,16 +250,12 @@ public struct RuntimeDataBackupStore {
             backup: backup,
             destination: paths.proxyLaunchDaemon
         )
-        try restoreOptionalFile(.runtimeStatusDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeStatus)
         try restoreOptionalFile(.runtimeEventsDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeEvents)
         try restoreOptionalSQLiteSnapshot(artifacts: artifacts, backup: backup, destination: paths.runtimeObservabilityDatabase)
 
-        let startOnBootState = try JSONDecoder().decode(
-            RuntimeDataBackupStartOnBootStateDocument.self,
-            from: fileStore.readData(startOnBootArtifact)
-        )
         return RuntimeDataBackupRestoreResult(
             redisArchive: redisArtifact,
+            postgresArchive: postgresArtifact,
             startOnBootState: startOnBootState
         )
     }
@@ -523,6 +557,11 @@ public struct RuntimeDataBackupStore {
             errors.append("product mismatch expected=\(metadata.productIdentifier) actual=\(manifest.product)")
         }
         let artifactsByID = Dictionary(grouping: manifest.artifacts, by: \.id)
+        for (id, artifacts) in artifactsByID where artifacts.count != 1 {
+            errors.append(
+                "artifact must appear exactly once id=\(id.rawValue) count=\(artifacts.count)"
+            )
+        }
         for id in RuntimeDataBackupArtifactID.requiredForRecovery {
             guard let artifacts = artifactsByID[id], artifacts.count == 1, let artifact = artifacts.first else {
                 errors.append("missing required artifact id=\(id.rawValue)")
@@ -575,7 +614,7 @@ public struct RuntimeDataBackupStore {
         backup: URL,
         destination: URL
     ) throws {
-        guard let source = optionalVerifiedArtifact(id, artifacts: artifacts, backup: backup) else {
+        guard let source = try optionalVerifiedArtifact(id, artifacts: artifacts, backup: backup) else {
             return
         }
 
@@ -602,7 +641,7 @@ public struct RuntimeDataBackupStore {
         backup: URL,
         destination: URL
     ) throws {
-        guard optionalVerifiedArtifact(
+        guard try optionalVerifiedArtifact(
             .runtimeObservabilityDatabase,
             artifacts: artifacts,
             backup: backup
@@ -644,27 +683,74 @@ public struct RuntimeDataBackupStore {
         _ id: RuntimeDataBackupArtifactID,
         artifacts: [RuntimeDataBackupArtifactID: RuntimeDataBackupArtifact],
         backup: URL
-    ) -> URL? {
-        guard let artifact = artifacts[id],
-              (artifact.role == .optional || RuntimeDataBackupArtifactID.optionalForUIContinuity.contains(id)),
-              artifact.state == .archived,
-              let backupPath = artifact.backupPath else {
+    ) throws -> URL? {
+        guard let artifact = artifacts[id] else {
             return nil
         }
-
-        guard let source = try? artifactURL(id: id, backupPath: backupPath, backup: backup),
-              case .file = fileStore.pathState(at: source) else {
+        guard artifact.role == .optional || RuntimeDataBackupArtifactID.optionalForDiagnosticsContinuity.contains(id) else {
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: artifact.backupPath ?? backup.path,
+                reason: "manifest role is \(artifact.role.rawValue)"
+            )
+        }
+        guard artifact.state != .missing else {
             return nil
         }
+        guard artifact.state == .archived else {
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: artifact.backupPath ?? backup.path,
+                reason: "manifest state is \(artifact.state.rawValue)"
+            )
+        }
+        guard let backupPath = artifact.backupPath else {
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: backup.path,
+                reason: "backupPath is missing"
+            )
+        }
 
-        guard let data = try? fileStore.readData(source) else {
-            return nil
+        let source = try artifactURL(id: id, backupPath: backupPath, backup: backup)
+        switch fileStore.pathState(at: source) {
+        case .file:
+            break
+        case .missing:
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: source.path,
+                reason: "artifact source is missing"
+            )
+        case .inspectFailed(let reason):
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: source.path,
+                reason: "artifact source inspection failed: \(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: source.path,
+                reason: "artifact source state is \(fileStore.pathState(at: source).rawValue)"
+            )
+        }
+
+        let data: Data
+        do {
+            data = try fileStore.readData(source)
+        } catch {
+            throw RuntimeDataBackupStoreError.optionalArtifactInvalid(
+                id: id,
+                path: source.path,
+                reason: "artifact source read failed: \(error.localizedDescription)"
+            )
         }
         if artifact.sizeBytes != UInt64(data.count) {
-            return nil
+            throw RuntimeDataBackupStoreError.artifactSizeMismatch(id: id, path: source.path)
         }
         if artifact.sha256 != sha256(data) {
-            return nil
+            throw RuntimeDataBackupStoreError.artifactChecksumMismatch(id: id, path: source.path)
         }
 
         return source

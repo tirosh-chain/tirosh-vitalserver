@@ -35,6 +35,7 @@ class MacOSLaunchdTemplateConfig:
 
 @dataclass(frozen=True)
 class MacOSLaunchdConfig:
+    platform_agent: MacOSLaunchdTemplateConfig
     vm: MacOSLaunchdTemplateConfig
     proxy: MacOSLaunchdTemplateConfig
     guest_log_sync: MacOSLaunchdTemplateConfig

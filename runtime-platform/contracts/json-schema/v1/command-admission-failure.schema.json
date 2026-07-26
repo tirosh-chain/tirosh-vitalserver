@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:command-admission-failure",
+  "title": "CommandAdmissionFailure",
+  "description": "A typed failure while admitting a command. admissionState=not-admitted proves no Operation was persisted; admissionState=unknown preserves that the caller must retry the exact requestId after the owner recovers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "state",
+    "requestId",
+    "observedAt",
+    "admissionState",
+    "issue"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "state": {
+      "const": "failed"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "admissionState": {
+      "type": "string",
+      "enum": [
+        "not-admitted",
+        "unknown"
+      ]
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    }
+  }
+}

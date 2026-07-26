@@ -4,6 +4,7 @@ import Application
 import Domain
 import RuntimeControl
 @testable import MacControlPanelHost
+import MacPlatformAgent
 import SwiftUI
 import XCTest
 import Errors
@@ -13,7 +14,7 @@ import Errors
 final class RuntimeViewModelCapabilityTests: XCTestCase {
     func testViewModelInitializesStatusFromExplicitControlClientRead() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        client.status = RuntimeStatus(runtimeInstalled: true, statusMessage: "initial status")
+        client.status = platformState(runtimeInstallationState: .executable, runtimeVersion: "initial-version")
 
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -22,44 +23,64 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         )
 
         XCTAssertEqual(client.loadStatusCount, 1)
-        XCTAssertEqual(viewModel.status.statusMessage, "initial status")
-        XCTAssertTrue(viewModel.status.runtimeInstalled)
+        XCTAssertEqual(viewModel.status.installedVersion, "initial-version")
+        XCTAssertEqual(viewModel.status.runtimeInstallationState.isExecutable, true)
     }
 
-    func testViewModelInitialSettingsResolutionReadsControlSettingsOnceBeforeLocalPortOverride() {
+    func testViewModelInitialSettingsResolutionUsesControlSettingsAsPortOwner() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.settings.runtimeControlPort = 44080
-        let localAPISettings = FakeLocalAPISettings(runtimeControlPort: 55080)
 
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            localAPISettings: localAPISettings,
             healthNotifications: NoopHealthNotifications()
         )
 
         XCTAssertEqual(client.loadSettingsCount, 1)
-        XCTAssertEqual(viewModel.settings.runtimeControlPort, 55080)
-        XCTAssertEqual(localAPISettings.settingsWithLocalAPIPortCount, 1)
+        XCTAssertEqual(viewModel.settings.runtimeControlPort, 44080)
+    }
+
+    func testPlatformSettingsOwnerFailureRemainsAnExplicitFailedPresentationState() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.settings = RuntimeSettings(readIssues: [
+            RuntimeSettingsReadIssue(
+                source: "platformSettings",
+                message: "Platform Agent API unavailable"
+            )
+        ])
+
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(
+            viewModel.platformSettingsReadState,
+            .failed([RuntimeSettingsReadIssue(
+                source: "platformSettings",
+                message: "Platform Agent API unavailable"
+            )])
+        )
+        XCTAssertFalse(viewModel.canDisplayPlatformSettings)
+        XCTAssertEqual(viewModel.platformSettingsReadIssues.map(\.source), ["platformSettings"])
     }
 
     func testViewModelInitialSettingsUsesExplicitInputWithoutControlSettingsRead() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         var initialSettings = RuntimeSettings()
         initialSettings.runtimeControlPort = 44080
-        let localAPISettings = FakeLocalAPISettings(runtimeControlPort: 55080)
 
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
             initialSettings: initialSettings,
-            localAPISettings: localAPISettings,
             healthNotifications: NoopHealthNotifications()
         )
 
         XCTAssertEqual(client.loadSettingsCount, 0)
-        XCTAssertEqual(viewModel.settings.runtimeControlPort, 55080)
-        XCTAssertEqual(localAPISettings.settingsWithLocalAPIPortCount, 1)
+        XCTAssertEqual(viewModel.settings.runtimeControlPort, 44080)
     }
 
     func testViewModelInitialSettingsPreserveExplicitEmptyAdvertisedServiceURLs() {
@@ -87,13 +108,187 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            initialStatus: RuntimeStatus(runtimeInstalled: true, statusMessage: "provided"),
+            initialStatus: platformState(runtimeInstallationState: .executable, runtimeVersion: "provided"),
             healthNotifications: NoopHealthNotifications()
         )
 
         XCTAssertEqual(client.loadStatusCount, 0)
-        XCTAssertEqual(viewModel.status.statusMessage, "provided")
-        XCTAssertTrue(viewModel.status.runtimeInstalled)
+        XCTAssertEqual(viewModel.status.installedVersion, "provided")
+        XCTAssertEqual(viewModel.status.runtimeInstallationState.isExecutable, true)
+    }
+
+    func testRedisRelayRefreshUsesDirectRuntimeOwnerResource() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let document = RuntimeRedisRelayStatus(
+            observedAt: "2026-07-11T00:00:00Z",
+            enabled: true,
+            state: "running",
+            scope: "vital_reconstruction"
+        )
+        client.redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
+            readState: .loaded,
+            document: document,
+            readError: nil
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshRedisRelayStatus()
+
+        XCTAssertEqual(client.loadRedisRelayStatusCount, 1)
+        XCTAssertEqual(viewModel.redisRelayStatusRead.document, document)
+        XCTAssertEqual(viewModel.redisRelayStatusRead.readState, .loaded)
+    }
+
+    func testRedisRelayRefreshPreservesDirectResourceReadFailure() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.redisRelayStatusError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "runtime owner unavailable"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshRedisRelayStatus()
+
+        XCTAssertEqual(viewModel.redisRelayStatusRead.readState, .readFailed)
+        XCTAssertNil(viewModel.redisRelayStatusRead.document)
+        XCTAssertEqual(viewModel.redisRelayStatusRead.readError, "runtime owner unavailable")
+    }
+
+    func testRefreshLoadsRedisRelaySettingsFromRuntimeOwnerInsteadOfHostSettings() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.settings.redisRelay.enabled = false
+        client.runtimeRedisRelaySettingsRead = loadedRedisRelaySettings(enabled: true)
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refresh()
+
+        XCTAssertEqual(viewModel.runtimeRedisRelaySettingsRead.state, .loaded)
+        XCTAssertTrue(viewModel.settings.redisRelay.enabled)
+        XCTAssertTrue(viewModel.canEditRuntimeRedisRelaySettings)
+    }
+
+    func testApplySettingsSendsRedisRelayChangeToRuntimeOwner() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeRedisRelaySettingsRead = loadedRedisRelaySettings(enabled: false)
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        await viewModel.refresh()
+        viewModel.settings.redisRelay.enabled = true
+        viewModel.settings.redisRelay.target.password = "new-secret"
+
+        await viewModel.applySettings()
+
+        XCTAssertEqual(client.appliedRuntimeRedisRelaySettings.count, 1)
+        XCTAssertTrue(client.appliedRuntimeRedisRelaySettings[0].enabled)
+        XCTAssertEqual(client.appliedRuntimeRedisRelaySettings[0].target.password, "new-secret")
+        XCTAssertEqual(client.applySettingsCount, 1)
+    }
+
+    func testRuntimeStackRefreshUsesDirectStackAndServiceResources() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeStackStatus = RuntimeGuestControlStackStatus(
+            state: "loaded",
+            observedAt: "2026-07-11T00:00:00Z",
+            services: [
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-11T00:00:00Z"
+                ),
+                RuntimeGuestControlServiceStatus(
+                    service: "worker",
+                    state: "running",
+                    health: "unknown",
+                    observedAt: "2026-07-11T00:00:00Z"
+                ),
+            ]
+        )
+        client.serviceResourcesByService["app"] = runtimeServiceResource(service: "app")
+        client.serviceResourceErrorsByService["worker"] = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "resource owner unavailable"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshRuntimeStack()
+
+        XCTAssertEqual(client.runtimeStackStatusCount, 1)
+        XCTAssertEqual(client.serviceResourceRequests, ["app", "worker"])
+        XCTAssertEqual(viewModel.runtimeStackStatus, client.runtimeStackStatus)
+        XCTAssertNil(viewModel.runtimeStackReadError)
+        XCTAssertEqual(viewModel.runtimeServiceResources.map(\.service), ["app"])
+        XCTAssertEqual(
+            viewModel.runtimeServiceResourceReadIssues,
+            [RuntimeGuestServiceResourceReadIssue(service: "worker", message: "resource owner unavailable")]
+        )
+    }
+
+    func testRuntimeStackRefreshPreservesStackReadFailureAndClearsResources() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeStackError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 3,
+            userInfo: [NSLocalizedDescriptionKey: "runtime stack unavailable"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.runtimeServiceResources = [runtimeServiceResource(service: "stale")]
+
+        await viewModel.refreshRuntimeStack()
+
+        XCTAssertNil(viewModel.runtimeStackStatus)
+        XCTAssertEqual(viewModel.runtimeStackReadError, "runtime stack unavailable")
+        XCTAssertEqual(viewModel.runtimeServiceResources, [])
+        XCTAssertEqual(viewModel.runtimeServiceResourceReadIssues, [])
+    }
+
+    func testRuntimeStackRefreshReplacesInitialReadFailureAfterGuestBecomesReady() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeStackError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "guest address is unavailable: missing-vm-ip"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshRuntimeStack()
+        XCTAssertEqual(viewModel.runtimeStackReadError, "guest address is unavailable: missing-vm-ip")
+
+        client.runtimeStackError = nil
+        await viewModel.refreshRuntimeStack()
+
+        XCTAssertEqual(client.runtimeStackStatusCount, 2)
+        XCTAssertEqual(viewModel.runtimeStackStatus, client.runtimeStackStatus)
+        XCTAssertNil(viewModel.runtimeStackReadError)
     }
 
     func testRestrictedClientPreventsLocalOnlyOperations() async {
@@ -127,8 +322,6 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.createRuntimeDataBackup()
         await viewModel.restoreRuntimeDataBackup()
         await viewModel.deleteSelectedRuntimeDataBackup()
-        await viewModel.startRuntimeServices()
-        await viewModel.stopRuntimeServices()
         await viewModel.exportLogs()
         viewModel.openLogs()
         viewModel.openBackups()
@@ -149,8 +342,6 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.restoreRedisBackupCount, 0)
         XCTAssertEqual(client.createRuntimeDataBackupCount, 0)
         XCTAssertEqual(client.restoreRuntimeDataBackupCount, 0)
-        XCTAssertEqual(client.startRuntimeServicesCount, 0)
-        XCTAssertEqual(client.stopRuntimeServicesCount, 0)
         XCTAssertEqual(client.exportLogsCount, 0)
         XCTAssertEqual(client.preferredLogsPathCount, 0)
         XCTAssertEqual(nativeShell.createdDirectoryURLs, [])
@@ -163,18 +354,20 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
     }
 
     func testRepairProxyDoesNotRequirePresentationProxyPortFallback() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        client.status = RuntimeStatus(proxyPort: nil)
+        let controlClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let hostClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        controlClient.status = platformState(proxyPort: nil)
         let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
+            controlClient: controlClient,
+            hostClient: hostClient,
             healthNotifications: NoopHealthNotifications(),
             nativeShell: FakeRuntimeNativeShell()
         )
 
         await viewModel.repairProxyPort()
 
-        XCTAssertEqual(client.repairProxyCount, 1)
+        XCTAssertEqual(controlClient.repairProxyCount, 0)
+        XCTAssertEqual(hostClient.repairProxyCount, 1)
         XCTAssertNotEqual(viewModel.message, RuntimeHTTPStatusText.missingProxyPort)
     }
 
@@ -259,13 +452,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
     func testRuntimeDataBackupActionsCallExplicitPorts() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.runtimeDataBackupsToLoad = [
-            RuntimeBackup(path: "/runtime/data/backups/vitalserver-helper/selected", sizeBytes: nil)
+            RuntimeBackup(path: "/platform/backups/runtime-data/vitalserver-helper/selected", sizeBytes: nil)
         ]
         let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
         viewModel.runtimeDataBackups = [
-            RuntimeBackup(path: "/runtime/data/backups/vitalserver-helper/selected", sizeBytes: nil)
+            RuntimeBackup(path: "/platform/backups/runtime-data/vitalserver-helper/selected", sizeBytes: nil)
         ]
-        viewModel.selectedRuntimeDataBackupPath = "/runtime/data/backups/vitalserver-helper/selected"
+        viewModel.selectedRuntimeDataBackupPath = "/platform/backups/runtime-data/vitalserver-helper/selected"
 
         await viewModel.createRuntimeDataBackup()
         await viewModel.restoreRuntimeDataBackup()
@@ -275,10 +468,10 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.restoreRuntimeDataBackupCount, 1)
         XCTAssertEqual(client.deleteBackupCount, 1)
         XCTAssertEqual(client.restoredRuntimeDataBackupURLs, [
-            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/selected")
+            URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper/selected")
         ])
         XCTAssertEqual(client.deletedBackupURLs, [
-            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/selected")
+            URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper/selected")
         ])
     }
 
@@ -511,19 +704,30 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.runtimeSettings.vitalFilesDirectory, "/applied/vital-files")
     }
 
-    func testRestartVMRuntimeFromSettingsUsesRuntimeServiceRestartPort() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+    func testRestartVMRuntimeFromSettingsActivatesSavedSettingsThroughConfigureWorkflow() async {
+        let controlClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let hostClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var savedSettings = RuntimeSettings()
+        savedSettings.memoryGiB = 12
+        savedSettings.vitalFilesDirectory = "/saved/vital-files"
+        controlClient.settings = savedSettings
         let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
+            controlClient: controlClient,
+            hostClient: hostClient,
             healthNotifications: NoopHealthNotifications()
         )
 
         await viewModel.restartVMRuntimeFromSettings()
 
-        XCTAssertEqual(client.repairRuntimeServicesCount, 1)
-        XCTAssertEqual(client.loadHealthStatusCount, 0)
-        XCTAssertGreaterThanOrEqual(client.loadStatusCount, 2)
+        XCTAssertEqual(controlClient.repairRuntimeServicesCount, 0)
+        XCTAssertEqual(hostClient.repairRuntimeServicesCount, 0)
+        XCTAssertEqual(controlClient.applySettingsCount, 0)
+        XCTAssertEqual(controlClient.restartVMRuntimeCount, 1)
+        XCTAssertEqual(controlClient.lastAppliedSettings?.memoryGiB, 12)
+        XCTAssertEqual(controlClient.lastAppliedSettings?.vitalFilesDirectory, "/saved/vital-files")
+        XCTAssertEqual(controlClient.lastAppliedSettings?.restartAfterSave, false)
+        XCTAssertEqual(controlClient.loadHealthStatusCount, 0)
+        XCTAssertGreaterThanOrEqual(controlClient.loadStatusCount, 2)
     }
 
     func testOpenVitalFilesDirectoryUsesRuntimeSettingsInsteadOfDraftSettings() {
@@ -605,6 +809,31 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertTrue(viewModel.selectedBundleVerified)
     }
 
+    func testVerifyOnlyClientChecksIntegrityButDoesNotApplyBundle() async {
+        let capabilities = RuntimeControlCapabilities(
+            canApplyBundle: false,
+            canOpenLocalFiles: true
+        )
+        let client = FakeRuntimeClient(capabilities: capabilities)
+        let nativeShell = FakeRuntimeNativeShell()
+        let bundleURL = URL(fileURLWithPath: "/tmp/update-bundle.tar.gz")
+        nativeShell.updateBundleURL = bundleURL
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.chooseUpdateBundle()
+        await viewModel.applySelectedBundle()
+
+        XCTAssertEqual(client.verifiedBundleURLs, [bundleURL])
+        XCTAssertTrue(viewModel.selectedBundleVerified)
+        XCTAssertEqual(client.applyUpdateBundleCount, 0)
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.actionUnavailable)
+    }
+
     func testOpenAndExportOperationsUseNativeShellBoundary() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
@@ -629,11 +858,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(nativeShell.openedFileURLs, [
             URL(fileURLWithPath: "/logs"),
             URL(fileURLWithPath: "/backups"),
-            URL(fileURLWithPath: "/runtime/data/backups/redis"),
-            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper"),
+            URL(fileURLWithPath: "/platform/backups/runtime-data/redis"),
+            URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper"),
         ])
         XCTAssertEqual(nativeShell.openedWebURLs, [
-            URL(string: RuntimeControlLocalAPIConstants.pwaURL),
+            URL(string: AppConstants.Product.runtimeControlPWAURL(
+                port: RuntimeSettingsInitialValues.runtimeControlPort
+            )),
             URL(string: AppConstants.Product.vitalDBURL),
         ])
         XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])
@@ -644,11 +875,11 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
         let sourceURL = URL(fileURLWithPath: "/external/20260614T043455Z-manual", isDirectory: true)
-        let destinationURL = URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/20260614T043455Z-manual", isDirectory: true)
+        let destinationURL = URL(fileURLWithPath: "/platform/backups/runtime-data/vitalserver-helper/20260614T043455Z-manual", isDirectory: true)
         nativeShell.directoryURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .directory,
-            "/runtime/data/backups/vitalserver-helper": .directory,
+            "/platform/backups/runtime-data/vitalserver-helper": .directory,
             destinationURL.path: .missing,
         ]
         client.runtimeDataBackupsToLoad = [
@@ -676,11 +907,11 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
         let sourceURL = URL(fileURLWithPath: "/external/redis-20260614T043455Z.tar.gz")
-        let destinationURL = URL(fileURLWithPath: "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz")
+        let destinationURL = URL(fileURLWithPath: "/platform/backups/runtime-data/redis/redis-20260614T043455Z.tar.gz")
         nativeShell.redisBackupArchiveURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .file,
-            "/runtime/data/backups/redis": .directory,
+            "/platform/backups/runtime-data/redis": .directory,
             destinationURL.path: .missing,
         ]
         client.redisBackupsToLoad = [
@@ -711,8 +942,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         nativeShell.redisBackupArchiveURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .file,
-            "/runtime/data/backups/redis": .directory,
-            "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz": .file,
+            "/platform/backups/runtime-data/redis": .directory,
+            "/platform/backups/runtime-data/redis/redis-20260614T043455Z.tar.gz": .file,
         ]
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -729,7 +960,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
     func testRestoreRedisBackupUsesSelectedManagedRedisArchive() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let selectedURL = URL(fileURLWithPath: "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz")
+        let selectedURL = URL(fileURLWithPath: "/platform/backups/runtime-data/redis/redis-20260614T043455Z.tar.gz")
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
@@ -751,8 +982,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         nativeShell.directoryURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .directory,
-            "/runtime/data/backups/vitalserver-helper": .directory,
-            "/runtime/data/backups/vitalserver-helper/20260614T043455Z-manual": .directory,
+            "/platform/backups/runtime-data/vitalserver-helper": .directory,
+            "/platform/backups/runtime-data/vitalserver-helper/20260614T043455Z-manual": .directory,
         ]
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -904,26 +1135,9 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.loadVitalDBRecordersCount, 0)
     }
 
-    func testHealthRefreshUpdatesContainerObservationForServiceHealth() async {
+    func testHealthRefreshDoesNotPublishContainerObservationAsCurrentProductStatus() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            runtimeStateUpdatedAt: "2026-06-05T00:00:00Z",
-            runtimeStateFileUpdatedAt: "2026-06-05T00:00:00Z",
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(
-                    service: "vitaldb-observer",
-                    state: "running",
-                    health: "healthy",
-                    exitCode: 0,
-                    uptimeSeconds: 42
-                ),
-            ]
-        )
-        client.healthStatus = RuntimeStatus(containerObservation: observation)
+        client.healthStatus = platformState(runtimeVersion: "health-refreshed")
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
@@ -932,7 +1146,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         await viewModel.refreshHealthStatus()
 
-        XCTAssertEqual(viewModel.containerObservation, observation)
+        XCTAssertEqual(viewModel.status.installedVersion, "health-refreshed")
     }
 
     func testVitalRecorderRefreshUpdatesCurrentObservationSnapshot() async {
@@ -962,7 +1176,125 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.refreshVitalRecorders()
 
         XCTAssertEqual(viewModel.vitalDBObservationSnapshot.observation, observation)
-        XCTAssertNil(viewModel.status.vitalDBObservation)
+    }
+
+    func testVitalRecorderRefreshUpdatesBedsFromDedicatedBedReadModel() async {
+        let bed = RuntimeVitalBedRecord(
+            bedID: "bed-postgres",
+            name: "OR 1",
+            vrcode: "VR_A",
+            status: .online,
+            patientConnected: true,
+            firstSeenAt: "2026-07-01T00:00:00+00:00",
+            lastSeenAt: "2026-07-01T00:01:00+00:00",
+            observationCount: 1,
+            currentAnomalyCount: 0,
+            latestAnomalySeverity: nil
+        )
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.vitalDBBedHistory = RuntimeVitalBedHistory(
+            updatedAt: "2026-07-01T00:01:00+00:00",
+            beds: [bed]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshVitalRecorders()
+
+        XCTAssertEqual(client.loadVitalDBRecordersCount, 1)
+        XCTAssertEqual(client.loadVitalDBBedsCount, 1)
+        XCTAssertEqual(viewModel.vitalBeds.beds.map(\.bedID), ["bed-postgres"])
+        XCTAssertTrue(viewModel.vitalRecorders.beds.isEmpty)
+    }
+
+    func testCancelledVitalRecorderRefreshDoesNotPublishItsResult() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.vitalRelationships = RuntimeVitalRelationshipHistory(
+            readError: "previous relationship state"
+        )
+
+        let refresh = Task { @MainActor in
+            await viewModel.refreshVitalRecorders()
+        }
+        refresh.cancel()
+        await refresh.value
+
+        XCTAssertEqual(
+            viewModel.vitalRelationships.readError,
+            "previous relationship state"
+        )
+    }
+
+    func testVitalDBVisibilityActionsUseRuntimeControlClientAndUpdateReadModel() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(
+            updatedAt: "2026-07-01T00:00:00+00:00"
+        )
+        client.vitalDBBedVisibilityHistory = RuntimeVitalBedHistory(
+            updatedAt: "2026-07-01T00:00:00+00:00"
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        let hideSucceeded = await viewModel.hideVitalDBRecorder(vrcode: "VR_A")
+        let unhideSucceeded = await viewModel.unhideVitalDBRecorder(vrcode: "VR_A")
+        let deleteSucceeded = await viewModel.deleteVitalDBRecorder(vrcode: "VR_A")
+        await viewModel.hideVitalDBBed(bedID: "bed-a")
+        await viewModel.unhideVitalDBBed(bedID: "bed-a")
+        await viewModel.deleteVitalDBBed(bedID: "bed-a")
+
+        XCTAssertTrue(hideSucceeded)
+        XCTAssertTrue(unhideSucceeded)
+        XCTAssertTrue(deleteSucceeded)
+        XCTAssertEqual(client.hiddenRecorderRequests, [.init(vrcodes: ["VR_A"])])
+        XCTAssertEqual(client.unhiddenRecorderRequests, [.init(vrcodes: ["VR_A"])])
+        XCTAssertEqual(client.deletedRecorderRequests, [.init(vrcodes: ["VR_A"])])
+        XCTAssertEqual(client.hiddenBedRequests, [.init(bedIDs: ["bed-a"])])
+        XCTAssertEqual(client.unhiddenBedRequests, [.init(bedIDs: ["bed-a"])])
+        XCTAssertEqual(client.deletedBedRequests, [.init(bedIDs: ["bed-a"])])
+        XCTAssertEqual(viewModel.vitalRecorders.updatedAt, "2026-07-01T00:00:00+00:00")
+        XCTAssertEqual(viewModel.vitalBeds.updatedAt, "2026-07-01T00:00:00+00:00")
+        XCTAssertEqual(viewModel.vitalDBVisibilityActionMessage, "Hidden bed deleted.")
+        XCTAssertFalse(viewModel.isRunningVitalDBVisibilityAction)
+    }
+
+    func testVitalDBRecorderVisibilityFailureDoesNotReportSuccess() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.vitalDBVisibilityError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "visibility owner unavailable"]
+        )
+        let originalHistory = RuntimeVitalRecorderHistory(
+            updatedAt: "2026-06-30T00:00:00+00:00"
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.vitalRecorders = originalHistory
+
+        let succeeded = await viewModel.hideVitalDBRecorder(vrcode: "VR_A")
+
+        XCTAssertFalse(succeeded)
+        XCTAssertEqual(viewModel.vitalRecorders, originalHistory)
+        XCTAssertEqual(
+            viewModel.vitalDBVisibilityActionMessage,
+            "visibility owner unavailable"
+        )
+        XCTAssertFalse(viewModel.isRunningVitalDBVisibilityAction)
     }
 
     func testRuntimeEventRefreshUsesSelectedPeriodAndType() async {
@@ -986,449 +1318,564 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertNotNil(client.runtimeEventQueries.last?.since)
     }
 
-    func testTestKitStartRequiresAvailableBeds() {
+    func testProductLabScenarioRefreshSelectsFirstScenario() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
-        )
-        viewModel.testKitStatus = RuntimeTestKitStatus(
-            enabled: true,
-            state: .running,
-            sessions: [
-                testKitSession(
-                    id: "session-a",
-                    state: "running",
-                    bedRoomNames: ["OR-A"]
-                )
-            ],
-            beds: [RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a")]
-        )
-
-        XCTAssertFalse(viewModel.testKitCanStart)
-        XCTAssertFalse(viewModel.testKitCanResetBeds)
-    }
-
-    func testTestKitContainerControlsAreIndependentOfContainerState() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities(
-            canControlRuntimeServices: true
-        ))
-        let testKit = FakeTestKitController()
-        testKit.status = RuntimeTestKitStatus(enabled: true, state: .stopped)
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
-        )
-        viewModel.testKitStatus = testKit.status
-
-        XCTAssertTrue(viewModel.testKitCanControlContainer)
-
-        await viewModel.startTestKitContainer()
-        await viewModel.stopTestKitContainer()
-        await viewModel.restartTestKitContainer()
-
-        XCTAssertEqual(client.startTestKitServiceCount, 1)
-        XCTAssertEqual(client.stopTestKitServiceCount, 1)
-        XCTAssertEqual(client.restartTestKitServiceCount, 1)
-    }
-
-    func testTestKitStartUsesSelectedBedRoomNames() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
-        )
-        let status = RuntimeTestKitStatus(
-            enabled: true,
-            state: .running,
-            sessions: [
-                testKitSession(
-                    id: "session-a",
-                    state: "running",
-                    bedRoomNames: ["OR-A"]
-                )
-            ],
-            beds: [
-                RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"),
-                RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b"),
+        client.labScenariosToLoad = RuntimeLabScenarioList(
+            state: .loaded,
+            scenarios: [
+                RuntimeLabScenario(scenarioId: "case-a", name: "Case A", category: "generated"),
+                RuntimeLabScenario(scenarioId: "case-b", name: "Case B", category: "generated"),
             ]
         )
-        testKit.status = status
-        viewModel.testKitStatus = status
-        viewModel.setTestKitBedSelection("OR-B", selected: true)
-
-        await viewModel.startVirtualRecorderSession()
-
-        XCTAssertEqual(testKit.startedRequests.count, 1)
-        XCTAssertEqual(testKit.startedRequests[0].bedroomName, "OR-B")
-    }
-
-    func testTestKitVitalFilePlaybackUsesGuestMountedPath() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
+        client.labVitalFilesToLoad = RuntimeLabVitalFileList(
+            state: .loaded,
+            vitalFiles: [
+                RuntimeLabVitalFile(
+                    displayName: "case.vital",
+                    relativePath: "MORA04/case.vital",
+                    guestPath: "/mnt/tirosh-vital-files/MORA04/case.vital",
+                    sizeBytes: 123
+                )
+            ]
+        )
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshProductLabScenarios()
+
+        XCTAssertEqual(viewModel.labScenarios.scenarios.count, 2)
+        XCTAssertEqual(viewModel.selectedLabScenarioID, "case-a")
+        XCTAssertEqual(viewModel.selectedLabVitalFileRelativePath, "MORA04/case.vital")
+        XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.loadedLabScenarios(2))
+    }
+
+    func testProductLabCreateSessionUsesRuntimeControlClient() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.selectedLabScenarioID = "case-a"
+        viewModel.labSessionName = "Morning run"
+        viewModel.labRecorderCount = 3
+
+        await viewModel.createProductLabSession()
+
+        XCTAssertEqual(client.labCreateRequests, [
+            RuntimeLabSessionCreateRequest(
+                scenarioId: "case-a",
+                name: "Morning run",
+                recorderCount: 3,
+                targetURL: "http://edge/"
+            )
+        ])
+        XCTAssertEqual(viewModel.selectedLabSessionID, "lab-session-1")
+        XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.createdLabSession("lab-session-1"))
+    }
+
+    func testProductLabCreateSessionCanTargetExistingLabBeds() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.selectedLabScenarioID = "case-a"
+        viewModel.labSessionName = "Target existing beds"
+        viewModel.labRecorderCount = 5
+        viewModel.labSessionBedIDs = "manual_session_1-bed-1, manual_session_1-bed-2"
+
+        await viewModel.createProductLabSession()
+
+        XCTAssertEqual(client.labCreateRequests, [
+            RuntimeLabSessionCreateRequest(
+                scenarioId: "case-a",
+                name: "Target existing beds",
+                recorderCount: 2,
+                targetURL: "http://edge/",
+                bedIds: ["manual_session_1-bed-1", "manual_session_1-bed-2"]
+            )
+        ])
+    }
+
+    func testProductLabRefreshSelectsPersistedRunningSessionAndItsRecorders() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "stopped-session",
+                    state: .stopped,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+                RuntimeLabSession(
+                    sessionId: "running-session",
+                    state: .running,
+                    scenarioId: "case-b",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+            ]
+        )
+        client.labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "running-recorder",
+                    sessionId: "running-session",
+                    bedId: "running-bed",
+                    vrcode: "LAB-RUN001",
+                    state: .running
+                ),
+                RuntimeLabRecorder(
+                    recorderId: "other-recorder",
+                    sessionId: "stopped-session",
+                    bedId: "stopped-bed",
+                    vrcode: "LAB-STOP01",
+                    state: .stopped
+                ),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshProductLabReadModels()
+
+        XCTAssertEqual(viewModel.selectedLabSessionID, "running-session")
+        XCTAssertEqual(viewModel.selectedLabSession?.state, .running)
+        XCTAssertEqual(viewModel.selectedLabSessionRecorders.map(\.recorderId), ["running-recorder"])
+        XCTAssertTrue(viewModel.labCanStopSelectedSession)
+        XCTAssertFalse(viewModel.labCanStartSelectedSession)
+    }
+
+    func testProductLabSelectedSessionUsesNewerDetailStateThanSessionList() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "lab-session-1",
+                    state: .accepted,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.refreshProductLabReadModels()
+
+        XCTAssertEqual(viewModel.labSessions.sessions.first?.state, .accepted)
+        XCTAssertEqual(viewModel.labSessionResponse.session?.state, .running)
+        XCTAssertEqual(viewModel.selectedLabSession?.state, .running)
+        XCTAssertTrue(viewModel.labCanStopSelectedSession)
+        XCTAssertFalse(viewModel.labCanStartSelectedSession)
+    }
+
+    func testProductLabFailedSessionCanRetry() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.selectedLabSessionID = "failed-session"
+        viewModel.labSessionResponse = RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: "failed-session",
+                state: .failed,
+                scenarioId: "vital-file-replay",
+                recorderCount: 1,
+                targetURL: "http://edge/",
+                failure: RuntimeLabSessionFailure(
+                    stage: .fileValidation,
+                    code: .invalidWaveformSampleRate,
+                    message: "invalid waveform sample rate",
+                    failedAt: "2026-07-21T03:00:00Z"
+                )
+            )
+        )
+
+        XCTAssertTrue(viewModel.labCanStartSelectedSession)
+        XCTAssertFalse(viewModel.labCanStopSelectedSession)
+    }
+
+    func testProductLabRecorderControlsUseExplicitRunningSessionOwnership() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "running-session",
+                    state: .running,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+            ]
+        )
+        client.labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "session-recorder",
+                    sessionId: "running-session",
+                    bedId: "session-bed",
+                    vrcode: "LAB-REC001",
+                    state: .running
+                ),
+                RuntimeLabRecorder(
+                    recorderId: "foreign-recorder",
+                    sessionId: "another-session",
+                    bedId: "foreign-bed",
+                    vrcode: "LAB-REC002",
+                    state: .running
+                ),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        await viewModel.refreshProductLabReadModels()
+
+        await viewModel.stopProductLabRecorder("session-recorder")
+        await viewModel.startProductLabRecorder("session-recorder")
+        await viewModel.stopProductLabRecorder("foreign-recorder")
+
+        XCTAssertEqual(client.labStoppedRecorderRequests, ["running-session/session-recorder"])
+        XCTAssertEqual(client.labStartedRecorderRequests, ["running-session/session-recorder"])
+        XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.chooseSessionLabRecorder)
+    }
+
+    func testProductLabRunningRecorderCanStopWhenSessionStateIsAccepted() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "accepted-session",
+                    state: .accepted,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                ),
+            ]
+        )
+        client.labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "running-recorder",
+                    sessionId: "accepted-session",
+                    bedId: "session-bed",
+                    vrcode: "LAB-REC001",
+                    state: .running
+                ),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        await viewModel.refreshProductLabReadModels()
+        viewModel.labSessionResponse = RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: "accepted-session",
+                state: .accepted,
+                scenarioId: "case-a",
+                recorderCount: 1,
+                targetURL: "http://edge/"
+            )
+        )
+
+        await viewModel.stopProductLabRecorder("running-recorder")
+
+        XCTAssertEqual(
+            client.labStoppedRecorderRequests,
+            ["accepted-session/running-recorder"]
+        )
+    }
+
+    func testProductLabVitalFileReplayUsesGuestMountedPath() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
             initialSettings: RuntimeSettings(
                 vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
             ),
             healthNotifications: NoopHealthNotifications()
         )
-        let status = RuntimeTestKitStatus(
-            enabled: true,
-            state: .running,
-            beds: [RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b")]
-        )
-        testKit.status = status
-        viewModel.testKitStatus = status
-        viewModel.setTestKitBedSelection("OR-B", selected: true)
-        viewModel.testKitRecorderSourceMode = .vitalFile
-        viewModel.testKitVitalFilePath = "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+        viewModel.selectedLabVitalFileRelativePath = "case.vital"
+        viewModel.labSessionName = "Replay run"
 
-        await viewModel.startVirtualRecorderSession()
+        await viewModel.replayVitalFileWithProductLab()
 
-        XCTAssertEqual(testKit.startedRequests.count, 1)
-        XCTAssertEqual(
-            testKit.startedRequests[0].source?.path,
-            "/mnt/tirosh-vital-files/case.vital"
-        )
+        XCTAssertEqual(client.labReplayRequests, [
+            RuntimeLabVitalFileReplayRequest(
+                vitalFileRelativePath: "case.vital",
+                sessionName: "Replay run",
+                targetURL: "http://edge/",
+                resourceSelection: RuntimeLabVitalFileReplayResourceSelection(mode: .quickCreate),
+                repeatPolicy: RuntimeLabVitalFileReplayPolicy(mode: .once)
+            )
+        ])
+        XCTAssertEqual(client.labStartedSessionIDs, ["lab-replay-1"])
+        XCTAssertEqual(client.loadVitalDBRecordersCount, 1)
+        XCTAssertEqual(viewModel.selectedLabSessionID, "lab-replay-1")
     }
 
-    func testTestKitVitalFilePlaybackRejectsUnsharedHostPath() async {
+    func testProductLabVitalFileUploadImportsSelectedHostFilesIntoLibrary() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            initialSettings: RuntimeSettings(
-                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
-            ),
-            healthNotifications: NoopHealthNotifications()
-        )
-        let status = RuntimeTestKitStatus(
-            enabled: true,
-            state: .running,
-            beds: [RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b")]
-        )
-        testKit.status = status
-        viewModel.testKitStatus = status
-        viewModel.setTestKitBedSelection("OR-B", selected: true)
-        viewModel.testKitRecorderSourceMode = .vitalFile
-        viewModel.testKitVitalFilePath = "/Users/test/Desktop/case.vital"
-
-        await viewModel.startVirtualRecorderSession()
-
-        XCTAssertEqual(testKit.startedRequests.count, 0)
-        XCTAssertEqual(
-            viewModel.testKitActionMessage,
-            RuntimeTestPanelText.chooseSharedVitalFileForPlayback
-        )
-        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
-    }
-
-    func testTestKitResetBedsRequiresNoActiveSessions() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
-        )
-        viewModel.testKitStatus = RuntimeTestKitStatus(
-            enabled: true,
-            state: .running,
-            sessions: [
-                testKitSession(
-                    id: "session-a",
-                    state: "running",
-                    bedRoomNames: ["OR-A"]
+        client.labVitalFilesToLoad = RuntimeLabVitalFileList(
+            state: .loaded,
+            vitalFiles: [
+                RuntimeLabVitalFile(
+                    displayName: "case.vital",
+                    relativePath: "case.vital",
+                    guestPath: "/mnt/tirosh-vital-files/case.vital",
+                    sizeBytes: 42
                 )
-            ],
-            beds: [RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a")]
-        )
-
-        await viewModel.resetTestKitBeds()
-
-        XCTAssertEqual(testKit.resetBedsCount, 0)
-        XCTAssertEqual(
-            viewModel.testKitActionMessage,
-            RuntimeTestPanelText.stopSessionsBeforeResettingBeds
-        )
-        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
-    }
-
-    func testTestKitDeletesSelectedInactiveBed() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
-        )
-        let status = RuntimeTestKitStatus(
-            enabled: true,
-            state: .running,
-            beds: [
-                RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"),
-                RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b"),
             ]
         )
-        testKit.status = status
-        viewModel.testKitStatus = status
-        viewModel.setTestKitBedSelection("OR-A", selected: true)
-
-        await viewModel.deleteTestKitBed(RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"))
-
-        XCTAssertEqual(testKit.deletedBedRequests.map(\.roomNames), [["OR-A"]])
-        XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["OR-B"])
-        XCTAssertFalse(viewModel.testKitBedIsSelected("OR-A"))
-    }
-
-    func testTestKitActionsUpdateStatusAndMessages() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
-        )
-        testKit.status = RuntimeTestKitStatus(
-            enabled: true,
-            state: .running,
-            beds: [
-                RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a"),
-                RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b"),
-            ]
-        )
-        await viewModel.refreshTestKitStatus()
-
-        viewModel.setTestKitBedSelection("OR-A", selected: true)
-        await viewModel.startVirtualRecorderSession()
-        let sessionID = viewModel.selectedTestKitSessionID
-
-        await viewModel.pauseVirtualRecorderSession(sessionID: sessionID)
-        await viewModel.resumeVirtualRecorderSession(sessionID: sessionID)
-        await viewModel.stopVirtualRecorderSession(sessionID: sessionID)
-        await viewModel.restartVirtualRecorderSession(session: testKitSession(
-            id: sessionID,
-            state: "stopped",
-            bedRoomNames: ["OR-A"]
-        ))
-        await viewModel.deleteVirtualRecorderSession(sessionID: viewModel.selectedTestKitSessionID)
-
-        viewModel.testKitOrphanVrcode = " VR_ORPHAN "
-        await viewModel.deleteOrphanVirtualRecorder()
-        await viewModel.resetVirtualRecorderSessions()
-        await viewModel.resetTestKitBeds()
-        viewModel.testKitBedCount = 2
-        viewModel.testKitBedPrefix = "ICU"
-        await viewModel.createTestKitBeds()
-
-        XCTAssertEqual(testKit.startedRequests.count, 1)
-        XCTAssertEqual(testKit.pausedSessionIDs, [sessionID])
-        XCTAssertEqual(testKit.resumedSessionIDs, [sessionID])
-        XCTAssertEqual(testKit.stoppedSessionIDs, [sessionID])
-        XCTAssertEqual(testKit.deletedRecorderVRCodes, ["VR_ORPHAN"])
-        XCTAssertEqual(testKit.resetSessionsCount, 1)
-        XCTAssertEqual(testKit.resetBedsCount, 1)
-        XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["ICU-1", "ICU-2"])
-        XCTAssertEqual(viewModel.selectedTestKitBedCount, 2)
-        XCTAssertEqual(viewModel.testKitActionMessageTone, .neutral)
-    }
-
-    func testCreateTestKitBedsCanUseExactBedNameWithoutRandomSuffix() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
-        )
-
-        viewModel.testKitBedPrefix = "MORC03"
-        viewModel.testKitBedCount = 4
-        viewModel.testKitAppendRandomBedSuffix = false
-
-        await viewModel.createTestKitBeds()
-
-        XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["MORC03"])
-        XCTAssertEqual(testKit.createdRequests.last?.count, 1)
-        XCTAssertEqual(testKit.createdRequests.last?.prefix, "MORC03")
-        XCTAssertEqual(testKit.createdRequests.last?.appendRandomSuffix, false)
-    }
-
-    func testManualVitalUploadSelectsFilesAndUsesHostProxyUploadURL() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        client.status = RuntimeStatus(proxyPort: 18080)
-        let testKit = FakeTestKitController()
         let nativeShell = FakeRuntimeNativeShell()
-        nativeShell.vitalFileURLs = [
-            URL(fileURLWithPath: "/data/MORC03_260617_120000.vital"),
-            URL(fileURLWithPath: "/data/MORC04_260617_120100.vital"),
+        nativeShell.vitalFileUploadSources = [
+            RuntimeLabVitalFileUploadSource(
+                fileName: "case.vital",
+                content: Data("case".utf8)
+            )
         ]
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            testKitController: testKit,
-            initialStatus: client.status,
-            healthNotifications: NoopHealthNotifications(),
-            nativeShell: nativeShell
-        )
-
-        await viewModel.uploadVitalFilesFromTestTab()
-
-        XCTAssertEqual(nativeShell.chooseVitalFilesPrompts, [RuntimeTestPanelText.choosingVitalFiles])
-        XCTAssertEqual(nativeShell.chooseVitalFilesDirectoryURLs, [nil])
-        XCTAssertEqual(testKit.vitalUploadRequests.count, 1)
-        XCTAssertEqual(testKit.vitalUploadRequests[0].filePaths, [
-            "/data/MORC03_260617_120000.vital",
-            "/data/MORC04_260617_120100.vital",
-        ])
-        XCTAssertEqual(testKit.vitalUploadRequests[0].vitalServerBaseURL, "http://127.0.0.1:18080/")
-        XCTAssertEqual(testKit.vitalUploadRequests[0].endpoint, "/upload")
-        XCTAssertEqual(viewModel.testKitActionMessage, "Uploaded 2/2 .vital files · beds 2 · failed 0")
-        XCTAssertEqual(viewModel.testKitActionMessageTone, .neutral)
-    }
-
-    func testPlaybackVitalFilePickerStartsInConfiguredVitalFilesDirectory() {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let nativeShell = FakeRuntimeNativeShell()
-        nativeShell.vitalFileURLs = [
-            URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files/case.vital")
-        ]
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
             initialSettings: RuntimeSettings(
                 vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
             ),
             healthNotifications: NoopHealthNotifications(),
             nativeShell: nativeShell
         )
+        viewModel.labVitalFileUploadSources = [URL(fileURLWithPath: "/tmp/case.vital")]
 
-        viewModel.chooseVitalFileForTestKitPlayback()
+        await viewModel.uploadVitalFileToProductLab()
 
-        XCTAssertEqual(
-            nativeShell.chooseVitalFilesPrompts,
-            [RuntimeTestPanelText.choosingVitalFileForPlayback]
-        )
-        XCTAssertEqual(
-            nativeShell.chooseVitalFilesDirectoryURLs,
-            [URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files")]
-        )
-        XCTAssertEqual(
-            viewModel.testKitVitalFilePath,
-            "/Users/Shared/VitalServerHelper/vital-files/case.vital"
-        )
-        XCTAssertEqual(viewModel.testKitRecorderSourceMode, .vitalFile)
+        XCTAssertEqual(nativeShell.readVitalFileSources, [[URL(fileURLWithPath: "/tmp/case.vital")]])
+        XCTAssertEqual(client.labUploadRequests.map { $0.map(\.fileName) }, [["case.vital"]])
+        XCTAssertEqual(viewModel.labVitalFileImportMessage, RuntimeLabPanelText.uploadedLabVitalFiles(1))
+        XCTAssertEqual(viewModel.labVitalFiles.vitalFiles.map(\.relativePath), ["case.vital"])
+        XCTAssertEqual(viewModel.selectedLabVitalFileRelativePath, "case.vital")
     }
 
-    func testTestKitActionsReportUnavailableOrInvalidInputs() async {
+    func testProductLabVitalFileUploadShowsOnlyFailedFilesForPartialBatch() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.labUploadResponse = RuntimeLabVitalFileLibraryUploadResponse(
+            state: .partial,
+            files: [
+                RuntimeLabVitalFileLibraryUploadItem(
+                    fileName: "valid.vital",
+                    relativePath: "valid.vital",
+                    sizeBytes: 5
+                )
+            ],
+            failedFiles: [
+                RuntimeLabVitalFileLibraryUploadFailure(
+                    fileName: "broken.vital",
+                    reason: "Vital file gzip stream is invalid."
+                )
+            ]
+        )
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.vitalFileUploadSources = [
+            RuntimeLabVitalFileUploadSource(fileName: "valid.vital", content: Data()),
+            RuntimeLabVitalFileUploadSource(fileName: "broken.vital", content: Data())
+        ]
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            healthNotifications: NoopHealthNotifications()
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
         )
+        viewModel.labVitalFileUploadSources = [
+            URL(fileURLWithPath: "/tmp/valid.vital"),
+            URL(fileURLWithPath: "/tmp/broken.vital")
+        ]
 
-        await viewModel.refreshTestKitStatus()
-        await viewModel.createTestKitBeds()
-        await viewModel.resetTestKitBeds()
-        await viewModel.startVirtualRecorderSession()
-        await viewModel.stopVirtualRecorderSession()
-        await viewModel.deleteVirtualRecorderSession(sessionID: nil)
-        await viewModel.resetVirtualRecorderSessions()
-        await viewModel.deleteOrphanVirtualRecorder()
+        await viewModel.uploadVitalFileToProductLab()
 
-        XCTAssertEqual(viewModel.testKitStatus.state, .disabled)
-        XCTAssertEqual(viewModel.testKitActionMessage, RuntimeTestPanelText.testKitUnavailable)
-        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
-
-        let testKit = FakeTestKitController()
-        let controlled = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
+        XCTAssertTrue(viewModel.labVitalFileImportFailed)
+        XCTAssertEqual(
+            viewModel.labVitalFileImportMessage,
+            "broken.vital: Vital file gzip stream is invalid."
         )
-        await controlled.deleteOrphanVirtualRecorder()
-
-        XCTAssertEqual(controlled.testKitActionMessage, RuntimeTestPanelText.missingVrcode)
-        XCTAssertEqual(controlled.testKitActionMessageTone, .failure)
+        XCTAssertFalse(viewModel.labVitalFileImportMessage.contains("valid.vital"))
     }
 
-    func testTestKitSessionActionsRequirePresentationSelectedSession() async {
+    func testProductLabFinishUsesTerminalSessionCommand() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        let viewModel = RuntimeViewModel(
-            controlClient: client,
-            hostClient: client,
-            testKitController: testKit,
-            healthNotifications: NoopHealthNotifications()
-        )
-
-        await viewModel.pauseVirtualRecorderSession(sessionID: nil)
-        await viewModel.deleteVirtualRecorderSession(sessionID: "   ")
-
-        XCTAssertEqual(viewModel.testKitActionMessage, RuntimeTestPanelText.noActiveSession)
-        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
-        XCTAssertTrue(testKit.pausedSessionIDs.isEmpty)
-        XCTAssertTrue(testKit.deletedSessionIDs.isEmpty)
-    }
-
-    func testTestKitActionFailurePreservesExplicitControllerStatus() async {
-        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        let testKit = FakeTestKitController()
-        testKit.startError = NSError(
-            domain: "RuntimeViewModelCapabilityTests",
-            code: 10,
-            userInfo: [NSLocalizedDescriptionKey: "start denied"]
-        )
-        testKit.status = RuntimeTestKitStatus(
-            enabled: true,
-            state: .failed,
-            beds: [RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a")],
-            lastError: "controller reports failed state",
-            readIssues: [
-                RuntimeTestKitReadIssue(source: "testkitAPI", message: "status read degraded"),
+        client.labSessionsToLoad = RuntimeLabSessionList(
+            state: .loaded,
+            sessions: [
+                RuntimeLabSession(
+                    sessionId: "lab-session-1",
+                    state: .running,
+                    scenarioId: "case-a",
+                    recorderCount: 1,
+                    targetURL: "http://edge/"
+                )
             ]
         )
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            testKitController: testKit,
             healthNotifications: NoopHealthNotifications()
         )
-        viewModel.testKitStatus = testKit.status
-        viewModel.setTestKitBedSelection("OR-A", selected: true)
+        viewModel.selectedLabSessionID = "lab-session-1"
+        await viewModel.refreshProductLabReadModels()
 
-        await viewModel.startVirtualRecorderSession()
+        XCTAssertTrue(viewModel.labCanFinishSelectedSession)
+        await viewModel.finishProductLabSession()
 
-        XCTAssertEqual(viewModel.message, "start denied")
-        XCTAssertEqual(viewModel.testKitActionMessage, "start denied")
-        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
-        XCTAssertEqual(viewModel.testKitStatus.state, .failed)
-        XCTAssertEqual(viewModel.testKitStatus.lastError, "controller reports failed state")
-        XCTAssertEqual(viewModel.testKitStatus.readIssues, [
-            RuntimeTestKitReadIssue(source: "testkitAPI", message: "status read degraded"),
+        XCTAssertEqual(client.labFinishedSessionIDs, ["lab-session-1"])
+    }
+
+    func testSystemNativeShellReadsMultipleVitalFilesForUpload() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let sources = root.appendingPathComponent("sources", isDirectory: true)
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = sources.appendingPathComponent("first.vital")
+        let second = sources.appendingPathComponent("second.VITAL")
+        try Data("first".utf8).write(to: first)
+        try Data("second".utf8).write(to: second)
+
+        let uploadSources = try SystemRuntimeNativeShell().readVitalFileUploadSources(
+            [first, second]
+        )
+
+        XCTAssertEqual(uploadSources.map(\.fileName), ["first.vital", "second.VITAL"])
+        XCTAssertEqual(uploadSources, [
+            RuntimeLabVitalFileUploadSource(
+                fileName: "first.vital",
+                fileURL: first,
+                sizeBytes: 5,
+                accessMode: .securityScoped
+            ),
+            RuntimeLabVitalFileUploadSource(
+                fileName: "second.VITAL",
+                fileURL: second,
+                sizeBytes: 6,
+                accessMode: .securityScoped
+            ),
         ])
-        XCTAssertFalse(viewModel.isRunningTestKitAction)
+    }
+
+    func testSystemNativeShellForwardsEachReadableFileForOwnerSideBatchValidation() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let firstDirectory = root.appendingPathComponent("first", isDirectory: true)
+        let secondDirectory = root.appendingPathComponent("second", isDirectory: true)
+        try FileManager.default.createDirectory(at: firstDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: secondDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let valid = firstDirectory.appendingPathComponent("valid.vital")
+        let invalid = secondDirectory.appendingPathComponent("invalid.txt")
+        let duplicateName = secondDirectory.appendingPathComponent("valid.vital")
+        try Data("valid".utf8).write(to: valid)
+        try Data("invalid".utf8).write(to: invalid)
+        try Data("duplicate".utf8).write(to: duplicateName)
+
+        let uploadSources = try SystemRuntimeNativeShell().readVitalFileUploadSources(
+            [valid, invalid, duplicateName]
+        )
+
+        XCTAssertEqual(
+            uploadSources.map(\.fileName),
+            ["valid.vital", "invalid.txt", "valid.vital"]
+        )
+    }
+
+    func testProductLabBedAndRecorderManagementUseRuntimeControlClient() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.createProductLabBeds()
+        await viewModel.createProductLabRecorderForSelectedBed()
+        await viewModel.deleteSelectedProductLabRecorder()
+        await viewModel.deleteSelectedProductLabBed()
+
+        XCTAssertEqual(client.labCreateBedRequests, [
+            RuntimeLabBedCreateRequest(
+                count: 1,
+                prefix: "Lab bed",
+                targetURL: "http://edge/"
+            )
+        ])
+        XCTAssertEqual(client.labCreateRecorderRequests, [
+            RuntimeLabRecorderCreateRequest(bedIds: ["lab-session-1-bed-1"])
+        ])
+        XCTAssertEqual(client.labDeleteRecorderRequests, [
+            RuntimeLabRecorderDeleteRequest(recorderIds: ["lab-session-1-recorder-1"])
+        ])
+        XCTAssertEqual(client.labDeleteBedRequests, [
+            RuntimeLabBedDeleteRequest(bedIds: ["lab-session-1-bed-1"])
+        ])
+    }
+
+    func testProductLabCommandsAreBlockedWhenLabCapabilityIsUnavailable() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities(canUseLab: false))
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            initialSettings: RuntimeSettings(
+                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.selectedLabScenarioID = "case-a"
+        viewModel.labSessionName = "Morning run"
+        viewModel.labRecorderCount = 3
+        viewModel.selectedLabSessionID = "lab-session-1"
+        viewModel.selectedLabVitalFileRelativePath = "case.vital"
+
+        XCTAssertFalse(viewModel.labCanUseProductLab)
+        XCTAssertFalse(viewModel.labCanCreateSession)
+        XCTAssertFalse(viewModel.labCanControlSelectedSession)
+        XCTAssertFalse(viewModel.labCanReplayVitalFile)
+
+        await viewModel.createProductLabSession()
+        await viewModel.startProductLabSession()
+        await viewModel.stopProductLabSession()
+        await viewModel.finishProductLabSession()
+        await viewModel.replayVitalFileWithProductLab()
+
+        XCTAssertEqual(client.labCreateRequests, [])
+        XCTAssertEqual(client.labStartedSessionIDs, [])
+        XCTAssertEqual(client.labStoppedSessionIDs, [])
+        XCTAssertEqual(client.labFinishedSessionIDs, [])
+        XCTAssertEqual(client.labReplayRequests, [])
+        XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.labCapabilityUnavailable)
+        XCTAssertEqual(viewModel.labActionMessageTone, .failure)
     }
 
     func testRuntimePanelsRenderSmokeState() {
@@ -1473,16 +1920,142 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             showingRepairDatastoreConfirmation: .constant(false),
             showingRepairVMDiskConfirmation: .constant(false),
             showingRepairRuntimeServicesConfirmation: .constant(false),
-            showingStartServicesConfirmation: .constant(false),
-            showingStopServicesConfirmation: .constant(false),
             hoveredServiceLink: Binding<String?>(get: { nil }, set: { _ in }),
             showingRecoveryOperations: true,
             showingAdvancedRepairTools: true,
             showingNetworkOverrides: true,
             showingAdminOperations: true
         ))
-        render(RuntimeTestPanel(viewModel: viewModel))
+        render(RuntimeLabPanel(viewModel: viewModel))
         render(ContentView().environmentObject(viewModel))
+    }
+
+    func testRecordersPanelLeavesVerticalScrollingToSectionContainer() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        applySmokeState(to: viewModel)
+        let host = NSHostingView(rootView: ScrollView(.vertical) {
+            RuntimeRecordersPanel(viewModel: viewModel)
+        })
+        host.frame = NSRect(x: 0, y: 0, width: 1_100, height: 500)
+        host.layoutSubtreeIfNeeded()
+
+        let verticalScrollViews = descendantScrollViews(in: host)
+            .filter(\.hasVerticalScroller)
+
+        XCTAssertEqual(verticalScrollViews.count, 1)
+    }
+
+    func testRecorderActivityPollingRefreshesUntilCancelled() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        let query = RuntimeVitalRecorderActivityWindowQuery(
+            vrcode: "06311eba",
+            bucketSeconds: 60,
+            period: .lastHour,
+            pageIndex: nil
+        )
+        let pollingTask = Task {
+            await viewModel.pollVitalRecorderActivityWindow(
+                query: query,
+                intervalNanoseconds: 1_000_000
+            )
+        }
+
+        for _ in 0..<100 where client.loadVitalDBRecorderActivityWindowCount < 2 {
+            try? await Task.sleep(nanoseconds: 1_000_000)
+        }
+        pollingTask.cancel()
+        await pollingTask.value
+
+        XCTAssertGreaterThanOrEqual(client.loadVitalDBRecorderActivityWindowCount, 2)
+        XCTAssertEqual(client.vitalDBRecorderActivityQueries.last, query)
+    }
+
+    func testRecorderVitalFilesLoadOnlyWhenExplicitlyRequested() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(client.loadVitalDBRecorderVitalFilesCount, 0)
+        await viewModel.refreshVitalRecorderVitalFiles(vrcode: "06311eba")
+
+        XCTAssertEqual(client.loadVitalDBRecorderVitalFilesCount, 1)
+        XCTAssertEqual(client.vitalDBRecorderVitalFileVrcodes, ["06311eba"])
+        XCTAssertEqual(
+            viewModel.recorderVitalFileHistories["06311eba"]?.vrcode,
+            "06311eba"
+        )
+    }
+
+    func testRecorderObservabilityDetailLoadsOnlyWhenExplicitlyRequested() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(client.loadRecorderObservabilityDetailCount, 0)
+        await viewModel.refreshRecorderObservabilityDetail(vrcode: "06311eba")
+
+        XCTAssertEqual(client.loadRecorderObservabilityDetailCount, 1)
+        XCTAssertEqual(client.recorderObservabilityDetailVrcodes, ["06311eba"])
+        XCTAssertEqual(
+            viewModel.recorderObservabilityDetails["06311eba"]?.vrcode,
+            "06311eba"
+        )
+    }
+
+    func testRecorderObservabilityIncidentHistoryLoadsOnlyWhenExplicitlyRequested() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        let query = RuntimeRecorderObservabilityIncidentQuery(
+            vrcode: "06311eba",
+            from: "2026-07-01T00:00:00Z",
+            until: "2026-07-31T00:00:00Z",
+            type: nil,
+            cursor: nil,
+            limit: 20
+        )
+
+        XCTAssertEqual(client.loadRecorderObservabilityIncidentsCount, 0)
+        await viewModel.refreshRecorderObservabilityIncidents(query: query)
+
+        XCTAssertEqual(client.loadRecorderObservabilityIncidentsCount, 1)
+        XCTAssertEqual(client.recorderObservabilityIncidentQueries, [query])
+        XCTAssertEqual(viewModel.recorderObservabilityIncidentPage(query: query)?.vrcode, "06311eba")
+    }
+
+    func testRuntimeControlRecoveryRelaunchesHelperForFreshLocalSession() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        viewModel.reconnectRuntimeControl()
+
+        XCTAssertEqual(nativeShell.relaunchHelperCount, 1)
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.runtimeControlReconnecting)
     }
 
     func testRuntimeSettingsPanelRendersOutOfRangeSliderSettings() {
@@ -1568,18 +2141,14 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
                 )
             ]
         )
-        viewModel.status = RuntimeStatus(
-            runtimeInstalled: true,
+        viewModel.status = platformState(
+            runtimeInstallationState: .executable,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
             guestLogSyncServiceLoaded: true,
             sleepPreventionServiceLoaded: true,
             watchdogServiceLoaded: true,
             runtimeState: .healthy,
-            operation: .none,
-            statusMessage: "healthy",
-            updatedAt: observedAt,
-            startedAt: observedAt,
             runtimeVersion: "2026.05.30",
             latestBackup: "/backups/latest.tar.gz",
             vmState: .running,
@@ -1590,12 +2159,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             runtimeControlStartedAt: observedAt,
             redisUIHTTP: "200",
             swaggerUIHTTP: "200",
-            cpuUsagePercent: 12.5,
-            memory: ResourceUsage(usedBytes: 512 * 1024 * 1024, totalBytes: 2 * 1024 * 1024 * 1024),
-            systemDisk: ResourceUsage(usedBytes: 10 * 1024 * 1024, totalBytes: 100 * 1024 * 1024),
             dataStorage: ResourceUsage(usedBytes: 20 * 1024 * 1024, totalBytes: 200 * 1024 * 1024),
-            proxyPort: 8080,
-            vitalDBObservation: observation
+            proxyPort: 8080
         )
         viewModel.vitalRecorders = RuntimeVitalRecorderHistory(observations: [observation])
         viewModel.vitalRelationships = RuntimeVitalRelationshipHistory(readError: "relationship projection delayed")
@@ -1637,14 +2202,22 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
                 RuntimeBundledServiceInfo(name: "vitalserver", image: "vitalserver:latest", version: "2026.05.30")
             ]
         )
-        viewModel.testKitStatus = RuntimeTestKitStatus(
-            enabled: true,
-            state: .running,
-            serviceName: "testkit",
-            apiBaseURL: "http://127.0.0.1:18081",
-            recorderTargetURL: "http://127.0.0.1",
-            sessions: [testKitSession(id: "session-001", state: "running", bedRoomNames: ["OR-1"])],
-            beds: [RuntimeTestKitBed(roomName: "OR-1", bedID: "bed-001")]
+    }
+
+    private func runtimeServiceResource(service: String) -> RuntimeGuestServiceResource {
+        RuntimeGuestServiceResource(
+            service: service,
+            spec: RuntimeGuestServiceSpec(
+                state: "configured",
+                desiredState: "running",
+                updatedAt: "2026-07-11T00:00:00Z"
+            ),
+            status: RuntimeGuestServiceStatusRead(
+                state: "loaded",
+                observedState: "running",
+                observedAt: "2026-07-11T00:00:00Z"
+            ),
+            conditions: []
         )
     }
 
@@ -1658,6 +2231,13 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         host.layoutSubtreeIfNeeded()
         XCTAssertGreaterThan(host.fittingSize.width, 0, file: file, line: line)
     }
+
+    private func descendantScrollViews(in view: NSView) -> [NSScrollView] {
+        view.subviews.flatMap { subview in
+            let current = (subview as? NSScrollView).map { [$0] } ?? []
+            return current + descendantScrollViews(in: subview)
+        }
+    }
 }
 
 private extension RuntimeControlCapabilities {
@@ -1667,7 +2247,7 @@ private extension RuntimeControlCapabilities {
             canUninstallRuntime: false,
             canApplyBundle: false,
             canRollback: false,
-            canEditVMResources: false,
+            canEditRuntimeProviderResources: false,
             canEditNetworkExposure: false,
             canResetAdminPassword: false,
             canOpenLocalFiles: false,
@@ -1679,210 +2259,32 @@ private extension RuntimeControlCapabilities {
     }
 }
 
-private func testKitSession(
-    id: String,
-    state: String,
-    bedRoomNames: [String]
-) -> RuntimeTestKitSession {
-    RuntimeTestKitSession(
-        id: id,
-        state: state,
-        targetURL: "http://example.test",
-        recordersRequested: bedRoomNames.count,
-        bedsRequested: bedRoomNames.count,
-        bedroomName: bedRoomNames.first ?? "TestBedroom",
-        bedRoomNames: bedRoomNames,
-        vrcode: nil,
-        version: "testkit",
-        intervalSeconds: 1,
-        durationSeconds: nil,
-        maxMessages: nil,
-        shiftTime: true,
-        generateFrames: true,
-        scenario: "normal_monitoring",
-        createdAt: nil,
-        startedAt: nil,
-        stoppedAt: nil,
-        messagesSent: 0,
-        bytesSent: 0,
-        lastError: nil,
-        recorders: []
-    )
-}
-
 private struct NoopHealthNotifications: HealthNotifying {
     func configure() {}
     func notify(title: String, body: String) {}
 }
 
 @MainActor
-private final class FakeTestKitController: RuntimeTestKitControlling, RuntimeTestKitVitalFileUploading {
-    var status = RuntimeTestKitStatus(enabled: true, state: .running)
-    var startedRequests: [RuntimeTestKitVirtualRecorderStartRequest] = []
-    var resetBedsCount = 0
-    var resetSessionsCount = 0
-    var deletedBedRequests: [RuntimeTestKitDeleteBedsRequest] = []
-    var startError: Error?
-    var stoppedSessionIDs: [String?] = []
-    var pausedSessionIDs: [String?] = []
-    var resumedSessionIDs: [String?] = []
-    var restartedSessionIDs: [String?] = []
-    var deletedSessionIDs: [String?] = []
-    var deletedRecorderVRCodes: [String] = []
-    var createdRequests: [RuntimeTestKitCreateBedsRequest] = []
-    var vitalUploadRequests: [RuntimeTestKitVitalFileUploadRequest] = []
-
-    func loadTestKitStatus() async -> RuntimeTestKitStatus {
-        status
-    }
-
-    func createTestKitBeds(_ request: RuntimeTestKitCreateBedsRequest) async throws -> [RuntimeTestKitBed] {
-        createdRequests.append(request)
-        let beds: [RuntimeTestKitBed]
-        if !request.roomNames.isEmpty {
-            beds = request.roomNames.enumerated().map { index, roomName in
-                RuntimeTestKitBed(roomName: roomName, bedID: "bed-\(index + 1)")
-            }
-        } else if request.appendRandomSuffix {
-            let count = request.count ?? 0
-            let prefix = request.prefix
-            beds = (0..<count).map { index in
-                RuntimeTestKitBed(roomName: "\(prefix)-\(index + 1)", bedID: "bed-\(index + 1)")
-            }
-        } else {
-            beds = [RuntimeTestKitBed(roomName: request.prefix, bedID: "bed-1")]
-        }
-        status.beds = beds
-        return beds
-    }
-
-    func resetTestKitBeds() async throws -> [RuntimeTestKitBed] {
-        resetBedsCount += 1
-        let beds = status.beds
-        status.beds = []
-        return beds
-    }
-
-    func deleteTestKitBeds(_ request: RuntimeTestKitDeleteBedsRequest) async throws -> [RuntimeTestKitBed] {
-        deletedBedRequests.append(request)
-        let requested = Set(request.roomNames)
-        let deleted = status.beds.filter { requested.contains($0.roomName) }
-        status.beds.removeAll { requested.contains($0.roomName) }
-        return deleted
-    }
-
-    func startVirtualRecorders(_ request: RuntimeTestKitVirtualRecorderStartRequest) async throws -> RuntimeTestKitSession {
-        if let startError {
-            throw startError
-        }
-        startedRequests.append(request)
-        let session = testKitSession(
-            id: "session-\(startedRequests.count)",
-            state: "running",
-            bedRoomNames: [request.bedroomName]
-        )
-        status.sessions.append(session)
-        status.activeSession = session
-        return session
-    }
-
-    func stopVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        stoppedSessionIDs.append(sessionID)
-        return session(for: sessionID, state: "stopped")
-    }
-
-    func pauseVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        pausedSessionIDs.append(sessionID)
-        return session(for: sessionID, state: "paused")
-    }
-
-    func resumeVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        resumedSessionIDs.append(sessionID)
-        return session(for: sessionID, state: "running")
-    }
-
-    func restartVirtualRecorders(sessionID: String?, bedroomName: String?) async throws -> RuntimeTestKitSession? {
-        restartedSessionIDs.append(sessionID)
-        let session = testKitSession(
-            id: "session-restarted-\(restartedSessionIDs.count)",
-            state: "running",
-            bedRoomNames: [bedroomName ?? "TestBedroom"]
-        )
-        status.sessions.append(session)
-        status.activeSession = session
-        return session
-    }
-
-    func deleteVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        deletedSessionIDs.append(sessionID)
-        let deleted = session(for: sessionID, state: "deleted")
-        if let sessionID {
-            status.sessions.removeAll { $0.id == sessionID }
-        }
-        status.activeSession = status.sessions.first
-        return deleted
-    }
-
-    func deleteVirtualRecorder(vrcode: String) async throws -> RuntimeTestKitRecorderDeletion {
-        deletedRecorderVRCodes.append(vrcode)
-        return RuntimeTestKitRecorderDeletion(
-            vrcode: vrcode,
-            targetURL: "http://example.test",
-            deleted: true
-        )
-    }
-
-    func resetVirtualRecorders() async throws -> RuntimeTestKitStatus {
-        resetSessionsCount += 1
-        status.sessions = []
-        status.activeSession = nil
-        return status
-    }
-
-    func uploadVitalFiles(
-        _ request: RuntimeTestKitVitalFileUploadRequest
-    ) async throws -> RuntimeTestKitVitalFileUploadSummary {
-        vitalUploadRequests.append(request)
-        let bedRoomNames = try RuntimeTestKitVitalFileUploadPolicy.uniqueBedRoomNames(
-            filePaths: request.filePaths
-        )
-        let files = request.filePaths.map { path in
-            let filename = URL(fileURLWithPath: path).lastPathComponent
-            return RuntimeTestKitVitalFileUploadFileResult(
-                path: path,
-                filename: filename,
-                bedRoomName: RuntimeTestKitVitalFileUploadPolicy.bedRoomName(filename: filename) ?? "",
-                sizeBytes: 128,
-                statusCode: 200,
-                ok: true,
-                elapsedSeconds: 0.1
-            )
-        }
-        status.beds = bedRoomNames.enumerated().map { index, roomName in
-            RuntimeTestKitBed(roomName: roomName, bedID: "bed-\(index + 1)")
-        }
-        return RuntimeTestKitVitalFileUploadSummary(
-            files: files,
-            bedRoomNames: bedRoomNames
-        )
-    }
-
-    private func session(for sessionID: String?, state: String) -> RuntimeTestKitSession? {
-        guard let sessionID else {
-            return nil
-        }
-        if let existing = status.sessions.first(where: { $0.id == sessionID }) {
-            return testKitSession(
-                id: existing.id,
-                state: state,
-                bedRoomNames: existing.bedRoomNames
-            )
-        }
-        return testKitSession(id: sessionID, state: state, bedRoomNames: ["OR-A"])
-    }
+private func loadedRedisRelaySettings(enabled: Bool) -> RuntimeRedisRelaySettingsRead {
+    RuntimeRedisRelaySettingsRead(
+        state: .loaded,
+        settings: RuntimeRedisRelaySettingsReadDocument(
+            enabled: enabled,
+            target: RuntimeRedisRelayTargetRead(
+                url: "redis://relay.example:6379/0",
+                username: "relay-user",
+                passwordConfigured: false,
+                tls: false
+            ),
+            scope: .vitalReconstruction,
+            includeRecorderNetworkContext: true,
+            intervalSeconds: 1,
+            scanCount: 1000
+        ),
+        readError: nil
+    )
 }
 
-@MainActor
 private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     let capabilities: RuntimeControlCapabilities
     var loadStatusCount = 0
@@ -1891,10 +2293,23 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var lastRuntimeEventQuery: RuntimeEventQuery?
     var runtimeEventQueries: [RuntimeEventQuery] = []
     var loadVitalDBRecordersCount = 0
+    var loadVitalDBBedsCount = 0
+    var loadVitalDBRecorderActivityWindowCount = 0
+    var vitalDBRecorderActivityQueries: [RuntimeVitalRecorderActivityWindowQuery] = []
+    var loadVitalDBRecorderVitalFilesCount = 0
+    var vitalDBRecorderVitalFileVrcodes: [String] = []
+    var loadRecorderObservabilityDetailCount = 0
+    var recorderObservabilityDetailVrcodes: [String] = []
+    var loadRecorderObservabilityIncidentsCount = 0
+    var recorderObservabilityIncidentQueries: [RuntimeRecorderObservabilityIncidentQuery] = []
+    var loadRedisRelayStatusCount = 0
+    var runtimeStackStatusCount = 0
+    var serviceResourceRequests: [String] = []
     var loadBackupsCount = 0
     var loadSettingsCount = 0
     var verifyUpdateBundleCount = 0
     var applySettingsCount = 0
+    var restartVMRuntimeCount = 0
     var applyUpdateBundleCount = 0
     var rollbackRuntimeCount = 0
     var restoreRedisBackupCount = 0
@@ -1906,11 +2321,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var repairRuntimeServicesCount = 0
     var createRedisBackupCount = 0
     var createRuntimeDataBackupCount = 0
-    var startRuntimeServicesCount = 0
-    var stopRuntimeServicesCount = 0
-    var startTestKitServiceCount = 0
-    var stopTestKitServiceCount = 0
-    var restartTestKitServiceCount = 0
+    var startGuestServiceRequests: [RuntimeGuestServiceControlRequest] = []
+    var stopGuestServiceRequests: [RuntimeGuestServiceControlRequest] = []
+    var restartGuestServiceRequests: [RuntimeGuestServiceRestartRequest] = []
     var exportLogsCount = 0
     var loadReleaseInfoCount = 0
     var preferredLogsPathCount = 0
@@ -1922,6 +2335,39 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var exportLogsResult: RuntimeLogExportResult?
     var releaseInfoLoadError: Error?
     var backupLoadError: Error?
+    var redisRelayStatusError: Error?
+    var runtimeStackError: Error?
+    var vitalDBVisibilityError: Error?
+    var serviceResourceErrorsByService: [String: Error] = [:]
+    var serviceResourcesByService: [String: RuntimeGuestServiceResource] = [:]
+    var labScenariosToLoad = RuntimeLabScenarioList(state: .loaded, scenarios: [])
+    var labVitalFilesToLoad = RuntimeLabVitalFileList(state: .loaded, vitalFiles: [])
+    var labBedsToLoad = RuntimeLabBedList(state: .loaded, beds: [])
+    var labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+    var labSessionsToLoad = RuntimeLabSessionList.unavailable(
+        readError: "Product Lab sessions are not configured in this test."
+    )
+    var labCreateRequests: [RuntimeLabSessionCreateRequest] = []
+    var labReplayRequests: [RuntimeLabVitalFileReplayRequest] = []
+    var labUploadRequests: [[RuntimeLabVitalFileUploadSource]] = []
+    var labUploadResponse: RuntimeLabVitalFileLibraryUploadResponse?
+    var labCreateBedRequests: [RuntimeLabBedCreateRequest] = []
+    var labDeleteBedRequests: [RuntimeLabBedDeleteRequest] = []
+    var labResetBedsCount = 0
+    var labCreateRecorderRequests: [RuntimeLabRecorderCreateRequest] = []
+    var labDeleteRecorderRequests: [RuntimeLabRecorderDeleteRequest] = []
+    var labResetRecordersCount = 0
+    var labStartedSessionIDs: [String] = []
+    var labStoppedSessionIDs: [String] = []
+    var labFinishedSessionIDs: [String] = []
+    var labStartedRecorderRequests: [String] = []
+    var labStoppedRecorderRequests: [String] = []
+    var hiddenRecorderRequests: [RuntimeVitalDBRecorderVisibilityRequest] = []
+    var unhiddenRecorderRequests: [RuntimeVitalDBRecorderVisibilityRequest] = []
+    var deletedRecorderRequests: [RuntimeVitalDBRecorderVisibilityRequest] = []
+    var hiddenBedRequests: [RuntimeVitalDBBedVisibilityRequest] = []
+    var unhiddenBedRequests: [RuntimeVitalDBBedVisibilityRequest] = []
+    var deletedBedRequests: [RuntimeVitalDBBedVisibilityRequest] = []
     var backupsToLoad: [RuntimeBackup] = []
     var redisBackupsToLoad: [RuntimeBackup] = []
     var runtimeDataBackupsToLoad: [RuntimeBackup] = []
@@ -1929,9 +2375,25 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var lastLoadHealthStatusSettings: RuntimeSettings?
     var lastAppliedSettings: RuntimeSettings?
     var settings = RuntimeSettings()
-    var status = RuntimeStatus()
-    var healthStatus = RuntimeStatus()
+    var status = platformState()
+    var operationState = PlatformOperationState(activeOperation: nil, install: .unavailable())
+    var healthStatus = platformState()
     var vitalDBObservation: VitalDBObservationDocument?
+    var vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(updatedAt: "2026-07-01T00:00:00+00:00")
+    var vitalDBBedHistory = RuntimeVitalBedHistory()
+    var vitalDBBedVisibilityHistory = RuntimeVitalBedHistory(updatedAt: "2026-07-01T00:00:00+00:00")
+    var redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
+        readState: .notRead,
+        document: nil,
+        readError: nil
+    )
+    var runtimeRedisRelaySettingsRead = loadedRedisRelaySettings(enabled: false)
+    var appliedRuntimeRedisRelaySettings: [RuntimeRedisRelaySettingsApplyRequest] = []
+    var runtimeStackStatus = RuntimeGuestControlStackStatus(
+        state: "loaded",
+        observedAt: "2026-07-11T00:00:00Z",
+        services: []
+    )
 
     init(capabilities: RuntimeControlCapabilities) {
         self.capabilities = capabilities
@@ -1942,13 +2404,17 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return settings
     }
 
-    func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
+    func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
         loadStatusCount += 1
         lastLoadStatusSettings = settings
         return status
     }
 
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
+    func loadOperationState() -> PlatformOperationState {
+        operationState
+    }
+
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState {
         loadHealthStatusCount += 1
         lastLoadHealthStatusSettings = settings
         return healthStatus
@@ -1975,8 +2441,166 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return RuntimeVitalRecorderHistory()
     }
 
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        loadVitalDBBedsCount += 1
+        return vitalDBBedHistory
+    }
+
+    func loadVitalDBRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) -> RuntimeVitalRecorderActivityWindow {
+        loadVitalDBRecorderActivityWindowCount += 1
+        vitalDBRecorderActivityQueries.append(query)
+        return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+            query: query,
+            bounds: nil,
+            records: [],
+            readError: nil
+        )
+    }
+
+    func loadVitalDBRecorderVitalFiles(
+        vrcode: String
+    ) -> RuntimeVitalRecorderVitalFileHistory {
+        loadVitalDBRecorderVitalFilesCount += 1
+        vitalDBRecorderVitalFileVrcodes.append(vrcode)
+        return RuntimeVitalRecorderVitalFileHistory(
+            state: .loaded,
+            vrcode: vrcode,
+            sources: RuntimeVitalRecorderVitalFileSources(
+                nativeUpload: RuntimeVitalRecorderVitalFileSourceRead(
+                    state: .loaded,
+                    readError: nil
+                ),
+                coldPathRecovery: RuntimeVitalRecorderVitalFileSourceRead(
+                    state: .loaded,
+                    readError: nil
+                )
+            ),
+            readError: nil
+        )
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) -> RuntimeRecorderObservabilityDetail {
+        loadRecorderObservabilityDetailCount += 1
+        recorderObservabilityDetailVrcodes.append(vrcode)
+        return .unavailable(
+            vrcode: vrcode,
+            readError: "fixture observability detail is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents {
+        loadRecorderObservabilityIncidentsCount += 1
+        recorderObservabilityIncidentQueries.append(query)
+        return .unavailable(
+            vrcode: query.vrcode,
+            readError: "fixture incident history is unavailable"
+        )
+    }
+
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
         RuntimeVitalRelationshipHistory()
+    }
+
+    func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult {
+        loadRedisRelayStatusCount += 1
+        if let redisRelayStatusError {
+            throw redisRelayStatusError
+        }
+        return redisRelayStatusRead
+    }
+
+    func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead {
+        runtimeRedisRelaySettingsRead
+    }
+
+    func applyRuntimeRedisRelaySettings(
+        _ settings: RuntimeRedisRelaySettingsApplyRequest
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        appliedRuntimeRedisRelaySettings.append(settings)
+        return RuntimeGuestControlServiceOperation(
+            operationId: "redis-relay-settings-1",
+            service: "redis-relay",
+            command: .applyRedisRelaySettings,
+            state: .completed,
+            createdAt: "2026-07-11T00:00:00Z",
+            updatedAt: "2026-07-11T00:00:01Z"
+        )
+    }
+
+    func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        runtimeStackStatusCount += 1
+        if let runtimeStackError {
+            throw runtimeStackError
+        }
+        return runtimeStackStatus
+    }
+
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        serviceResourceRequests.append(service)
+        if let error = serviceResourceErrorsByService[service] {
+            throw error
+        }
+        guard let resource = serviceResourcesByService[service] else {
+            throw RuntimeControlClientUnsupportedError.unavailable("service-resource-\(service)")
+        }
+        return resource
+    }
+
+    func hideVitalDBRecorders(
+        _ request: RuntimeVitalDBRecorderVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        hiddenRecorderRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
+        return vitalDBVisibilityHistory
+    }
+
+    func unhideVitalDBRecorders(
+        _ request: RuntimeVitalDBRecorderVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        unhiddenRecorderRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
+        return vitalDBVisibilityHistory
+    }
+
+    func deleteVitalDBRecorders(
+        _ request: RuntimeVitalDBRecorderVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        deletedRecorderRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
+        return vitalDBVisibilityHistory
+    }
+
+    func hideVitalDBBeds(
+        _ request: RuntimeVitalDBBedVisibilityRequest
+    ) async throws -> RuntimeVitalBedHistory {
+        hiddenBedRequests.append(request)
+        return vitalDBBedVisibilityHistory
+    }
+
+    func unhideVitalDBBeds(
+        _ request: RuntimeVitalDBBedVisibilityRequest
+    ) async throws -> RuntimeVitalBedHistory {
+        unhiddenBedRequests.append(request)
+        return vitalDBBedVisibilityHistory
+    }
+
+    func deleteVitalDBBeds(
+        _ request: RuntimeVitalDBBedVisibilityRequest
+    ) async throws -> RuntimeVitalBedHistory {
+        deletedBedRequests.append(request)
+        return vitalDBBedVisibilityHistory
     }
 
     func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {
@@ -2028,6 +2652,12 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {
         applySettingsCount += 1
+        lastAppliedSettings = settings
+        return success()
+    }
+
+    func restartVMRuntime(applying settings: RuntimeSettings) async throws -> RuntimeCommandResult {
+        restartVMRuntimeCount += 1
         lastAppliedSettings = settings
         return success()
     }
@@ -2090,29 +2720,288 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return success()
     }
 
-    func startRuntimeServices() async throws -> RuntimeCommandResult {
-        startRuntimeServicesCount += 1
-        return success()
+    func loadLabScenarios() async throws -> RuntimeLabScenarioList {
+        labScenariosToLoad
     }
 
-    func stopRuntimeServices() async throws -> RuntimeCommandResult {
-        stopRuntimeServicesCount += 1
-        return success()
+    func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
+        labVitalFilesToLoad
     }
 
-    func startTestKitService() async throws -> RuntimeCommandResult {
-        startTestKitServiceCount += 1
-        return success()
+    func loadLabBeds() async throws -> RuntimeLabBedList {
+        labBedsToLoad
     }
 
-    func stopTestKitService() async throws -> RuntimeCommandResult {
-        stopTestKitServiceCount += 1
-        return success()
+    func loadLabRecorders() async throws -> RuntimeLabRecorderList {
+        labRecordersToLoad
     }
 
-    func restartTestKitService() async throws -> RuntimeCommandResult {
-        restartTestKitServiceCount += 1
-        return success()
+    func loadLabSessions() async throws -> RuntimeLabSessionList {
+        labSessionsToLoad
+    }
+
+    func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
+        labCreateBedRequests.append(request)
+        labBedsToLoad = RuntimeLabBedList(
+            state: .loaded,
+            beds: [
+                RuntimeLabBed(
+                    bedId: "lab-session-1-bed-1",
+                    sessionId: "lab-session-1",
+                    name: request.prefix ?? "Lab bed",
+                    state: .accepted
+                ),
+            ]
+        )
+        labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "lab-session-1-recorder-1",
+                    sessionId: "lab-session-1",
+                    bedId: "lab-session-1-bed-1",
+                    vrcode: "LAB-lab-session-1-1",
+                    state: .accepted
+                ),
+            ]
+        )
+        return labBedsToLoad
+    }
+
+    func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
+        labDeleteBedRequests.append(request)
+        labBedsToLoad = RuntimeLabBedList(state: .loaded, beds: [])
+        labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+        return labBedsToLoad
+    }
+
+    func resetLabBeds() async throws -> RuntimeLabBedList {
+        labResetBedsCount += 1
+        labBedsToLoad = RuntimeLabBedList(state: .loaded, beds: [])
+        labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+        return labBedsToLoad
+    }
+
+    func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
+        labCreateRecorderRequests.append(request)
+        labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "lab-session-1-recorder-1",
+                    sessionId: "lab-session-1",
+                    bedId: "lab-session-1-bed-1",
+                    vrcode: "LAB-lab-session-1-1",
+                    state: .accepted
+                ),
+            ]
+        )
+        return labRecordersToLoad
+    }
+
+    func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
+        labDeleteRecorderRequests.append(request)
+        labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+        return labRecordersToLoad
+    }
+
+    func resetLabRecorders() async throws -> RuntimeLabRecorderList {
+        labResetRecordersCount += 1
+        labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+        return labRecordersToLoad
+    }
+
+    func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
+        labCreateRequests.append(request)
+        return RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: "lab-session-1",
+                state: .accepted,
+                scenarioId: request.scenarioId,
+                name: request.name,
+                recorderCount: request.recorderCount,
+                targetURL: request.targetURL ?? "http://edge/"
+            ),
+            operationId: "operation-1"
+        )
+    }
+
+    func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: sessionId,
+                state: .running,
+                scenarioId: "case-a",
+                recorderCount: 1,
+                targetURL: "http://edge/"
+            )
+        )
+    }
+
+    func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        labStartedSessionIDs.append(sessionId)
+        return RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: sessionId,
+                state: .running,
+                scenarioId: "case-a",
+                recorderCount: 1,
+                targetURL: "http://edge/"
+            ),
+            operationId: "operation-start"
+        )
+    }
+
+    func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        labStoppedSessionIDs.append(sessionId)
+        return RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: sessionId,
+                state: .stopped,
+                scenarioId: "case-a",
+                recorderCount: 1,
+                targetURL: "http://edge/"
+            ),
+            operationId: "operation-stop"
+        )
+    }
+
+    func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        labFinishedSessionIDs.append(sessionId)
+        return RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: sessionId,
+                state: .finished,
+                scenarioId: "case-a",
+                recorderCount: 1,
+                targetURL: "http://edge/"
+            ),
+            operationId: "operation-finish"
+        )
+    }
+
+    func startLabRecorder(
+        sessionId: String,
+        recorderId: String
+    ) async throws -> RuntimeLabRecorderResponse {
+        labStartedRecorderRequests.append("\(sessionId)/\(recorderId)")
+        return labRecorderCommandResponse(
+            sessionId: sessionId,
+            recorderId: recorderId,
+            state: .running
+        )
+    }
+
+    func stopLabRecorder(
+        sessionId: String,
+        recorderId: String
+    ) async throws -> RuntimeLabRecorderResponse {
+        labStoppedRecorderRequests.append("\(sessionId)/\(recorderId)")
+        return labRecorderCommandResponse(
+            sessionId: sessionId,
+            recorderId: recorderId,
+            state: .stopped
+        )
+    }
+
+    private func labRecorderCommandResponse(
+        sessionId: String,
+        recorderId: String,
+        state: RuntimeLabSessionState
+    ) -> RuntimeLabRecorderResponse {
+        guard let recorder = labRecordersToLoad.recorders.first(where: {
+            $0.sessionId == sessionId && $0.recorderId == recorderId
+        }) else {
+            return .unavailable(readError: "recorder is not owned by session")
+        }
+        let updated = RuntimeLabRecorder(
+            recorderId: recorder.recorderId,
+            sessionId: recorder.sessionId,
+            bedId: recorder.bedId,
+            vrcode: recorder.vrcode,
+            state: state,
+            messagesSent: recorder.messagesSent,
+            lastSendState: recorder.lastSendState,
+            lastSendAt: recorder.lastSendAt,
+            lastSendError: recorder.lastSendError
+        )
+        labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: labRecordersToLoad.recorders.map {
+                $0.recorderId == recorderId ? updated : $0
+            }
+        )
+        return RuntimeLabRecorderResponse(
+            state: .loaded,
+            recorder: updated,
+            operationId: "operation-recorder"
+        )
+    }
+
+    func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
+        labReplayRequests.append(request)
+        return RuntimeLabSessionResponse(
+            state: .loaded,
+            session: RuntimeLabSession(
+                sessionId: "lab-replay-1",
+                state: .accepted,
+                scenarioId: "vital-file",
+                name: request.sessionName,
+                recorderCount: 1,
+                targetURL: request.targetURL ?? "http://edge/"
+            ),
+            operationId: "operation-replay"
+        )
+    }
+
+    func uploadLabVitalFiles(
+        _ sources: [RuntimeLabVitalFileUploadSource]
+    ) async throws -> RuntimeLabVitalFileLibraryUploadResponse {
+        labUploadRequests.append(sources)
+        if let labUploadResponse {
+            return labUploadResponse
+        }
+        return RuntimeLabVitalFileLibraryUploadResponse(files: sources.map {
+            RuntimeLabVitalFileLibraryUploadItem(
+                fileName: $0.fileName,
+                relativePath: $0.fileName,
+                sizeBytes: Int($0.sizeBytes)
+            )
+        })
+    }
+
+    func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        startGuestServiceRequests.append(request)
+        return guestServiceOperation(service: request.service, command: .start)
+    }
+
+    func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        stopGuestServiceRequests.append(request)
+        return guestServiceOperation(service: request.service, command: .stop)
+    }
+
+    func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation {
+        restartGuestServiceRequests.append(request)
+        return guestServiceOperation(service: request.service, command: .restart)
+    }
+
+    private func guestServiceOperation(
+        service: String,
+        command: RuntimeGuestControlServiceCommand
+    ) -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "\(command.rawValue)-\(service)",
+            service: service,
+            command: command,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00"
+        )
     }
 
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
@@ -2138,8 +3027,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         RuntimeInstallInfo(
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
-            redisBackupsPath: "/runtime/data/backups/redis",
-            runtimeDataBackupsPath: "/runtime/data/backups/vitalserver-helper"
+            redisBackupsPath: "/platform/backups/runtime-data/redis",
+            runtimeDataBackupsPath: "/platform/backups/runtime-data/vitalserver-helper"
         )
     }
 
@@ -2149,38 +3038,13 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 }
 
 @MainActor
-private final class FakeLocalAPISettings: RuntimeControlLocalAPISettingsApplying {
-    let runtimeControlPort: Int
-    var settingsWithLocalAPIPortCount = 0
-    var applySettings: [RuntimeSettings] = []
-    var appliedPorts: [Int] = []
-
-    init(runtimeControlPort: Int) {
-        self.runtimeControlPort = runtimeControlPort
-    }
-
-    func settingsWithLocalAPIPort(_ settings: RuntimeSettings) -> RuntimeSettings {
-        settingsWithLocalAPIPortCount += 1
-        var next = settings
-        next.runtimeControlPort = runtimeControlPort
-        return next
-    }
-
-    func apply(settings: RuntimeSettings) {
-        applySettings.append(settings)
-    }
-
-    func apply(port: Int) {
-        appliedPorts.append(port)
-    }
-}
-
-@MainActor
 private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var directoryURL: URL?
     var updateBundleURL: URL?
     var redisBackupArchiveURL: URL?
     var vitalFileURLs: [URL] = []
+    var vitalFileUploadSources: [RuntimeLabVitalFileUploadSource] = []
+    var readVitalFileSources: [[URL]] = []
     var logExportDestinationURL: URL?
     var logExportDestinationValidationMessages: [String: String] = [:]
     var chooseDirectoryPrompts: [String] = []
@@ -2242,6 +3106,13 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
         chooseVitalFilesPrompts.append(prompt)
         chooseVitalFilesDirectoryURLs.append(directoryURL)
         return vitalFileURLs
+    }
+
+    func readVitalFileUploadSources(
+        _ sources: [URL]
+    ) throws -> [RuntimeLabVitalFileUploadSource] {
+        readVitalFileSources.append(sources)
+        return vitalFileUploadSources
     }
 
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {

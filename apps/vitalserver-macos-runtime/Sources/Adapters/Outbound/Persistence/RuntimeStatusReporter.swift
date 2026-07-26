@@ -4,22 +4,25 @@ import Contracts
 import Errors
 
 public struct RuntimeStatusReporter {
-    private let repository: RuntimeStatusRepository
+    private let statusArtifactSink: RuntimeStatusArtifactSink
+    private let progressArtifactSink: RuntimeProgressArtifactSink
     private let productIdentifier: String
     private let productRoot: URL
     private let runtimeHome: URL
     private let makeStatusDocument: (RuntimeStatusDocumentBuildInput) -> RuntimeStatusDocument
-    private let makeProgressDocument: (RuntimeStatusProgressUpdateInput) -> RuntimeStatusDocument
+    private let makeProgressDocument: (RuntimeStatusProgressUpdateInput) -> RuntimeProgressDocument
 
     public init(
-        repository: RuntimeStatusRepository,
+        statusArtifactSink: RuntimeStatusArtifactSink,
+        progressArtifactSink: RuntimeProgressArtifactSink,
         productIdentifier: String,
         productRoot: URL,
         runtimeHome: URL,
         makeStatusDocument: @escaping (RuntimeStatusDocumentBuildInput) -> RuntimeStatusDocument,
-        makeProgressDocument: @escaping (RuntimeStatusProgressUpdateInput) -> RuntimeStatusDocument
+        makeProgressDocument: @escaping (RuntimeStatusProgressUpdateInput) -> RuntimeProgressDocument
     ) {
-        self.repository = repository
+        self.statusArtifactSink = statusArtifactSink
+        self.progressArtifactSink = progressArtifactSink
         self.productIdentifier = productIdentifier
         self.productRoot = productRoot
         self.runtimeHome = runtimeHome
@@ -27,70 +30,42 @@ public struct RuntimeStatusReporter {
         self.makeProgressDocument = makeProgressDocument
     }
 
-    public func loadStatusResult() -> RuntimeStatusDocumentLoadResult {
-        repository.loadResult()
-    }
-
     public func writeStatus(
         _ status: RuntimeStatusLevel,
-        operation: RuntimeOperation,
-        message: String,
-        updatedAt: String,
         runtimeVersion: String,
         healthSnapshot: RuntimeHealthSnapshot,
-        latestBackup: URL?,
-        progress: RuntimeProgressDocument? = nil
+        latestBackup: URL?
     ) throws {
         let document = makeStatusDocument(RuntimeStatusDocumentBuildInput(
             product: productIdentifier,
             status: status,
-            operation: operation,
-            message: message,
-            updatedAt: updatedAt,
             productRoot: productRoot.path,
             runtimeHome: runtimeHome.path,
             runtimeVersion: runtimeVersion,
             healthSnapshot: healthSnapshot,
-            latestBackup: latestBackup?.path,
-            progress: progress
+            latestBackup: latestBackup?.path
         ))
-        try repository.save(document)
+        try statusArtifactSink.save(document)
     }
 
     public func writeProgress(
-        _ status: RuntimeStatusLevel,
         operation: RuntimeOperation,
         step: RuntimeWorkflowStep,
         stepStatus: RuntimeProgressStepStatus,
         phase: RuntimeProgressPhase,
         message: String,
         reasonCodes: [String] = [],
-        updatedAt: String,
-        runtimeVersion: String,
-        latestBackup: URL?
+        updatedAt: String
     ) throws {
-        let current: RuntimeStatusDocument
-        switch repository.loadResult() {
-        case .loaded(let document):
-            current = document
-        case .missing:
-            throw RuntimeStatusReporterError.missingStatusDocumentForProgress
-        case .failed(let message):
-            throw RuntimeStatusReporterError.statusDocumentReadFailed(message)
-        }
         let document = makeProgressDocument(RuntimeStatusProgressUpdateInput(
-            current: current,
-            status: status,
             operation: operation,
             step: step,
             stepStatus: stepStatus,
             phase: phase,
             message: message,
             reasonCodes: reasonCodes,
-            updatedAt: updatedAt,
-            runtimeVersion: runtimeVersion,
-            latestBackup: latestBackup?.path
+            updatedAt: updatedAt
         ))
-        try repository.save(document)
+        try progressArtifactSink.save(document)
     }
 }

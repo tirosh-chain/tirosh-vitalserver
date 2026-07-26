@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "v1",
+  "compilationId": "guest-artifact-build-0.1.0-dev",
+  "artifactSetId": "vitalserver-guest-arm64-0.1.0-dev",
+  "architecture": "arm64",
+  "compilationCommandSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+  "buildEnvironment": {
+    "id": "vitalserver-guest-rootfs-builder",
+    "builderExecutableSizeBytes": 4096,
+    "builderExecutableSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "consumedInputArtifacts": [
+    { "id": "linux-arm64-kernel", "sizeBytes": 1024, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+    { "id": "linux-arm64-initrd", "sizeBytes": 2048, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+    { "id": "guest-runtime-linux-arm64", "sizeBytes": 3072, "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+    { "id": "guest-node-services-linux-arm64", "sizeBytes": 4096, "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+    { "id": "guest-product-process-supervisor-linux-arm64", "sizeBytes": 3072, "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" },
+    { "id": "guest-product-process-deployment-configuration", "sizeBytes": 512, "sha256": "1111111111111111111111111111111111111111111111111111111111111111" },
+    { "id": "guest-product-service-manager-deployment-configuration", "sizeBytes": 512, "sha256": "2222222222222222222222222222222222222222222222222222222222222222" },
+    { "id": "guest-product-bootstrap-configuration", "sizeBytes": 512, "sha256": "3333333333333333333333333333333333333333333333333333333333333333" },
+    { "id": "guest-product-vitalserver-topology-deployment", "sizeBytes": 512, "sha256": "4444444444444444444444444444444444444444444444444444444444444444" },
+    { "id": "external-vitalserver-delivery-configuration", "sizeBytes": 512, "sha256": "5555555555555555555555555555555555555555555555555555555555555555" },
+    { "id": "ubuntu-arm64-guest-root-base", "sizeBytes": 8192, "sha256": "1111111111111111111111111111111111111111111111111111111111111111" }
+  ],
+  "macOSGuestArtifactManifest": {
+    "relativePath": "macos-guest-artifact-manifest.json",
+    "sizeBytes": 1024,
+    "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "completedAt": "2026-07-17T10:00:00Z"
+}

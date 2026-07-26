@@ -32,10 +32,10 @@ Do not infer activity for missing history outside the selected page. Missing buc
 The macOS Helper should load recorder lists without embedded activity timelines, then read chart data through the explicit activity window contract:
 
 ```text
-GET /vitaldb/recorders/{vrcode}/activity?bucketSeconds=60&period=all&pageIndex=<page>
+GET /runtime/vitaldb/recorders/{vrcode}/activity?bucketSeconds=60&period=all&pageIndex=<page>
 ```
 
-The PWA should migrate to the same endpoint instead of deriving `All` pages from `/vitaldb/recorders[].activityTimeline`.
+The PWA should migrate to the same endpoint instead of deriving `All` pages from `/runtime/vitaldb/recorders[].activityTimeline`.
 
 ## Prevention
 

@@ -24,11 +24,13 @@ final class RuntimeConfigureContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--backup-schedule-times"), .backupScheduleTimes)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--backup-retention"), .backupRetention)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--restart"), .restart)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--restart-vm-runtime"), .restartVMRuntime)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--future"), .unknown("--future"))
     }
 
     func testOnlyRestartDoesNotRequireValue() {
         XCTAssertFalse(RuntimeConfigureOption.restart.requiresValue)
+        XCTAssertFalse(RuntimeConfigureOption.restartVMRuntime.requiresValue)
         XCTAssertTrue(RuntimeConfigureOption.cpu.requiresValue)
         XCTAssertTrue(RuntimeConfigureOption.unknown("--future").requiresValue)
     }

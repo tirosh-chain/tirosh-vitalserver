@@ -8,10 +8,10 @@ import Errors
 public struct RuntimeLifecycleComposition {
     public let httpProber: RuntimeHTTPProber
     public let serviceManager: RuntimeServiceManager
+    public let guestAddressProvider: any RuntimeGuestAddressProvider
     public let statusReporter: RuntimeStatusReporter
     public let healthChecker: RuntimeHealthChecker
     public let serviceController: RuntimeServiceController
-    public let guestGateway: RuntimeGuestGateway
 
     public static func resolve(
         paths: LauncherPaths,
@@ -19,8 +19,9 @@ public struct RuntimeLifecycleComposition {
         commandRunner: RuntimeCommandRunner,
         httpProber: RuntimeHTTPProber?,
         serviceManager: RuntimeServiceManager?,
-        runtimeStatusRepository: RuntimeStatusRepository?,
-        guestGateway: RuntimeGuestGateway?,
+        runtimeStatusArtifactSink: RuntimeStatusArtifactSink?,
+        runtimeProgressArtifactSink: RuntimeProgressArtifactSink?,
+        guestAddressProvider: (any RuntimeGuestAddressProvider)?,
         fileStore: RuntimeFileStore,
         plistBuddyPath: String,
         lsofPath: String,
@@ -34,19 +35,26 @@ public struct RuntimeLifecycleComposition {
         let installedPaths = paths.installed
         let resolvedHTTPProber = httpProber ?? CurlRuntimeHTTPProber(commandRunner: commandRunner)
         let resolvedServiceManager = serviceManager ?? LaunchdRuntimeServiceManager(commandRunner: commandRunner)
+        let resolvedGuestAddressProvider = guestAddressProvider ?? SQLiteRuntimeGuestAddressResourceStore(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            lifecycleTransitionDecider: RuntimeVMLifecycleTransitionUseCase()
+        )
         let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
         let statusReporter = RuntimeStatusReporter(
-            repository: runtimeStatusRepository ?? JSONFileRuntimeStatusRepository(
+            statusArtifactSink: runtimeStatusArtifactSink ?? JSONFileRuntimeStatusArtifactSink(
                 url: installedPaths.runtimeStatus,
+                requiredExistingRoot: installedPaths.productRoot
+            ),
+            progressArtifactSink: runtimeProgressArtifactSink ?? JSONFileRuntimeProgressArtifactSink(
+                url: installedPaths.runtimeProgress,
                 requiredExistingRoot: installedPaths.productRoot
             ),
             productIdentifier: Constants.Product.identifier,
             productRoot: installedPaths.productRoot,
             runtimeHome: installedPaths.runtimeHome,
             makeStatusDocument: statusDocumentUseCase.build,
-            makeProgressDocument: statusDocumentUseCase.progressUpdate
+            makeProgressDocument: statusDocumentUseCase.progressDocument
         )
-        let resolvedGuestGateway = guestGateway ?? makeGuestGateway(installedPaths: installedPaths)
         let healthChecker = RuntimeHealthChecker(
             context: healthCheckerContext(
                 installedPaths: installedPaths,
@@ -58,7 +66,17 @@ public struct RuntimeLifecycleComposition {
             serviceManager: resolvedServiceManager,
             commandRunner: commandRunner,
             httpProber: resolvedHTTPProber,
-            guestGateway: resolvedGuestGateway
+            guestAddressProvider: resolvedGuestAddressProvider,
+            vmLifecycleResourceReader: SQLiteRuntimeVMLifecycleResourceStore(
+                databaseURL: installedPaths.runtimeStateDatabase,
+                transitionDecider: RuntimeVMLifecycleTransitionUseCase()
+            ),
+            guestControlGatewayForBaseURL: { baseURL in
+                try HTTPRuntimeGuestControlGateway(
+                    baseURL: baseURL,
+                    timeout: RuntimeLifecycleComposition.guestControlAPIStackStatusTimeoutSeconds
+                )
+            }
         )
         let serviceStopWaiter = RuntimeServiceStopWaiter(
             serviceState: { service in
@@ -88,10 +106,10 @@ public struct RuntimeLifecycleComposition {
         return RuntimeLifecycleComposition(
             httpProber: resolvedHTTPProber,
             serviceManager: resolvedServiceManager,
+            guestAddressProvider: resolvedGuestAddressProvider,
             statusReporter: statusReporter,
             healthChecker: healthChecker,
-            serviceController: serviceController,
-            guestGateway: resolvedGuestGateway
+            serviceController: serviceController
         )
     }
 
@@ -111,30 +129,15 @@ public struct RuntimeLifecycleComposition {
             lsofPath: lsofPath,
             curlPath: curlPath,
             proxyLaunchDaemonPlist: RuntimeManagedServicePaths.launchDaemonPlist(.proxy),
-            runtimeStateStaleAfterSeconds: Constants.Runtime.runtimeStateStaleAfterSeconds,
             watchdogManagedOperationGraceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
             proxyHealthURL: { Constants.Runtime.proxyHealthURL(port: $0) },
             redisUIHealthURL: { Constants.Runtime.redisUIHealthURL(port: $0) },
-            swaggerUIHealthURL: { Constants.Runtime.swaggerUIHealthURL(port: $0) },
-            recorderIngressStatusURL: { Constants.Runtime.recorderIngressStatusURL(port: $0) }
+            swaggerUIHealthURL: { Constants.Runtime.swaggerUIHealthURL(port: $0) }
         )
     }
 
-    private static func makeGuestGateway(installedPaths: InstalledRuntimePaths) -> RuntimeGuestGateway {
-        let guestRunDirectory = installedPaths.guestRunDirectory
-        return JSONFileRuntimeGuestGateway(
-            runtimeStateURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.runtimeStateFile),
-            bootstrapResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile),
-            updateActivationRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationRequestFile),
-            updateActivationResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationResultFile),
-            updateShutdownRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateShutdownRequestFile),
-            updateShutdownResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateShutdownResultFile),
-            datastoreRepairRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile),
-            datastoreRepairResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile),
-            guestComposeReconcileRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.guestComposeReconcileRequestFile),
-            guestComposeReconcileResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.guestComposeReconcileResultFile),
-            redisRestoreRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.redisRestoreRequestFile),
-            redisRestoreResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.redisRestoreResultFile)
-        )
-    }
+}
+
+private extension RuntimeLifecycleComposition {
+    static let guestControlAPIStackStatusTimeoutSeconds: TimeInterval = 5
 }

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "catalog-observation-ingest-1",
+  "outcome": "accepted",
+  "observationReference": {
+    "resourceType": "catalog-observation",
+    "resourceId": "catalog-observation-1"
+  },
+  "receivedAt": "2026-07-17T00:00:02Z",
+  "persistedAt": "2026-07-17T00:00:02Z"
+}

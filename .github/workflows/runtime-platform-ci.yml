@@ -1,0 +1,315 @@
+name: Runtime Platform CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/runtime-platform-ci.yml
+      - runtime-platform/**
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/runtime-platform-ci.yml
+      - runtime-platform/**
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-platform:
+    name: Runtime Platform Linux control and acceptance suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.0"
+
+      - name: Set up Recorder Gateway Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.3"
+
+      - name: Preserve Guest Node runtime
+        run: echo "RUNTIME_PLATFORM_GUEST_NODE=$(command -v node)" >> "$GITHUB_ENV"
+
+      - name: Set up Runtime Console Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+
+      - name: Bootstrap contract verification tools
+        run: make -C runtime-platform bootstrap-contract-tools
+
+      - name: Verify runtime-platform root
+        run: make -C runtime-platform check NODE="$RUNTIME_PLATFORM_GUEST_NODE" RUNTIME_CONSOLE_NODE="$(command -v node)"
+
+      - name: Build the selected Linux Host and Console delivery kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/runtime-platform/.tmp/linux-delivery-kit-ci"
+          artifacts="$root/host-artifacts"
+          release="$root/release"
+          mkdir -p "$release"
+          make -C runtime-platform linux-host-release-artifacts-build LINUX_HOST_RELEASE_ARTIFACT_DIRECTORY="$artifacts"
+          cat > "$root/linux-host-release-input-preparation.json" <<EOF
+          {
+            "releaseRoot": "$release",
+            "releaseSlotId": "runtime-platform-0.2.0-dev-linux-ci",
+            "releaseDeliveryPlansDocument": "$GITHUB_WORKSPACE/runtime-platform/product/delivery/release-delivery-plans.v1.json",
+            "releaseDeliveryPlanId": "linux-runtime-platform-release",
+            "packageMaintainer": "Tirosh <support@tirosh.example>",
+            "packageDescription": "VitalServer Runtime Platform",
+            "hostAgentBinary": "$artifacts/host-agent",
+            "hostEdgeProxyBinary": "$artifacts/host-edge-proxy",
+            "hostInstallationManagerBinary": "$artifacts/host-installation-manager",
+            "hostUpdateHandoffSupervisorBinary": "$artifacts/host-update-handoff-supervisor",
+            "platformctlBinary": "$artifacts/platformctl",
+            "linuxKVMlibvirtSystemdBridgeBinary": "$artifacts/linux-kvm-libvirt-systemd-bridge",
+            "hostAgentDeploymentConfiguration": "$GITHUB_WORKSPACE/runtime-platform/product/deployment-profiles/linux-kvm-libvirt-systemd-external-guest-external-vitalserver-reference/host-agent-deployment-configuration.v1.json",
+            "hostEdgeProxyDeploymentConfiguration": "$GITHUB_WORKSPACE/runtime-platform/product/deployment-profiles/linux-kvm-libvirt-systemd-external-guest-external-vitalserver-reference/host-edge-proxy-deployment-configuration.v1.json",
+            "hostUpdateHandoffSupervisorConfiguration": "$GITHUB_WORKSPACE/runtime-platform/product/deployment-profiles/linux-kvm-libvirt-systemd-external-guest-external-vitalserver-reference/host-update-handoff-supervisor-configuration.v1.json",
+            "operatorInterfaceBootstrapConfiguration": "$GITHUB_WORKSPACE/runtime-platform/product/deployment-profiles/linux-kvm-libvirt-systemd-external-guest-external-vitalserver-reference/operator-interface-bootstrap-configuration.v1.json",
+            "hostUpdateTrustStore": "$GITHUB_WORKSPACE/runtime-platform/product/deployment-profiles/linux-kvm-libvirt-systemd-external-guest-external-vitalserver-reference/update-trust-store.v1.json"
+          }
+          EOF
+          make -C runtime-platform linux-host-release-input-prepare LINUX_HOST_RELEASE_INPUT_PREPARATION="$root/linux-host-release-input-preparation.json"
+          composition="$release/linux-host-release-input/linux-host-package-composition.json"
+          make -C runtime-platform linux-host-package-compose LINUX_HOST_PACKAGE_COMPOSITION="$composition"
+          make -C runtime-platform linux-host-package-selected-release-dpkg-acceptance LINUX_HOST_PACKAGE_COMPOSITION="$composition"
+          make -C runtime-platform runtime-console-package-linux-deb
+          make -C runtime-platform operator-delivery-kit-compose \
+            OPERATOR_DELIVERY_KIT_RELEASE_SET_ID="runtime-platform-linux-ci" \
+            OPERATOR_DELIVERY_KIT_RELEASE_DELIVERY_PLANS_DOCUMENT="$GITHUB_WORKSPACE/runtime-platform/product/delivery/release-delivery-plans.v1.json" \
+            OPERATOR_DELIVERY_KIT_RELEASE_DELIVERY_PLAN_ID="linux-runtime-platform-release" \
+            OPERATOR_DELIVERY_KIT_HOST_INSTALLER_ARTIFACT="$release/vitalserver-runtime-platform_0.2.0-dev_amd64.deb" \
+            OPERATOR_DELIVERY_KIT_RUNTIME_CONSOLE_ARTIFACT="$GITHUB_WORKSPACE/runtime-platform/.tmp/runtime-console-desktop/vitalserver-runtime-console_0.1.0_amd64.deb" \
+            OPERATOR_DELIVERY_KIT_RUNTIME_CONSOLE_ARTIFACT_RECEIPT="$GITHUB_WORKSPACE/runtime-platform/.tmp/runtime-console-desktop/vitalserver-runtime-console_0.1.0_amd64.deb.runtime-console-artifact-receipt.json" \
+            OPERATOR_DELIVERY_KIT_OPERATOR_INTERFACE_BOOTSTRAP_CONFIGURATION="$GITHUB_WORKSPACE/runtime-platform/product/deployment-profiles/linux-kvm-libvirt-systemd-external-guest-external-vitalserver-reference/operator-interface-bootstrap-configuration.v1.json" \
+            OPERATOR_DELIVERY_KIT_OUTPUT_DIRECTORY="$root/delivery-kit"
+          make -C runtime-platform operator-delivery-kit-verify \
+            OPERATOR_DELIVERY_KIT_DIRECTORY="$root/delivery-kit"
+
+      - name: Upload Linux delivery kit for operator evaluation
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-platform-linux-delivery-kit
+          path: runtime-platform/.tmp/linux-delivery-kit-ci/delivery-kit
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-provider:
+    name: macOS native checks and Runtime Console delivery artifact
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Runtime Console Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+
+      - name: Bootstrap contract verification tools
+        run: make -C runtime-platform bootstrap-contract-tools
+
+      - name: Run macOS native source checks
+        run: make -C runtime-platform macos-native-check
+
+      - name: Package the macOS Runtime Console
+        run: make -C runtime-platform runtime-console-package-macos
+
+      - name: Upload macOS Runtime Console artifact for operator evaluation
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-platform-macos-runtime-console
+          path: |
+            runtime-platform/.tmp/runtime-console-desktop/VitalServer Runtime Console-0.1.0-arm64.dmg
+            runtime-platform/.tmp/runtime-console-desktop/VitalServer Runtime Console-0.1.0-arm64.dmg.runtime-console-artifact-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-provider-contract:
+    name: Windows provider, MSI, and Console delivery contract (no Hyper-V live claim)
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.0"
+
+      - name: Set up Runtime Console Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+
+      - name: Set up .NET SDK for pinned WiX v4 compiler
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install pinned open-source WiX v4 compiler
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 4.0.5
+          & "$env:USERPROFILE\.dotnet\tools\wix.exe" extension add --global WixToolset.Util.wixext/4.0.5
+
+      - name: Build selected Windows bridge and run portable provider contract tests
+        shell: pwsh
+        run: |
+          Set-Location runtime-platform
+          Push-Location providers/os-provider-bridge
+          go test ./...
+          New-Item -ItemType Directory -Force -Path .build | Out-Null
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -o .build/windows-hyperv-scm-bridge.exe ./cmd/windows-hyperv-scm-bridge
+          Pop-Location
+
+      - name: Exercise Host Updater C52 completion over a Windows named pipe
+        shell: pwsh
+        run: |
+          Set-Location runtime-platform/services/host-updater
+          go test ./...
+
+      - name: Build exact Windows Host bytes for the MSI input
+        shell: pwsh
+        run: |
+          Set-Location runtime-platform
+          $artifactRoot = Join-Path (Get-Location) ".tmp/windows-host-release-artifacts-ci"
+          New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+          Push-Location services/host-agent
+          go build -o "$artifactRoot/host-agent.exe" ./cmd/host-agent
+          Pop-Location
+          Push-Location services/host-edge-proxy
+          go build -o "$artifactRoot/host-edge-proxy.exe" ./cmd/host-edge-proxy
+          Pop-Location
+          Push-Location services/host-installation-manager
+          go build -o "$artifactRoot/host-installation-manager.exe" ./cmd/host-installation-manager
+          Pop-Location
+          Push-Location services/host-service-runner
+          go build -o "$artifactRoot/host-service-runner.exe" ./cmd/host-service-runner
+          Pop-Location
+          Push-Location services/host-update-handoff-supervisor
+          go build -o "$artifactRoot/host-update-handoff-supervisor.exe" ./cmd/host-update-handoff-supervisor
+          Pop-Location
+          Push-Location interfaces/platformctl
+          go build -o "$artifactRoot/platformctl.exe" ./cmd/platformctl
+          Pop-Location
+          Push-Location providers/os-provider-bridge
+          go build -o "$artifactRoot/windows-hyperv-scm-bridge.exe" ./cmd/windows-hyperv-scm-bridge
+          Pop-Location
+          "RUNTIME_PLATFORM_WINDOWS_HOST_RELEASE_ARTIFACT_DIRECTORY=$artifactRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify explicit release-proof pending status
+        shell: pwsh
+        run: |
+          Set-Location runtime-platform
+          python -m venv .venv
+          & .venv/Scripts/python.exe -m pip install --disable-pip-version-check --requirement contracts/requirements-dev.txt
+          & .venv/Scripts/python.exe -m tooling.generate_source_inventory_sbom --root . --check
+          & .venv/Scripts/python.exe -m tooling.verify_delivery_proofs --root .
+
+      - name: Compile fixture and actual Windows Host MSI inputs
+        shell: pwsh
+        run: |
+          Set-Location runtime-platform
+          $env:RUNTIME_PLATFORM_WINDOWS_WIX = "$env:USERPROFILE\.dotnet\tools\wix.exe"
+          & .venv/Scripts/python.exe -m unittest tooling.tests.test_windows_host_msi_composer tooling.tests.test_windows_host_release_input_preparer
+
+      - name: Build the selected Windows Host and Console delivery kit
+        shell: pwsh
+        run: |
+          Set-Location runtime-platform
+          $root = Join-Path (Get-Location) ".tmp/windows-delivery-kit-ci"
+          $release = Join-Path $root "release"
+          New-Item -ItemType Directory -Force -Path $release | Out-Null
+          $profile = Join-Path (Get-Location) "product/deployment-profiles/windows-hyperv-external-guest-external-vitalserver-reference"
+          $preparation = @{
+            releaseRoot = $release
+            releaseSlotId = "runtime-platform-0.2.0-windows-ci"
+            releaseDeliveryPlansDocument = (Join-Path (Get-Location) "product/delivery/release-delivery-plans.v1.json")
+            releaseDeliveryPlanId = "windows-runtime-platform-release"
+            packageProductCode = "{A13CD872-E983-48BE-B20A-202607200002}"
+            manufacturer = "Tirosh"
+            upgradeCode = "{87654321-4321-4321-4321-BA0987654321}"
+            hostAgentBinary = (Join-Path $env:RUNTIME_PLATFORM_WINDOWS_HOST_RELEASE_ARTIFACT_DIRECTORY "host-agent.exe")
+            hostEdgeProxyBinary = (Join-Path $env:RUNTIME_PLATFORM_WINDOWS_HOST_RELEASE_ARTIFACT_DIRECTORY "host-edge-proxy.exe")
+            hostInstallationManagerBinary = (Join-Path $env:RUNTIME_PLATFORM_WINDOWS_HOST_RELEASE_ARTIFACT_DIRECTORY "host-installation-manager.exe")
+            hostServiceRunnerBinary = (Join-Path $env:RUNTIME_PLATFORM_WINDOWS_HOST_RELEASE_ARTIFACT_DIRECTORY "host-service-runner.exe")
+            hostUpdateHandoffSupervisorBinary = (Join-Path $env:RUNTIME_PLATFORM_WINDOWS_HOST_RELEASE_ARTIFACT_DIRECTORY "host-update-handoff-supervisor.exe")
+            platformctlBinary = (Join-Path $env:RUNTIME_PLATFORM_WINDOWS_HOST_RELEASE_ARTIFACT_DIRECTORY "platformctl.exe")
+            windowsHyperVSCMBridgeBinary = (Join-Path $env:RUNTIME_PLATFORM_WINDOWS_HOST_RELEASE_ARTIFACT_DIRECTORY "windows-hyperv-scm-bridge.exe")
+            hostAgentDeploymentConfiguration = (Join-Path $profile "host-agent-deployment-configuration.v1.json")
+            hostEdgeProxyDeploymentConfiguration = (Join-Path $profile "host-edge-proxy-deployment-configuration.v1.json")
+            hostUpdateHandoffSupervisorConfiguration = (Join-Path $profile "host-update-handoff-supervisor-configuration.v1.json")
+            operatorInterfaceBootstrapConfiguration = (Join-Path $profile "operator-interface-bootstrap-configuration.v1.json")
+            hostUpdateTrustStore = (Join-Path $profile "update-trust-store.v1.json")
+          }
+          $preparationPath = Join-Path $root "windows-host-release-input-preparation.json"
+          $preparation | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 $preparationPath
+          & .venv/Scripts/python.exe -m tooling.windows_host_release_input_preparer --preparation $preparationPath
+          if ($LASTEXITCODE -ne 0) { throw "Windows C48 release input preparation failed" }
+          $compositionPath = Join-Path $release "windows-host-release-input/windows-host-msi-composition.json"
+          $composition = Get-Content -Raw $compositionPath | ConvertFrom-Json
+          $composition | Add-Member -NotePropertyName wixExecutablePath -NotePropertyValue "$env:USERPROFILE\.dotnet\tools\wix.exe"
+          $composition | Add-Member -NotePropertyName outputPackage -NotePropertyValue (Join-Path $release "VitalServerRuntimePlatform-0.2.0.msi")
+          $selectedCompositionPath = Join-Path $root "windows-host-msi-composition-selected.json"
+          $composition | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 $selectedCompositionPath
+          & .venv/Scripts/python.exe -m tooling.windows_host_msi_composer --composition $selectedCompositionPath
+          if ($LASTEXITCODE -ne 0) { throw "selected Windows MSI composition failed" }
+          Push-Location interfaces
+          npm ci
+          npm run package:windows
+          Pop-Location
+          $deliveryKit = Join-Path $root "delivery-kit"
+          & .venv/Scripts/python.exe -m tooling.operator_delivery_kit_composer `
+            --release-set-id "runtime-platform-windows-ci" `
+            --release-delivery-plans-document (Join-Path (Get-Location) "product/delivery/release-delivery-plans.v1.json") `
+            --release-delivery-plan-id "windows-runtime-platform-release" `
+            --host-installer-artifact (Join-Path $release "VitalServerRuntimePlatform-0.2.0.msi") `
+            --runtime-console-artifact (Join-Path (Get-Location) ".tmp/runtime-console-desktop/VitalServer Runtime Console-0.1.0-x64.exe") `
+            --runtime-console-artifact-receipt (Join-Path (Get-Location) ".tmp/runtime-console-desktop/VitalServer Runtime Console-0.1.0-x64.exe.runtime-console-artifact-receipt.json") `
+            --operator-interface-bootstrap-configuration (Join-Path $profile "operator-interface-bootstrap-configuration.v1.json") `
+            --output-directory $deliveryKit
+          if ($LASTEXITCODE -ne 0) { throw "Windows C72 delivery-kit composition failed" }
+          & .venv/Scripts/python.exe -m tooling.operator_delivery_kit_verifier `
+            --delivery-kit-directory $deliveryKit
+          if ($LASTEXITCODE -ne 0) { throw "Windows C72 delivery-kit verification failed" }
+
+      - name: Upload Windows delivery kit for operator evaluation
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-platform-windows-delivery-kit
+          path: runtime-platform/.tmp/windows-delivery-kit-ci/delivery-kit
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Explain live proof boundary
+        shell: pwsh
+        run: |
+          Write-Host "This job verifies bridge contract compilation and simulated command mapping only."
+          Write-Host "It does not mark C24 clean-install/reboot/update/rollback/uninstall evidence as verified."

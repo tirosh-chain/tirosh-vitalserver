@@ -5,8 +5,8 @@ import Errors
 
 public enum RuntimeLifecycleCommand: Equatable {
     case install
-    case installProvision
-    case preinstallCheck
+    case installProvision(URL)
+    case preinstallCheck(URL)
     case status
     case health
     case guestLogSync
@@ -14,7 +14,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case configure(RuntimeConfigureCommand)
     case verifyBundle(URL)
     case stageBundle(URL)
-    case applyBundle(URL)
+    case applyBundle(RuntimeApplyBundleCommand)
     case rollback(RuntimeRollbackCommand)
     case redisBackup
     case redisRestore(URL)
@@ -27,9 +27,13 @@ public enum RuntimeLifecycleCommand: Equatable {
     case repairServices
     case startServices
     case stopServices
-    case startTestKit
-    case stopTestKit
-    case restartTestKit
+    case stopPackageServices
+    case guestStackStatus(RuntimeGuestControlReadCommand)
+    case guestServiceStart(RuntimeGuestServiceControlCommand)
+    case guestServiceStop(RuntimeGuestServiceControlCommand)
+    case guestServiceRestart(RuntimeGuestServiceControlCommand)
+    case vitalDB(RuntimeVitalDBReadCommand)
+    case lab(RuntimeLabControlCommand)
     case uninstall(RuntimeUninstallCommand)
     case help
 }
@@ -45,9 +49,9 @@ extension RuntimeLifecycleCommand {
         case "install":
             return .install
         case "install-provision":
-            return .installProvision
+            return .installProvision(try requiredPackageInstallContractURL(in: remaining))
         case "preinstall-check":
-            return .preinstallCheck
+            return .preinstallCheck(try requiredPackageInstallContractURL(in: remaining))
         case "status":
             return .status
         case "health":
@@ -69,10 +73,7 @@ extension RuntimeLifecycleCommand {
                 usage: "usage: vitalserver-vm runtime stage-bundle <bundle.tar.gz>"
             ))
         case "apply-bundle":
-            return .applyBundle(try requiredBundleURL(
-                in: remaining,
-                usage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>"
-            ))
+            return .applyBundle(try parseApplyBundleCommand(remaining))
         case "rollback":
             return .rollback(parseRollbackCommand(remaining))
         case "redis-backup":
@@ -103,12 +104,72 @@ extension RuntimeLifecycleCommand {
             return .startServices
         case "stop-services":
             return .stopServices
-        case "testkit-start":
-            return .startTestKit
-        case "testkit-stop":
-            return .stopTestKit
-        case "testkit-restart":
-            return .restartTestKit
+        case "stop-package-services":
+            return .stopPackageServices
+        case "guest-stack-status":
+            return .guestStackStatus(try parseGuestControlReadCommand(
+                remaining,
+                usage: "usage: vitalserver-vm runtime guest-stack-status [--guest-control-url <url>]"
+            ))
+        case "guest-service-start":
+            return .guestServiceStart(try parseGuestServiceControlCommand(
+                remaining,
+                usage: "usage: vitalserver-vm runtime guest-service-start <service> [--guest-control-url <url>]"
+            ))
+        case "guest-service-stop":
+            return .guestServiceStop(try parseGuestServiceControlCommand(
+                remaining,
+                usage: "usage: vitalserver-vm runtime guest-service-stop <service> [--guest-control-url <url>]"
+            ))
+        case "guest-service-restart":
+            return .guestServiceRestart(try parseGuestServiceControlCommand(
+                remaining,
+                usage: "usage: vitalserver-vm runtime guest-service-restart <service> [--guest-control-url <url>]"
+            ))
+        case "vitaldb-observation":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseObservationCommand(remaining))
+        case "vitaldb-recorders":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseRecordersCommand(remaining))
+        case "vitaldb-recorder-activity":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseRecorderActivityCommand(remaining))
+        case "vitaldb-beds":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseBedsCommand(remaining))
+        case "vitaldb-relationships":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseRelationshipsCommand(remaining))
+        case "lab-scenarios":
+            return .lab(try RuntimeLabControlCommand.parseScenariosCommand(remaining))
+        case "lab-beds":
+            return .lab(try RuntimeLabControlCommand.parseBedsCommand(remaining))
+        case "lab-recorders":
+            return .lab(try RuntimeLabControlCommand.parseRecordersCommand(remaining))
+        case "lab-session-create":
+            return .lab(try RuntimeLabControlCommand.parseSessionCreateCommand(remaining))
+        case "lab-session-get":
+            return .lab(try RuntimeLabControlCommand.parseSessionIDCommand(
+                remaining,
+                action: RuntimeLabControlAction.getSession,
+                usage: "usage: vitalserver-vm runtime lab-session-get <session-id> [--guest-control-url <url>]"
+            ))
+        case "lab-session-start":
+            return .lab(try RuntimeLabControlCommand.parseSessionIDCommand(
+                remaining,
+                action: RuntimeLabControlAction.startSession,
+                usage: "usage: vitalserver-vm runtime lab-session-start <session-id> [--guest-control-url <url>]"
+            ))
+        case "lab-session-stop":
+            return .lab(try RuntimeLabControlCommand.parseSessionIDCommand(
+                remaining,
+                action: RuntimeLabControlAction.stopSession,
+                usage: "usage: vitalserver-vm runtime lab-session-stop <session-id> [--guest-control-url <url>]"
+            ))
+        case "lab-session-finish":
+            return .lab(try RuntimeLabControlCommand.parseSessionIDCommand(
+                remaining,
+                action: RuntimeLabControlAction.finishSession,
+                usage: "usage: vitalserver-vm runtime lab-session-finish <session-id> [--guest-control-url <url>]"
+            ))
+        case "lab-vital-replay":
+            return .lab(try RuntimeLabControlCommand.parseVitalReplayCommand(remaining))
         case "uninstall":
             return .uninstall(try parseUninstallCommand(remaining))
         case "-h", "--help", "help":
@@ -121,17 +182,17 @@ extension RuntimeLifecycleCommand {
     public static let usageText = """
     Usage:
       vitalserver-vm runtime install
-      vitalserver-vm runtime install-provision
-      vitalserver-vm runtime preinstall-check
+      vitalserver-vm runtime install-provision --package-install-contract <path>
+      vitalserver-vm runtime preinstall-check --package-install-contract <path>
       vitalserver-vm runtime status
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-max-mib-per-second <count>] [--container-memory-limits true|false] [--vitalserver-container-memory-limit-mib <mib>] [--recorder-ingress-container-memory-limit-mib <mib>] [--redis-container-memory-limit-mib <mib>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--redis-relay-settings-file <path>] [--restart]
-      vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--runtime-control-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|observe_only|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-max-mib-per-second <count>] [--container-memory-limits true|false] [--vitalserver-container-memory-limit-mib <mib>] [--recorder-ingress-container-memory-limit-mib <mib>] [--redis-container-memory-limit-mib <mib>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--restart|--restart-vm-runtime]
+      vitalserver-vm runtime configure [--admin-password-file <path>] [--restart|--restart-vm-runtime]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
-      vitalserver-vm runtime apply-bundle <bundle.tar.gz>
+      vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime redis-restore <archive.tar.gz>
@@ -144,9 +205,25 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services
-      vitalserver-vm runtime testkit-start
-      vitalserver-vm runtime testkit-stop
-      vitalserver-vm runtime testkit-restart
+      vitalserver-vm runtime stop-package-services
+      vitalserver-vm runtime guest-stack-status [--guest-control-url <url>]
+      vitalserver-vm runtime guest-service-start <service> [--guest-control-url <url>]
+      vitalserver-vm runtime guest-service-stop <service> [--guest-control-url <url>]
+      vitalserver-vm runtime guest-service-restart <service> [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-observation [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-recorders [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-recorder-activity <vrcode> [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-beds [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-relationships [--guest-control-url <url>]
+      vitalserver-vm runtime lab-scenarios [--guest-control-url <url>]
+      vitalserver-vm runtime lab-beds [--guest-control-url <url>]
+      vitalserver-vm runtime lab-recorders [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-create <scenario-id> [--name <name>] [--recorder-count <count>] [--target-url <url>] [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-get <session-id> [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-start <session-id> [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-stop <session-id> [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-finish <session-id> [--guest-control-url <url>]
+      vitalserver-vm runtime lab-vital-replay <vital-file-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]
       vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]
     """
 
@@ -155,6 +232,43 @@ extension RuntimeLifecycleCommand {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         return URL(fileURLWithPath: bundlePath)
+    }
+
+    private static func parseApplyBundleCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeApplyBundleCommand {
+        let usage = "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
+        guard arguments.count == 1 || arguments.count == 2,
+              let bundlePath = arguments.first,
+              !bundlePath.isEmpty,
+              bundlePath != "--allow-unsigned-dev-bundle"
+        else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        let intent: RuntimeUpdateApplyTrustIntent
+        if arguments.count == 2 {
+            guard arguments[1] == "--allow-unsigned-dev-bundle" else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+            intent = .allowUnsignedDevelopmentBundle
+        } else {
+            intent = .requireVerifiedPublisher
+        }
+        return RuntimeApplyBundleCommand(
+            bundleURL: URL(fileURLWithPath: bundlePath),
+            trustIntent: intent
+        )
+    }
+
+    private static func requiredPackageInstallContractURL(in arguments: [String]) throws -> URL {
+        let usage = "usage: vitalserver-vm runtime install-provision|preinstall-check --package-install-contract <path>"
+        guard arguments.count == 2,
+              arguments[0] == "--package-install-contract",
+              !arguments[1].isEmpty
+        else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return URL(fileURLWithPath: arguments[1])
     }
 
     private static func parseRollbackCommand(_ arguments: [String]) -> RuntimeRollbackCommand {
@@ -186,16 +300,80 @@ extension RuntimeLifecycleCommand {
         return RuntimeUninstallCommand(clean: clean, forceClean: forceClean)
     }
 
+    private static func parseGuestServiceControlCommand(
+        _ arguments: [String],
+        usage: String
+    ) throws -> RuntimeGuestServiceControlCommand {
+        guard let service = arguments.first, !service.isEmpty else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        var remaining = Array(arguments.dropFirst())
+        var guestControlBaseURL = RuntimeGuestServiceControlCommand.defaultGuestControlBaseURL
+        while !remaining.isEmpty {
+            let key = remaining.removeFirst()
+            switch key {
+            case "--guest-control-url":
+                guard let value = remaining.first, !value.isEmpty else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument("missing value for --guest-control-url")
+                }
+                remaining.removeFirst()
+                guestControlBaseURL = value
+            default:
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+        }
+        return RuntimeGuestServiceControlCommand(
+            service: service,
+            guestControlBaseURL: guestControlBaseURL
+        )
+    }
+
+    private static func parseGuestControlReadCommand(
+        _ arguments: [String],
+        usage: String
+    ) throws -> RuntimeGuestControlReadCommand {
+        var remaining = arguments
+        var guestControlBaseURL = RuntimeGuestServiceControlCommand.defaultGuestControlBaseURL
+        while !remaining.isEmpty {
+            let key = remaining.removeFirst()
+            switch key {
+            case "--guest-control-url":
+                guard let value = remaining.first, !value.isEmpty else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument("missing value for --guest-control-url")
+                }
+                remaining.removeFirst()
+                guestControlBaseURL = value
+            default:
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+        }
+        return RuntimeGuestControlReadCommand(guestControlBaseURL: guestControlBaseURL)
+    }
+
     private static func parseConfigureCommand(_ arguments: [String]) throws -> RuntimeConfigureCommand {
         var remaining = arguments
         var changes: [RuntimeConfigureChange] = []
-        var restart = false
+        var activation = ConfigureRuntimeActivationIntent.saveOnly
 
         while !remaining.isEmpty {
             let key = remaining.removeFirst()
             let option = RuntimeConfigureOption(rawValue: key)
             if option == .restart {
-                restart = true
+                guard activation == .saveOnly else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument(
+                        "--restart and --restart-vm-runtime are mutually exclusive"
+                    )
+                }
+                activation = .activateChangedComponents
+                continue
+            }
+            if option == .restartVMRuntime {
+                guard activation == .saveOnly else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument(
+                        "--restart and --restart-vm-runtime are mutually exclusive"
+                    )
+                }
+                activation = .restartVMRuntime
                 continue
             }
 
@@ -209,7 +387,7 @@ extension RuntimeLifecycleCommand {
             changes.append(try configureChange(option: option, value: value))
         }
 
-        return RuntimeConfigureCommand(changes: changes, restart: restart)
+        return RuntimeConfigureCommand(changes: changes, activation: activation)
     }
 
     private static func configureChange(
@@ -244,6 +422,11 @@ extension RuntimeLifecycleCommand {
                 throw RuntimeLifecycleCommandParseError.missingArgument("--proxy-port must be an integer")
             }
             return .proxyPort(port)
+        case .runtimeControlPort:
+            guard let port = Int(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument("--runtime-control-port must be an integer")
+            }
+            return .runtimeControlPort(port)
         case .vitalFilesDirectory:
             guard value.hasPrefix("/") else {
                 throw RuntimeLifecycleCommandParseError.missingArgument(
@@ -265,7 +448,7 @@ extension RuntimeLifecycleCommand {
         case .recorderIngressSendDataMode:
             guard let mode = RuntimeRecorderIngressSendDataMode(rawValue: value) else {
                 throw RuntimeLifecycleCommandParseError.missingArgument(
-                    "--recorder-ingress-send-data-mode must be passthrough, mirror_spool, spool_only, or spool_and_replay"
+                    "--recorder-ingress-send-data-mode must be passthrough, observe_only, mirror_spool, spool_only, or spool_and_replay"
                 )
             }
             return .recorderIngressSendDataMode(mode)
@@ -363,17 +546,22 @@ extension RuntimeLifecycleCommand {
                 )
             }
             return .logArchiveMaximumGiB(gib)
-        case .redisRelaySettingsFile:
-            guard value.hasPrefix("/") else {
-                throw RuntimeLifecycleCommandParseError.missingArgument(
-                    "--redis-relay-settings-file must be an absolute path"
-                )
-            }
-            return .redisRelaySettingsFile(URL(fileURLWithPath: value))
         case .restart:
             throw RuntimeLifecycleCommandParseError.missingArgument("--restart does not accept a value")
+        case .restartVMRuntime:
+            throw RuntimeLifecycleCommandParseError.missingArgument("--restart-vm-runtime does not accept a value")
         case .unknown(let key):
             throw RuntimeLifecycleCommandParseError.missingArgument("unsupported runtime configure option: \(key)")
         }
+    }
+}
+
+public struct RuntimeApplyBundleCommand: Equatable {
+    public let bundleURL: URL
+    public let trustIntent: RuntimeUpdateApplyTrustIntent
+
+    public init(bundleURL: URL, trustIntent: RuntimeUpdateApplyTrustIntent) {
+        self.bundleURL = bundleURL
+        self.trustIntent = trustIntent
     }
 }

@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:native-guest-machine-provisioning-configuration",
+  "title": "NativeGuestMachineProvisioningConfiguration",
+  "description": "C62 Host deployment input for exactly one Windows Hyper-V or Linux libvirt Guest machine. It binds the immutable C65 native Guest artifact manifest to the two raw release files that a selected native provider may copy into separately owned mutable runtime disks. It also declares native firmware/network resources and the C63 receipt that is the only reuse authority. The provider may create only the declared machine and paths; it must not select a source image, a virtual switch/network, an emulator, a firmware path, an artifact manifest, or an existing-machine policy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "configurationId", "providerKind", "providerId", "guestArchitecture", "guestMachine", "releaseArtifacts", "runtimeStorage", "native", "provisioningReceiptPath"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "configurationId": { "$ref": "#/$defs/Identifier" },
+    "providerKind": { "type": "string", "enum": ["windows-hyperv-scm", "linux-kvm-libvirt-systemd"] },
+    "providerId": { "$ref": "#/$defs/Identifier" },
+    "guestArchitecture": { "const": "amd64" },
+    "guestMachine": { "$ref": "#/$defs/GuestMachine" },
+    "releaseArtifacts": { "$ref": "#/$defs/ReleaseArtifacts" },
+    "runtimeStorage": { "$ref": "#/$defs/RuntimeStorage" },
+    "native": { "$ref": "#/$defs/NativeProviderConfiguration" },
+    "provisioningReceiptPath": { "$ref": "#/$defs/SafeHostAbsolutePath" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "providerKind": { "const": "linux-kvm-libvirt-systemd" } }, "required": ["providerKind"] },
+      "then": { "properties": { "native": { "$ref": "#/$defs/LinuxKVMlibvirtConfiguration" } } }
+    },
+    {
+      "if": { "properties": { "providerKind": { "const": "windows-hyperv-scm" } }, "required": ["providerKind"] },
+      "then": { "properties": { "native": { "$ref": "#/$defs/WindowsHyperVConfiguration" } } }
+    }
+  ],
+  "$defs": {
+    "Identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "SafeHostAbsolutePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "anyOf": [
+        { "pattern": "^/[^\\\\]*$", "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
+        { "pattern": "^[A-Za-z]:[\\\\/][^\\u0000]*$", "not": { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" } }
+      ]
+    },
+    "DigestArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sourcePath", "sizeBytes", "sha256", "storageImageFormat"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Identifier" },
+        "sourcePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "storageImageFormat": { "const": "raw" }
+      }
+    },
+    "NativeGuestArtifactManifestSource": {
+      "description": "Exact Host file identity for C65. C62 must name a regular manifest file and the provider must verify that it declares the two release artifacts below before any native conversion effect.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourcePath", "sizeBytes", "sha256"],
+      "properties": {
+        "sourcePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "GuestMachine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["machineId", "cpuCount", "memoryMiB", "macAddress"],
+      "properties": {
+        "machineId": { "$ref": "#/$defs/Identifier" },
+        "cpuCount": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "memoryMiB": { "type": "integer", "minimum": 512, "maximum": 1048576 },
+        "macAddress": { "type": "string", "pattern": "^[0-9A-Fa-f][02468AaCcEe](:[0-9A-Fa-f]{2}){5}$" }
+      }
+    },
+    "ReleaseArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nativeGuestArtifactManifest", "bootableGuestDisk", "guestProductBootstrapVolume"],
+      "properties": {
+        "nativeGuestArtifactManifest": { "$ref": "#/$defs/NativeGuestArtifactManifestSource" },
+        "bootableGuestDisk": {
+          "allOf": [
+            { "$ref": "#/$defs/DigestArtifact" },
+            { "properties": { "id": { "const": "guest-root" } }, "required": ["id"] }
+          ]
+        },
+        "guestProductBootstrapVolume": {
+          "allOf": [
+            { "$ref": "#/$defs/DigestArtifact" },
+            { "properties": { "id": { "const": "guest-product-bootstrap" } }, "required": ["id"] }
+          ]
+        }
+      }
+    },
+    "RuntimeStorage": {
+      "description": "Native provider-owned writable/copy-once attachments. Existing paths are retained only when C63 matches every immutable release input and this complete C62 configuration.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rootDiskPath", "bootstrapVolumePath", "existingRuntimeStoragePolicy"],
+      "properties": {
+        "rootDiskPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "bootstrapVolumePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "existingRuntimeStoragePolicy": { "const": "retain-when-receipt-matches-release-artifacts" }
+      }
+    },
+    "NativeProviderConfiguration": {
+      "oneOf": [
+        { "$ref": "#/$defs/LinuxKVMlibvirtConfiguration" },
+        { "$ref": "#/$defs/WindowsHyperVConfiguration" }
+      ]
+    },
+    "LinuxKVMlibvirtConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "imageConverterExecutablePath", "libvirtExecutablePath", "emulatorExecutablePath", "uefiLoaderPath", "uefiNvramTemplatePath", "uefiNvramPath", "libvirtNetworkName", "runtimeImageFormat"],
+      "properties": {
+        "kind": { "const": "linux-kvm-libvirt" },
+        "imageConverterExecutablePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "libvirtExecutablePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "emulatorExecutablePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "uefiLoaderPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "uefiNvramTemplatePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "uefiNvramPath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "libvirtNetworkName": { "$ref": "#/$defs/Identifier" },
+        "runtimeImageFormat": { "const": "qcow2" }
+      }
+    },
+    "WindowsHyperVConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "imageConverterExecutablePath", "hyperVPowerShellExecutablePath", "virtualSwitchName", "runtimeImageFormat"],
+      "properties": {
+        "kind": { "const": "windows-hyperv" },
+        "imageConverterExecutablePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "hyperVPowerShellExecutablePath": { "$ref": "#/$defs/SafeHostAbsolutePath" },
+        "virtualSwitchName": { "$ref": "#/$defs/Identifier" },
+        "runtimeImageFormat": { "const": "vhdx" }
+      }
+    }
+  }
+}

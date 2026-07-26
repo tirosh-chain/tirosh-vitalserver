@@ -1,4 +1,40 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      POSTGRES_DB: vitalserver
+      POSTGRES_USER: vitalserver
+      POSTGRES_PASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
+    expose:
+      - "5432"
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vitalserver -d vitalserver"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  postgres-migrate:
+    build:
+      context: .
+      dockerfile: apps/vitalserver-postgres-migrator/Dockerfile
+    image: vitalserver-postgres-migrator:0.2.0
+    security_opt:
+      - seccomp=unconfined
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      VITALSERVER_DATABASE_URL: "postgresql://vitalserver@postgres:5432/vitalserver"
+      PGPASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
+    restart: "no"
+
   redis:
     image: redis:3.2.12-alpine
     security_opt:
@@ -8,10 +44,12 @@ services:
       - -c
       - |
         if [ -f /data/appendonly.aof ]; then
-          redis-check-aof /data/appendonly.aof >/tmp/redis-aof-check.log 2>&1 || {
-            cp /data/appendonly.aof "/data/appendonly.aof.bak.$(date +%Y%m%d%H%M%S)" || true
-            printf 'y\n' | redis-check-aof --fix /data/appendonly.aof
-          }
+          if ! redis-check-aof /data/appendonly.aof >/tmp/redis-aof-check.log 2>&1; then
+            cat /tmp/redis-aof-check.log >&2
+            printf '%s\n' \
+              'Redis append-only file validation failed; automatic repair is disabled. Run the explicit datastore repair workflow before restarting Redis.' >&2
+            exit 1
+          fi
         fi
         exec redis-server --appendonly yes --bind 0.0.0.0 --protected-mode no
     expose:
@@ -81,7 +119,7 @@ services:
         source: ${VITALSERVER_VITAL_FILES_DIR:-/mnt/tirosh-vital-files}
         target: /opt/vitalserver/vital_files
       - type: bind
-        source: /mnt/tirosh/vr-release
+        source: ${VITALSERVER_VR_RELEASE_DIR:-/mnt/tirosh/vr-release}
         target: /opt/vitalserver/service/vr_release
       - type: volume
         source: vital-tmp-files
@@ -100,7 +138,7 @@ services:
     build:
       context: .
       dockerfile: apps/vitalserver-recorder-recovery/Dockerfile
-    image: vitalserver-recorder-recovery:0.1.0
+    image: vitalserver-recorder-recovery:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
@@ -108,12 +146,18 @@ services:
         condition: service_healthy
     expose:
       - "8080"
+    ports:
+      - "127.0.0.1:18086:8080"
+    environment:
+      RECORDER_RECOVERY_ARTIFACT_REGISTRY_PATH: "${RECORDER_RECOVERY_ARTIFACT_REGISTRY_PATH:-/var/lib/vitalserver-recorder-ingress/recovery/recovery-artifacts.sqlite3}"
+      RECORDER_RECOVERY_VITALSERVER_URL: "http://app"
+      VITALSERVER_ADMIN_PASSWORD: "${VITALSERVER_ADMIN_PASSWORD}"
     volumes:
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-raw
+        source: ${VITALSERVER_RECORDER_INGRESS_RAW_DIR:-/mnt/tirosh/run/recorder-ingress-raw}
         target: /var/lib/vitalserver-recorder-ingress/raw
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-recovery
+        source: ${VITALSERVER_RECORDER_INGRESS_RECOVERY_DIR:-/mnt/tirosh/run/recorder-ingress-recovery}
         target: /var/lib/vitalserver-recorder-ingress/recovery
     healthcheck:
       test:
@@ -129,12 +173,16 @@ services:
     build:
       context: .
       dockerfile: apps/vitalserver-recorder-ingress/Dockerfile
-    image: vitalserver-recorder-ingress:0.1.0
+    image: vitalserver-recorder-ingress:0.2.1
     security_opt:
       - seccomp=unconfined
     depends_on:
       app:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      postgres-migrate:
+        condition: service_completed_successfully
       recorder-recovery:
         condition: service_healthy
       redis:
@@ -144,6 +192,25 @@ services:
     environment:
       RECORDER_INGRESS_UPSTREAM_HOST: app
       RECORDER_INGRESS_UPSTREAM_PORT: "80"
+      VITALSERVER_ADMIN_PASSWORD: "${VITALSERVER_ADMIN_PASSWORD:-admin}"
+      RECORDER_INGRESS_NATIVE_UPLOAD_STATE_PATH: "${RECORDER_INGRESS_NATIVE_UPLOAD_STATE_PATH:-/var/lib/vitalserver-recorder-ingress/recovery/native-vital-uploads.json}"
+      RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY: "${RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY:-/var/lib/vitalserver-recorder-ingress/observability}"
+      RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES: "${RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES:-5242880}"
+      RECORDER_INGRESS_OBSERVABILITY_ENABLED: "${RECORDER_INGRESS_OBSERVABILITY_ENABLED:-1}"
+      RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN: "${RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN}"
+      RECORDER_INGRESS_POSTGRES_HOST: "${RECORDER_INGRESS_POSTGRES_HOST:-postgres}"
+      RECORDER_INGRESS_POSTGRES_PORT: "${RECORDER_INGRESS_POSTGRES_PORT:-5432}"
+      RECORDER_INGRESS_POSTGRES_DATABASE: "${RECORDER_INGRESS_POSTGRES_DATABASE:-vitalserver}"
+      RECORDER_INGRESS_POSTGRES_USER: "${RECORDER_INGRESS_POSTGRES_USER:-vitalserver}"
+      RECORDER_INGRESS_POSTGRES_PASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
+      RECORDER_INGRESS_POSTGRES_MAX_CONNECTIONS: "${RECORDER_INGRESS_POSTGRES_MAX_CONNECTIONS:-10}"
+      RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_INTERVAL_MS: "${RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_INTERVAL_MS:-1000}"
+      RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_BATCH_SIZE: "${RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_BATCH_SIZE:-100}"
+      RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_MULTIPLIER: "${RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_MULTIPLIER:-3}"
+      RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_ALLOWANCE_SECONDS: "${RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_ALLOWANCE_SECONDS:-30}"
+      RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_INTERVAL_MS: "${RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_INTERVAL_MS:-5000}"
+      RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_MAX_ATTEMPTS: "${RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_MAX_ATTEMPTS:-12}"
+      RECORDER_INGRESS_NATIVE_UPLOAD_INDEX_TIMEOUT_MS: "${RECORDER_INGRESS_NATIVE_UPLOAD_INDEX_TIMEOUT_MS:-5000}"
       VITALSERVER_REDIS_HOST: "${VITALSERVER_REDIS_HOST:-redis}"
       VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
       RECORDER_INGRESS_REDIS_TIMEOUT_MS: "${RECORDER_INGRESS_REDIS_TIMEOUT_MS:-1500}"
@@ -174,13 +241,11 @@ services:
       RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS:-60000}"
       RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS:-3}"
       RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS:-300000}"
-      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL:-http://recorder-recovery:8080/raw-archive/recover-vital}"
-      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL:-http://app:80}"
-      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT:-/upload}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_EXPORT_URL: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_EXPORT_URL:-http://recorder-recovery:8080/raw-archive/export-vital}"
       RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR:-/var/lib/vitalserver-recorder-ingress/recovery/vital-export}"
       RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH:-/var/lib/vitalserver-recorder-ingress/recovery/raw-archive-auto-export-state.json}"
       RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS: "${RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS:-3600000}"
-      RECORDER_INGRESS_SEND_DATA_MODE: "${RECORDER_INGRESS_SEND_DATA_MODE:-spool_and_replay}"
+      RECORDER_INGRESS_SEND_DATA_MODE: "${RECORDER_INGRESS_SEND_DATA_MODE:-observe_only}"
       RECORDER_INGRESS_SEND_DATA_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_REDIS_LIST:-vitalserver:recorder_ingress:send_data:pending}"
       RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST:-vitalserver:recorder_ingress:send_data:in_flight}"
       RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST:-vitalserver:recorder_ingress:send_data:replayed}"
@@ -198,25 +263,22 @@ services:
       RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY: "${RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY:-1}"
       RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY: "${RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY:-8}"
       RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS: "${RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS:-5000}"
-      RECORDER_INGRESS_RUNTIME_STATE_PATH: "${RECORDER_INGRESS_RUNTIME_STATE_PATH:-/run/tirosh/runtime/runtime-state.json}"
-      RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS: "${RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS:-15000}"
     volumes:
       - type: volume
         source: audit-logs
         target: /var/log/vitalserver-audit
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-failures
+        source: ${VITALSERVER_RECORDER_INGRESS_FAILURES_DIR:-/mnt/tirosh/run/recorder-ingress-failures}
         target: /var/log/vitalserver-recorder-ingress/failures
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-raw
+        source: ${VITALSERVER_RECORDER_INGRESS_RAW_DIR:-/mnt/tirosh/run/recorder-ingress-raw}
         target: /var/lib/vitalserver-recorder-ingress/raw
       - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-recovery
+        source: ${VITALSERVER_RECORDER_INGRESS_RECOVERY_DIR:-/mnt/tirosh/run/recorder-ingress-recovery}
         target: /var/lib/vitalserver-recorder-ingress/recovery
       - type: bind
-        source: /mnt/tirosh/run
-        target: /run/tirosh/runtime
-        read_only: true
+        source: ${VITALSERVER_RECORDER_INGRESS_OBSERVABILITY_DIR:-/mnt/tirosh/run/recorder-ingress-observability}
+        target: /var/lib/vitalserver-recorder-ingress/observability
     healthcheck:
       test:
         - CMD-SHELL
@@ -231,7 +293,7 @@ services:
     build:
       context: .
       dockerfile: apps/vitaldb-observer/Dockerfile
-    image: vitaldb-observer:0.1.0
+    image: vitaldb-observer:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
@@ -266,7 +328,7 @@ services:
     build:
       context: .
       dockerfile: apps/vitalserver-redis-relay/Dockerfile
-    image: vitalserver-redis-relay:0.1.0
+    image: vitalserver-redis-relay:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
@@ -275,69 +337,71 @@ services:
     environment:
       REDIS_RELAY_CONFIG_PATH: "${REDIS_RELAY_CONFIG_PATH:-/run/tirosh/config/redis-relay.toml}"
       REDIS_RELAY_STATUS_PATH: "${REDIS_RELAY_STATUS_PATH:-/run/tirosh/status/redis-relay-status.json}"
+      REDIS_RELAY_STATUS_OWNER_SOCKET: "${REDIS_RELAY_STATUS_OWNER_SOCKET:-}"
+      REDIS_RELAY_STATUS_OWNER_URL: "${REDIS_RELAY_STATUS_OWNER_URL-http://host.docker.internal:18330/runtime/redis-relay/status}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - type: bind
-        source: /mnt/tirosh/deploy/redis-relay-config
+        source: ${VITALSERVER_REDIS_RELAY_CONFIG_DIR:-/mnt/tirosh/deploy/redis-relay-config}
         target: /run/tirosh/config
         read_only: true
       - type: bind
-        source: /mnt/tirosh/deploy/redis-relay-secrets
+        source: ${VITALSERVER_REDIS_RELAY_SECRETS_DIR:-/mnt/tirosh/deploy/redis-relay-secrets}
         target: /run/tirosh/secrets
         read_only: true
       - type: bind
-        source: /mnt/tirosh/run/redis-relay-status
+        source: ${VITALSERVER_REDIS_RELAY_STATUS_DIR:-/mnt/tirosh/run/redis-relay-status}
         target: /run/tirosh/status
+      - type: bind
+        source: ${VITALSERVER_RUNTIME_RUN_DIR:-/mnt/tirosh/run}
+        target: /run/tirosh/status-owner
+        read_only: true
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          python -c "import json,os,sys; path=os.environ.get('REDIS_RELAY_STATUS_PATH','/run/tirosh/status/redis-relay-status.json'); data=json.load(open(path)); state=data.get('state'); sys.exit(0 if data.get('schemaVersion') == 1 and state in {'disabled','running','running_with_errors','relay_failed','config_invalid'} else 1)"
+          python -c "import os,sys; socket=os.environ.get('REDIS_RELAY_STATUS_OWNER_SOCKET'); url=os.environ.get('REDIS_RELAY_STATUS_OWNER_URL'); sys.exit(0 if (socket and os.path.exists(socket)) or url else 1)"
       interval: 10s
       timeout: 5s
       retries: 30
     restart: unless-stopped
 
-  testkit:
+  lab:
     build:
       context: .
-      dockerfile: packages/vitalserver-testkit/Dockerfile
-    image: vitalserver-testkit:0.1.1
+      dockerfile: apps/vitalserver-lab/Dockerfile
+    image: vitalserver-lab:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
-      edge:
+      postgres:
+        condition: service_healthy
+      postgres-migrate:
+        condition: service_completed_successfully
+      recorder-ingress:
         condition: service_healthy
     ports:
-      - "18322:18322"
+      - "127.0.0.1:18085:8080"
     volumes:
-      - type: volume
-        source: testkit-state
-        target: /var/lib/vitalserver-testkit
       - type: bind
         source: ${VITALSERVER_VITAL_FILES_DIR:-/mnt/tirosh-vital-files}
         target: /mnt/tirosh-vital-files
         read_only: true
-      - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-raw
-        target: /var/lib/vitalserver-recorder-ingress/raw
-        read_only: true
-      - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-recovery
-        target: /var/lib/vitalserver-recorder-ingress/recovery
-    command:
-      - vitalserver-testkit
-      - serve
-      - --config
-      - "/opt/vitalserver-testkit/config/testkit.toml"
-      - --host
-      - "0.0.0.0"
-      - --port
-      - "18322"
+    environment:
+      VITALSERVER_LAB_HOST: "${VITALSERVER_LAB_HOST:-0.0.0.0}"
+      VITALSERVER_LAB_PORT: "${VITALSERVER_LAB_PORT:-8080}"
+      VITALSERVER_LAB_SERVICE_NAME: "${VITALSERVER_LAB_SERVICE_NAME:-vitalserver-lab}"
+      VITALSERVER_LAB_SESSION_STORE: "postgres"
+      VITALSERVER_LAB_DATABASE_URL: "postgresql://vitalserver@postgres:5432/vitalserver"
+      VITALSERVER_LAB_VITAL_FILES_MOUNT: "/mnt/tirosh-vital-files"
+      VITALSERVER_LAB_RECORDER_ARCHIVE_FINALIZE_URL: "http://recorder-ingress:8080/recorder-ingress/raw-archive/finalize"
+      PGPASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:18322/health', timeout=3).status == 200 else 1)"
+          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3).status == 200 else 1)"
       interval: 10s
       timeout: 5s
       retries: 30
@@ -382,11 +446,11 @@ services:
       URLS_PRIMARY_NAME: "VitalServer"
     volumes:
       - type: bind
-        source: /mnt/tirosh/deploy/docs
+        source: ${VITALSERVER_DOCS_DIR:-/mnt/tirosh/deploy/docs}
         target: /usr/share/nginx/html/docs
         read_only: true
       - type: bind
-        source: /mnt/tirosh/deploy/docs/openapi.yaml
+        source: ${VITALSERVER_OPENAPI_PATH:-/mnt/tirosh/deploy/docs/openapi.yaml}
         target: /usr/share/nginx/html/openapi.yaml
         read_only: true
     healthcheck:
@@ -411,7 +475,7 @@ services:
       - "80:80"
     volumes:
       - type: bind
-        source: /mnt/tirosh/deploy/nginx/vitalserver.conf
+        source: ${VITALSERVER_NGINX_CONFIG_PATH:-/mnt/tirosh/deploy/nginx/vitalserver.conf}
         target: /etc/nginx/conf.d/default.conf
         read_only: true
       - type: volume
@@ -425,8 +489,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres-data:
   redis-data:
   vital-tmp-files:
   audit-logs:
   edge-logs:
-  testkit-state:

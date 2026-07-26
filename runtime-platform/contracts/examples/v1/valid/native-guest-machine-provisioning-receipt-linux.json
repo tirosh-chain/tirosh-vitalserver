@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "v1",
+  "configurationId": "vitalserver-linux-guest-machine",
+  "configurationSHA256": "3333333333333333333333333333333333333333333333333333333333333333",
+  "providerKind": "linux-kvm-libvirt-systemd",
+  "providerId": "vitalserver-linux-provider",
+  "machineId": "vitalserver-guest",
+  "guestArchitecture": "amd64",
+  "releaseArtifacts": {
+    "nativeGuestArtifactManifest": {
+      "artifactSetId": "vitalserver-guest-amd64-0.2.0",
+      "sizeBytes": 1024,
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "bootableGuestDisk": {
+      "id": "guest-root",
+      "sizeBytes": 4294967296,
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "storageImageFormat": "raw"
+    },
+    "guestProductBootstrapVolume": {
+      "id": "guest-product-bootstrap",
+      "sizeBytes": 104857600,
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "storageImageFormat": "raw"
+    }
+  },
+  "runtimeStorage": {
+    "rootDiskPath": "/var/lib/vitalserver/guest/vitalserver-guest.qcow2",
+    "bootstrapVolumePath": "/var/lib/vitalserver/guest/guest-product-bootstrap.qcow2",
+    "runtimeImageFormat": "qcow2"
+  },
+  "completedAt": "2026-07-19T00:00:00Z"
+}

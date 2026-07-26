@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v1",
+  "catalogId": "guest-product-lab-scenarios",
+  "scenarios": [
+    {
+      "id": "baseline-monitoring",
+      "packetIntervalMilliseconds": 250,
+      "minimumPacketCountBeforeStop": 1,
+      "archiveOnTerminalStop": true
+    },
+    {
+      "id": "postoperative-recovery",
+      "packetIntervalMilliseconds": 250,
+      "minimumPacketCountBeforeStop": 1,
+      "archiveOnTerminalStop": true
+    }
+  ]
+}

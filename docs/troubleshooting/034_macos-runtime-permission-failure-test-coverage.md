@@ -120,7 +120,7 @@ rg -n "readData|readUTF8Text|writeData|copyItem|moveItem|removeItem|chmod|posixP
 5. Settings/Observability/Export logs 경로를 검증합니다.
    - secret-bearing file은 Helper가 직접 읽지 않아야 합니다.
    - Helper-readable read model은 권한 실패 시 `readIssues`를 노출해야 합니다.
-   - SQLite query 실패는 JSONL fallback 또는 `readError`로 노출되어야 합니다.
+   - SQLite/query backing 실패는 빈 event list가 아니라 `readError`로 노출되어야 합니다.
    - Export logs는 일부 supplemental item 실패를 manifest issue로 남기고 가능한 로그는 계속 export해야 합니다.
 
 ## Prevention

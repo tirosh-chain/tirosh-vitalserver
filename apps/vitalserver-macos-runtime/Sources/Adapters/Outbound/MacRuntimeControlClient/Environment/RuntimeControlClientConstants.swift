@@ -24,6 +24,27 @@ enum RuntimeControlClientConstants {
         static func guestHealthURL(vmIP: String) -> String {
             "http://\(vmIP)/ready"
         }
+
+        static func guestControlAPIBaseURL(vmIP: String) -> String {
+            "http://\(vmIP):18330"
+        }
+
+        static func guestControlAPIBaseURL(
+            guestAddressRead: RuntimeGuestAddressReadResult
+        ) -> String? {
+            guard let vmIP = guestAddressRead.loadedAddress?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !vmIP.isEmpty
+            else {
+                return nil
+            }
+            return guestControlAPIBaseURL(vmIP: vmIP)
+        }
+
+        static let guestControlAPIReadinessTimeoutSeconds: TimeInterval = 5
+        static let guestControlAPIStackStatusTimeoutSeconds: TimeInterval = 5
+        static let guestControlAPIProductReadModelTimeoutSeconds: TimeInterval = 5
+        static let guestControlAPIDiagnosticsTimeoutSeconds: TimeInterval = 5
     }
 
     enum StatusText {
@@ -49,9 +70,6 @@ enum RuntimeControlClientConstants {
         static let repairServices = "repair-services"
         static let startServices = "start-services"
         static let stopServices = "stop-services"
-        static let startTestKit = "testkit-start"
-        static let stopTestKit = "testkit-stop"
-        static let restartTestKit = "testkit-restart"
         static let boolTrue = "true"
         static let boolFalse = "false"
         static let optionCPU = "--cpu"
@@ -59,6 +77,7 @@ enum RuntimeControlClientConstants {
         static let optionDiskGiB = "--disk-gib"
         static let optionNetwork = "--network"
         static let optionProxyPort = "--proxy-port"
+        static let optionRuntimeControlPort = "--runtime-control-port"
         static let optionVitalFilesDirectory = "--vital-files-dir"
         static let optionVitalServerURL = "--vitalserver-url"
         static let optionRemoteConsoleURL = "--remote-console-url"
@@ -80,10 +99,10 @@ enum RuntimeControlClientConstants {
         static let optionBackupRetention = "--backup-retention"
         static let optionLogArchiveRetentionDays = "--log-archive-retention-days"
         static let optionLogArchiveMaximumGiB = "--log-archive-maximum-gib"
-        static let optionRedisRelaySettingsFile = "--redis-relay-settings-file"
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
         static let optionRestart = "--restart"
+        static let optionRestartVMRuntime = "--restart-vm-runtime"
     }
 
     enum Environment {
@@ -96,20 +115,11 @@ enum RuntimeControlClientConstants {
         static let vmHome = installed.runtimeHome.path
         static let launcher = installed.launcher.path
         static let uninstaller = installed.uninstaller.path
-        static let vmIPFile = installed.vmIPFile.path
-        static let runtimeState = installed.runtimeState.path
-        static let runtimeStatus = installed.runtimeStatus.path
-        static let runtimeInstallState = installed.runtimeInstallState.path
-        static let runtimeOperationLease = installed.runtimeOperationLease.path
-        static let runtimeEvents = installed.runtimeEvents.path
-        static let runtimeObservabilityDB = installed.runtimeObservabilityDB.path
         static let runtimeControlSettings = installed.runtimeControlSettings.path
-        static let appliedVMConfig = installed.appliedVMConfig.path
-        static let vmLifecycle = installed.vmLifecycle.path
         static let managerApp = installed.managerApp.path
         static let installLog = installed.installLog.path
         static let productLogs = installed.productLogsDirectory.path
-        static let uninstallLog = "/private/tmp/tirosh-vitalserver-uninstall.log"
+        static let uninstallLog = installed.runtimeUninstallLog.path
         static let runtimeLogs = installed.centralRuntimeLogsDirectory.path
         static let runtimeLogSources = installed.logsDirectory.path
         static let guestLogs = installed.centralGuestLogsDirectory.path

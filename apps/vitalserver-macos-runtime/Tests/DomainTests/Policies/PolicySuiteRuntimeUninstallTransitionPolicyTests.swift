@@ -27,26 +27,59 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         XCTAssertEqual(standardStart.message, "uninstall started")
     }
 
-    func testRedisBackupRequestAndCompletionAreExplicitTransitions() throws {
-        let requested = try RuntimeUninstallTransitionPolicy.transition(
+    func testVitalFilesOwnershipUnavailableBlocksBeforeAnyEffectCommand() throws {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
             from: .started,
-            event: .redisBackupRequested
+            event: .vitalFilesOwnershipUnavailable(
+                reason: "host-settings-read-failed:reason=permission denied",
+                forceClean: false
+            )
         )
 
-        XCTAssertEqual(requested.state, .redisBackupRequested)
-        XCTAssertEqual(requested.persistedState, .redisBackupRequested)
-        XCTAssertEqual(requested.commands, [.createRedisBackup])
-        XCTAssertEqual(requested.message, "redis backup requested")
+        XCTAssertEqual(decision.state, .failed)
+        XCTAssertEqual(decision.persistedState, .failed)
+        XCTAssertEqual(decision.commands, [])
+        XCTAssertEqual(decision.blockers, [
+            "vital-files-ownership-unavailable:reason=host-settings-read-failed:reason=permission denied",
+        ])
+    }
+
+    func testForceCleanExplicitlyAcceptsUnavailableVitalFilesOwnershipWithoutInferringIt() throws {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
+            from: .started,
+            event: .vitalFilesOwnershipUnavailable(
+                reason: "host-settings-missing",
+                forceClean: true
+            )
+        )
+
+        XCTAssertEqual(decision.state, .started)
+        XCTAssertNil(decision.persistedState)
+        XCTAssertEqual(decision.commands, [])
+        XCTAssertEqual(decision.blockers, [])
+        XCTAssertEqual(decision.message, "force-clean Vital files ownership override accepted")
+    }
+
+    func testVitalServerBackupRequestAndCompletionAreExplicitTransitions() throws {
+        let requested = try RuntimeUninstallTransitionPolicy.transition(
+            from: .started,
+            event: .vitalServerBackupRequested
+        )
+
+        XCTAssertEqual(requested.state, .vitalServerBackupRequested)
+        XCTAssertEqual(requested.persistedState, .vitalServerBackupRequested)
+        XCTAssertEqual(requested.commands, [.createVitalServerBackup])
+        XCTAssertEqual(requested.message, "VitalServer backup requested")
 
         let completed = try RuntimeUninstallTransitionPolicy.transition(
             from: requested.state,
-            event: .redisBackupSucceeded
+            event: .vitalServerBackupSucceeded
         )
 
-        XCTAssertEqual(completed.state, .redisBackupCompleted)
-        XCTAssertEqual(completed.persistedState, .redisBackupCompleted)
+        XCTAssertEqual(completed.state, .vitalServerBackupCompleted)
+        XCTAssertEqual(completed.persistedState, .vitalServerBackupCompleted)
         XCTAssertEqual(completed.commands, [])
-        XCTAssertEqual(completed.message, "redis backup completed")
+        XCTAssertEqual(completed.message, "VitalServer backup completed")
     }
 
     func testStopRequestMustFollowStartedOrCompletedBackupState() throws {
@@ -60,7 +93,7 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         XCTAssertEqual(cleanStopRequest.commands, [.stopRuntimeServices])
 
         let standardStopRequest = try RuntimeUninstallTransitionPolicy.transition(
-            from: .redisBackupCompleted,
+            from: .vitalServerBackupCompleted,
             event: .stopServicesRequested
         )
 
@@ -225,7 +258,10 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         let blocked = try RuntimeUninstallTransitionPolicy.transition(
             from: .receiptsForgetStarted,
             event: .packageReceiptsObserved([
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
             ])
         )
 
@@ -251,7 +287,10 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         let cases: [(name: String, state: RuntimePackageReceiptState, blocker: String)] = [
             (
                 "present receipt",
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
                 "package-receipt-present:identifier=ai.tirosh.vitalserver.helper"
             ),
             (
@@ -323,7 +362,7 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         serviceState: RuntimeServiceState = .notLoaded
     ) -> RuntimeUninstallReadinessInput {
         RuntimeUninstallReadinessInput(
-            serviceStates: Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map {
+            serviceStates: Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map {
                 ($0, serviceState)
             }),
             vmProcessState: vmProcessState,

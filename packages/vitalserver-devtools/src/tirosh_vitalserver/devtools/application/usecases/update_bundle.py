@@ -18,5 +18,8 @@ def build_update_bundle(input: BuildUpdateBundleInput) -> int:
 
 def verify_update_bundle(input: VerifyUpdateBundleInput) -> int:
     verify_bundle(input.bundle_path)
-    print(f"update bundle verified: {input.bundle_path}")
+    print(
+        "update bundle integrity checked; "
+        f"publisher authenticity unverified: {input.bundle_path}"
+    )
     return 0

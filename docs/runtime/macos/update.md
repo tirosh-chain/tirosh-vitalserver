@@ -7,9 +7,9 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 질문 | 답 |
 |---|---|
 | update 입력 단위는? | `dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball |
-| 현장 적용 UI는? | Product Update는 Helper app의 Update 탭, VM Image Update는 Danger Zone |
-| CLI backend는? | `/usr/local/bin/vitalserver-vm runtime apply-bundle` |
-| 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size |
+| 현장 적용 UI는? | 0.2.1 UI는 integrity 확인만 제공하고 apply는 `canApplyBundle=false`로 차단한다 |
+| CLI backend는? | 0.2.1에서는 installed `dev` launcher와 명시적 `--allow-unsigned-dev-bundle` intent만 `/usr/local/bin/vitalserver-vm runtime apply-bundle`을 실행할 수 있다 |
+| 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size로 integrity를 확인한다. publisher authenticity는 검증하지 않는다 |
 | Product Update bundle에 rootfs가 들어가나? | 아니다. `make dist/update/release`는 rootfs를 제외한다 |
 | rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make dist/image-update/release`를 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
@@ -18,6 +18,29 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | `bootstrap.sh` 수정은 update bundle로 반영되나? | 된다. `guest-deploy.tar.gz`에 포함되고 기본 migration/activation 경로로 반영된다 |
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
 | update 중 watchdog이 복구를 시도하나? | 안 한다. `apply-bundle`, `activate-guest-update`, `rollback` 진행 중에는 watchdog auto-recovery를 suppress한다 |
+
+## 0.2.1 Update Apply 제한
+
+0.2.1 bundle의 `signature` 파일은 `unsigned` placeholder이고 trusted publisher verification 구현과 trust root/config 계약이 없습니다. 따라서 integrity 확인 성공을 publisher 인증 성공으로 취급하면 안 됩니다.
+
+| 진입점 | 0.2.1 계약 |
+|---|---|
+| Helper native UI / Runtime Control PWA | `canApplyBundle=false`; integrity 확인 가능, apply 비활성 |
+| `POST /platform/update-bundles/apply` | 항상 `501`과 `updateApplyUnavailable`; Host apply command를 호출하지 않음 |
+| CLI 기본 `apply-bundle <path>` | publisher verification unavailable 오류로 lease/state/staging 전에 거부 |
+| stable/unknown installed launcher + dev flag | dev flag가 있어도 lease/state/staging 전에 거부 |
+| dev installed launcher + dev flag | 로컬 개발 apply만 허용 |
+| Updater bridge/two-phase | publisher trust 우회가 아니며 계속 차단 |
+
+로컬 개발 설치본의 유일한 허용 명령은 다음과 같습니다.
+
+```sh
+sudo /usr/local/bin/vitalserver-vm runtime apply-bundle \
+  /path/to/update-bundle-dev-<kind>-<releaseLabel>.tar.gz \
+  --allow-unsigned-dev-bundle
+```
+
+이 flag는 bundle channel을 보고 dev 상태를 추론하지 않습니다. 설치된 binary가 가진 `Constants.launcherChannel`이 명시적으로 `dev`여야 하며 API/native worker는 이 flag를 전달하지 않습니다. Dev apply-smoke만 이 intent를 전달하고 stable apply-smoke는 `sudo` 전에 명시적으로 실패합니다.
 
 ## Update 안정성 기준
 
@@ -57,7 +80,7 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 
 | 원칙 | 기준 |
 |---|---|
-| update protocol은 baseline 계약 유지 | `manifest.json`, `activate-update.request`, `runtime-version.json`, status/result JSON은 지금 정의한 필수 필드와 확장 규칙을 유지한다 |
+| update protocol은 baseline 계약 유지 | `manifest.json`, Guest Control maintenance API, `runtime-version.json`, status JSON은 지금 정의한 필수 필드와 확장 규칙을 유지한다 |
 | updater는 보수적으로 변경 | update를 수행하는 host runtime tool과 guest activation script는 일반 runtime보다 더 강한 호환성 기준을 적용한다 |
 | request 필드는 신중히 확장 | 배포 이후 새 필드는 optional 또는 기본값을 가져야 하고, 필수 필드 추가는 bridge/two-phase update 대상이다 |
 | 모르는 필드는 무시 | reader는 알 수 없는 JSON field 때문에 실패하면 안 된다 |
@@ -68,27 +91,25 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 
 ### Update Protocol 계약
 
-아래 파일은 update 호환성의 public contract로 취급합니다.
+아래 계약은 update 호환성의 public contract로 취급합니다.
 
-| 파일 | 생산자 | 소비자 | 호환성 기준 |
+| 계약 | 생산자 | 소비자 | 호환성 기준 |
 |---|---|---|---|
 | `manifest.json` | build tool | host Updater | `schemaVersion`, `channel`, `helperVersion`, `releaseLabel`, artifact 목록, compatibility field를 포함 |
 | `checksums.txt` | build tool | host verifier | artifact path와 sha256/size 검증 기준 |
-| `activate-update.request` | host Updater | guest activation script | `requestId`, `requestedAt`, `operation`, `version`은 baseline 필수 |
-| `activate-update-result.json` | guest activation script | host Updater/Helper UI | `requestId`, `status`, `message`, `updatedAt`은 항상 기록 |
-| `prepare-update-shutdown.request` | host VM state control | guest shutdown worker | `requestId`, `operation`, `version`, `requestedAt`은 baseline 필수. request는 single-shot trigger |
-| `prepare-update-shutdown-result.json` | guest shutdown worker | host VM state control/Updater | `requestId`, `status`, `message`, `updatedAt`, failure `details`를 보존 |
-| `runtime-status.json` | host Updater/Supervisor | Helper UI | operation/step/status는 enum 계약으로 유지 |
+| `POST /runtime/maintenance/update-activation` | Host Updater | Guest Control API | `requestId`, `version`은 baseline 필수. result는 Guest operation document로 보존 |
+| `POST /runtime/maintenance/update-shutdown` | host VM state control | Guest Control API | `requestId`, `version`은 baseline 필수. `poweroff-ready`는 Guest operation result로 보존 |
+| `POST /runtime/maintenance/guest-poweroff` | host VM state control | Guest Control API | shutdown operation이 `poweroff-ready`인 뒤 별도 poweroff operation으로 실행 |
+| Host operation lease | host Updater/Supervisor | Helper UI/watchdog | active operation owner. `operation`, owner, heartbeat, expiry를 명시 |
+| `runtime-progress.json` | host Updater/Supervisor | diagnostics/export | workflow step/progress display artifact. operation/step/status는 enum 계약으로 유지하지만 Runtime Control current read model, active operation, health owner가 아님 |
+| `runtime-status.json` | host Updater/Supervisor | diagnostics/export | diagnostics/status projection. current runtimeState, active operation, progress owner가 아님 |
 | `runtime-version.json` | installer/Updater | Helper UI/Updater | 현재 installed component version 표시와 rollback 판단 기준 |
 
-현재 baseline에서 host updater는 아래 형식의 request를 씁니다.
+현재 baseline에서 Host updater는 Guest Control API에 아래 형식의 body를 보냅니다.
 
 ```json
 {
-  "operation": "activate-update",
   "requestId": "2DD1A7A8-1C51-4D6B-8DF1-89C62B7F63B3",
-  "schemaVersion": 2,
-  "requestedAt": "2026-05-22T00:00:00Z",
   "version": "1.2.3"
 }
 ```
@@ -146,6 +167,17 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 | `requiresTwoPhaseUpdate` | updater 자체를 먼저 갱신해야 하는 bridge update가 필요한지 |
 
 Reader는 required contract field 누락을 실패로 처리합니다. 새 필드는 가능한 optional metadata로 추가하고, required field/schema major version을 바꾸는 경우에는 기존 Updater가 읽을 수 있는 bridge/two-phase Product Update를 먼저 제공해야 합니다. Stable/dev artifact identity와 optional container 포함 정책은 `apps/vitalserver-macos-runtime/release.json` 및 `release-dev.json`을 SoT로 삼고, build tool이 manifest로 변환합니다.
+
+`requiresTwoPhaseUpdate`의 owner 경계는 아래처럼 고정합니다.
+
+| 경계 | 책임 |
+|---|---|
+| Make/release command | updater bridge 필요 여부를 명시적으로 입력하며 기본값은 `false` |
+| release use case | 입력값을 bundle kind나 artifact로 추론하지 않고 manifest builder에 전달 |
+| manifest builder | 전달받은 boolean을 `requiresTwoPhaseUpdate`에 그대로 기록 |
+| installed Swift Updater | normal apply에서 `true`를 거부하고 bridge 절차가 필요함을 보고 |
+
+따라서 `vm-image-update`이거나 `rootfs-base.raw.gz`를 포함한다는 사실만으로 이 값이 `true`가 되지 않습니다. 일반 VM Image Update는 normal apply preflight를 통과할 수 있어야 하며, 기존 Updater가 새 계약을 이해하지 못하는 실제 bridge Product Update만 build 호출에서 `true`를 명시합니다.
 
 ### Two-Phase Update 기준
 
@@ -212,54 +244,66 @@ bridge bundle:
   - 대용량 Docker image bundle
 ```
 
+Build에서도 bridge 여부를 별도로 선언합니다.
+
+```sh
+# 일반 VM Image Update: requiresTwoPhaseUpdate=false
+make dist/image-update/dev
+
+# 기존 Updater를 먼저 교체해야 하는 명시적 bridge Product Update
+make dist/update/dev VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE=true
+```
+
 ### Idempotency 기준
 
 update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 위해 단계별 marker 또는 result를 남깁니다.
 
 | 단계 | marker/log 기준 |
 |---|---|
-| verification completed | command log |
+| integrity check completed; publisher authenticity unverified | command log |
 | bundle staged | staged bundle path |
 | backup created | `backups/<timestamp>-before-<version>` |
 | artifacts replaced | runtime progress step |
-| guest activation requested | `activate-update.request` |
-| guest activation completed | `activate-update-result.json` status `completed` |
-| health passed | `runtime-status.json` state `healthy` |
+| guest activation requested | Guest Control `POST /runtime/maintenance/update-activation` accepted operation |
+| guest activation completed | Guest Control operation state `completed` |
+| health passed | explicit runtime health owner reads report healthy; `runtime-status.json` may only mirror this as diagnostics projection |
 | update committed | `runtime-version.json` version 갱신 |
 
 재실행 시에는 아래를 지켜야 합니다.
 
 - 이미 staged된 같은 bundle은 검증 후 재사용할 수 있다.
 - 이미 존재하는 backup은 덮어쓰지 않고 새 backup을 만들거나 명시적으로 재사용한다.
-- stale `activate-update-result.json`은 request id 또는 timestamp로 구분한다.
-- stale `activate-update.request`는 새 요청 전 제거하거나 새 request id로 덮어쓴다.
+- stale Guest operation result는 operation id와 request id로 구분한다.
+- old request/result files are historical install evidence only; current update flow must not use them.
 - rollback 중에도 운영 데이터 경로는 삭제하지 않는다.
 
 ### Guest Activation Baseline
 
-게스트 activation script는 update 안정성에서 가장 보수적으로 다룹니다.
+Guest activation은 Guest Control maintenance operation으로 실행합니다. Host는
+`POST /runtime/maintenance/update-activation`을 호출하고, Guest operation document를
+polling해서 activation 상태를 확인합니다.
 
 필수 동작:
 
 | 케이스 | 동작 |
 |---|---|
-| `python3` 없음 | 실패하되 명확한 message와 result 기록. 단, 제품 rootfs에는 `python3`를 필수 포함 |
-| `requestId` 없음 | baseline 계약 위반으로 failed result 기록 |
-| `version` 없음 | baseline 계약 위반으로 failed result 기록 |
-| request JSON 파싱 실패 | failed result와 log 기록 |
+| `python3` 없음 | 실패하되 명확한 message와 operation failure 기록. 단, 제품 rootfs에는 `python3`를 필수 포함 |
+| `requestId` 없음 | baseline 계약 위반으로 failed operation 기록 |
+| `version` 없음 | baseline 계약 위반으로 failed operation 기록 |
+| request JSON 파싱 실패 | failed operation과 log 기록 |
 | Docker image bundle 없음 | image load는 skip 가능하되 compose recreate는 정책에 따라 진행 |
-| compose 실패 | failed result와 container log 확인 안내 |
+| compose 실패 | failed operation과 container log 확인 안내 |
 
 구현 기준:
 
 ```text
-activation request reader:
+activation operation input:
   - requestId required
   - version required
   - schemaVersion required
   - operation required
 
-activation result writer:
+activation operation result:
   - schemaVersion always written
   - requestId always written from request
   - status always written
@@ -269,29 +313,31 @@ activation result writer:
 
 ### Guest Update Shutdown Baseline
 
-Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥 내리지 않습니다. Host는 먼저 `prepare-update-shutdown.request`를 쓰고, Guest가 명시 result를 남길 때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
+Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥 내리지 않습니다. Host는 먼저 Guest Control `POST /runtime/maintenance/update-shutdown`을 호출하고, Guest operation이 `poweroff-ready`를 남길 때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
 
-이 shutdown request는 update-specific operation입니다. Settings restart, watchdog recovery, service repair가 같은 request를 재사용하거나 stale request를 다시 실행하면 안 됩니다.
+이 shutdown operation은 update-specific operation입니다. Settings restart, watchdog
+recovery, service repair가 같은 operation input을 재사용하거나 stale file artifact를
+다시 실행하면 안 됩니다.
 
 필수 동작:
 
 | 단계 | 기준 |
 |---|---|
-| capability preflight | Host는 Guest가 `prepare-update-shutdown` capability를 보고한 경우에만 request를 쓴다 |
-| request consume | Guest worker는 request를 읽고 `running` result를 기록한 직후 request file을 소비한다 |
+| capability preflight | Host는 Guest가 update shutdown capability를 보고한 경우에만 Guest Control operation을 시작한다 |
+| operation accepted | Guest Control API는 operation id를 반환하고 `accepted` 또는 `running` 상태를 기록한다 |
 | Redis backup | update 전 Redis data backup을 만들고 실패하면 typed failure로 중단한다 |
 | compose stop | service별 명시 순서와 timeout으로 container를 중지한다 |
 | final sync | filesystem sync가 끝난 뒤에만 poweroff request를 진행한다 |
-| poweroff handoff | final sync 직후 `ready`/`poweroff-ready` result를 먼저 durable write하고, 그 다음 `systemctl --no-block poweroff`를 요청한다 |
-| host wait | Host는 result와 VM lifecycle/poweroff wait를 분리해서 관측한다 |
+| poweroff handoff | final sync 직후 Guest Control operation을 `poweroff-ready`로 완료하고, Host가 별도 `guest-poweroff` operation을 요청한다 |
+| host wait | Host는 Guest operation state와 VM lifecycle/poweroff wait를 분리해서 관측한다 |
 
 Compose stop은 whole-stack fallback이 아니라 아래 순서의 명시 operation입니다.
 
 ```text
-testkit -> edge -> swagger-ui -> redis-ui -> recorder-ingress -> vitaldb-observer -> app -> redis
+edge -> swagger-ui -> redis-ui -> lab -> vitaldb-observer -> redis-relay -> recorder-ingress -> recorder-recovery -> app -> postgres -> redis
 ```
 
-기본 stop timeout은 30초입니다. `app`은 90초, `redis`는 60초로 둡니다. timeout이나 dependency failure가 발생하면 Guest는 `prepare-update-shutdown-result.json`에 아래 정보를 남깁니다.
+기본 stop timeout은 30초입니다. `app`은 90초, `redis`는 60초로 둡니다. timeout이나 dependency failure가 발생하면 Guest Control operation failure/result에 아래 정보를 남깁니다.
 
 | field | 의미 |
 |---|---|
@@ -300,7 +346,7 @@ testkit -> edge -> swagger-ui -> redis-ui -> recorder-ingress -> vitaldb-observe
 | `details.serviceStates` | failure snapshot의 compose service state |
 | `details.failureSnapshotPath` | diagnostics/snapshot artifact 경로 |
 
-Host는 이 result를 update failure로 소비해야 합니다. 로그 tail, missing marker, VM process 종료 여부로 Guest shutdown success를 추정하지 않습니다.
+Host는 이 Guest operation을 update failure로 소비해야 합니다. 로그 tail, missing marker, VM process 종료 여부로 Guest shutdown success를 추정하지 않습니다.
 
 Rollback 중 health wait에서 `host-proxy-http-*`, `recorder-ingress-http-failed`, `container-service-*-state-exited` 같은 transient reason이 먼저 보일 수 있습니다. 최종적으로 `hostProxyHTTP=200`과 runtime health가 확인되면 rollback health wait는 성공입니다. 다만 rollback 성공은 update 성공이 아니며, command log와 runtime event에는 update failure와 rollback success가 둘 다 남아야 합니다.
 
@@ -313,8 +359,8 @@ update bundle을 배포 후보로 보려면 아래를 통과해야 합니다.
 | fresh install | clean machine 또는 clean runtime home에서 설치 성공 |
 | same-version apply | 같은 version bundle을 적용해도 깨지지 않음 |
 | previous-version apply | 직전 버전 설치본에서 최신 bundle 적용 성공 |
-| invalid request apply | `requestId` 없는 activation request는 명확한 실패 result를 남김 |
-| update shutdown | `prepare-update-shutdown` capability, request consume, ordered compose stop, poweroff request result 검증 |
+| invalid operation apply | `requestId` 없는 activation operation은 명확한 failure를 남김 |
+| update shutdown | update shutdown capability, operation accepted/running/completed state, ordered compose stop, poweroff handoff 검증 |
 | guest activation | Docker image load와 compose recreate가 수행됨 |
 | health wait | VitalServer, Redis, network access가 ready |
 | rollback | 의도적 실패 bundle에서 update failure와 rollback success가 모두 기록되고 managed backup rollback 성공 |
@@ -434,7 +480,7 @@ VM Image Update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치
 | Vital files | configured vital files directory | 보존 |
 | VR release files | `vm/data/vr-release` | 보존 |
 | Redis data | guest Docker volume `redis-data` | 보존 |
-| runtime status | `status/runtime-status.json` | update/rollback 상태로 갱신 |
+| runtime status | `status/runtime-status.json` | diagnostics/status projection으로 갱신. current operation/health owner가 아님 |
 | install/update logs | `logs/`, `/private/tmp/tirosh-vitalserver-manager-command.log` | 보존 또는 rotation |
 | managed backups | `backups/<timestamp>-before-<version>` | 생성/보존 |
 | Helper app | `/Applications/VitalServer Helper.app` | 교체 |
@@ -444,14 +490,14 @@ VM Image Update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치
 
 `guest-deploy.tar.gz` 안에 Docker image bundle이 포함되어도, 그것은 “host shared directory에 새 image tar가 놓였다”는 뜻입니다. VM 안의 Docker daemon에 image가 실제로 load되고, 기존 container가 새 image로 recreate되는 것은 별도의 guest-side activation입니다.
 
-따라서 `apps/vitalserver-macos-runtime/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 이미 설치된 현장에서 실제로 반영되려면 Helper Update 탭 또는 `apply-bundle`로 해당 bundle을 적용해야 합니다.
+따라서 `apps/vitalserver-macos-runtime/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 0.2.1에서는 Helper Update 탭과 stable CLI apply가 차단되므로 실제 반영은 installed dev launcher의 명시적 개발 apply에만 허용됩니다.
 
 ## Apply 과정
 
-Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합니다.
+아래 lifecycle은 publisher trust gate를 통과한 apply에만 실행됩니다. 0.2.1에서는 installed dev launcher가 명시적 개발 intent를 받은 경우뿐입니다. Helper Update 탭과 Runtime Control API는 이 lifecycle을 시작하지 않습니다.
 
 ```text
-1. verify bundle
+1. check bundle integrity; publisher authenticity remains unverified
 2. stage bundle
 3. free-space preflight
 4. create managed backup
@@ -470,7 +516,7 @@ Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합�
 
 | 단계 | 설명 |
 |---|---|
-| verify | `manifest.json`, `checksums.txt`, artifact sha256/size 검증 |
+| integrity check | `manifest.json`, `checksums.txt`, artifact sha256/size 검증. publisher authenticity는 검증하지 않음 |
 | stage | bundle을 product root의 `bundles/` 아래로 복사 |
 | preflight | stage/apply/backup에 필요한 여유 공간 확인 |
 | backup | rollback 가능한 artifact를 `backups/` 아래에 저장 |
@@ -479,11 +525,11 @@ Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합�
 | migrations | executable migration을 순서대로 실행 |
 | cloud-init refresh | `guest-deploy`가 바뀐 경우 새 instance-id로 seed를 갱신해 bootstrap 재실행을 유도 |
 | restart | 이전에 runtime이 running 상태였으면 VM/proxy/watchdog 재시작 |
-| guest activation | VM 내부에서 Docker image load, compose recreate, runtime-state 갱신 |
+| guest activation | VM 내부에서 Docker image load, compose recreate, Guest Control/Postgres read model 갱신 |
 | health wait | guest HTTP, host proxy, Redis UI, Swagger UI 등 runtime health 대기 |
 | rollback | health wait 실패 또는 migration 실패 시 backup 복원 시도 |
 
-Helper app은 update 중 Command log를 1초 단위로 갱신합니다. Update 탭에서는 현재 단계와 command log tail을 함께 보여주며, 상세 로그는 Logs 탭의 `Command log`, `Update activation`, `Containers` source에서 확인합니다.
+개발 apply가 실행되는 동안 Helper의 기존 진단 projection은 Command log를 1초 단위로 갱신할 수 있습니다. 상세 로그는 Logs 탭의 `Command log`, `Update activation`, `Containers` source에서 확인합니다. 이 진단 표시는 UI apply capability를 허용하지 않습니다.
 
 ## Watchdog Coordination
 
@@ -502,7 +548,7 @@ watchdog:
   read runtime health
   restart VM service
   restart proxy service
-  write runtime status
+  publish diagnostics/status projection
 ```
 
 따라서 update가 진행 중인 동안 watchdog이 auto-recovery를 실행하면 경쟁 상태가 생깁니다. 대표적인 실패 흐름은 아래입니다.
@@ -521,16 +567,16 @@ watchdog wakes up
 
 정책은 명확합니다.
 
-| runtime-status 상태 | operation | watchdog 동작 |
+| owner contract | 상태 | watchdog 동작 |
 |---|---|---|
-| `updating` | `apply-bundle` | auto-recovery skip |
-| `recovering` | `activate-guest-update` | auto-recovery skip |
-| `recovering` | `rollback` | auto-recovery skip |
-| `healthy` / `degraded` / `critical` | any | 일반 health/recovery 정책 적용 |
+| Host operation lease | active lease | auto-recovery suppress |
+| Host operation lease | missing/stale/failed read | 일반 health/recovery 정책 적용 또는 typed blocker 유지 |
+| `runtime-status.json` | any status projection | active operation lock으로 사용하지 않음 |
+| `runtime-progress.json` | any workflow progress | active operation lock이나 health/recovery state로 사용하지 않음 |
 
-skip은 영구 정지가 아닙니다. 상태 파일이 오래 방치된 경우를 대비해 grace timeout을 둡니다. 이 timeout이 지나면 watchdog은 stale update 상태로 보고 일반 recovery 정책으로 돌아갑니다.
+suppression은 영구 정지가 아닙니다. Lease가 없거나 stale이면 watchdog은 status/progress 문서에서 operation을 추론하지 않고 일반 recovery 정책으로 돌아갑니다.
 
-이 정책의 기준 파일은 `runtime-status.json`입니다. Helper UI와 watchdog은 같은 상태 문서를 읽어 update 중인지 판단합니다. update command는 단계별 progress를 이 파일에 기록해야 하며, watchdog은 이 진행 상태를 runtime lock처럼 사용합니다.
+`runtime-status.json`은 diagnostics/status projection artifact입니다. Workflow progress detail은 Runtime Control operation-state/API owner contract에서 읽고, `runtime-progress.json`은 diagnostics/export artifact로 남깁니다. Watchdog은 status/progress 문서에서 active operation ownership이나 health/recovery state를 재구성하지 않습니다.
 
 중요한 세부 기준:
 
@@ -562,18 +608,18 @@ guest-side health 재검증
 | 단계 | 목적 |
 |---|---|
 | cloud-init seed refresh | 새 instance-id를 가진 `seed.iso`를 만들어 VM 부팅 시 `bootstrap.sh`가 다시 실행될 수 있게 함 |
-| guest activation request | `/mnt/tirosh/run/activate-update.request`를 만들고, VM 안의 `tirosh-vitalserver-activate-update`가 image load/compose recreate를 수행하게 함 |
+| guest activation request | Guest Control `POST /runtime/maintenance/update-activation`으로 VM 안의 activation adapter가 image load/compose recreate를 수행하게 함 |
 
 호환성을 위해 update bundle에도 `001-refresh-cloud-init-seed` migration을 기본 포함합니다. 이유는 중요합니다. 이미 설치된 구버전 Helper가 bundle을 적용하면, 새 Swift apply 로직은 아직 실행될 수 없습니다. 하지만 구버전 apply도 migration은 실행하므로, 이 migration이 `seed.iso`를 갱신해 VM 부팅 시 새 `guest-deploy/bootstrap.sh`가 실행될 수 있게 합니다.
 
-게스트 activation은 아래 결과 파일을 남깁니다.
+게스트 activation은 아래 로그와 Guest operation document를 남깁니다.
 
 ```text
 /mnt/tirosh/run/activate-update.log
-/mnt/tirosh/run/activate-update-result.json
+GET /runtime/operations/{operationId}
 ```
 
-호스트 update command는 이 result가 `completed`가 될 때까지 기다린 뒤 runtime health check로 넘어갑니다.
+호스트 update command는 이 operation이 `completed`가 될 때까지 기다린 뒤 runtime health check로 넘어갑니다.
 
 표준 흐름은 아래입니다.
 
@@ -582,11 +628,11 @@ host apply-bundle
   -> replace guest-deploy on shared directory
   -> refresh cloud-init seed when guest deploy changed
   -> restart VM/proxy/watchdog
-  -> run guest activation request
-      -> /mnt/tirosh/run/activate-update.request
+  -> run guest activation operation
+      -> POST /runtime/maintenance/update-activation
       -> VM 내부에서 image load
       -> docker compose recreate
-      -> runtime-state 갱신
+      -> Guest Control/Postgres read model 갱신
   -> host health wait
 ```
 
@@ -597,7 +643,7 @@ host apply-bundle
 Bundle 검증과 host-side artifact 교체가 통과했더라도, guest-side activation이 빠지면 VM 내부 Docker daemon은 이전 image/cache를 계속 사용할 수 있습니다.
 
 ```text
-bundle verified
+bundle integrity checked; publisher authenticity unverified
 bundle staged
 backup created
 replace-update-artifacts completed
@@ -710,7 +756,7 @@ tail -f /private/tmp/tirosh-vitalserver-manager-command.log
 cat "/Library/Application Support/VitalServerHelper/status/runtime-status.json"
 tail -n 200 "/Library/Application Support/VitalServerHelper/vm/data/run/container-logs.log"
 tail -n 200 "/Library/Application Support/VitalServerHelper/vm/logs/proxy.err.log"
-cat "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-state.json"
+cat "/Library/Application Support/VitalServerHelper/vm/data/run/runtime-observation.json"
 ```
 
 bundle 자체를 확인할 때:

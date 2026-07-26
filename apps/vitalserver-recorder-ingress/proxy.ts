@@ -7,14 +7,24 @@ const config = loadConfig(process.env);
 const server = createRecorderIngressServer(config);
 let shuttingDown = false;
 
-server.listen(config.listenPort, () => {
-  console.log(
-    `[recorder-ingress] listening on :${config.listenPort}, upstream=${config.upstream.host}:${config.upstream.port}, redis=${config.redis.host}:${config.redis.port}`
-  );
+start().catch((error) => {
+  console.error(`[recorder-ingress] startup failed: ${errorMessage(error)}`);
+  process.exit(1);
 });
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
+
+async function start() {
+  if (typeof server.prepareStartup === "function") {
+    await server.prepareStartup();
+  }
+  server.listen(config.listenPort, () => {
+    console.log(
+      `[recorder-ingress] listening on :${config.listenPort}, upstream=${config.upstream.host}:${config.upstream.port}, redis=${config.redis.host}:${config.redis.port}`
+    );
+  });
+}
 
 async function shutdown(signal) {
   if (shuttingDown) return;

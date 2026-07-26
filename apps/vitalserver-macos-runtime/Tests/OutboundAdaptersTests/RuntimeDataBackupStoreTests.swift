@@ -22,13 +22,14 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
 
         let store = RuntimeDataBackupStore(
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -42,6 +43,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backup = try store.createBackup(
             reason: "manual backup",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
 
@@ -52,7 +54,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
                 .appendingPathComponent("20260610T000000Z-manual-backup")
                 .path
         )
-        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+        let manifestURL = backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)
         let manifest = try JSONDecoder().decode(
             RuntimeDataBackupManifest.self,
             from: Data(contentsOf: manifestURL)
@@ -64,7 +66,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             manifest.restoreCompatibilityVersion,
             RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion
         )
-        XCTAssertEqual(manifest.artifacts.map(\.id), RuntimeDataBackupArtifactID.requiredForUIContinuity)
+        XCTAssertEqual(manifest.artifacts.map(\.id), RuntimeDataBackupArtifactID.manifestArtifactOrder)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeStatusDocument }, 1)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeEventsDocument }, 1)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeObservabilityDatabase }, 1)
@@ -72,6 +74,10 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             $0.state == .archived && $0.sizeBytes != nil && $0.sha256?.isEmpty == false
         })
         XCTAssertEqual(manifest.artifacts.first?.volumeName, "vitalserver_redis-data")
+        XCTAssertEqual(
+            manifest.artifacts.first { $0.id == .postgresDatabase }?.volumeName,
+            "vitalserver_postgres-data"
+        )
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: backup.appendingPathComponent("artifacts/redis-data.tar.gz").path
         ))
@@ -87,13 +93,14 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
     func testCreateBackupFailsWhenRequiredArtifactIsMissing() throws {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("missing-redis.tar.gz")
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
 
         let store = RuntimeDataBackupStore(
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -107,6 +114,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: Data()
         )) { error in
             XCTAssertEqual(
@@ -123,6 +131,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
         try FileManager.default.removeItem(at: paths.runtimeStatus)
         try FileManager.default.removeItem(at: paths.runtimeEvents)
@@ -132,7 +141,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -146,12 +155,13 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backup = try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
 
         let manifest = try JSONDecoder().decode(
             RuntimeDataBackupManifest.self,
-            from: Data(contentsOf: backup.appendingPathComponent(RuntimeFileNames.backupManifest))
+            from: Data(contentsOf: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest))
         )
 
         let runtimeStatusArtifact = manifest.artifacts.first { $0.id == .runtimeStatusDocument }!
@@ -170,6 +180,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
         try FileManager.default.removeItem(at: paths.runtimeStatus)
         try FileManager.default.removeItem(at: paths.runtimeEvents)
@@ -179,7 +190,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -192,6 +203,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backup = try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
 
@@ -208,16 +220,17 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: paths.runtimeObservabilityDatabase), "changed-sqlite")
     }
 
-    func testRestoreBackupRestoresHostArtifactsAndReturnsRedisAndStartOnBootArtifacts() throws {
+    func testRestoreBackupRestoresRequiredHostArtifactsAndKeepsStatusDiagnosticsCurrent() throws {
         let paths = try makePaths()
         let redisArchive = temporaryRoot.appendingPathComponent("redis.tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
         let store = RuntimeDataBackupStore(
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -230,6 +243,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let backup = try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
 
@@ -249,15 +263,51 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: paths.guestRuntimeConfig), "{}")
         XCTAssertEqual(try String(contentsOf: paths.guestRuntimeSettings), "{}")
         XCTAssertEqual(try String(contentsOf: paths.proxyLaunchDaemon), "plist")
-        XCTAssertEqual(try String(contentsOf: paths.runtimeStatus), "{}")
+        XCTAssertEqual(try String(contentsOf: paths.runtimeStatus), "changed-status")
         XCTAssertEqual(try String(contentsOf: paths.runtimeEvents), "{}\n")
         XCTAssertEqual(try String(contentsOf: paths.runtimeObservabilityDatabase), "sqlite")
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.runtimeObservabilityDatabase.path + "-wal"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.runtimeObservabilityDatabase.path + "-shm"))
         XCTAssertEqual(result.redisArchive.lastPathComponent, "redis-data.tar.gz")
+        XCTAssertEqual(
+            result.postgresArchive.lastPathComponent,
+            "postgres-database.tar.gz"
+        )
         XCTAssertEqual(result.startOnBootState.services, [
             RuntimeDataBackupStartOnBootServiceState(label: "ai.tirosh.service", disabled: true)
         ])
+    }
+
+    func testRestoreBackupFailsWhenArchivedOptionalDiagnosticsArtifactIsMissing() throws {
+        let paths = try makePaths()
+        let store = makeStore(paths: paths)
+        let backup = try makeBackup(paths: paths, store: store)
+        let manifest = try JSONDecoder().decode(
+            RuntimeDataBackupManifest.self,
+            from: Data(contentsOf: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest))
+        )
+        let runtimeEventsArtifact = try XCTUnwrap(
+            manifest.artifacts.first { $0.id == .runtimeEventsDocument }
+        )
+        let backupPath = try XCTUnwrap(runtimeEventsArtifact.backupPath)
+        let artifactURL = backup.appendingPathComponent(backupPath)
+        try FileManager.default.removeItem(at: artifactURL)
+        try Data("current-vm-config".utf8).write(to: paths.vmConfig)
+
+        XCTAssertThrowsError(try store.restoreBackup(backup)) { error in
+            XCTAssertEqual(
+                error as? RuntimeDataBackupStoreError,
+                .optionalArtifactInvalid(
+                    id: .runtimeEventsDocument,
+                    path: artifactURL.path,
+                    reason: "artifact source is missing"
+                )
+            )
+        }
+        XCTAssertEqual(
+            try String(contentsOf: paths.vmConfig),
+            "current-vm-config"
+        )
     }
 
     func testRestoreBackupRejectsMissingRestoreCompatibilityVersion() throws {
@@ -282,7 +332,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             XCTAssertEqual(
                 error as? RuntimeDataBackupStoreError,
                 .manifestInvalid(
-                    path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path,
+                    path: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest).path,
                     errors: ["restoreCompatibilityVersion is missing"]
                 )
             )
@@ -311,8 +361,8 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             XCTAssertEqual(
                 error as? RuntimeDataBackupStoreError,
                 .manifestInvalid(
-                    path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path,
-                    errors: ["restoreCompatibilityVersion must be 1"]
+                    path: backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest).path,
+                    errors: ["restoreCompatibilityVersion must be 2"]
                 )
             )
         }
@@ -346,9 +396,9 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             guestRuntimeConfig: data.appendingPathComponent("deploy/runtime-config.json"),
             guestRuntimeSettings: data.appendingPathComponent("deploy/runtime-settings.json"),
             proxyLaunchDaemon: temporaryRoot.appendingPathComponent("proxy.plist"),
-            runtimeStatus: status.appendingPathComponent(RuntimeFileNames.runtimeStatus),
-            runtimeEvents: status.appendingPathComponent(RuntimeFileNames.runtimeEvents),
-            runtimeObservabilityDatabase: status.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+            runtimeStatus: status.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeStatus),
+            runtimeEvents: status.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeEvents),
+            runtimeObservabilityDatabase: status.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         )
     }
 
@@ -357,7 +407,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             paths: paths,
             metadata: RuntimeDataBackupStoreMetadata(
                 productIdentifier: "ai.tirosh.vitalserver.helper",
-                manifestName: RuntimeFileNames.backupManifest,
+                manifestName: RuntimePackageArtifactFileNames.backupManifest,
                 redisVolumeName: "vitalserver_redis-data"
             ),
             timestamp: { "20260610T000000Z" },
@@ -376,10 +426,12 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let redisArchive = temporaryRoot.appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("tar.gz")
         try Data("redis".utf8).write(to: redisArchive)
+        let postgresArchive = try makePostgresArchive()
         try writeRequiredSources(paths)
         return try store.createBackup(
             reason: "manual",
             redisArchive: redisArchive,
+            postgresArchive: postgresArchive,
             startOnBootState: startOnBootStateData()
         )
     }
@@ -388,7 +440,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         backup: URL,
         transform: (RuntimeDataBackupManifest) -> RuntimeDataBackupManifest
     ) throws {
-        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+        let manifestURL = backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)
         let manifest = try JSONDecoder().decode(
             RuntimeDataBackupManifest.self,
             from: Data(contentsOf: manifestURL)
@@ -396,6 +448,13 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(transform(manifest)).write(to: manifestURL)
+    }
+
+    private func makePostgresArchive() throws -> URL {
+        let archive = temporaryRoot.appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("tar.gz")
+        try Data("postgres".utf8).write(to: archive)
+        return archive
     }
 
     private func writeRequiredSources(_ paths: RuntimeDataBackupStorePaths) throws {

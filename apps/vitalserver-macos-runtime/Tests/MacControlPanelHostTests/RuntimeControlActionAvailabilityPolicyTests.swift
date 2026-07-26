@@ -5,10 +5,10 @@ import Errors
 
 final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
     private let policy = RuntimeControlActionAvailabilityPolicy()
-    private let capabilities = RuntimeControlCapabilities()
+    private let capabilities = RuntimeControlCapabilities(canApplyBundle: true)
 
     func testExplicitNonExecutableRuntimeStateBlocksRuntimeActionsEvenWhenLegacyBoolIsInstalled() {
-        let status = RuntimeStatus(runtimeInstalled: true, runtimeInstallationState: .present)
+        let status = platformState(runtimeInstallationState: .present)
 
         XCTAssertFalse(policy.isRuntimeExecutable(status))
         XCTAssertFalse(policy.canApplyUpdate(
@@ -42,7 +42,7 @@ final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
     }
 
     func testExplicitExecutableRuntimeStateAllowsRuntimeActionsWhenOtherInputsAllow() {
-        let status = RuntimeStatus(runtimeInstalled: false, runtimeInstallationState: .executable)
+        let status = platformState(runtimeInstallationState: .executable)
 
         XCTAssertTrue(policy.isRuntimeExecutable(status))
         XCTAssertTrue(policy.canApplyUpdate(
@@ -75,16 +75,16 @@ final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
         ))
     }
 
-    func testLegacyInstalledBoolOnlyAppliesWhenExplicitRuntimeInstallationStateIsMissing() {
-        let legacyInstalled = RuntimeStatus(runtimeInstalled: true)
-        let legacyMissing = RuntimeStatus(runtimeInstalled: false)
+    func testExecutableDecisionUsesExplicitInstallationState() {
+        let executable = platformState(runtimeInstallationState: .executable)
+        let missing = platformState(runtimeInstallationState: .missing)
 
-        XCTAssertTrue(policy.isRuntimeExecutable(legacyInstalled))
-        XCTAssertFalse(policy.isRuntimeExecutable(legacyMissing))
+        XCTAssertTrue(policy.isRuntimeExecutable(executable))
+        XCTAssertFalse(policy.isRuntimeExecutable(missing))
     }
 
     func testBusyOrCapabilityDeniedInputsBlockActionsWithoutChangingRuntimeStateMeaning() {
-        let status = RuntimeStatus(runtimeInstalled: true, runtimeInstallationState: .executable)
+        let status = platformState(runtimeInstallationState: .executable)
         var restricted = RuntimeControlCapabilities()
         restricted.canApplyBundle = false
         restricted.canControlRuntimeServices = false

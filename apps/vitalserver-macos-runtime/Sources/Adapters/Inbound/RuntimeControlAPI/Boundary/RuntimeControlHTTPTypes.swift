@@ -1,16 +1,37 @@
 import Contracts
+import CryptoKit
 import Foundation
 import RuntimeControl
 
 public enum RuntimeControlHTTPStatus: Int, Codable, Equatable, Sendable {
     case ok = 200
+    case accepted = 202
     case noContent = 204
     case badRequest = 400
     case unauthorized = 401
     case notFound = 404
     case methodNotAllowed = 405
+    case conflict = 409
+    case unprocessableEntity = 422
+    case serviceUnavailable = 503
     case notImplemented = 501
     case internalServerError = 500
+}
+
+public struct RuntimeControlStagedHTTPRequestBody: Equatable, Sendable {
+    public let fileURL: URL
+    public let temporaryDirectoryURL: URL
+    public let sizeBytes: Int64
+
+    public init(
+        fileURL: URL,
+        temporaryDirectoryURL: URL,
+        sizeBytes: Int64
+    ) {
+        self.fileURL = fileURL
+        self.temporaryDirectoryURL = temporaryDirectoryURL
+        self.sizeBytes = sizeBytes
+    }
 }
 
 public struct RuntimeControlHTTPRequest: Equatable, Sendable {
@@ -18,17 +39,20 @@ public struct RuntimeControlHTTPRequest: Equatable, Sendable {
     public let path: String
     public let headers: [String: String]
     public let body: Data?
+    public let stagedBody: RuntimeControlStagedHTTPRequestBody?
 
     public init(
         method: RuntimeControlHTTPMethod,
         path: String,
         headers: [String: String] = [:],
-        body: Data? = nil
+        body: Data? = nil,
+        stagedBody: RuntimeControlStagedHTTPRequestBody? = nil
     ) {
         self.method = method
         self.path = path
         self.headers = headers
         self.body = body
+        self.stagedBody = stagedBody
     }
 }
 
@@ -84,45 +108,395 @@ public struct RuntimeControlAPIStreamConfiguration: Equatable, Sendable {
 
 @MainActor
 public protocol RuntimeControlAPIReadHandler {
-    func loadCapabilities() async throws -> RuntimeControlCapabilities
-    func loadStatus() async throws -> RuntimeStatus
-    func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
+    func loadPlatformCapabilities() async throws -> PlatformCapabilities
+    func loadRuntimeCapabilities() async throws -> RuntimeCapabilities
+    func loadPlatformState() async throws -> PlatformState
+    func loadOperationState() async throws -> PlatformOperationState
+    func loadPlatformWorkflow() async throws -> PlatformWorkflowResource
+    func loadRuntimeOperationEvents(query: RuntimeOperationEventQuery) async throws -> RuntimeOperationEventHistory
     func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory
+    func loadVitalDBBeds() async throws -> RuntimeVitalBedHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async throws -> RuntimeVitalRecorderActivityWindow
+    func loadVitalDBRecorderVitalFiles(vrcode: String) async throws -> RuntimeVitalRecorderVitalFileHistory
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) async throws -> RuntimeRecorderObservabilityDetail
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) async throws -> RuntimeRecorderObservabilityTimeline
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async throws -> RuntimeRecorderObservabilityIncidents
     func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
-    func loadHealthStatus() async throws -> RuntimeStatus
-    func loadSettings() async throws -> RuntimeSettings
+    func loadHealthStatus() async throws -> PlatformState
+    func loadRuntimePlatformSettings() async throws -> RuntimePlatformSettingsRead
+    func applyRuntimePlatformSettings(_ settings: RuntimePlatformSettingsApplyDocument) async throws -> RuntimeControlCommandResponse
+    func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
     func loadInstallInfo() async throws -> RuntimeInstallInfo
+    func loadLabScenarios() async throws -> RuntimeLabScenarioList
+    func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList
+    func loadLabBeds() async throws -> RuntimeLabBedList
+    func loadLabRecorders() async throws -> RuntimeLabRecorderList
+    func loadLabSessions() async throws -> RuntimeLabSessionList
+    func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList
+    func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList
+    func resetLabBeds() async throws -> RuntimeLabBedList
+    func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList
+    func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList
+    func resetLabRecorders() async throws -> RuntimeLabRecorderList
+    func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt
+    func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
+    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
+    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
+    func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse
+    func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse
+    func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse
+    func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse
+    func uploadLabVitalFiles(_ sources: [RuntimeLabVitalFileUploadSource]) async throws -> RuntimeLabVitalFileLibraryUploadResponse
+    func guestStackStatus() async throws -> RuntimeGuestControlStackStatus
+    func listGuestServices() async throws -> RuntimeGuestControlServiceList
+    func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource
+    func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult
+    func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse
     func loadBackups() async throws -> [RuntimeBackup]
     func loadRedisBackups() async throws -> [RuntimeBackup]
     func loadRuntimeDataBackups() async throws -> [RuntimeBackup]
-    func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse
-    func startRuntimeServices() async throws -> RuntimeControlCommandResponse
-    func stopRuntimeServices() async throws -> RuntimeControlCommandResponse
-    func startTestKitService() async throws -> RuntimeControlCommandResponse
-    func stopTestKitService() async throws -> RuntimeControlCommandResponse
-    func restartTestKitService() async throws -> RuntimeControlCommandResponse
+    func applyRuntimeProductSettings(_ settings: GuestRuntimeSettingsDocument) async throws -> RuntimeGuestControlServiceOperation
+    func applyRuntimeAdminPassword(_ password: String) async throws -> RuntimeGuestControlServiceOperation
+    func applyRuntimeRedisRelaySettings(_ settings: RuntimeRedisRelaySettingsApplyRequest) async throws -> RuntimeGuestControlServiceOperation
+    func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation
+    func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation
+    func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation
     func repairRuntimeServices() async throws -> RuntimeControlCommandResponse
     func repairProxy() async throws -> RuntimeControlCommandResponse
-    func repairDatastore() async throws -> RuntimeControlCommandResponse
+    func repairDatastore() async throws -> RuntimeGuestControlServiceOperation
     func repairVMDisk() async throws -> RuntimeControlCommandResponse
     func createRedisBackup() async throws -> RuntimeControlCommandResponse
     func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse
     func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse
     func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
+    func rollbackRelease() async throws -> PlatformWorkflowOperation
     func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func restoreRedisBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func restoreRuntimeDataBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult
+    func createPlatformSupportExport() async throws -> PlatformWorkflowOperation
+    func acquireOperationLease(_ request: RuntimeOperationLeaseAcquireRequest) async throws -> RuntimeOperationLeaseMutationResponse
+    func heartbeatOperationLease(_ request: RuntimeOperationLeaseHeartbeatRequest) async throws -> RuntimeOperationLeaseMutationResponse
+    func releaseOperationLease(_ request: RuntimeOperationLeaseReleaseRequest) async throws -> RuntimeOperationLeaseMutationResponse
+    func loadGuestAddressResource() async throws -> RuntimeGuestAddressResourceState
+    func putGuestAddressResource(_ request: RuntimeGuestAddressPutRequest) async throws -> RuntimeGuestAddressResourceState
+    func loadVMLifecycleResource() async throws -> RuntimeVMLifecycleResourceState
+    func putVMLifecycleResource(_ request: RuntimeVMLifecyclePutRequest) async throws -> RuntimeVMLifecycleResourceState
+    func controlRuntimeProvider(_ action: RuntimeProviderCommandAction) async throws -> RuntimeProviderCommandResponse
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse
 }
 
+@MainActor
+public func createManagedPlatformSupportExport(
+    in directory: URL,
+    operationId suppliedOperationId: String? = nil,
+    startedAt suppliedStartedAt: String? = nil,
+    export: (URL) async throws -> RuntimeLogExportResult
+) async -> PlatformWorkflowOperation {
+    let operationId = suppliedOperationId
+        ?? "workflow-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    let timestamp = suppliedStartedAt ?? ISO8601DateFormatter().string(from: Date())
+    let destination = directory.appendingPathComponent("vitalserver-support-\(operationId).zip")
+    do {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        _ = try await export(destination)
+        let handle = try FileHandle(forReadingFrom: destination)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        var sizeBytes: Int64 = 0
+        while let block = try handle.read(upToCount: 1024 * 1024), !block.isEmpty {
+            hasher.update(data: block)
+            sizeBytes += Int64(block.count)
+        }
+        let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return PlatformWorkflowOperation(
+            operationId: operationId,
+            kind: .supportExport,
+            state: .completed,
+            startedAt: timestamp,
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            release: nil,
+            artifact: PlatformWorkflowArtifact(path: destination.path, sha256: digest, sizeBytes: sizeBytes),
+            failure: nil
+        )
+    } catch {
+        return PlatformWorkflowOperation(
+            operationId: operationId,
+            kind: .supportExport,
+            state: .failed,
+            startedAt: timestamp,
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            release: nil,
+            artifact: nil,
+            failure: PlatformWorkflowFailure(kind: "supportExportFailed", message: error.localizedDescription)
+        )
+    }
+}
+
 public extension RuntimeControlAPIReadHandler {
+    func loadRuntimePlatformSettings() async throws -> RuntimePlatformSettingsRead {
+        RuntimePlatformSettingsRead(
+            state: .unavailable,
+            settings: nil,
+            readIssues: [],
+            readError: "Platform settings owner is unavailable on this adapter."
+        )
+    }
+
+    func applyRuntimePlatformSettings(
+        _: RuntimePlatformSettingsApplyDocument
+    ) async throws -> RuntimeControlCommandResponse {
+        throw RuntimeControlClientUnsupportedError.unavailable("platform-settings:apply")
+    }
+
+    func createPlatformSupportExport() async throws -> PlatformWorkflowOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("platform-support-export")
+    }
+
+    func rollbackRelease() async throws -> PlatformWorkflowOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("release:rollback")
+    }
+
+    func loadPlatformWorkflow() async throws -> PlatformWorkflowResource {
+        PlatformWorkflowResource(
+            state: .unavailable,
+            operation: nil,
+            readError: "Platform workflow owner is unavailable on this adapter."
+        )
+    }
+    func loadRuntimeOperationEvents(
+        query _: RuntimeOperationEventQuery
+    ) async throws -> RuntimeOperationEventHistory {
+        throw RuntimeControlClientUnsupportedError.unavailable("events:get")
+    }
+
+    func loadRuntimeProductSettings() async throws -> RuntimeProductSettingsRead {
+        throw RuntimeControlClientUnsupportedError.unavailable("settings:get")
+    }
+
+    func applyRuntimeProductSettings(
+        _: GuestRuntimeSettingsDocument
+    ) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("settings:apply")
+    }
+
+    func applyRuntimeAdminPassword(_: String) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("admin-password:apply")
+    }
+
+    func loadRuntimeRedisRelaySettings() async throws -> RuntimeRedisRelaySettingsRead {
+        throw RuntimeControlClientUnsupportedError.unavailable("redis-relay:settings:get")
+    }
+
+    func applyRuntimeRedisRelaySettings(_: RuntimeRedisRelaySettingsApplyRequest) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("redis-relay:settings:apply")
+    }
+
+    func loadGuestAddressResource() async throws -> RuntimeGuestAddressResourceState {
+        .unavailable(readError: "Guest address owner is unavailable")
+    }
+
+    func putGuestAddressResource(_ request: RuntimeGuestAddressPutRequest) async throws -> RuntimeGuestAddressResourceState {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-address-put")
+    }
+
+    func loadVMLifecycleResource() async throws -> RuntimeVMLifecycleResourceState {
+        .unavailable(readError: "VM lifecycle owner is unavailable")
+    }
+
+    func loadRedisRelayStatus() async throws -> RuntimeRedisRelayStatusReadResult {
+        RuntimeRedisRelayStatusReadResult(
+            readState: .readFailed,
+            document: nil,
+            readError: "Redis Relay status owner is unavailable"
+        )
+    }
+
+    func putVMLifecycleResource(_ request: RuntimeVMLifecyclePutRequest) async throws -> RuntimeVMLifecycleResourceState {
+        throw RuntimeControlClientUnsupportedError.unavailable("vm-lifecycle-put")
+    }
+
+    func controlRuntimeProvider(_ action: RuntimeProviderCommandAction) async throws -> RuntimeProviderCommandResponse {
+        throw RuntimeControlClientUnsupportedError.unavailable("runtime-provider-\(action.rawValue)")
+    }
+
+    func loadLabScenarios() async throws -> RuntimeLabScenarioList {
+        RuntimeLabScenarioList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
+        RuntimeLabVitalFileList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabBeds() async throws -> RuntimeLabBedList {
+        RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabRecorders() async throws -> RuntimeLabRecorderList {
+        RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
+        RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
+        RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func resetLabBeds() async throws -> RuntimeLabBedList {
+        RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
+        RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
+        RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func resetLabRecorders() async throws -> RuntimeLabRecorderList {
+        RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(readError: "VitalDB read model gateway is unavailable.")
+    }
+
+    func applyRecorderObservabilityExpectation(
+        _ command: RuntimeRecorderObservabilityExpectationCommand
+    ) async throws -> RuntimeRecorderObservabilityExpectationReceipt {
+        throw RuntimeControlClientUnsupportedError.unavailable(
+            "vitaldb-recorder-observability-expectation"
+        )
+    }
+
+    func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(readError: "VitalDB read model gateway is unavailable.")
+    }
+
+    func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(readError: "VitalDB read model gateway is unavailable.")
+    }
+
+    func loadVitalDBBeds() async throws -> RuntimeVitalBedHistory {
+        .failed(readError: "VitalDB bed read model gateway is unavailable.")
+    }
+
+    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        .failed(readError: "VitalDB bed read model gateway is unavailable.")
+    }
+
+    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        .failed(readError: "VitalDB bed read model gateway is unavailable.")
+    }
+
+    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        .failed(readError: "VitalDB bed read model gateway is unavailable.")
+    }
+
+    func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabSessions() async throws -> RuntimeLabSessionList {
+        RuntimeLabSessionList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func finishLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func startLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        RuntimeLabRecorderResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func stopLabRecorder(sessionId: String, recorderId: String) async throws -> RuntimeLabRecorderResponse {
+        RuntimeLabRecorderResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func uploadLabVitalFiles(_ sources: [RuntimeLabVitalFileUploadSource]) async throws -> RuntimeLabVitalFileLibraryUploadResponse {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func acquireOperationLease(_ request: RuntimeOperationLeaseAcquireRequest) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func heartbeatOperationLease(_ request: RuntimeOperationLeaseHeartbeatRequest) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func releaseOperationLease(_ request: RuntimeOperationLeaseReleaseRequest) async throws -> RuntimeOperationLeaseMutationResponse {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func listGuestServices() async throws -> RuntimeGuestControlServiceList {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
+    func guestServiceResource(_ service: String) async throws -> RuntimeGuestServiceResource {
+        throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
+    }
+
     func loadVitalDBRecorderActivityWindow(
         query: RuntimeVitalRecorderActivityWindowQuery
     ) async throws -> RuntimeVitalRecorderActivityWindow {
@@ -131,6 +505,42 @@ public extension RuntimeControlAPIReadHandler {
             bounds: nil,
             records: [],
             readError: "recorder activity window reader is unavailable"
+        )
+    }
+
+    func loadVitalDBRecorderVitalFiles(
+        vrcode: String
+    ) async throws -> RuntimeVitalRecorderVitalFileHistory {
+        .failed(
+            vrcode: vrcode,
+            readError: "recorder vital-file reader is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityDetail(
+        vrcode: String
+    ) async throws -> RuntimeRecorderObservabilityDetail {
+        .unavailable(
+            vrcode: vrcode,
+            readError: "recorder observability detail reader is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityTimeline(
+        query: RuntimeRecorderObservabilityTimelineQuery
+    ) async throws -> RuntimeRecorderObservabilityTimeline {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "recorder observability timeline reader is unavailable"
+        )
+    }
+
+    func loadRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async throws -> RuntimeRecorderObservabilityIncidents {
+        .unavailable(
+            vrcode: query.vrcode,
+            readError: "recorder observability incidents reader is unavailable"
         )
     }
 }

@@ -10,18 +10,16 @@ public struct RuntimeHealthInput: Equatable {
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
     public let vmLifecycle: RuntimeVMLifecycleDocument?
-    public let guestRuntimeState: RuntimeGuestRuntimeStateInput
+    public let guestAddressRead: RuntimeGuestAddressReadResult
+    public let guestReadiness: RuntimeGuestReadinessInput
     public let proxyPort: Int?
     public let proxyPortReadState: RuntimeProxyPortReadState
     public let hostProxyHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
-    public let containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
-    public let reportedVMErrors: [RuntimeVMError]
     public let configurationFailureReasons: [RuntimeFailureReason]
     public let proxyPortFailureReasons: [RuntimeFailureReason]
-    public let guestBootstrapAssessment: GuestBootstrapAssessment
 
     public init(
         vmExecutable: RuntimeFileState,
@@ -32,18 +30,16 @@ public struct RuntimeHealthInput: Equatable {
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
         vmLifecycle: RuntimeVMLifecycleDocument? = nil,
-        guestRuntimeState: RuntimeGuestRuntimeStateInput,
+        guestAddressRead: RuntimeGuestAddressReadResult = .notReported,
+        guestReadiness: RuntimeGuestReadinessInput,
         proxyPort: Int?,
         proxyPortReadState: RuntimeProxyPortReadState,
         hostProxyHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
-        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>,
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>,
-        reportedVMErrors: [RuntimeVMError] = [],
         configurationFailureReasons: [RuntimeFailureReason] = [],
-        proxyPortFailureReasons: [RuntimeFailureReason] = [],
-        guestBootstrapAssessment: GuestBootstrapAssessment
+        proxyPortFailureReasons: [RuntimeFailureReason] = []
     ) {
         self.vmExecutable = vmExecutable
         self.proxyExecutable = proxyExecutable
@@ -53,18 +49,16 @@ public struct RuntimeHealthInput: Equatable {
         self.proxyService = proxyService
         self.watchdogService = watchdogService
         self.vmLifecycle = vmLifecycle
-        self.guestRuntimeState = guestRuntimeState
+        self.guestAddressRead = guestAddressRead
+        self.guestReadiness = guestReadiness
         self.proxyPort = proxyPort
         self.proxyPortReadState = proxyPortReadState
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
-        self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation
-        self.reportedVMErrors = reportedVMErrors
         self.configurationFailureReasons = configurationFailureReasons
         self.proxyPortFailureReasons = proxyPortFailureReasons
-        self.guestBootstrapAssessment = guestBootstrapAssessment
     }
 }
 
@@ -88,15 +82,6 @@ public enum RuntimeHealthEvaluator {
             failureReasons.append(.hostProxyHTTP(input.hostProxyHTTP))
             failureReasons.append(contentsOf: input.proxyPortFailureReasons)
         }
-        if let containerObservation = input.containerObservation.observedValue,
-           !isSuccessfulHTTPStatus(containerObservation.recorderIngressHTTP) {
-            failureReasons.append(.recorderIngressHTTP(containerObservation.recorderIngressHTTP))
-        }
-        failureReasons.append(contentsOf: RuntimeObservationHealthPolicy.failureReasons(
-            containerObservation: input.containerObservation,
-            vitalDBObservation: input.vitalDBObservation
-        ))
-
         return RuntimeHealthSnapshot(
             vmExecutable: input.vmExecutable,
             proxyExecutable: input.proxyExecutable,
@@ -108,14 +93,14 @@ public enum RuntimeHealthEvaluator {
             vmLifecycle: input.vmLifecycle,
             vmState: vmHealth.vmState,
             vmErrors: vmErrors,
-            vmIP: input.guestRuntimeState.vmIP,
+            guestAddressRead: input.guestAddressRead,
+            vmIP: input.guestReadiness.vmIP,
             proxyPort: input.proxyPort,
             proxyPortReadState: input.proxyPortReadState,
             hostProxyHTTP: input.hostProxyHTTP,
-            guestHTTP: input.guestRuntimeState.guestHTTPStatusText,
+            guestHTTP: input.guestReadiness.guestHTTPStatusText,
             redisUIHTTP: input.redisUIHTTP,
             swaggerUIHTTP: input.swaggerUIHTTP,
-            containerObservation: input.containerObservation.observedValue,
             vitalDBObservation: input.vitalDBObservation.observedValue,
             failureReasons: failureReasons
         )

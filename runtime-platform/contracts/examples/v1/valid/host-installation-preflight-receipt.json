@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v1",
+  "documentKind": "host-installation-receipt",
+  "id": "installation-receipt-001",
+  "requestId": "installation-request-001",
+  "installationId": "vitalserver-runtime-platform",
+  "releaseId": "runtime-platform-0.2.0-dev-build-001",
+  "state": "preflight-admitted",
+  "observedAt": "2026-07-18T03:00:01Z"
+}

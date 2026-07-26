@@ -1,5 +1,5 @@
 .PHONY: internal/vm/up internal/vm/up-bridged internal/vm/down internal/vm/prepare internal/vm/start internal/vm/start/detached internal/vm/start/bridged internal/vm/stop internal/vm/status internal/vm/clean internal/vm/ip internal/vm/wait/ip internal/vm/wait/http internal/vm/wait/rootfs-ready internal/vm/wait/runtime-boot-smoke internal/vm/wait/stopped internal/vm/proxy/start internal/vm/health internal/vm/e2e/smoke internal/vm/coverage
-.PHONY: internal/vm/version-source internal/vm/build internal/vm/sign internal/vm/sign/bridged internal/vm/bridged/preflight internal/vm/init internal/vm/download internal/vm/cloud-init internal/vm/stage internal/vm/interfaces internal/vm/network/shared internal/vm/network/bridged
+.PHONY: internal/vm/release-contract internal/vm/version-source internal/vm/build internal/vm/sign internal/vm/sign/bridged internal/vm/bridged/preflight internal/vm/init internal/vm/download internal/vm/cloud-init internal/vm/stage internal/vm/interfaces internal/vm/network/shared internal/vm/network/bridged
 
 # Public runtime/devtools knobs.
 VM_ROOTFS_SIZE ?= 8G
@@ -15,19 +15,29 @@ VM_ROOTFS_READY_TIMEOUT ?= 600
 # Internal orchestration: generated per golden rootfs compile run.
 VM_ROOTFS_RUN_ID ?=
 
+# Internal orchestration: reuse a materialized Guest deploy bundle that was
+# already exercised by the golden rootfs compile.
+VM_GUEST_DEPLOY_SOURCE ?=
+VM_GUEST_ROOTFS_ARTIFACT ?=
+VM_ROOTFS_SEED ?=
+
 # Diagnostic/CI fault injection knobs.
 VM_ROOTFS_SMOKE_FAIL_STAGE ?=
 VM_ROOTFS_SMOKE_FAIL_CLEANUP ?= false
 
-# Diagnostic/CI runtime boot smoke knobs.
-VM_RUNTIME_BOOT_SMOKE ?= false
+# Diagnostic/CI runtime boot smoke proof identity.
 VM_RUNTIME_BOOT_SMOKE_RUN_ID ?=
 
 VM_RUNTIME_DIR := $(VM_HOME)/runtime
 
-internal/vm/version-source:
+# Release metadata may generate the designated Swift files, but it must not
+# rewrite Compose, VM build configuration, or Guest source inputs.  Run this
+# before cache/fingerprint and Docker work so a mismatch fails at its owner.
+internal/vm/release-contract:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-sync-release \
 		--release-file "$(VM_RELEASE_FILE)"
+
+internal/vm/version-source: internal/vm/release-contract
 
 internal/vm/build:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-build \
@@ -59,6 +69,17 @@ internal/vm/download:
 		--runtime-dir "$(VM_RUNTIME_DIR)" \
 		--rootfs-size "$(VM_ROOTFS_SIZE)" \
 		--recreate-rootfs "$(VM_RECREATE_ROOTFS)"
+	@if [ -n "$(VM_ROOTFS_SEED)" ]; then \
+		test -s "$(VM_ROOTFS_SEED)" || { \
+			printf "error: rootfs seed is unavailable: %s\n" "$(VM_ROOTFS_SEED)" >&2; \
+			exit 1; \
+		}; \
+		seed_tmp="$(VM_RUNTIME_DIR)/vm-disk.img.seed.tmp"; \
+		gzip -dc "$(VM_ROOTFS_SEED)" >"$${seed_tmp}"; \
+		qemu-img check -f raw "$${seed_tmp}"; \
+		mv "$${seed_tmp}" "$(VM_RUNTIME_DIR)/vm-disk.img"; \
+		printf "Restored verified rootfs seed: %s\n" "$(VM_ROOTFS_SEED)"; \
+	fi
 
 internal/vm/cloud-init:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" cloud-init \
@@ -77,17 +98,32 @@ internal/vm/down: internal/vm/stop
 internal/vm/stage: internal/vm/init
 	@set -e; \
 	rootfs_run_args=""; \
+	guest_deploy_source_args=""; \
+	guest_rootfs_artifact_args=""; \
+	runtime_boot_smoke_args=""; \
 	if [ -n "$(VM_ROOTFS_RUN_ID)" ]; then \
 		rootfs_run_args="--rootfs-run-id $(VM_ROOTFS_RUN_ID)"; \
+	fi; \
+	if [ -n "$(VM_GUEST_DEPLOY_SOURCE)" ]; then \
+		guest_deploy_source_args="--source-deploy-dir $(VM_GUEST_DEPLOY_SOURCE)"; \
+	fi; \
+	if [ -n "$(VM_GUEST_ROOTFS_ARTIFACT)" ]; then \
+		guest_rootfs_artifact_args="--rootfs-artifact $(VM_GUEST_ROOTFS_ARTIFACT)"; \
+	fi; \
+	if [ -n "$(VM_RUNTIME_BOOT_SMOKE_RUN_ID)" ]; then \
+		runtime_boot_smoke_args="--runtime-boot-smoke-run-id $(VM_RUNTIME_BOOT_SMOKE_RUN_ID)"; \
 	fi; \
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" guest-deploy \
 		--vm-home "$(VM_HOME)" \
 		--runtime-dir "$(VM_MACOS_RUNTIME_DIR)" \
 		--docker-bundle "$(call VM_TOML_VALUE,guest.docker_images.bundle_path)" \
-		$$rootfs_run_args; \
-	if [ "$(VM_RUNTIME_BOOT_SMOKE)" = "true" ]; then \
-		python3 -c 'import json, sys; from pathlib import Path; path = Path(sys.argv[1]); document = json.loads(path.read_text(encoding="utf-8")); document["runtimeBootSmoke"] = {"enabled": True, "runId": sys.argv[2]}; path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")' "$(VM_HOME)/data/deploy/build-metadata/rootfs-input.json" "$(VM_RUNTIME_BOOT_SMOKE_RUN_ID)"; \
-	fi
+		$$rootfs_run_args \
+		$$guest_deploy_source_args \
+		$$guest_rootfs_artifact_args \
+		$$runtime_boot_smoke_args; \
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
+		--vm-home "$(VM_HOME)" \
+		runtime configure
 
 internal/vm/start: internal/vm/sign
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
@@ -157,12 +193,17 @@ internal/vm/wait/stopped:
 internal/vm/proxy/start:
 	@upstream="$(VM_PROXY_UPSTREAM)"; \
 	if [ -z "$$upstream" ]; then \
-		if [ ! -s "$(VM_HOME)/data/run/vm-ip" ]; then \
-			printf "Set VM_PROXY_UPSTREAM or run make devtools/wait/ip first.\n" >&2; \
-			printf "  VM_PROXY_UPSTREAM=192.168.64.3:80 make runtime/proxy/start\n" >&2; \
+		if ! upstream="$$( \
+			$(VM_BUILD_RUNNER) macos-runtime-guest-address-proxy-upstream \
+				--vm-home "$(VM_HOME)" \
+				--runtime-control-api-base-url "$${VITALSERVER_RUNTIME_CONTROL_API_BASE_URL:-http://127.0.0.1:18321}" \
+				--runtime-control-api-token "$${VITALSERVER_RUNTIME_CONTROL_API_TOKEN:?VITALSERVER_RUNTIME_CONTROL_API_TOKEN is required}" \
+				--runtime-control-api-token-header "$${VITALSERVER_RUNTIME_CONTROL_API_TOKEN_HEADER:-X-Runtime-Control-Token}" \
+				--runtime-control-api-timeout "$${VITALSERVER_RUNTIME_CONTROL_API_TIMEOUT_SECONDS:-2}" \
+		)"; then \
+			printf "Runtime Control Guest address owner is unavailable; cannot derive proxy upstream.\n" >&2; \
 			exit 1; \
 		fi; \
-		upstream="$$(cat "$(VM_HOME)/data/run/vm-ip"):80"; \
 	fi; \
 		PROXY_UPSTREAM="$$upstream" $(MAKE) proxy/start
 

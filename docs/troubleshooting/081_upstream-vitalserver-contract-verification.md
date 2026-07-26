@@ -2,7 +2,7 @@
 
 ## Symptom
 
-`make repo/verify-submodule`, `make dist/pkg/dev/verify`, or `make dist/dmg/dev/verify` fails before package or DMG compile with output like:
+`make repo/verify-submodule`, `make dist/pkg/dev/verify`, or `make dist/dmg/dev` fails before package or DMG compile with output like:
 
 ```text
 failed: required upstream contract pattern is missing
@@ -25,7 +25,7 @@ The Helper runtime depends on a small explicit contract from the original `vital
 
 The verification fails when one of these meanings changes:
 
-- `.gitmodules` no longer points at `https://github.com/vitaldb/vitalserver.git`.
+- `.gitmodules` no longer points at `https://github.com/runtime/vitaldb/vitalserver.git`.
 - `vendor/vitalserver` is dirty or unreadable.
 - The pinned commit is not in `config/upstream-vitalserver-contract.json` `approvedCommits` during release verification.
 - Required files such as `vitalserver-old/service/app.js` are missing.
@@ -55,7 +55,7 @@ make repo/verify-submodule-candidate/remote
 Then run the relevant runtime verification. Use the combined DMG gate when the change should also prove clean package compile:
 
 ```sh
-make dist/dmg/dev/all
+make dist/dmg/dev
 ```
 
 Only after the candidate is reviewed and runtime smoke passes should the new commit be added to `config/upstream-vitalserver-contract.json` `approvedCommits`.

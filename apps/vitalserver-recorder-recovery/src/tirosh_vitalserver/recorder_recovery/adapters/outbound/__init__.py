@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
+from .artifact_publisher import VitalServerArtifactPublisher
 from .raw_archive_vital_artifact import (
-    RawArchiveVitalArtifact,
     RawArchiveVitalFileExporter,
     artifact_filename,
+)
+from .raw_archive_vital_spool import (
+    RawArchiveVitalSpool,
+)
+from .recovery_artifact_registry import (
+    RecoveryArtifactRegistryConflict,
+    RecoveryArtifactRegistryInvalid,
+    RecoveryArtifactRegistryUnavailable,
+    SqliteRecoveryArtifactRegistry,
 )
 from .vitalserver import VitalServerClient
 
 __all__ = [
-    "RawArchiveVitalArtifact",
     "RawArchiveVitalFileExporter",
+    "RawArchiveVitalSpool",
+    "RecoveryArtifactRegistryConflict",
+    "RecoveryArtifactRegistryInvalid",
+    "RecoveryArtifactRegistryUnavailable",
+    "SqliteRecoveryArtifactRegistry",
+    "VitalServerArtifactPublisher",
     "VitalServerClient",
     "artifact_filename",
 ]

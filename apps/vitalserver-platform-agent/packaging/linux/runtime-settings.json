@@ -1,0 +1,40 @@
+{
+  "automaticBackupEnabled": true,
+  "backupRetentionCount": 30,
+  "backupScheduleTimes": [
+    "03:15"
+  ],
+  "containerMemoryLimitsEnabled": true,
+  "publicHost": "",
+  "publicPort": 80,
+  "recorderIngress": {
+    "rawArchiveAutoExportCursorStableSeconds": 60,
+    "rawArchiveAutoExportEnabled": true,
+    "rawArchiveAutoExportMaxAttempts": 3,
+    "rawArchiveAutoExportQuietSeconds": 300,
+    "rawArchiveAutoExportRequestTimeoutSeconds": 300,
+    "rawArchiveAutoExportRetryDelaySeconds": 60,
+    "rawArchiveAutoExportScanIntervalSeconds": 60,
+    "rawArchiveEnabled": true,
+    "rawArchiveMaxFileMiB": 512,
+    "rawArchiveMaxFiles": 24,
+    "sendDataMaxPayloadMiB": 10,
+    "sendDataMaxPendingItems": 100000,
+    "sendDataMaxPendingMiB": 512,
+    "sendDataRealtimeMaxPendingItems": 2000,
+    "sendDataReplayAdaptiveMaxConcurrency": 8,
+    "sendDataReplayAdaptiveMinConcurrency": 1,
+    "sendDataReplayIntervalMs": 1000,
+    "sendDataReplayMaxAttempts": 3,
+    "sendDataReplayTargetTimeoutMs": 5000,
+    "sendDataReplayedMaxItems": 10000
+  },
+  "recorderIngressContainerMemoryLimitMiB": 410,
+  "recorderIngressSendDataMode": "spool_and_replay",
+  "recorderIngressSendDataReplayBatchSize": 1000,
+  "recorderIngressSendDataReplayMaxMiBPerSecond": 20,
+  "redisContainerMemoryLimitMiB": 3277,
+  "remoteConsoleURL": "",
+  "vitalServerContainerMemoryLimitMiB": 2048,
+  "vitalServerURL": ""
+}

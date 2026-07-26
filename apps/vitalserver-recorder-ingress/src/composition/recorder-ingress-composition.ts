@@ -7,8 +7,11 @@ const { createAuditStdoutWriter } = require("../adapters/outbound/process/audit-
 const { createSendDataFailureLogWriter } = require("../adapters/outbound/file/send-data-failure-log-writer");
 const { createSendDataRawArchiveExportJobStore } = require("../adapters/outbound/file/send-data-raw-archive-export-job-store");
 const { createSendDataRawArchiveWriter } = require("../adapters/outbound/file/send-data-raw-archive-writer");
-const { createRawArchiveRecoveryExecutor } = require("../adapters/outbound/http/raw-archive-recovery-executor");
-const { createRuntimeStateMemoryGuardReader } = require("../adapters/outbound/file/runtime-state-memory-guard-reader");
+const { createNativeVitalUploadRegistry } = require("../adapters/outbound/file/native-vital-upload-registry");
+const { createRecorderObservabilityRepository } = require("../adapters/outbound/postgres/recorder-observability-repository");
+const { createRecorderObservabilitySchemaRegistry } = require("../adapters/outbound/schema/recorder-observability-schema-registry");
+const { createRawArchiveExporter } = require("../adapters/outbound/http/raw-archive-recovery-executor");
+const { createVitalServerFileIndex } = require("../adapters/outbound/http/vitalserver-file-index");
 const { createRedisAuditEventStore } = require("../adapters/outbound/redis/audit-event-store");
 const { createRedisClient } = require("../adapters/outbound/redis/client");
 const { createRedisSendDataSpoolStore } = require("../adapters/outbound/redis/send-data-spool-store");
@@ -18,6 +21,9 @@ const { createAuditRecorder } = require("../application/audit-recorder");
 const { createSendDataIngressService } = require("../application/send-data-ingress-service");
 const { createSendDataRawArchiveExportWorker } = require("../application/send-data-raw-archive-export-worker");
 const { createSendDataReplayWorker } = require("../application/send-data-replay-worker");
+const { createNativeVitalUploadService } = require("../application/native-vital-upload-service");
+const { createRecorderObservabilityIngressService } = require("../application/recorder-observability-ingress-service");
+const { createRecorderObservabilityProjector } = require("../application/recorder-observability-projector");
 const { createSocketIoAuditService } = require("../application/socketio-audit-service");
 const { configureSendDataRawArchive, configureSendDataSpool, createMetrics } = require("../observability/metrics");
 
@@ -35,7 +41,40 @@ function createRecorderIngressServer(config) {
   const sendDataFailureLog = createSendDataFailureLogWriter(config.failureLog, metrics);
   const sendDataRawArchive = createSendDataRawArchiveWriter(config.rawArchive);
   const sendDataRawArchiveExportJobStore = createSendDataRawArchiveExportJobStore(config);
-  const sendDataRawArchiveRecoveryExecutor = createRawArchiveRecoveryExecutor(config);
+  const sendDataRawArchiveExporter = createRawArchiveExporter(config);
+  const nativeVitalUploadRegistry = createNativeVitalUploadRegistry(
+    config.nativeVitalUploads
+  );
+  const nativeVitalUploads = createNativeVitalUploadService({
+    registry: nativeVitalUploadRegistry,
+    vitalServerIndex: createVitalServerFileIndex(
+      config.nativeVitalUploads.vitalServerIndex
+    ),
+    reconciliation: config.nativeVitalUploads.reconciliation,
+  });
+  const recorderObservabilityRepository = config.observability.enabled
+    ? createRecorderObservabilityRepository({
+      ...config.observability.database,
+      freshnessToleranceMultiplier:
+        config.observability.freshnessToleranceMultiplier,
+      freshnessAllowanceSeconds:
+        config.observability.freshnessAllowanceSeconds,
+      firstReportGraceSeconds:
+        config.observability.firstReportGraceSeconds,
+    })
+    : undefined;
+  const recorderObservability = recorderObservabilityRepository
+    ? createRecorderObservabilityIngressService({
+      repository: recorderObservabilityRepository,
+      schemas: createRecorderObservabilitySchemaRegistry(),
+    })
+    : undefined;
+  const recorderObservabilityProjector = recorderObservabilityRepository
+    ? createRecorderObservabilityProjector({
+      repository: recorderObservabilityRepository,
+      ...config.observability.projector,
+    })
+    : undefined;
   const audit = createAuditRecorder(config.audit, [auditLog, auditStdout, redisAudit]);
   const vrIdentityStore = createVrIdentityStore(identityRedis, metrics);
   const sendDataSpoolStore = createRedisSendDataSpoolStore(config.spool, sendDataRedis);
@@ -50,13 +89,13 @@ function createRecorderIngressServer(config) {
     config: config.spool,
     failureSink: sendDataFailureLog,
     metrics,
-    memoryGuard: createRuntimeStateMemoryGuardReader(config.memoryGuard),
+    memoryGuard: undefined,
     spoolStore: sendDataSpoolStore,
     replayTarget: createSocketIoSendDataReplayTarget(config),
   });
   const sendDataRawArchiveExportWorker = createSendDataRawArchiveExportWorker({
     config,
-    executor: sendDataRawArchiveRecoveryExecutor,
+    exporter: sendDataRawArchiveExporter,
     jobStore: sendDataRawArchiveExportJobStore,
     metrics,
   });
@@ -68,6 +107,10 @@ function createRecorderIngressServer(config) {
     clientIp,
     config,
     metrics,
+    nativeVitalUploads,
+    recorderObservability,
+    recorderObservabilityProjector,
+    recorderObservabilityRepository,
     sendDataRawArchiveExportWorker,
     sendDataReplayWorker,
     socketIoAudit,

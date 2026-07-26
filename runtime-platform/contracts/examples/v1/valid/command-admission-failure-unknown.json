@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "v1",
+  "state": "failed",
+  "requestId": "host-start-20260717-01",
+  "observedAt": "2026-07-17T00:00:00Z",
+  "admissionState": "unknown",
+  "issue": {
+    "code": "host-state-store-write-outcome-unknown",
+    "message": "Host Agent could not determine whether the lifecycle operation was durably admitted",
+    "retryable": true,
+    "dependency": "host-state-store"
+  }
+}

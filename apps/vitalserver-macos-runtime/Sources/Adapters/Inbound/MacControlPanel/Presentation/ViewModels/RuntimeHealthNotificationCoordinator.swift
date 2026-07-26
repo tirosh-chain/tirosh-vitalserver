@@ -10,7 +10,7 @@ final class RuntimeHealthNotificationCoordinator {
         self.notifier = notifier
     }
 
-    func handleTransition(to status: RuntimeStatus) {
+    func handleTransition(to status: PlatformState) {
         let next = RuntimeHealthNotificationState(status: status)
         guard let previous = baseline else {
             baseline = next

@@ -15,13 +15,13 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
             },
             readData: { url in
                 events.append("read:\(url.path)")
-                return try JSONEncoder().encode(backupManifest(rootfsBase: RuntimeFileNames.rootfsBase))
+                return try JSONEncoder().encode(backupManifest(rootfsBase: RuntimePackageArtifactFileNames.rootfsBase))
             }
         )
 
         let manifest = try loader.load(from: backup)
 
-        XCTAssertEqual(manifest.rootfsBase, RuntimeFileNames.rootfsBase)
+        XCTAssertEqual(manifest.rootfsBase, RuntimePackageArtifactFileNames.rootfsBase)
         XCTAssertEqual(events, [
             "state:/runtime/backups/backup-1/backup-manifest.json",
             "read:/runtime/backups/backup-1/backup-manifest.json",
@@ -30,7 +30,7 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
 
     func testLoadReportsMissingReadAndDecodeFailuresSeparately() {
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
-        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+        let manifestURL = backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)
 
         XCTAssertThrowsError(try RuntimeBackupManifestLoader(
             pathState: { _ in .missing },
@@ -66,7 +66,7 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
 
     func testLoadReportsManifestPathInspectionFailures() {
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
-        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+        let manifestURL = backup.appendingPathComponent(RuntimePackageArtifactFileNames.backupManifest)
 
         XCTAssertThrowsError(try RuntimeBackupManifestLoader(
             pathState: { _ in .inspectFailed("permission denied") },

@@ -85,7 +85,7 @@ VitalServer code 기준으로 VRecorder의 identity는 IP가 아니라 `vrcode`�
 
 ### 4-2. Redis 갱신 값
 
-VitalServer는 upstream handler가 `send_data`를 처리한 뒤 `roomname`으로 bed id를 만들고, Redis에 아래 값을 갱신합니다. recorder ingress `spool_and_replay` mode에서는 이 처리가 VRecorder 송신 즉시가 아니라 replay worker가 upstream으로 emit한 뒤에 일어납니다. 이 표는 Web Monitoring UI를 이해하는 데 필요한 대표 key만 다룹니다. 전체 Redis key model과 relay scope는 [VitalServer recorder Redis key model](redis-key-model.md)를 기준으로 봅니다.
+VitalServer는 upstream handler가 `send_data`를 처리한 뒤 `roomname`으로 bed id를 만들고, Redis에 아래 값을 갱신합니다. 0.2.1 기본 `observe_only`에서는 direct upstream delivery가 보존되어 VRecorder 송신 직후 처리됩니다. 명시적 `spool_and_replay` mode에서는 replay worker가 upstream으로 emit한 뒤 처리됩니다. 이 표는 Web Monitoring UI를 이해하는 데 필요한 대표 key만 다룹니다. 전체 Redis key model과 relay scope는 [VitalServer recorder Redis key model](redis-key-model.md)를 기준으로 봅니다.
 
 | Key | 의미 | UI 영향 |
 | --- | --- | --- |
@@ -164,29 +164,34 @@ macOS Docker Desktop에서 Docker published port를 직접 노출하면 VRecorde
 
 macOS 제품 구성에서는 Docker backend를 `127.0.0.1:<backend-port>`로만 열고, VRecorder와 브라우저는 macOS host nginx public port로 접속합니다. 이때 Network Settings 검증은 Docker backend port가 아니라 host proxy port를 대상으로 수행합니다.
 
-## 7. Testkit 구현 기준
+## 7. Product Lab 및 dev testkit 구현 기준
 
 ### 7-1. 실제 VRecorder처럼 보이기 위한 조건
 
-testkit이 실제 VRecorder처럼 보이려면 아래를 만족해야 합니다.
+Product Lab virtual recorder 또는 dev testkit이 실제 VRecorder처럼 보이려면 아래를 만족해야 합니다.
 
 | 영역 | 필요 동작 |
 | --- | --- |
 | 접속 등록 | Socket.IO 연결 후 `join_vr` 전송 |
 | IP 검증 | `ip_<vrcode>`가 VM 또는 장비의 실제 LAN IP로 저장되는지 확인 |
 | Online 표시 | 같은 연결에서 주기적으로 `send_data` 전송 |
+| Case 경과 시간 | 실행 시작 시각을 `dtcase`로 한 번 정하고 같은 실행의 모든 frame에서 유지 |
 | Device 표시 | `devs`에 `status` 값을 명시해 파란/빨간 사각형을 의도적으로 재현 |
 | Patient status 표시 | `ptcon` 값을 조정해 patient icon 재현 |
 | Command 수신 | `update`, `restart`, `reboot`, `del_bed`, `add_event`, `edit_bed`, `edit_conf` 수신 |
-| Network Settings | testkit VM에서 HTTP 상태 페이지를 제공해 `http://<vr_ipaddr>` 접속 검증 |
+| Network Settings | virtual recorder 실행 환경에서 HTTP 상태 페이지를 제공해 `http://<vr_ipaddr>` 접속 검증 |
 
-### 7-2. Helper Test 탭 경로
+### 7-2. Helper Product Lab 경로
 
-macOS runtime의 Test 탭에서는 guest compose 안의 `testkit` container가 virtual VRecorder를 생성하고 `http://edge/`로 접속합니다. 이 경로는 Helper/TestKit 제어, VitalServer 수신, observer 반영을 검증하기 위한 내부 QA 경로입니다.
+macOS runtime의 Helper UI는 Product Lab surface를 통해 virtual recorder를 제어합니다. Product Lab session, bed, recorder read model은 Runtime Control API `/runtime/lab/*`와 Guest Control API `/runtime/lab/*` 계약을 거쳐 `apps/vitalserver-lab` service가 소유합니다. 이 경로는 Helper가 dev-only test harness를 직접 제어하지 않고도 VitalServer 수신, recorder-ingress, observer, Guest/Postgres read model 반영을 검증하기 위한 제품 경로입니다.
+
+Lab에서 별도로 만든 bed/recorder를 session이 사용해야 할 때는 session 생성 요청에 명시적인 `bedIds`를 전달해야 합니다. Helper나 Host는 기존 Lab bed/recorder를 이름, fixture, 이전 명령 결과로 추측해 점유하지 않습니다. `bedIds`가 없으면 Product Lab은 새 session-scoped bed/recorder read model을 만들고, `bedIds`가 있으면 Lab service가 해당 Lab-owned bed/recorder rows를 session 상태로 전이합니다.
+
+Product Lab 실행 상태는 `case_started_at`을 명시적으로 소유합니다. 최초 frame과 이후 stream frame은 같은 값을 `dtcase`로 전송하고, 실행 중 개별 Recorder를 중지했다가 다시 시작해도 현재 session 실행의 값을 사용합니다. `dtstart`, `dtend`, track record 시각은 각 frame의 명시적인 생성 시각을 사용합니다. Payload 생성기는 현재 시각이나 session 생성 시각에서 case 시작 상태를 추론하지 않습니다.
 
 ### 7-3. 실제 network behavior 검증
 
-VM 또는 별도 장비에서 실제 VRecorder network behavior까지 검증할 때는 testkit을 bridged network로 DHCP LAN IP를 받는 환경에서 실행하고, VitalServer public proxy 주소로 접속합니다. Network Settings를 눌렀을 때 열린 페이지가 testkit 상태 페이지라면 VitalServer의 `join_vr` 처리, proxy IP 보존, Web Monitoring IP 전달이 함께 검증된 것입니다.
+VM 또는 별도 장비에서 실제 VRecorder network behavior까지 검증할 때는 dev testkit이나 별도 virtual recorder runner를 bridged network로 DHCP LAN IP를 받는 환경에서 실행하고, VitalServer public proxy 주소로 접속합니다. Network Settings를 눌렀을 때 열린 페이지가 해당 virtual recorder 상태 페이지라면 VitalServer의 `join_vr` 처리, proxy IP 보존, Web Monitoring IP 전달이 함께 검증된 것입니다.
 
 예시:
 
@@ -208,9 +213,9 @@ uv run vitalserver-testkit stream-recorder \
 
 | 단계 | 확인 항목 |
 | --- | --- |
-| VM network | testkit VM이 bridged network에서 DHCP LAN IP를 받음 |
+| VM network | virtual recorder VM 또는 장비가 bridged network에서 DHCP LAN IP를 받음 |
 | 접속 | `stream-recorder --status-page --status-port 80`로 VitalServer public 주소에 접속 |
 | Redis | `ip_<vrcode>` 값이 Docker gateway가 아니라 VM LAN IP로 저장됨 |
 | Web Monitoring | 해당 bed가 online으로 표시되고 최근 `send_data`가 반영됨 |
-| Network Settings | 버튼 클릭 시 `http://<vm-lan-ip>`가 열리고 testkit status page가 표시됨 |
+| Network Settings | 버튼 클릭 시 `http://<vm-lan-ip>`가 열리고 virtual recorder status page가 표시됨 |
 | Status JSON | `/status.json`에서 `join_sent`, `server_dt`, management event 이력을 확인 가능 |

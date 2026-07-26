@@ -55,23 +55,6 @@ public struct RuntimeEventPublisher {
         recorder.recordEventBestEffort(event)
     }
 
-    public func recordStatusDocumentEventBestEffort(
-        _ statusDocument: RuntimeStatusDocument,
-        operation: RuntimeOperation,
-        message: String,
-        eventType: RuntimeEventType,
-        progress: RuntimeProgressDocument? = nil
-    ) {
-        let event = factory.statusDocumentEvent(
-            statusDocument,
-            operation: operation,
-            message: message,
-            eventType: eventType,
-            progress: progress
-        )
-        recorder.recordEventBestEffort(event)
-    }
-
     public func recordDocumentEventBestEffort(
         source: String = "host-runtime",
         eventType: RuntimeEventType,

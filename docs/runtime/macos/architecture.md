@@ -12,6 +12,8 @@
 | 원 IP 보존은 어떻게 하나? | host nginx가 Docker/VM NAT 앞에서 `X-Forwarded-*`를 재작성한다. |
 | bridged mode는? | Apple `com.apple.vm.networking` 승인이 필요한 향후 옵션 |
 | build/runtime 책임은? | build는 Python, runtime은 Swift, Shell은 얇은 wrapper |
+| Platform API listener owner는? | launchd가 관리하는 headless `vitalserver-platform-agent` |
+| Control Panel 역할은? | Platform/Runtime 계약을 소비하는 native shell이며 listener를 소유하지 않음 |
 
 ## 2. 목표
 
@@ -72,27 +74,30 @@ Linux guest
 
 현재 코드는 macOS native Helper app에서 시작한 전환기 구조입니다. 최종 구조는 같은 product workflow를 Web/PWA, macOS shell, Windows shell이 공유하고, host-specific 실행은 Runtime Control API 뒤로 숨기는 구조입니다.
 
-### 3-1. As-is
+### 3-1. 현재 v2 reference
 
-현재 macOS Helper app은 SwiftUI presentation, native shell, composition을 담고 있습니다. `MacHostRuntimeAdapter`는 별도 SwiftPM target이며, `MacRuntimeControlApp` 안에서는 composition 파일만 adapter를 import합니다. 다만 아직 같은 Helper app process 안에서 `MacHostRuntimeClient`가 host file, privileged command, `vitalserver-vm` CLI를 직접 호출합니다.
+현재 macOS Helper app은 SwiftUI presentation과 native shell만 조립합니다. Platform
+API listener와 Platform owner adapter는 별도 `MacPlatformAgent` target 및
+`vitalserver-platform-agent` executable에 있고 launchd가 UI와 독립적으로
+기동·재기동합니다. CLI, launcher, proxy, watchdog는 HTTP listener를 상태 저장소로
+사용하지 않고 같은 durable Platform owner contract를 직접 소비합니다.
 
 ```text
-MacRuntimeControlApp
+MacControlPanelHost
   - SwiftUI UI
   - RuntimeViewModel
   - NativeShell
-  - app composition
         |
-        | RuntimeControlClient protocol
-        | composition-only MacHostRuntimeClient wiring
+        | Runtime Control HTTP/client contracts
         v
-MacHostRuntimeAdapter
-  - MacHostRuntimeClient
-  - status/settings/log/backup file readers
-  - privileged command runner
-  - vitalserver-vm CLI command factory
+MacPlatformAgentService (launchd KeepAlive)
+  - Platform API listener
+  - Platform-only state/command adapters
+  - durable operation lease/runtime endpoint/provider lifecycle owners
         |
-        | CLI / file / process
+        +-- Runtime Controller API forwarding -> Linux Guest
+        |
+        | explicit CLI / file / process ports
         v
 HostCLI
   - vitalserver-vm command entrypoint
@@ -110,15 +115,15 @@ Guest VM
 
 | Target | 현재 책임 | 전환기 성격 |
 |---|---|---|
-| `MacRuntimeControlApp` | SwiftUI 화면, view model, app composition, native shell | presentation/native shell은 adapter 세부 구현을 모름. composition만 local adapter를 조립 |
+| `MacControlPanelHost` | SwiftUI 화면, view model, native shell | Platform Agent를 소비하며 API listener나 durable Platform state를 소유하지 않음 |
+| `MacPlatformAgent` | Platform API handler/listener composition, Platform owner controller | macOS Platform Agent reference implementation |
+| `MacPlatformAgentService` | headless executable entrypoint | launchd `RunAtLoad`/`KeepAlive` process |
 | `RuntimeControl` | UI/usecase 입출력 계약, `RuntimeControlClient`, `RuntimeHostClient`, DTO, enum | 최종 API/client/server가 공유할 계약의 시작점과, 전환기 SwiftUI가 쓰는 local host affordance 계약 |
-| `RuntimeControlAPI` | legacy compatibility shim | 전환기 기존 import 경로 호환. public 선언은 `Interfaces/RuntimeControlAPI` typealias만 유지 |
-| `Contracts` | runtime status/progress/health/guest request/result/update bundle/file name/network mode 계약 | PWA/API/server/host runtime이 공유할 schema와 enum의 독립 target |
-| `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local 구현, file/process/CLI adapter | 외부 public surface는 `MacHostRuntimeClient` facade 중심. 나중에 Runtime Control API server 쪽 adapter로 이동하거나 축소 가능 |
+| `Contracts` | runtime status/progress/health/Guest Control/update bundle/file name/network mode 계약 | PWA/API/server/host runtime이 공유할 schema와 enum의 독립 target |
+| `InboundAdapters` | HTTP router/server, PWA/native presentation adapter | 외부 요청을 명시 contract로 decode/encode |
+| `OutboundAdapters` | file/process/CLI/Guest Control adapter | 외부 상태를 typed result로 Platform Agent와 workflow에 제공 |
 | `HostCLI` | `vitalserver-vm` CLI와 runtime workflow 실행 | 현재 host runtime source of truth |
-| `Core` | legacy compatibility shim | 전환기 기존 import 경로 호환. public 선언은 `Contracts`, `Domain`, `Application/Ports` typealias만 유지 |
-| `Infrastructure` | installed path, file store, JSON repository/gateway, JSONL/SQLite observability/read model, guest config reading/writing, Redis backup result document loading, health snapshot assembly | host filesystem/shared directory/SQLite/read adapter 구현 |
-| `HostInfrastructure` | legacy compatibility shim | 전환기 기존 import 경로 호환. public 선언은 `Infrastructure` typealias만 유지 |
+| `Bootstrap` | CLI workflow dependency composition | adapter 선택만 담당하고 domain transition을 소유하지 않음 |
 
 ### 3-2. Source code architecture boundary
 
@@ -145,7 +150,15 @@ RuntimeControl
   <- MacRuntimeControlApp
 ```
 
-`Domain`, `Workflow`, `Infrastructure`, `HostAdapters`, `Interfaces`, `Bootstrap`은 #47 skeleton-first migration에서 추가된 최종 구조 target입니다. `Domain`은 advertised URL validation, compatibility endpoint 결정, service lifecycle completion gate, health evaluator/VM health/bootstrap/status document/event type/provision payload/managed operation policy, watchdog recovery planner/decision, install start-on-boot sleep-prevention decision, operation step plan validation/runner, install/uninstall transition state machine, fresh-install preflight policy, update bundle manifest/archive/digest/checksum verification policy, update compatibility/preflight policy, rollback preflight model, guest update/datastore repair wait policy 같은 pure policy/model/state machine을 소유하고, `Application`은 `Core` target에 의존하지 않습니다. `Application`에는 configure/install operation intent usecase와 external state/effect port protocol이 있습니다. `Workflow`는 이주된 `RuntimeConfigureLifecycle`, `RuntimeServiceLifecycle`, `RuntimeHealth` refresh/wait operation order와 guest runtime-state observation freshness assembly, `RuntimeInstallLifecycle`의 install orchestration, preflight assembly, directory/settings/service-start/VM-config/step-dispatch 구성요소, `RuntimeUpdateLifecycle`의 apply-bundle/rollback plan execution, preflight orchestration, step dispatch, bundle preparation/materialization/verification/staging/migration/guest capability gate/guest shutdown/guest activation/materialized artifact replacement orchestration, `RuntimeUninstallLifecycle`의 uninstall orchestration, `RuntimeRepairLifecycle`의 Redis backup/datastore repair/VM disk repair orchestration, `RuntimeWatchdog`의 active operation guard와 watchdog recovery orchestration, `RuntimeShared`의 command execution over ports, command event recording, status/event reporting, observation recording, status writing orchestration을 포함합니다. `Infrastructure`는 filesystem, installed-path, JSON repository/gateway, JSONL/SQLite event repository, SQLite observability/read-model implementation, log rotation, guest log collection/config reading/writing, fresh-install settings/artifact state readers, and runtime storage filesystem maintenance, package receipt adapter, runtime operation state document stores, runtime version document store, VM lifecycle document store, managed backup store, Redis backup result document reader, health snapshot assembly를 소유합니다. `HostAdapters`는 VM runtime config document, Virtualization.framework VM configuration factory, VM delegate/termination signal handling, VM pid-file/process state handling, process command execution, host proxy port cleanup/state inspection, curl HTTP probing, launchd service management/controller, system clock/sleep, install executable/VM disk preparation, launchd permission/start-on-boot application, cloud-init seed writing 같은 host effect implementation을 소유합니다. `Interfaces/HostCLI`는 CLI-facing top-level command parsing, error vocabulary, runtime config flag interpretation, install settings input mapping/validation, lifecycle/configure/service-control command value, runtime argv parsing/usage text/typed parse error, service-control command dispatch, health-check and health-wait command orchestration, status output formatting을 소유합니다. `Bootstrap`은 launcher path composition, runtime constants/generated version constants, VM runtime config product defaults/read validation composition, runtime managed-service launchd path composition, runtime health checker product context composition, cloud-init seed product composition, service-control runner composition, status-printer composition, health-check runner composition, managed-operation guard composition, runtime lifecycle dependency wiring, configure composition wiring, install composition wiring, Redis backup request/result/status/VM-service composition wiring, update bundle composition wiring을 소유합니다. `Interfaces/RuntimeControlAPI`는 Runtime Control HTTP/API route, wire codec, local loopback server, static file responder, read handler, test-kit router implementation을 소유합니다. `Interfaces/MacRuntimeControlApp`는 Runtime Control app의 API/UI boundary read-model annotation, status refresh orchestration, status uptime/reachability/reachability-label/service-value/http-value/compose-service-value/health-details/advanced-service-health/vital-server-availability/remote-console availability/VM-state display/overall-health calculation, health notification state classification, event display projection, command result/presentation message formatting, log export destination rule validation, Vital files directory input validation, settings validation, section grouping, active-operation interpretation, backup selection/action planning, test-kit state policy, observability refresh policy, status action-needed decision, status recorder summary projection, VitalDB recorder/bed display projection 같은 presentation-facing policy를 점진적으로 소유합니다. `RuntimeStepExecutionEvent`, `RuntimeProcessResult`, `RuntimeGuestDocumentLoadResult`, `RuntimeProxyNginxPIDReadResult`, `RuntimeNetworkMode`는 shared progress/process-result/guest-load/proxy-pid-read/network-mode contract로 `Contracts`에 있습니다. Transitional `RuntimeWorkflow` target은 제거되었습니다. 기존 `Core`, `HostInfrastructure`, `RuntimeControlAPI`, `HostCLI`, `MacRuntimeControlApp` target은 operation별 migration이 끝날 때까지 전환기 target으로 유지합니다. `Core`, `HostInfrastructure`, `RuntimeControlAPI` public files는 기존 callers를 위한 typealias shim이며, 현재 실제 policy/model/port/infrastructure/API implementation을 소유하지 않습니다. `HostCLI/Runtime`과 `MacRuntimeControlApp`의 moved names는 전환기 내부 import 경로를 위한 final-layer typealias shim입니다.
+`Domain`, `Workflow`, `Infrastructure`, `HostAdapters`, `Interfaces`, `Bootstrap`은 #47 skeleton-first migration에서 추가된 최종 구조 target입니다. `Domain`은 advertised URL validation, compatibility endpoint 결정, service lifecycle completion gate, health evaluator, watchdog recovery planner, install/update/rollback/repair policy처럼 순수 정책과 상태 전이 규칙을 소유합니다. `Application`은 외부 상태와 effect를 port로 받고, Guest Control, repository, clock, command 같은 dependency failure를 explicit result로 다룹니다. `Workflow`는 install, update, rollback, repair, watchdog처럼 순서가 있는 operation을 조율하지만 상태를 추측하지 않습니다.
+
+`Infrastructure`는 installed path, authoritative Host SQLite repository, JSONL/JSON diagnostics projector, generated boot-contract adapter, log rotation, guest config materialization, package receipt 같은 Host-side persistence와 read adapter를 소유합니다. VM lifecycle, runtime endpoint, operation lease, workflow state, Host settings의 current owner는 `runtime-state.sqlite`이며 JSON repository나 lifecycle document store가 아닙니다. `HostAdapters`는 Virtualization.framework, launchd, process execution, host proxy, sleep/system clock, cloud-init seed writing처럼 macOS host effect를 소유합니다. `Interfaces/HostCLI`는 CLI command parsing과 status output formatting을 소유합니다. `Bootstrap`은 composition root로서 Host ports, Guest Control gateway, Runtime Control API, lifecycle workflow를 조립합니다.
+
+Authoritative Host state의 파일 repository는 단계적으로 Host-local `runtime-state.sqlite`로 이전합니다. JSONL은 append-only diagnostics event, JSON은 current diagnostics snapshot 또는 generated boot contract로만 유지하며 current state, operation ownership, recovery 입력으로 사용하지 않습니다. Aggregate별 cutover, transaction/outbox, revision, 명시적 legacy migration 규칙은 [Host runtime state persistence](host-runtime-state-persistence.md)를 따릅니다.
+
+Guest product persistence는 domain class와 SQLAlchemy ORM record를 직접 결합하지 않습니다. Application port는 domain object만 다루고, mapper가 domain object와 ORM record/document를 변환하며 repository가 SQLAlchemy `Engine`과 transaction을 소유합니다. 운영 dialect는 Postgres이지만 repository contract와 mapper는 dialect 중립적으로 유지하여 SQLite 전환 검증을 동일 repository contract test로 수행합니다. Database URL 선택은 composition/configuration 책임이며 domain과 UI가 dialect를 분기하지 않습니다.
+
+`Interfaces/RuntimeControlAPI`는 Runtime Control HTTP/API route, wire codec, local loopback server, static file responder, Product Lab routes, Guest service routes, VitalDB read routes를 소유합니다. Legacy `/dev/testkit/*` router는 product API surface가 아닙니다. `Interfaces/MacRuntimeControlApp`는 Runtime Control app의 presentation-facing policy, Product Lab panel, status/event/log presentation, settings validation, section grouping, action planning, observability refresh policy를 소유합니다. Transitional `RuntimeWorkflow` target은 제거되었습니다. 기존 `Core`, `HostInfrastructure`, `RuntimeControlAPI`, `HostCLI`, `MacRuntimeControlApp` target은 operation별 migration이 끝날 때까지 전환기 target으로 유지합니다.
 
 책임 기준은 아래처럼 읽습니다.
 
@@ -185,7 +198,7 @@ As-is의 계층 간 통신은 아래처럼 섞여 있습니다.
 | Helper UI -> local/remote runtime control | `RuntimeControlClient` protocol 호출 | 좋은 경계. PWA/API에서도 유지할 usecase contract |
 | Helper UI -> local host affordance | `RuntimeHostClient` protocol 호출 | update bundle file 선택, local log export, backup file operation처럼 browser/API 전환 때 재설계할 local-only 경계 |
 | `MacHostRuntimeClient` -> host runtime | CLI command, host file read, privileged process | 전환기 adapter 책임 |
-| Host runtime -> Helper UI | `runtime-status.json`, logs, backup metadata file read | API server가 생기면 endpoint/read model로 감쌀 대상 |
+| Host runtime -> Helper UI | Runtime Control read model/API, logs, backup metadata file read | `runtime-status.json`은 diagnostics/status projection artifact이며 current runtimeState/failureReasons, active operation, progress, service liveness, HTTP probe, VM IP, VM lifecycle, proxy port, runtime version, latest backup owner가 아님 |
 | Host runtime <-> Guest VM | shared directory JSON, logs, deploy files | 최종 구조에서도 유지할 VM/process boundary |
 
 ### 3-3. To-be
@@ -262,8 +275,8 @@ Core
 | Runtime Control API | auth/session, capability, status/settings/log/update/admin endpoint, progress/log streaming | `RuntimeControlClient` local 호출을 HTTP/SSE boundary로 노출 |
 | Runtime Control Client | UI가 local/remote runtime에 붙는 client | `MacHostRuntimeClient` 대신 `HttpRuntimeClient`가 primary가 됨 |
 | Host Runtime Application | install/configure/update/rollback/watchdog/service usecase | 현재 `HostCLI` CLI workflow를 service/usecase 중심으로 재배치 |
-| Runtime Adapter/Infrastructure | file/process/launchd/VM provider/guest gateway 구현 | 현재 `MacHostRuntimeAdapter`와 `HostInfrastructure` 책임을 API server/usecase 아래로 정렬 |
-| Runtime Contracts | typed status, reason, manifest, guest request/result, file names | PWA/API/server/host runtime이 공유하는 schema/enum으로 유지 |
+| Runtime Adapter/Infrastructure | file/process/launchd/VM provider/Guest Control gateway 구현 | 현재 `MacHostRuntimeAdapter`와 `HostInfrastructure` 책임을 API server/usecase 아래로 정렬 |
+| Runtime Contracts | typed status, reason, manifest, Guest Control, file names | PWA/API/server/host runtime이 공유하는 schema/enum으로 유지 |
 | Runtime Core | evaluator, operation plan, recovery policy, testable ports | 순수 정책과 workflow로 유지 |
 | Guest Appliance | Linux service stack, activation/repair 실행 | shared JSON/file contract 유지 |
 
@@ -282,14 +295,14 @@ PWA 착수 직전까지 현재 branch가 보장해야 하는 compatibility basel
 | Baseline | 현재 상태 |
 |---|---|
 | UI/usecase 계약 | `RuntimeControl`의 `RuntimeControlClient`, DTO, enum을 기준으로 고정 |
-| Runtime schema 계약 | `Contracts` target으로 분리해 status/progress/health/update bundle/guest request-result 계약을 독립 |
+| Runtime schema 계약 | `Contracts` target으로 분리해 status/progress/health/update bundle/Guest Control operation 계약을 독립 |
 | SwiftUI presentation 의존성 | `RuntimeControl`만 직접 사용하고, local adapter 구현은 import하지 않음 |
 | Native shell 의존성 | AppKit/native picker/open/terminate만 담당하고, runtime command factory를 import하지 않음 |
 | Local adapter 공개면 | `MacHostRuntimeAdapter` 외부 public surface는 `MacHostRuntimeClient` facade 중심으로 제한 |
 | Adapter 내부 구현 | command factory, status/settings/file/log reader, privileged runner는 internal 구현 세부로 유지 |
 | API 전환 지점 | PWA client는 `RuntimeControlClient`에 해당하는 HTTP/SSE contract를 보고, 현재 SwiftUI 전환기만 `RuntimeHostClient`로 local host affordance를 같이 사용 |
 | API route/DTO/server | `RuntimeControlAPI` target이 `/runtime/*` runtime control route와 `/host/*` local host affordance route를 분리하고, read-only `/runtime/*`는 local loopback HTTP server로 제공 |
-| OpenAPI 계약 | `docs/runtime/macos/runtime-control.openapi.json`이 Swift endpoint enum과 method/path/access parity test로 검증됨 |
+| OpenAPI 계약 | `docs/runtime/runtime-control.openapi.json`이 Swift endpoint enum과 method/path/access parity test로 검증됨 |
 | 후속 이슈 | write/admin endpoint 구현, auth/pairing 강화, progress client adapter, generated client는 PWA/API 구현 단계에서 진행 |
 
 Repository layout 기준은 아래처럼 둡니다.
@@ -300,7 +313,7 @@ Repository layout 기준은 아래처럼 둡니다.
 | `apps/vitalserver-macos-runtime` | macOS runtime distribution. Swift Helper app, `vitalserver-vm` CLI, packaging scripts, launchd template, guest deploy assets, release metadata | build-machine 전용 rootfs/image 생성 로직, PWA product UI |
 | `apps/vitalserver-runtime-pwa` | Runtime Control API를 사용하는 Web/PWA Helper UI. build 결과물은 Helper app resource로 배포 | host file/process/launchd 직접 호출 |
 | `packages/vitalserver-devtools` | Python build-machine tooling. Ubuntu image, cloud-init, rootfs compression, nginx bundle, Docker image bundle, update bundle 생성/검증 | 설치 후 runtime 상태 전이, launchd/VM lifecycle 정책 |
-| `packages/vitalserver-testkit` | 운영/통합 검증용 testkit | 제품 runtime 구현 |
+| `packages/vitalserver-testkit` | dev/load 검증용 simulated recorder와 smoke/load 도구 | 제품 runtime 구현 |
 
 `apps/vitalserver-macos-runtime`을 `packages`로 옮기지 않는 이유는 이 디렉터리가 재사용 라이브러리가 아니라 설치 가능한 macOS runtime product를 만들기 위한 distribution boundary이기 때문입니다. 반대로 `packages/vitalserver-devtools`는 설치 대상에 포함되지 않는 build-machine 도구라 `packages`에 남깁니다.
 
@@ -434,7 +447,7 @@ VitalServerHelper.pkg
 | macOS 재부팅 후 자동 기동 | VM/proxy LaunchDaemon `RunAtLoad`, start-on-boot policy |
 | VM launcher 비정상 종료 복구 | VM LaunchDaemon `KeepAlive`, detached VM process, watchdog recovery |
 | host nginx proxy 비정상 종료 복구 | proxy LaunchDaemon `KeepAlive`, `vitalserver-proxy-run` loop, watchdog recovery |
-| VM IP 변경 대응 | `vitalserver-proxy-run`이 guest `runtime-state.json`을 감시하고 nginx config reload. legacy `vm-ip` 파일은 fallback |
+| VM IP 변경 대응 | `vitalserver-proxy-run`이 Guest `vm-ip` bootstrap file을 Runtime Control address owner에 publish하고 direct HTTP probes로 nginx config reload |
 | guest service 복구 | guest systemd unit, Docker, nginx, Compose restart policy |
 | 설치/업데이트 실패 진단 | 고정 log path, runtime status/health command |
 | update 실패 복구 | apply 전 backup, health check 실패 시 rollback |
@@ -476,31 +489,25 @@ Single-node self-healing runtime
 
 1. VM/proxy LaunchDaemon은 `RunAtLoad`, `KeepAlive`, `ThrottleInterval`, stdout/stderr log path를 가진다.
 2. watchdog LaunchDaemon은 `vitalserver-vm runtime watchdog`을 주기 실행한다.
-3. watchdog은 VM/proxy/HTTP health를 기준으로 recovery action을 고른다. Guest compose service 문제는 compose reconcile을 먼저 요청하고, VM/IP boundary 문제만 VM/proxy restart로 승격한다.
+3. Host watchdog은 VM/proxy/Runtime Control readiness를 기준으로 Host-owned recovery action만 고른다. Guest product service 문제와 stack reconcile은 Runtime Controller가 소유하며 Host recovery input이나 effect가 아니다.
 4. guest 내부 Docker Compose stack은 `tirosh-vitalserver-compose.service`로 재부팅 후 재적용된다.
-5. Helper app은 `/Library/Application Support/VitalServerHelper/status/runtime-status.json`을 읽어 정상/복구중/장애/업데이트중 상태를 표시한다.
+5. Helper app은 Runtime Control read model/API를 통해 정상/복구중/장애/업데이트중 상태를 표시한다. Current runtimeState/failureReasons는 explicit current owner reads에서 조립하고, active operation은 PlatformOperationState, workflow progress detail은 explicit operation-state/API owner contract, Host service liveness는 live launchd read, HTTP 상태는 explicit probe read, VM IP 표시는 loaded Guest address provider result, VM state/errors는 VM lifecycle read, proxy port는 proxy launch daemon/config read의 display/probe input, runtime version은 runtime version store, latest backup은 managed backup directory read가 owner이며 `runtime-status.json` 값으로 덮어쓰지 않는다. Progress artifact, `vm-ip` compatibility file, proxy config/plist의 부재/읽기 실패는 current health issue를 만들지 않는다.
 6. install/update는 free-space preflight를 수행하고, installer/runtime log는 size 기반 rotation을 수행한다.
 7. guest bootstrap은 bundled image load 후 Docker dangling image cleanup을 수행한다.
 
 ### 5-3. Runtime Status 계약
 
-운영 상태의 source of truth는 아래 JSON 파일입니다.
+Host health/status projection 문서는 아래 JSON 파일입니다.
 
 ```text
 /Library/Application Support/VitalServerHelper/status/runtime-status.json
 ```
 
-이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 갱신합니다. Helper app, watchdog, 운영 CLI는 같은 파일을 읽어 상태를 판단합니다.
+이 파일은 `vitalserver-vm runtime install`, `install-provision`, `health`, `watchdog`, `apply-bundle`, `rollback`이 diagnostics/status projection으로 갱신합니다. Runtime Control current read model은 이 문서를 읽지 않고, 이 문서의 status/failure projection이나 read/decode failure를 current 상태 owner로 소비하지 않습니다. Current runtimeState/failureReasons는 explicit current owner reads에서 조립하고, active operation은 PlatformOperationState의 Host operation lease owner, workflow progress detail은 explicit operation-state/API owner contract, VM/proxy/watchdog service liveness는 live host service read, current HTTP 상태는 explicit probe read, VM IP 표시는 loaded Guest address provider result, VM state/errors는 VM lifecycle read를 별도 owner contract로 소비합니다. `runtime-progress.json`, install-state document, `vm-ip` compatibility file, proxy config/plist의 부재/읽기 실패는 current health issue가 아닙니다. Installed CLI `runtime status`도 status file은 diagnostics presence로만 표시하고, status/VM IP는 health snapshot과 explicit owner read에서 온 current status input을 표시합니다.
 
-`runtime-status.json`은 update/watchdog coordination에도 사용합니다. update와 rollback은 VM/proxy/watchdog launchd service를 직접 stop/start하므로, 이 구간에서 watchdog auto-recovery가 동시에 실행되면 같은 자원을 두 process가 재시작하는 경쟁 상태가 됩니다. 따라서 watchdog은 상태 문서가 아래 operation을 진행 중이라고 판단하면 recovery를 건너뜁니다.
+Update/watchdog coordination은 `runtime-status.json`을 active lock처럼 읽지 않습니다. update와 rollback은 VM/proxy/watchdog launchd service를 직접 stop/start하므로, 이 구간에서 watchdog auto-recovery가 동시에 실행되면 같은 자원을 두 process가 재시작하는 경쟁 상태가 됩니다. 이 guard의 권한 있는 입력은 Host operation lease입니다. Status diagnostics, progress artifact, bootstrap proof file은 operation ownership을 제공할 수 없고, stale file state에서 active operation ownership이나 health/recovery state를 재구성하면 안 됩니다.
 
-| status | operation | 의미 |
-|---|---|---|
-| `updating` | `apply-bundle` | host artifact 교체, migration, service restart 진행 중 |
-| `recovering` | `activate-guest-update` | guest Docker image load/compose recreate 진행 중 |
-| `recovering` | `rollback` | managed backup 복원 진행 중 |
-
-이 guard는 stale 상태를 영구적으로 믿지 않습니다. 상태 파일의 `updatedAt`이 grace timeout보다 오래되면 watchdog은 update process가 더 이상 살아 있지 않은 것으로 보고 일반 recovery로 돌아갑니다.
+Watchdog은 active lease가 있을 때만 active-operation recovery를 suppress합니다. Lease가 없거나 stale이면 status/progress/bootstrap 문서로 operation을 추론하지 않고 일반 health/recovery 정책으로 돌아갑니다.
 
 상태 값은 아래로 제한합니다.
 
@@ -581,12 +588,13 @@ VitalServerHelper.dmg
 
 | 설정 | 저장 위치 |
 |---|---|
-| VM CPU/RAM/kernel/disk/network/MAC | `runtime/vm-config.json` |
+| VM CPU/RAM/kernel/disk/network/MAC desired/applied state | `runtime/runtime-state.sqlite.host_runtime_settings` |
+| VM/Guest boot input | SQLite settings에서 생성한 `runtime/vm-config.json`, deploy `runtime-config.json`, `runtime-settings.json` |
 | cloud-init user/hostname/SSH key/bootstrap | `seed.iso` |
 | VitalServer container/runtime 설정 | deploy `runtime-config.json` |
 | 서비스 자동 실행 | LaunchDaemon plist |
 
-Helper app은 설치 이후 상태 확인, 설정 변경, offline/online Product Update bundle 적용, rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM Image와 privileged provisioning은 installer pkg가 담당합니다. 설정 변경은 Helper app이 직접 JSON/plist를 수정하지 않고 `vitalserver-vm runtime configure ... --restart`를 administrator privilege로 호출합니다.
+Helper app은 설치 이후 상태 확인, 설정 변경, offline/online Product Update bundle 적용, rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM Image와 privileged provisioning은 installer pkg가 담당합니다. 설정 저장은 Helper app이 JSON/plist를 직접 수정하지 않고 `vitalserver-vm runtime configure`를 administrator privilege로 호출합니다. 저장된 변경을 활성화하는 `Apply`는 별도 typed intent인 `--restart-vm-runtime`을 호출하며 새 lifecycle run과 health proof가 성공한 뒤에만 SQLite applied revision을 갱신합니다.
 
 역할 경계는 아래처럼 고정합니다.
 
@@ -633,20 +641,20 @@ Linux guest bootstrap, Docker Compose stack, update/repair execution
 
 ```text
 [Guest VM]
-runtime-state.json, result JSON, guest logs
+VM IP/bootstrap HTTP readiness, Guest Control operation/read documents, guest logs
         |
-        | VirtioFS shared directory
+        | Guest Control API and diagnostics files
         v
 [Local Control Components]
-health/evaluator/waiter 판단, runtime-status.json 갱신
+health/evaluator/waiter 판단, Host SQLite owner 갱신, diagnostics projection
         |
-        | status JSON, command/install/container logs
+        | explicit API/read repository, diagnostics JSON/JSONL, logs
         v
 [MacRuntimeControlApp]
 Status/Settings/Update/Logs UI에 표시
 ```
 
-`Contracts`와 전환기 `Core`는 별도 실행 계층이 아닙니다. `Contracts`는 JSON schema, enum, file name, guest request/result, update bundle manifest처럼 PWA/API/server/host runtime이 함께 알아야 하는 계약을 담습니다. 실제 evaluator, operation plan, recovery policy, status document builder는 `Domain`에 있고, repository/clock/command/file/service/guest gateway 같은 port protocol은 `Application/Ports`에 있습니다. filesystem, installed path, JSON/JSONL repository, SQLite observability/read-model 구현은 `Infrastructure`에 있습니다. `Core`와 `HostInfrastructure`는 기존 `MacHostRuntimeAdapter`와 `HostCLI` import 경로를 유지하기 위한 typealias shim이며, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임을 갖지 않습니다.
+`Contracts`와 전환기 `Core`는 별도 실행 계층이 아닙니다. `Contracts`는 JSON schema, enum, file name, Guest Control, update bundle manifest처럼 PWA/API/server/host runtime이 함께 알아야 하는 계약을 담습니다. 실제 evaluator, operation plan, recovery policy, status document builder는 `Domain`에 있고, repository/clock/command/file/service/Guest Control gateway 같은 port protocol은 `Application/Ports`에 있습니다. filesystem, installed path, authoritative Host SQLite repository, diagnostics projector, generated boot-contract 구현은 `Infrastructure`에 있습니다. `Core`와 `HostInfrastructure`는 기존 `MacHostRuntimeAdapter`와 `HostCLI` import 경로를 유지하기 위한 typealias shim이며, macOS process 실행이나 SwiftUI 화면 같은 adapter 책임을 갖지 않습니다.
 
 현재 Helper app 경계는 아래처럼 둡니다. 이 구조는 전환기 SwiftUI app 안에서 ADR 0002의 `RuntimeControlClient` boundary를 구현한 모양입니다. 코드 배치도 같은 경계를 드러내도록 SwiftPM target을 나눕니다. `MacRuntimeControlApp`은 composition/presentation/native shell을 담고, `MacHostRuntimeAdapter`는 local file/process/CLI adapter를 담습니다. presentation/native shell은 adapter target을 import하지 않고, composition에서만 `MacHostRuntimeClient`를 조립합니다.
 
@@ -700,10 +708,10 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 |---|---|---|---|
 | `MacRuntimeControlApp` | 운영 UI와 app composition | `Sources/MacRuntimeControlApp/{Composition,Presentation,NativeShell}/*` | SwiftUI 화면, view model 조립, native shell, RuntimeControl 구현 주입 |
 | `RuntimeControl` | UI-usecase 입출력 계약 | `Sources/RuntimeControl/*` | `RuntimeControlClient`, `RuntimeHostClient`, status/settings/backup/log/release/install DTO, command/log export result와 닫힌 선택지 enum |
-| `Contracts` | runtime schema 계약 | `Sources/Contracts/*` | status/progress/health/guest request-result/update bundle/file names, PWA/API/server/host runtime 공유 대상 |
+| `Contracts` | runtime schema 계약 | `Sources/Contracts/*` | status/progress/health/Guest Control operation/update bundle/bootstrap file names, PWA/API/server/host runtime 공유 대상 |
 | `MacHostRuntimeAdapter` | local runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControl` 구현체, host file/log read, privileged command 실행, `vitalserver-vm` CLI command 조립 |
 | `HostCLI` | local control backend | `Sources/HostCLI/*` | Updater/Supervisor/VM Driver 구현. VM 시작/중지, 설치/설정/업데이트/롤백, launchd/nginx/health 제어 |
-| `Guest VM` | Linux 실행 환경 | `Support/Guest/*` | bootstrap, Docker image load, Compose stack 실행, update activation, datastore repair |
+| `Guest VM` | Linux 실행 환경 | `Support/Guest/*` | bootstrap, Docker image load, Compose stack 실행, Guest Control API, update activation/shutdown, datastore repair |
 | `Core` | 전환기 compatibility shim | `Sources/Core/*` | 기존 `Core` import 경로를 `Contracts`, `Domain`, `Application/Ports`로 재노출 |
 
 계층 간 통신 방식은 아래로 고정합니다.
@@ -711,11 +719,13 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 | 방향 | 방식 | 입력 | 출력 |
 |---|---|---|---|
 | `MacRuntimeControlApp -> Local control` | CLI 실행 | `install`, `start`, `stop`, `runtime configure`, `apply-bundle`, `rollback` 명령과 CPU/RAM/disk/network/proxy/admin 설정 | command exit code, command log |
-| `Local control -> MacRuntimeControlApp` | host file read | `runtime-status.json`, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
-| `Local control -> Guest VM` | shared directory file contract | `runtime-config.json`, cloud-init/bootstrap files, update/repair request JSON, deploy bundle files | guest 작업 시작 조건 |
-| `Guest VM -> Local control` | shared directory file contract | `runtime-state.json`, bootstrap/update/repair result JSON, guest logs | health 판단, waiter completion, rollback/update result |
+| `Local control -> MacRuntimeControlApp` | Runtime Control read model/API and host diagnostics reads | explicit owner reads, operation-state/API owner contract, status/progress diagnostics artifacts, install/runtime/container logs, backup/update bundle metadata | UI status, progress, failure reason, log view |
+| `Local control -> Guest VM` | Guest Control API | service, stack, Lab, update, repair, Redis maintenance requests | Guest operation id, operation state, typed failure |
+| `Local control -> Guest VM` | shared directory file contract | `runtime-config.json`, cloud-init/bootstrap files, deploy bundle files | bootstrap/discovery input |
+| `Guest VM -> Local control` | Guest Control API | service status, stack status, Lab/read-model reads, operation reads | product state, maintenance completion, typed unavailable/error state |
+| `Guest VM -> Local control` | shared directory file contract | `runtime-observation.json`, bootstrap evidence, guest logs | VM/proxy discovery and diagnostics evidence |
 
-이 구조에서 파일 기반 계약은 모든 계층에 쓰는 범용 통신 방식이 아닙니다. Swift module 사이에서는 `public` API와 protocol을 import해서 호출하고, 파일 기반 JSON은 process/VM 경계를 넘는 계약에만 사용합니다. 특히 guest VM은 bootstrap 초기에 HTTP service가 아직 없을 수 있으므로, shared directory의 request/result JSON이 update와 repair의 안정적인 최소 계약입니다.
+이 구조에서 파일 기반 계약은 모든 계층에 쓰는 범용 통신 방식이 아닙니다. Swift module 사이에서는 `public` API와 protocol을 import해서 호출하고, Host와 Guest 사이의 product/service/update/repair operation은 Guest Control API를 사용합니다. shared directory 파일은 bootstrap 초기에 HTTP service가 아직 없을 때 필요한 설정, 발견, 배포 bundle, 진단 증거로 제한합니다.
 
 Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 
@@ -728,7 +738,41 @@ Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 
 중요한 운영 작업의 owner는 `MacHostRuntimeCommandWorker`입니다. Update, Redis backup, rollback, repair처럼 오래 걸리거나 관리자 권한을 요구하는 작업은 read worker와 섞지 않습니다. UI와 dev Runtime Control API는 같은 `MacHostRuntimeClient` facade를 통해 호출하지만, facade 내부에서는 read worker와 command worker가 분리되어야 합니다. 이 경계가 깨지면 업데이트 중 앱 재시작, UI 끊김, PWA/local UI 상태 차이를 추적하기 어려워집니다.
 
-### 7-1. Naming Rules
+### 7-1. Host/Guest time synchronization
+
+시간 동기화는 두 단계로 나눕니다. 첫 단계는 네트워크가 뜨기 전 Guest boot를 위한 필수 계약이고, 두 번째 단계는 부팅 후 drift와 suspend/resume을 교정하며 외부 장비에도 Host 시간을 제공하는 NTP service입니다.
+
+```text
+VM process start
+  -> Host writes fresh host-time.json atomically
+  -> Guest applies the explicit boot time before Docker
+  -> Guest network becomes ready
+  -> Guest NTP client continuously follows Host NTP service
+  -> external recorders may follow the same Host NTP service
+```
+
+`host-time.json` writer는 service-control command가 아니라 실제 `vitalserver-vm start` entrypoint에 둡니다. launchd `RunAtLoad`/`KeepAlive`, watchdog, settings restart, installer, 수동 start 중 어느 경로도 이 entrypoint를 우회해 VM을 실행하지 않습니다. Guest의 one-shot sync는 missing/invalid/write failure를 실패로 유지하며, Guest 현재 시각이나 NTP를 boot contract fallback으로 사용하지 않습니다.
+
+지속 동기화에는 NTP가 적합합니다. 초기 제품 경계는 macOS system clock을 authoritative Host clock으로 유지하고, 별도 Host NTP daemon은 그 시각을 VM gateway address와 운영자가 명시한 LAN address에 UDP 123으로 제공합니다. Guest는 explicit Host gateway를 단일 local source로 사용합니다. 외부 Vital Recorder도 설정된 Host LAN address를 사용하므로 Host/Guest/Recorder timestamp 기준이 하나가 됩니다.
+
+NTP 구현은 다음 조건을 만족해야 합니다.
+
+| 항목 | 계약 |
+|---|---|
+| clock steering owner | macOS system time owner와 bundled daemon이 동시에 Host clock을 조정하지 않음 |
+| listen address | `0.0.0.0` 추정값이 아니라 VM gateway와 운영자가 저장한 LAN address |
+| client access | VM CIDR와 운영자가 저장한 device CIDR allowlist만 허용 |
+| source state | `synchronized`, `unsynchronized`, `failed`, `unavailable`을 분리해 Runtime Control에 제공 |
+| Guest startup | boot contract 적용 후 NTP client 시작; 초기 큰 offset step은 Docker/Postgres 시작 전에만 허용 |
+| runtime correction | 정상 운영 중에는 slew를 기본으로 하고 임의 backward step을 허용하지 않음 |
+| external service | enable, listen address, allowed CIDR, source mode가 모두 explicit settings이며 missing config를 disabled로 해석하지 않음 |
+| diagnostics | source, stratum, offset, last update, listen endpoints, rejected/failed state를 JSONL history와 current JSON diagnostics로 기록 |
+
+Host daemon 후보는 macOS에서 server socket과 CIDR allowlist를 명시적으로 지원하는 구현을 package에 고정해야 합니다. 예를 들어 ntpd-rs는 macOS 수동 service 구성을 지원하고, interface별 UDP 123 listener와 allowlist를 제공합니다. Guest는 Ubuntu에서 chrony/chronyd를 client로 사용해 초기 제한된 `makestep`과 이후 slew 정책을 분리할 수 있습니다. 선택한 daemon/version/package digest와 설정 schema는 VM/rootfs compile input으로 고정하고, 설치 시 network 접근으로 보정하지 않습니다.
+
+참고: [ntpd-rs server setup](https://docs.ntpd-rs.pendulum-project.org/guide/server-setup/), [ntpd-rs macOS installation](https://docs.ntpd-rs.pendulum-project.org/guide/installation/), [chrony FAQ](https://chrony-project.org/faq.html).
+
+### 7-2. Naming Rules
 
 리팩터링 중 이름은 platform 종속성과 재사용 가능성을 기준으로 정합니다. 이름이 계층 경계를 설명해야 하며, 단순 wrapper가 여러 단계로 겹쳐 호출 깊이를 늘리는 이름은 피합니다.
 
@@ -736,18 +780,46 @@ Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 |---|---|---|
 | `Contracts` | PWA/API/server/host runtime이 함께 알아야 하는 JSON schema, enum, file name 계약 | `RuntimeStatusDocument`, `RuntimeWorkflowStep`, update bundle manifest |
 | `RuntimeControl` | UI/usecase 관점의 typed client/read model/result 계약 | `RuntimeControlClient`, `RuntimeHostClient`, `RuntimeCommandResult`, `RuntimeLogSource` |
-| `RuntimeControlAPI` | HTTP transport 관점의 route/DTO/router/local server 계약 | `/runtime/status`, `/runtime/settings`, `/host/update-bundles/verify`, `RuntimeControlAPIRouter`, `RuntimeControlLocalHTTPServer`, `RuntimeControlFileReference` |
+| `RuntimeControlAPI` | HTTP transport 관점의 route/DTO/router/local server 계약 | `/runtime/status`, `/runtime/settings`, `/platform/update-bundles/verify`, `RuntimeControlAPIRouter`, `RuntimeControlLocalHTTPServer`, `RuntimeControlFileReference` |
 | `Core` | host OS나 SwiftUI를 모르는 compatibility shim | 기존 `Core` import 경로 호환 |
-| `HostInfrastructure` | 특정 product workflow보다 일반적인 host filesystem/shared-directory 구현 | `SystemRuntimeFileStore`, `JSONFileRuntimeStatusRepository` |
+| `HostInfrastructure` | 특정 product workflow보다 일반적인 host filesystem/shared-directory 구현 | `SystemRuntimeFileStore`, `JSONFileRuntimeStatusArtifactSink` |
 | `MacHost*` | macOS host에서만 의미가 있는 local adapter 구현 | `MacHostRuntimeClient`, `MacHostRuntimeLogCollector`, `MacHostRuntimeLogExporter` |
 | `MacRuntimeControlApp` | macOS SwiftUI transition app, composition, native shell, presentation | `MacRuntimeControlApplication`, `RuntimeViewModel`, `RuntimeNativeShell` |
 | `System*` | Foundation/FileManager/Process 같은 system API를 감싼 일반 구현. macOS UI나 launchd 정책을 뜻하지 않음 | `SystemRuntimeFileStore`, `SystemRuntimeCommandRunner` |
 
-Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락을 드러냅니다. 예를 들어 macOS의 launchd, AppKit panel, local file/log export, privileged CLI 실행은 `MacHost*`, `MacRuntimeControlApp`, `RuntimeNativeShell` 쪽에 둡니다. 반대로 PWA, Runtime Control API server, macOS/Windows host runtime이 모두 재사용해야 하는 상태/진행/update/guest request-result 계약은 `Contracts`와 `RuntimeControl`에 둡니다.
+Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락을 드러냅니다. 예를 들어 macOS의 launchd, AppKit panel, local file/log export, privileged CLI 실행은 `MacHost*`, `MacRuntimeControlApp`, `RuntimeNativeShell` 쪽에 둡니다. 반대로 PWA, Runtime Control API server, macOS/Windows host runtime이 모두 재사용해야 하는 상태/진행/update/Guest Control operation 계약은 `Contracts`와 `RuntimeControl`에 둡니다.
 
-`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. `MacHostRuntimeClient -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. Runtime Control API server는 PWA가 사용할 product API surface이므로 TestKit/dev console 노출 여부와 분리합니다. Stable profile에서도 API server를 시작할 수 있어야 하며, `/dev/runtime-control` 확인 화면과 `/dev/testkit/*` route만 test-enabled build 뒤에 둡니다. 이 경계는 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유하도록 유지합니다.
+`MacRuntimeControlEnvironment`는 현재 macOS app composition root입니다. `MacHostRuntimeClient -> RuntimeControlAPIRouter -> RuntimeControlLocalHTTPServer`로 Runtime Control API를 조립하고, 같은 `MacHostRuntimeClient`를 SwiftUI `RuntimeViewModel`에도 주입합니다. Runtime Control API server는 PWA가 사용할 product API surface이므로 browser diagnostics page와 분리합니다. Stable profile에서도 API server를 시작할 수 있어야 하며, Product Lab은 `/runtime/lab/*` route를 사용하고 legacy `/dev/testkit/*` route는 product surface에 노출하지 않습니다. 이 경계는 UI 경로와 HTTP 경로가 같은 usecase/read model 계약을 공유하도록 유지합니다.
 
 `RuntimeHostClient`는 현재 SwiftUI 전환기에서 필요한 local host affordance 경계입니다. PWA 진입 시 이 계약을 그대로 browser client에 노출한다는 뜻이 아닙니다. PWA는 `RuntimeControlClient`에 해당하는 HTTP/SSE API를 우선 사용하고, local file 선택, log export destination, pairing/native shell 같은 기능은 native shell 또는 Runtime Control API의 별도 endpoint로 재배치합니다.
+
+### 7-3. Vital Files upload와 replay 경계
+
+`Upload`와 `Replay`는 서로 다른 operation이다.
+
+- Upload는 사용자가 Host 권한으로 읽을 수 있는 위치에서 한 개 이상의 파일을 선택해
+  VitalServer library로 가져오는 operation이다. Runtime Control API는
+  `POST /runtime/lab/vital-files/upload`의 `multipart/form-data` `files` field를 반복해
+  N개 파일의 명시적 byte input을 받는다.
+- Guest library adapter는 각 선택 파일의 basename, `.vital` 확장자, VitalServer 파일명 규칙
+  (`<bed>_YYMMDD_HHMMSS.vital`), batch 내 중복, 현재 VitalServer index 충돌을 독립적으로
+  검증한다. 유효 후보는 VitalServer `POST /upload`에 하나씩 전달하고 HTTP 상태뿐 아니라
+  응답 본문이 정확히 `success`인지 확인한다. 완료 후 `POST /api/login`과 `GET /api/filelist`로
+  각 수락 파일이 실제 index에 등록됐는지 다시 검증한다. 한 파일의 검증·upload·index 실패는
+  해당 파일의 `failedFiles` 결과로 남기고 다음 파일 시도를 막지 않는다.
+- macOS native shell은 `NSOpenPanel.allowsMultipleSelection`으로 Host URL들을 받고 같은
+  batch import 규칙을 적용한다. PWA는 browser `File[]`을 multipart로 전달한다.
+  Linux/Windows Platform Agent는 같은 Runtime Control route와 body를 Runtime Controller에
+  전달하므로 PWA contract와 validation 결과가 platform별로 달라지지 않는다.
+- Replay는 VitalServer index에 이미 등록되어 `GET /runtime/lab/vital-files`가 제공한
+  `relativePath` 하나만 받는다. 임의 Host path를 replay input으로 받지 않는다. Replay
+  request는 기존 bed/recorder 사용 또는 quick-create와 once/N/continuous repeat policy를
+  명시해야 한다.
+
+UI는 이 의미를 `Vital Files > Upload to library`와
+`Vital Files > Replay uploaded file`로 분리한다. Presentation은 file extension을 미리
+검사해 사용자를 안내할 수 있지만, authoritative upload validation과 file index는
+VitalServer API owner 경계에 남는다. Host shared directory 직접 복사는 upload가 아니다.
 
 ## 8. Source 책임
 
@@ -798,21 +870,21 @@ Shell
 | Python build package | `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/*.py` | Ubuntu asset 준비, cloud-init ISO 생성, rootfs 압축, nginx bundle, Docker image bundle, update bundle 생성/검증, plist/template rendering | 설치 후 runtime 상태 변경 |
 | Local control entry | `Sources/HostCLI/CLI/Launcher.swift`, `Command.swift` | `vitalserver-vm` command routing, VM start/stop/status/network/runtime command 연결 | package staging, DMG 생성 |
 | Local control lifecycle facade | `Sources/HostCLI/Runtime/RuntimeLifecycle.swift` | `runtime install/install-provision/status/health/verify-bundle/stage-bundle/apply-bundle/rollback/repair-datastore/start-services/stop-services` command를 typed workflow와 runner로 연결 | workflow 내부 단계 구현, DMG/PKG 파일 생성 |
-| Local control composition | `Bootstrap/Composition/RuntimeLifecycleComposition.swift`, `Bootstrap/Composition/RuntimeHealthCheckerComposition.swift`, `Bootstrap/Composition/RuntimeServiceControlComposition.swift`, `Bootstrap/Composition/RuntimeStatusPrinterComposition.swift`, `Bootstrap/Composition/RuntimeWorkflowStatusReporterComposition.swift`, `Bootstrap/Composition/RuntimeStatusWriterComposition.swift`, `Bootstrap/Composition/RuntimeHealthCheckRunnerComposition.swift`, `Bootstrap/Composition/RuntimeHealthWaitRunnerComposition.swift`, `Bootstrap/Composition/RuntimeManagedOperationGuardComposition.swift`, `Bootstrap/Composition/RuntimeWatchdogRunnerComposition.swift`, `Bootstrap/Composition/RuntimeGuestCapabilityCheckerComposition.swift` | runtime lifecycle facade가 쓸 HTTP probe, service manager/controller, status reporter, health checker product context, service-control runner ports, CLI status printer product paths/health URL, workflow status/progress reporter write ports, status writer timestamp/version/health/backup ports, health-check runner status/event best-effort ports, health-wait timeout/polling/status ports, managed-operation guard guest bootstrap state ports, watchdog runner log/liveness/lifecycle/status/event ports, guest capability runtime-state load port, guest gateway 조립 | workflow/domain transition rule ownership |
+| Local control composition | `Bootstrap/Composition/RuntimeLifecycleComposition.swift`, `Bootstrap/Composition/RuntimeHealthCheckerComposition.swift`, `Bootstrap/Composition/RuntimeServiceControlComposition.swift`, `Bootstrap/Composition/RuntimeStatusPrinterComposition.swift`, `Bootstrap/Composition/RuntimeWorkflowStatusReporterComposition.swift`, `Bootstrap/Composition/RuntimeStatusWriterComposition.swift`, `Bootstrap/Composition/RuntimeHealthCheckRunnerComposition.swift`, `Bootstrap/Composition/RuntimeHealthWaitRunnerComposition.swift`, `Bootstrap/Composition/RuntimeManagedOperationGuardComposition.swift`, `Bootstrap/Composition/RuntimeWatchdogRunnerComposition.swift`, `Bootstrap/Composition/RuntimeGuestCapabilityCheckerComposition.swift` | runtime lifecycle facade가 쓸 HTTP probe, service manager/controller, status reporter, health checker product context, service-control runner ports, CLI status printer product paths/health URL, workflow status/progress reporter write ports, status writer timestamp/version/health/backup ports, health-check runner status/event best-effort ports, health-wait timeout/polling/status ports, managed-operation guard guest bootstrap state ports, watchdog runner log/liveness/lifecycle/status/event ports, Guest Control capability read port, Guest Control gateway 조립 | workflow/domain transition rule ownership |
 | Repository composition | `Bootstrap/Composition/RuntimeBackupStoreComposition.swift`, `Bootstrap/Composition/RuntimeVersionStoreComposition.swift` | backup/version repository와 installed runtime paths, product artifact names, runtime tool paths, file-store ports, timestamp, chmod command 조립 | repository persistence implementation, backup/version document schema ownership |
 | Configure composition | `Bootstrap/Composition/RuntimeConfigureRunner.swift`, `Bootstrap/Composition/VMRuntimeConfigComposition.swift` | `RuntimeConfigureComposition`과 configure runner/usecase/workflow, host file/VM-config/service/control effects, VM config product defaults/read validation 조립 | CLI argument parsing, configure validation policy ownership |
 | Install composition | `Bootstrap/Composition/RuntimeInstallComposition.swift`, `Bootstrap/Composition/RuntimeFreshInstallPreflightComposition.swift`, `Bootstrap/Composition/RuntimeCloudInitSeedComposition.swift` | install usecase/workflow와 host file/process/launchd/cloud-init/VM-config/status ports, fresh-install preflight settings/artifact/service/receipt/proxy-port reader selection, cloud-init seed product context 조립 | install transition policy와 workflow step order ownership |
 | Uninstall composition | `Bootstrap/Composition/RuntimeUninstallComposition.swift` | uninstall workflow와 product/runtime paths, package receipt readers, cleanup artifact state readers, VM process reader, uninstall state writer, filesystem/service/package effects, diagnostics 조립 | uninstall transition policy와 cleanup/receipt completion rule ownership |
-| Redis backup composition | `Bootstrap/Composition/RuntimeRedisBackupComposition.swift` | Redis backup workflow와 guest request/result file, result reader, status writer, VM service gate, polling sleep port 조립 | Redis backup workflow step order와 stale/result/timeout policy ownership |
-| Datastore repair composition | `Bootstrap/Composition/RuntimeDatastoreRepairComposition.swift` | datastore repair workflow와 guest request/result gateway, guest run directory, status writer, VM/proxy/watchdog service gates, polling sleep port 조립 | datastore repair workflow step order와 result evaluation policy ownership |
+| Runtime data backup composition | `Sources/Hosts/CLI/ProcessBoundary/RuntimeDataBackupComposition.swift` | Host backup package manifest, local file copy, start-on-boot state capture, Guest Control Redis backup/restore maintenance API 소비 | Guest operation state, Redis archive creation policy, removed legacy request/result file workflow |
+| Datastore repair composition | `Sources/Hosts/CLI/ProcessBoundary/RuntimeDatastoreRepairComposition.swift` | Host repair aftercare, VM/proxy/watchdog service gates, health wait, Guest Control datastore repair maintenance API 소비 | Guest operation state, Redis append-only repair implementation, removed legacy request/result file workflow |
 | VM disk repair composition | `Bootstrap/Composition/RuntimeVMDiskRepairComposition.swift` | VM disk repair runner와 installed runtime paths, rootfs/disk artifact names, disk size/free-space defaults, gunzip/truncate command paths, filesystem/process/service/status ports 조립 | VM disk replacement order, archive policy, health recovery result ownership |
 | Update bundle composition | `Bootstrap/Composition/RuntimeBundleComposition.swift` | update bundle materialize/verify/stage/apply wiring, host file/process/storage/status ports 조립 | update/rollback workflow step order와 domain verification policy ownership |
-| Guest update composition | `Bootstrap/Composition/RuntimeGuestActivationComposition.swift`, `Bootstrap/Composition/RuntimeGuestShutdownComposition.swift` | guest update activation/shutdown workflow와 guest request/result gateway, guest run directory, VM service gate, status writer, polling sleep, wait timeout 조립 | guest activation/shutdown result evaluation, timeout, progress policy ownership |
+| Guest update composition | `Sources/Hosts/CLI/ProcessBoundary/RuntimeGuestActivationComposition.swift`, `Sources/Hosts/CLI/ProcessBoundary/RuntimeGuestShutdownComposition.swift` | Guest Control update activation/shutdown maintenance API 소비, VM service gate, status writer, wait timeout 조립 | Guest activation/shutdown operation state, removed legacy request/result file workflow |
 | Rollback composition | `Bootstrap/Composition/RuntimeRollbackComposition.swift` | rollback workflow와 installed runtime paths, rootfs/version/disk/manager/nginx/deploy restore targets, file-store reads, backup restore ports, service/status/progress ports 조립 | rollback preflight, step order, rollback/degraded/critical transition policy ownership |
 | Local control workflows | `Workflow/RuntimeInstallLifecycle`, `Workflow/RuntimeUpdateLifecycle`, `Workflow/RuntimeRepairLifecycle` | install/update/rollback/datastore repair의 단계 조율, progress/status 기록 경계 | CLI argument parsing, Helper UI presentation |
-| Local control contracts | `Sources/Contracts/*.swift`, `Sources/Core/Ports/*.swift` | runtime status/progress/health/guest request/result/update bundle/port 계약, 닫힌 상태값 enum | host filesystem이나 launchd 직접 호출 |
+| Local control contracts | `Sources/Contracts/*.swift`, `Sources/Core/Ports/*.swift` | runtime status/progress/health/Guest Control/update bundle/port 계약, 닫힌 상태값 enum | host filesystem이나 launchd 직접 호출 |
 | Local control host services | `RuntimeServiceController.swift`, `RuntimeHealthChecker.swift` | launchd service 제어, host/guest health snapshot 수집 | product update policy 결정 |
-| Swift paths/constants | `Bootstrap/Composition/LauncherPaths.swift`, `Bootstrap/Composition/Constants.swift`, `Bootstrap/Composition/GeneratedVersion.swift`, `Bootstrap/Composition/RuntimeManagedServicePaths.swift` | runtime home resolution, artifact 이름, launchd/service plist path, launchd/service 이름, command path, generated helper version/channel/testkit flag | runtime 동작 정책 결정 |
+| Swift paths/constants | `Bootstrap/Composition/LauncherPaths.swift`, `Bootstrap/Composition/Constants.swift`, `Bootstrap/Composition/GeneratedVersion.swift`, `Bootstrap/Composition/RuntimeManagedServicePaths.swift` | runtime home resolution, artifact 이름, launchd/service plist path, launchd/service 이름, command path, generated helper version/channel metadata | runtime 동작 정책 결정 |
 | VM configuration | `HostAdapters/VirtualMachine/VMRuntimeConfig.swift`, `HostAdapters/VirtualMachine/VMConfigurationFactory.swift`, `Bootstrap/Composition/VMRuntimeConfigComposition.swift` | `vm-config.json` schema, Apple Virtualization configuration 생성, product default VM config composition | install settings 파일 읽기 |
 | Helper app | `Sources/MacRuntimeControlApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI, app composition, native shell | rootfs, VM disk, privileged provisioning 포함 |
 | Host runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local facade, read worker, command worker, host file/log read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |

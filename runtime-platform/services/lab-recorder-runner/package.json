@@ -1,0 +1,22 @@
+{
+  "name": "@tirosh-chain/lab-recorder-runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Guest-local Lab virtual-recorder Socket.IO execution service",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0 <21"
+  },
+  "scripts": {
+    "build": "node ./scripts/clean-build-output.mjs && tsc --project tsconfig.json",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "test": "npm run build && find src/test -name '*.test.ts' -print | sort | sed 's#^src/#dist/#; s#\\.ts$#.js#' | xargs node --test"
+  },
+  "dependencies": {
+    "socket.io-client": "4.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "typescript": "5.9.3"
+  }
+}

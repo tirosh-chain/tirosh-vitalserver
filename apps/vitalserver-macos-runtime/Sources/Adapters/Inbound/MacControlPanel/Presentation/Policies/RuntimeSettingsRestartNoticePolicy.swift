@@ -3,19 +3,19 @@ import Errors
 
 struct RuntimeSettingsRestartNoticeDecision: Equatable {
     let requiredChanges: [String]
-    let containerServiceChanges: [String]
+    let guestStackChanges: [String]
     let message: String
 
     var requiresRestart: Bool {
         !requiredChanges.isEmpty
     }
 
-    var requiresContainerServicesReconcile: Bool {
-        !containerServiceChanges.isEmpty
+    var requiresGuestStackReconcile: Bool {
+        !guestStackChanges.isEmpty
     }
 
     var requiresActivation: Bool {
-        requiresRestart || requiresContainerServicesReconcile
+        requiresRestart || requiresGuestStackReconcile
     }
 }
 
@@ -25,13 +25,13 @@ struct RuntimeSettingsRestartNoticePolicy {
         runtime: RuntimeSettings
     ) -> RuntimeSettingsRestartNoticeDecision {
         let changes = requiredRestartChanges(draft: draft, runtime: runtime)
-        let containerServiceChanges = requiredContainerServiceChanges(draft: draft, runtime: runtime)
+        let guestStackChanges = requiredGuestStackChanges(draft: draft, runtime: runtime)
         return RuntimeSettingsRestartNoticeDecision(
             requiredChanges: changes,
-            containerServiceChanges: containerServiceChanges,
+            guestStackChanges: guestStackChanges,
             message: message(
                 requiredChanges: changes,
-                containerServiceChanges: containerServiceChanges,
+                guestStackChanges: guestStackChanges,
                 restartAfterSave: draft.restartAfterSave
             )
         )
@@ -56,7 +56,7 @@ struct RuntimeSettingsRestartNoticePolicy {
         return changes
     }
 
-    func requiredContainerServiceChanges(
+    func requiredGuestStackChanges(
         draft: RuntimeSettings,
         runtime: RuntimeSettings
     ) -> [String] {
@@ -109,20 +109,20 @@ struct RuntimeSettingsRestartNoticePolicy {
 
     private func message(
         requiredChanges: [String],
-        containerServiceChanges: [String],
+        guestStackChanges: [String],
         restartAfterSave: Bool
     ) -> String {
-        guard !requiredChanges.isEmpty || !containerServiceChanges.isEmpty else {
+        guard !requiredChanges.isEmpty || !guestStackChanges.isEmpty else {
             return AppConstants.StatusText.noRuntimeActivationRequired
         }
         if requiredChanges.isEmpty {
-            let requiredBy = containerServiceChanges.joined(separator: ", ")
+            let requiredBy = guestStackChanges.joined(separator: ", ")
             if restartAfterSave {
-                return AppConstants.StatusText.containerServicesWillReconcileAfterSave(requiredBy: requiredBy)
+                return AppConstants.StatusText.guestStackWillReconcileAfterSave(requiredBy: requiredBy)
             }
-            return AppConstants.StatusText.containerServicesReconcileRequiredButDisabled(requiredBy: requiredBy)
+            return AppConstants.StatusText.guestStackReconcileRequiredButDisabled(requiredBy: requiredBy)
         }
-        let requiredBy = (requiredChanges + containerServiceChanges).joined(separator: ", ")
+        let requiredBy = (requiredChanges + guestStackChanges).joined(separator: ", ")
         if restartAfterSave {
             return AppConstants.StatusText.vmRuntimeWillRestartAfterSave(requiredBy: requiredBy)
         }

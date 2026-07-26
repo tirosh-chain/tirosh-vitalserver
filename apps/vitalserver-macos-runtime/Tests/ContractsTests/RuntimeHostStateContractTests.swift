@@ -47,13 +47,14 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertNotEqual(decoded[4], .missing)
     }
 
-    func testRuntimeProxyPortReadStateKeepsFailureMeaningsDistinctFromLoadedPort() throws {
+    func testRuntimeProxyPortReadStateKeepsReadMeaningsDistinctFromLoadedPort() throws {
         let states: [RuntimeProxyPortReadState] = [
             .loaded(80),
             .missing("entry does not exist"),
             .empty,
             .invalid("not-a-port"),
             .outOfRange(70000),
+            .readFailed("proxy plist denied"),
             .commandFailed(exitCode: 2, reason: "permission denied"),
         ]
 
@@ -64,7 +65,6 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertEqual(decoded[0].port, 80)
         for state in decoded.dropFirst() {
             XCTAssertNil(state.port)
-            XCTAssertTrue(state.failureReasons.contains(.hostProxyConfigInvalid))
             XCTAssertNotEqual(state, .loaded(80))
         }
     }
@@ -126,7 +126,10 @@ final class RuntimeHostStateContractTests: XCTestCase {
 
     func testRuntimePackageReceiptStateKeepsPresentAndReadFailureDistinctFromAbsent() throws {
         let states: [RuntimePackageReceiptState] = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
             .absent(identifier: "ai.tirosh.vitalserver.helper.tools"),
             .readFailed(identifier: "ai.tirosh.vitalserver.helper.tools", reason: "exitCode=1 stderr=denied"),
             .forgetFailed(identifier: "ai.tirosh.vitalserver.helper", reason: "exitCode=1 stderr=locked"),
@@ -258,19 +261,4 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertEqual(decoded.rawValue, "future-mode")
     }
 
-    func testRuntimeUninstallStateDocumentKeepsBlockedDistinctFromCompleted() throws {
-        let document = RuntimeUninstallStateDocument(
-            state: .serviceStopBlocked,
-            clean: true,
-            updatedAt: "2026-06-02T00:00:00Z",
-            message: "service stop blocked",
-            blockers: ["vm-process-running:pid=123"]
-        )
-
-        let encoded = try JSONEncoder().encode(document)
-        let decoded = try JSONDecoder().decode(RuntimeUninstallStateDocument.self, from: encoded)
-
-        XCTAssertEqual(decoded, document)
-        XCTAssertNotEqual(decoded.state, .completed)
-    }
 }

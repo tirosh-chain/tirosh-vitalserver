@@ -8,6 +8,7 @@ from tirosh_vitalserver.devtools.adapters.toolchain.token_template import (
 )
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     install_home,
+    install_platform_agent,
     install_nginx_bin,
     install_nginx_prefix,
     install_runtime_logs,
@@ -108,6 +109,14 @@ def render_launchd_templates(context: PackageContext) -> None:
         package_install_value(context, "launch_daemons_dir"),
     )
     templates = context.settings.launchd
+    render_template(
+        launchd / templates.platform_agent.template_file,
+        daemon_dir / templates.platform_agent.installed_plist,
+        {
+            "VITALSERVER_PLATFORM_AGENT_BIN": install_platform_agent(context),
+            "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
+        },
+    )
     render_template(
         launchd / templates.vm.template_file,
         daemon_dir / templates.vm.installed_plist,

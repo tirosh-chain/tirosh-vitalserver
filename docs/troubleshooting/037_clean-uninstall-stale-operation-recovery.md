@@ -60,7 +60,7 @@ jq '{status,operation,message,updatedAt,progress,failureReasons,vmState,vmErrors
   "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
 
 cat "/Library/Application Support/TiroshVitalServer/vm/data/run/bootstrap-result.json"
-cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json"
+cat "/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-observation.json"
 
 find "/Library/Application Support/TiroshVitalServer/backups" -maxdepth 3 -print
 stat -f "%Sm %Sp %Su:%Sg %z %N" \
@@ -90,11 +90,11 @@ stat -f "%Sm %Sp %Su:%Sg %z %N" \
 이번 hotfix에서 반영한 제품 수정:
 
 1. Fresh install 시작 시 guest run directory의 stale state/result 문서를 제거합니다.
-   - 제거 대상: `vm-ip`, `runtime-state.json`, `bootstrap-result.json`, update activation/shutdown/datastore repair result.
+   - 제거 대상: `vm-ip`, `runtime-observation.json`, `bootstrap-result.json`, update activation/shutdown/datastore repair result.
    - 새 install owner가 이전 guest boot/result를 current state로 승계하지 않습니다.
 2. Guest bootstrap result를 boot-scoped contract로 바꿉니다.
    - `bootstrap-result.json`에 `bootID`를 기록합니다.
-   - Host health/watchdog은 현재 `runtime-state.json.bootID`와 일치하거나, runtime state가 아직 없을 때 매우 최근인 result만 active bootstrap으로 취급합니다.
+   - Host health/watchdog은 현재 `runtime-observation.json.bootID`와 일치하거나, runtime state가 아직 없을 때 매우 최근인 result만 active bootstrap으로 취급합니다.
    - boot identity가 없거나 현재 boot와 다르면 stale result로 보고 failure/recovery 입력에서 제외합니다.
 3. Rollback preflight를 manifest 기반으로 바꿉니다.
    - backup manifest가 `rootfs-base.raw.gz`를 선언한 경우에만 rootfs restore step을 포함합니다.

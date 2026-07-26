@@ -1,0 +1,51 @@
+guestHostname = "vitalserver-runtime"
+
+[shares]
+runtimeTag = "native-runtime"
+runtimeMount = "/mnt/tirosh"
+runtimeMountMode = "native"
+vitalFilesTag = "native-vital-files"
+vitalFilesMount = "/mnt/tirosh-vital-files"
+vitalFilesMountMode = "native"
+
+[paths]
+deployDir = "/mnt/tirosh/deploy"
+runtimeDir = "/mnt/tirosh/run"
+controlStateDir = "/mnt/runtime/control"
+guestToolsHome = "/opt/tirosh/guest-tools"
+pythonWheelDir = "/mnt/tirosh/deploy/python-wheels"
+commandBinDir = "/usr/local/bin"
+runtimeConfigFile = "/mnt/runtime/config/runtime-config.json"
+runtimeSettingsFile = "/mnt/runtime/config/runtime-settings.json"
+redisRelayConfigFile = "/mnt/runtime/config/redis-relay/redis-relay.toml"
+redisRelayPasswordFile = "/mnt/runtime/config/redis-relay-secrets/redis-relay-target-password"
+
+[controlStore]
+root = "/mnt/runtime"
+requiresMount = true
+
+[compose]
+projectName = "vitalserver"
+environmentFile = "/mnt/runtime/config/runtime.env"
+stopTimeoutSeconds = 120
+
+[intervals]
+commandPollSeconds = 3
+runtimeObservationSeconds = 5
+observabilitySeconds = 10
+
+[containerLogs]
+intervalSeconds = 5
+tailLines = "1000"
+maxBytes = 10485760
+retainedFiles = 5
+rotateCheckLines = 200
+
+[observability]
+vitaldbObserverUrl = "http://127.0.0.1:18084/api/v1/observations"
+
+[logging]
+format = "json"
+level = "info"
+streamEnabled = true
+fileEnabled = true

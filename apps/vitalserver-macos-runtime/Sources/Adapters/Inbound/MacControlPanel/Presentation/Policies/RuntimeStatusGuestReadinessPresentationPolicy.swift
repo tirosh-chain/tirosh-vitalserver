@@ -4,17 +4,15 @@ import RuntimeControl
 public struct RuntimeStatusGuestReadinessPresentationPolicy {
     public init() {}
 
-    public func isWaitingForInitialGuestState(_ status: RuntimeStatus) -> Bool {
-        guard status.vmState == .starting else {
+    public func isWaitingForInitialGuestState(_ status: PlatformState) -> Bool {
+        guard status.runtimeProviderState == .starting else {
             return false
         }
-        return status.guestHTTP == RuntimeHTTPStatusText.missingVMIP
-            || status.failureReasons.contains(.guestRuntimeStateStale)
-            || status.vmErrors?.contains(.runtimeStateStale) == true
+        return status.runtimeControllerHTTP == RuntimeHTTPStatusText.missingVMIP
     }
 
     public func vmErrorSeverity(
-        status: RuntimeStatus,
+        status: PlatformState,
         vmErrors: [RuntimeVMError]
     ) -> RuntimeStatusReachabilityPolicy.Severity {
         guard isWaitingForInitialGuestState(status),
@@ -26,19 +24,17 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
     }
 
     public func guestHTTPValue(
-        status: RuntimeStatus,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         computedValue: RuntimeStatusHTTPValue,
         waitingText: String,
         staleText: String
     ) -> RuntimeStatusHTTPValue {
-        guard !RuntimeActiveOperationPolicy.isInstallInProgress(status),
-              !RuntimeActiveOperationPolicy.isInitializationInProgress(status),
-              !RuntimeActiveOperationPolicy.isUpdateInProgress(status)
-        else {
+        guard !shouldPreserveComputedGuestHTTP(status: status, operationState: operationState) else {
             return computedValue
         }
         guard isWaitingForInitialGuestState(status),
-              status.guestHTTP == RuntimeHTTPStatusText.missingVMIP
+              status.runtimeControllerHTTP == RuntimeHTTPStatusText.missingVMIP
         else {
             return computedValue
         }
@@ -54,26 +50,36 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
     }
 
     public func pendingGuestStateText(
-        status: RuntimeStatus,
+        status: PlatformState,
         waitingText: String,
-        staleText: String
+        staleText _: String
     ) -> String {
-        guard status.failureReasons.contains(.guestRuntimeStateStale)
-            || status.vmErrors?.contains(.runtimeStateStale) == true
-        else {
-            return waitingText
-        }
-        return staleText
+        waitingText
     }
 
     private func isInitialGuestStateError(_ error: RuntimeVMError) -> Bool {
         switch error {
-        case .runtimeStateMissing, .runtimeStateStale, .missingIPAddress:
+        case .missingIPAddress:
             return true
         case .guestHTTP(let status):
             return status == RuntimeHTTPStatusText.missingVMIP
         default:
             return false
         }
+    }
+
+    private func shouldPreserveComputedGuestHTTP(
+        status: PlatformState,
+        operationState: PlatformOperationState
+    ) -> Bool {
+        if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
+            return true
+        }
+        guard let operation = operationState.operationForPresentation else {
+            return false
+        }
+        return RuntimeActiveOperationPolicy.isInstallOperation(operation)
+            || RuntimeActiveOperationPolicy.isRecoveryOperation(operation)
+            || RuntimeActiveOperationPolicy.isUpdateOperation(operation)
     }
 }

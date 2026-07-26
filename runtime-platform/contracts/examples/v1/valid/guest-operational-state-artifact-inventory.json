@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "v1",
+  "operationId": "guest-backup-operation-1",
+  "artifacts": [
+    {
+      "artifactId": "archive-artifact-1",
+      "storageReference": {
+        "resourceType": "archive-artifact-object",
+        "resourceId": "archive-artifact-1"
+      },
+      "byteSize": 2048,
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "finalizationState": "finalized"
+    }
+  ],
+  "objectBytesIncluded": false,
+  "createdAt": "2026-07-24T18:00:04Z"
+}

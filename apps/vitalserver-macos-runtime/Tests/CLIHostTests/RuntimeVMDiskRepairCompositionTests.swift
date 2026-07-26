@@ -23,10 +23,10 @@ final class RuntimeVMDiskRepairCompositionTests: XCTestCase {
         XCTAssertEqual(harness.events, [
             "log:vm disk repair requested",
             "status:recovering:repair-vm-disk:VM disk repair requested",
-            "status:recovering:repair-vm-disk:Creating Redis backup before VM disk repair",
-            "redis-backup",
-            "log:redis backup before vm disk repair completed",
-            "status:recovering:repair-vm-disk:Redis backup completed before VM disk repair",
+            "status:recovering:repair-vm-disk:Creating VitalServer backup before VM disk repair",
+            "vitalserver-backup",
+            "log:VitalServer backup before VM disk repair completed",
+            "status:recovering:repair-vm-disk:VitalServer backup completed before VM disk repair",
             "mkdir:runtime:true",
             "mkdir:backups:true",
             "space:runtime:4294967308:repair-vm-disk",
@@ -57,7 +57,7 @@ final class RuntimeVMDiskRepairCompositionTests: XCTestCase {
         XCTAssertTrue(harness.events.contains("log:vm disk missing; creating replacement without archive"))
     }
 
-    func testRepairContinuesWhenRedisBackupFailsBecauseDiskIsStillArchived() throws {
+    func testRepairContinuesWhenVitalServerBackupFailsBecauseDiskIsStillArchived() throws {
         let harness = try VMDiskRepairHarness()
         harness.redisBackupError = TestError.backupFailed
         try harness.write(harness.rootfsBase, bytes: 2)
@@ -66,7 +66,7 @@ final class RuntimeVMDiskRepairCompositionTests: XCTestCase {
         try harness.composition.repair()
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(harness.archivedDisk).path))
-        XCTAssertTrue(harness.events.contains("status:recovering:repair-vm-disk:Redis backup before VM disk repair failed; current VM disk will be archived before replacement"))
+        XCTAssertTrue(harness.events.contains("status:recovering:repair-vm-disk:VitalServer backup before VM disk repair failed; current VM disk will be archived before replacement"))
     }
 
     func testRepairFailsBeforeRestartWhenReplacementDiskIsMissing() throws {
@@ -134,8 +134,8 @@ private final class VMDiskRepairHarness {
                     events.append("truncate:-s \(plan.targetDiskGiB)G \(plan.temporaryDisk.path)")
                     try write(plan.temporaryDisk, bytes: bytesPerGiB * UInt64(plan.targetDiskGiB))
                 },
-                createRedisBackup: { [self] in
-                    events.append("redis-backup")
+                createVitalServerBackup: { [self] in
+                    events.append("vitalserver-backup")
                     if let redisBackupError {
                         return .failed(reason: RuntimeErrorDescription.describe(redisBackupError))
                     }

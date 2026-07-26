@@ -2,13 +2,22 @@ import Foundation
 
 
 public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
-    case hostAffordanceUnavailable
+    case platformAffordanceUnavailable
+    case updateApplyUnavailable
+    case runtimeProviderControlUnavailable(String)
+    case platformSettingsCurrentStateInvalid([String])
     case unsupportedFileReference(String)
 
     public var errorDescription: String? {
         switch self {
-        case .hostAffordanceUnavailable:
+        case .platformAffordanceUnavailable:
             return "Host affordance client is unavailable."
+        case .updateApplyUnavailable:
+            return "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
+        case .runtimeProviderControlUnavailable(let reason):
+            return "Runtime Provider control is unavailable. \(reason)"
+        case .platformSettingsCurrentStateInvalid(let issues):
+            return "Platform settings apply requires a complete current Host state. \(issues.joined(separator: "; "))"
         case .unsupportedFileReference(let kind):
             return "File reference kind \(kind) is not supported by this local Runtime Control handler."
         }
@@ -18,7 +27,6 @@ public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
 
 public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
     case invalidLimit(String)
-    case invalidCursor(String)
     case invalidEventType(String)
     case invalidLogSource(String)
     case invalidQueryParameter(String, String)
@@ -33,8 +41,6 @@ public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
         switch self {
         case .invalidLimit(let value):
             return "Invalid runtime event limit: \(value)"
-        case .invalidCursor(let value):
-            return "Invalid runtime event cursor: \(value)"
         case .invalidEventType(let value):
             return "Invalid runtime event type: \(value)"
         case .invalidLogSource(let value):

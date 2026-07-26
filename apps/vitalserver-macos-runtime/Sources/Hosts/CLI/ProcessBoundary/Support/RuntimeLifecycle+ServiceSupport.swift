@@ -9,12 +9,56 @@ import Workflow
 import Errors
 
 extension RuntimeLifecycle {
+    func guestControlGateway() throws -> any RuntimeGuestControlGateway {
+        if let guestControlGatewayFactory {
+            return try guestControlGatewayFactory()
+        }
+        return try HTTPRuntimeGuestControlGateway(
+            baseURL: try defaultGuestControlBaseURL()
+        )
+    }
+
+    func resolvedGuestControlBaseURL(_ requestedBaseURL: String) throws -> String {
+        if requestedBaseURL != RuntimeGuestServiceControlCommand.defaultGuestControlBaseURL {
+            return requestedBaseURL
+        }
+        return try defaultGuestControlBaseURL()
+    }
+
+    private func defaultGuestControlBaseURL() throws -> String {
+        let guestAddressRead = guestAddressProvider.readGuestAddress()
+        if let vmIP = guestAddressRead.loadedAddress?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !vmIP.isEmpty
+        {
+            return guestControlAPIBaseURL(vmIP: vmIP)
+        }
+        throw LauncherError.runtimeOperationFailed(
+            "guest control API is unavailable: \(guestAddressRead.failureStatusText)"
+        )
+    }
+
+    private func guestControlAPIBaseURL(vmIP: String) -> String {
+        "http://\(vmIP):18330"
+    }
+
     func isLaunchdLoaded(_ service: RuntimeManagedService) -> Bool {
         healthChecker.isLaunchdLoaded(service)
     }
 
     func stopRuntimeServices() throws {
         try serviceController.stopRuntimeServices()
+    }
+
+    func stopRuntimeServicesForUninstall() throws {
+        try serviceController.stopRuntimeServicesForUninstall()
+    }
+
+    func stopRuntimeServicesForPackageReplacement() throws {
+        try serviceController.stopRuntimeServicesForUninstall()
+        try RuntimeVMLifecycleProcessExitReconciler.reconcileAfterServiceStop(
+            paths: paths,
+            log: log
+        )
     }
 
     func stopRuntimeServicesForCleanUninstallRecovery() throws {
@@ -40,7 +84,7 @@ extension RuntimeLifecycle {
         if case .pidFileMissing = vmProcessStopState {
             log("VM process pid file is missing during force clean uninstall; unloading launchd services from explicit launchd state")
         }
-        serviceController.unloadRuntimeServicesAfterForcedVMStop()
+        serviceController.unloadRuntimeServicesForUninstallAfterForcedVMStop()
         log("runtime services force-stopped for clean uninstall recovery")
     }
 
@@ -98,14 +142,23 @@ extension RuntimeLifecycle {
                             guestRunDirectory: guestRunDirectory
                         ),
                         operations: RuntimeGuestShutdownCompositionOperations(
-                            fileStore: fileStore,
-                            guestGateway: guestGateway,
                             requireCapability: {
                                 try requireGuestCapability(.prepareUpdateShutdown)
                             },
+                            prepareUpdateShutdown: { requestID, version in
+                                try prepareUpdateShutdownThroughGuestControl(
+                                    requestID: requestID,
+                                    version: version
+                                )
+                            },
+                            loadOperation: { operationID in
+                                try guestControlOperationThroughGuestControl(operationID)
+                            },
+                            requestGuestPoweroff: {
+                                try requestGuestPoweroffThroughGuestControl()
+                            },
                             writeStatus: runtimeStatusWriterAction(),
                             requestID: requestIDAction(),
-                            timestamp: isoTimestamp,
                             sleep: workflowPollingSleepAction(),
                             log: log
                         )
@@ -115,9 +168,7 @@ extension RuntimeLifecycle {
                         progressOperation: .configure
                     )
                 },
-                clearGuestShutdownPreparation: {
-                    try guestGateway.clearUpdateShutdownPreparation()
-                },
+                clearGuestShutdownPreparation: {},
                 stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
                 forceStopRuntimeServicesAfterGuestShutdownFailure: forceStopRuntimeServicesAfterGuestShutdownFailureForUpdate,
                 startRuntimeServices: startRuntimeServices,
@@ -126,59 +177,202 @@ extension RuntimeLifecycle {
                 log: log
             )
         )
+        try markBootedHostSettingsAppliedAfterHealth()
     }
 
-    func reconcileGuestComposeServices() throws {
-        try reconcileGuestComposeServices(composeAction: .up)
-    }
-
-    func controlTestKitContainer(composeAction: RuntimeGuestComposeAction) throws {
-        try reconcileGuestComposeServices(composeAction: composeAction)
-    }
-
-    private func reconcileGuestComposeServices(
-        composeAction: RuntimeGuestComposeAction
-    ) throws {
-        try requireGuestCapability(.reconcileCompose)
-        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
-        try guestGateway.removeGuestComposeReconcileResult()
-        let request = RuntimeGuestComposeReconcileRequest(
-            id: requestIDAction()(),
-            requestedAt: isoTimestamp(),
-            composeAction: composeAction
+    func markBootedHostSettingsAppliedAfterHealth() throws {
+        let repository = SQLiteRuntimeHostSettingsRepository(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            transitionDecider: RuntimeHostSettingsActivationUseCase()
         )
-        try guestGateway.writeGuestComposeReconcileRequest(request)
-        log("guest compose reconcile requested requestId=\(request.id) action=\(composeAction.rawValue)")
-        let deadline = clock.now.addingTimeInterval(300)
-        while clock.now < deadline {
-            switch guestGateway.loadGuestComposeReconcileResultDocument() {
-            case .loaded(let result):
-                if let resultRequestId = result.requestId, resultRequestId != request.id {
-                    throw LauncherError.runtimeOperationFailed(
-                        "guest compose reconcile result request mismatch expected=\(request.id) actual=\(resultRequestId)"
-                    )
-                }
-                if result.completed {
-                    log("guest compose reconcile completed requestId=\(request.id)")
-                    return
-                }
-                if result.failed {
-                    throw LauncherError.runtimeOperationFailed(
-                        result.message ?? "guest compose reconcile failed"
-                    )
-                }
-            case .missing:
-                break
-            case .failed(let reason):
+        let settings: RuntimeHostSettingsRecord
+        switch repository.loadHostSettings() {
+        case .loaded(let record):
+            settings = record
+        case .missing:
+            throw LauncherError.runtimeOperationFailed("Host settings SQLite state is missing")
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
+        guard let bootRevision = settings.bootRevision,
+              let bootRunID = settings.bootRunID else {
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings boot proof is missing revision=\(settings.revision)"
+            )
+        }
+        let applied = try repository.markHostSettingsApplied(
+            revision: bootRevision,
+            runID: bootRunID,
+            appliedAt: isoTimestamp()
+        )
+        guard let appliedPayload = applied.appliedPayload else {
+            throw LauncherError.runtimeOperationFailed(
+                "Applied Host settings payload is missing revision=\(bootRevision)"
+            )
+        }
+        do {
+            try fileStore.writeData(
+                appliedPayload.vmConfigJSON,
+                to: installedPaths.appliedVMConfig,
+                options: .atomic
+            )
+            guard try fileStore.readData(installedPaths.appliedVMConfig) == appliedPayload.vmConfigJSON else {
                 throw LauncherError.runtimeOperationFailed(
-                    "guest compose reconcile result read failed: \(reason)"
+                    "Applied VM settings projection verification failed revision=\(bootRevision)"
                 )
             }
-            sleeper.sleep(forTimeInterval: 3)
+        } catch {
+            log(
+                "Host settings applied projection failed revision=\(bootRevision) "
+                    + "path=\(installedPaths.appliedVMConfig.path) reason=\(error)"
+            )
         }
-        throw LauncherError.runtimeOperationFailed(
-            "guest compose reconcile timed out requestId=\(request.id)"
-        )
+        log("Host settings applied revision=\(bootRevision) runId=\(bootRunID)")
+    }
+
+    func reconcileGuestStackServicesThroughGuestControl() throws {
+        do {
+            let gateway = try guestControlGateway()
+            let operation = try RuntimeGuestProductServiceControlUseCase()
+                .reconcileServices(gateway: gateway)
+            log("guest stack reconcile completed operationId=\(operation.operationId)")
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func createRedisBackupThroughGuestControl() throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .createRedisBackup(gateway: gateway)
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func createPostgresBackupThroughGuestControl() throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .createPostgresBackup(gateway: gateway)
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func restorePostgresBackupThroughGuestControl(
+        guestArchivePath: String,
+        restartRuntime: Bool
+    ) throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .restorePostgresBackup(
+                    archive: guestArchivePath,
+                    restartRuntime: restartRuntime,
+                    gateway: gateway
+                )
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func restoreRedisBackupThroughGuestControl(
+        guestArchivePath: String
+    ) throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .restoreRedisBackup(
+                    archive: guestArchivePath,
+                    gateway: gateway
+                )
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func repairDatastoreThroughGuestControl() throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .repairDatastore(gateway: gateway)
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func activateUpdateThroughGuestControl(
+        requestID: String,
+        version: String
+    ) throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .activateUpdate(
+                    requestId: requestID,
+                    version: version,
+                    gateway: gateway
+                )
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func prepareUpdateShutdownThroughGuestControl(
+        requestID: String,
+        version: String
+    ) throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .prepareUpdateShutdown(
+                    requestId: requestID,
+                    version: version,
+                    gateway: gateway
+                )
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func requestGuestPoweroffThroughGuestControl() throws -> RuntimeGuestControlServiceOperation {
+        do {
+            let gateway = try guestControlGateway()
+            return try RuntimeGuestMaintenanceControlUseCase()
+                .requestGuestPoweroff(gateway: gateway)
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func guestControlOperationThroughGuestControl(
+        _ operationID: String
+    ) throws -> RuntimeGuestControlServiceOperation {
+        do {
+            return try guestControlGateway().operation(operationID)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
     }
 
     func restartVMRuntimeForWatchdogRecovery() throws {
@@ -205,9 +399,7 @@ extension RuntimeLifecycle {
             operations: RuntimeVMUpdateShutdownOperations(
                 runningVMProcessID: runningVMProcessID,
                 prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
-                clearGuestShutdownPreparation: {
-                    try guestGateway.clearUpdateShutdownPreparation()
-                },
+                clearGuestShutdownPreparation: {},
                 stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
                 forceStopRuntimeServicesAfterGuestShutdownFailure: forceStopRuntimeServicesAfterGuestShutdownFailureForUpdate,
                 describeError: RuntimeErrorDescription.describe,
@@ -285,25 +477,7 @@ extension RuntimeLifecycle {
     }
 
     func startLaunchdService(_ service: RuntimeManagedService) throws {
-        if service == .vm {
-            try writeHostTimeContract()
-        }
         try serviceController.startLaunchdService(service)
-    }
-
-    func writeHostTimeContract() throws {
-        let document = RuntimeHostTimeDocument(
-            epochSeconds: Int64(Date().timeIntervalSince1970.rounded(.down)),
-            updatedAt: isoTimestamp()
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try fileStore.writeData(
-            try encoder.encode(document),
-            to: installedPaths.hostTime,
-            options: .atomic
-        )
-        log("host time contract written path=\(installedPaths.hostTime.path) epochSeconds=\(document.epochSeconds)")
     }
 
     func startVMServiceForGuestOperation() throws {
@@ -383,6 +557,30 @@ extension RuntimeLifecycle {
             .cleanupBeforeStartingProxy(operations: cleaner.operations)
     }
 
+    func requirePackageReinstallProxyPortAvailable(_ proxyPort: Int) throws {
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { proxyPort },
+            proxyServiceState: {
+                healthChecker.launchdState(.proxy)
+            },
+            expectedProxyNginxPID: {
+                healthChecker.readInstalledProxyNginxPID()
+            },
+            ownedNginxPathFragments: [
+                installedPaths.nginxExecutable.path,
+                installedPaths.nginxDirectory.path,
+                "vitalserver-nginx.conf",
+            ],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: runProcess,
+            log: log
+        )
+        try CleanRuntimeHostProxyPortUseCase()
+            .requirePackageReinstallPortAvailable(operations: cleaner.operations)
+    }
+
     func cleanupHostProxyPortAfterStop() throws {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: healthChecker.installedProxyPort,
@@ -441,6 +639,7 @@ extension RuntimeLifecycle {
                 writeStatus: { status, operation, message in
                     try writeRuntimeStatus(status, operation: operation, message: message)
                 },
+                now: { clock.now },
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
                 },

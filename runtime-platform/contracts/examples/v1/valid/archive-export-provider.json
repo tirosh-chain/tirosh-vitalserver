@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "v1",
+  "provider": {
+    "kind": "archive-export-outcome-profile",
+    "id": "bundled-archive",
+    "capabilityRevision": 1
+  }
+}

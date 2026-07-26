@@ -10,24 +10,6 @@ public enum RuntimeControlServerSentEventCodec {
         "X-Accel-Buffering": "no",
     ]
 
-    public static func encode(_ events: [RuntimeEventDocument]) throws -> Data {
-        let frames = try events.map { event in
-            try encodeString(.event(event))
-        }
-        return Data(frames.joined(separator: "\n").utf8)
-    }
-
-    public static func encode(_ history: RuntimeEventHistory) throws -> Data {
-        var frames: [String] = []
-        if let issueEvent = try RuntimeControlServerSentEvent.eventHistoryReadIssue(history) {
-            frames.append(try encodeString(issueEvent))
-        }
-        frames.append(contentsOf: try history.events.map { event in
-            try encodeString(.event(event))
-        })
-        return Data(frames.joined(separator: "\n").utf8)
-    }
-
     public static func encode<T: Encodable>(id: String, event: String, value: T) throws -> Data {
         let payload = try JSONEncoder().encode(value)
         return try encode(RuntimeControlServerSentEvent(id: id, event: event, data: payload))
@@ -78,22 +60,4 @@ public struct RuntimeControlServerSentEvent: Equatable, Sendable {
 
     public static let heartbeat = RuntimeControlServerSentEvent(id: nil, event: nil, comment: "heartbeat")
 
-    public static func eventHistoryReadIssue(_ history: RuntimeEventHistory) throws -> RuntimeControlServerSentEvent? {
-        guard history.state != .loaded || history.readError != nil else {
-            return nil
-        }
-        return RuntimeControlServerSentEvent(
-            id: "runtime-events-read-issue",
-            event: "runtime-events-read-issue",
-            data: try JSONEncoder().encode(history)
-        )
-    }
-
-    public static func event(_ event: RuntimeEventDocument) throws -> RuntimeControlServerSentEvent {
-        RuntimeControlServerSentEvent(
-            id: event.id,
-            event: event.eventType.rawValue,
-            data: try JSONEncoder().encode(event)
-        )
-    }
 }

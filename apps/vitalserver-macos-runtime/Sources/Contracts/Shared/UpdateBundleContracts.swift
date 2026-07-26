@@ -157,6 +157,11 @@ public enum UpdateBundleChannel: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeUpdateApplyTrustIntent: Equatable, Sendable {
+    case requireVerifiedPublisher
+    case allowUnsignedDevelopmentBundle
+}
+
 public enum UpdateBundleKind: Codable, Equatable, Sendable {
     case productUpdate
     case vmImageUpdate

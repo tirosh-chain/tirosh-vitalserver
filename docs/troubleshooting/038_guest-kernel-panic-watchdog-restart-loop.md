@@ -33,7 +33,7 @@ Update 중에는 같은 guest kernel panic 계열이 다른 증상으로 보일 
 ## Impact
 
 - VM이 부팅, guest service start, watchdog restart, launchd respawn을 반복하면서 CPU와 IO 부하가 커집니다.
-- guest `runtime-state.json` 갱신이 멈추거나 stale이 되어 Remote Console 상태가 빠르게 악화됩니다.
+- guest `runtime-observation.json` 갱신이 멈추거나 stale이 되어 Remote Console 상태가 빠르게 악화됩니다.
 - host proxy, recorder ingress, TestKit/Recorder 상태가 연쇄적으로 failed/stale로 보일 수 있습니다.
 - 이미 read-only remount가 발생한 VM disk는 watchdog restart만으로 복구되지 않습니다.
 - 같은 update 또는 테스트를 반복하면 mutable VM disk 손상이 더 커질 수 있습니다.
@@ -158,7 +158,7 @@ sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
 이 TS의 1차 수정은 watchdog restart loop 증폭을 끊는 데 집중합니다.
 
 1. Host-owned VM lifecycle contract를 추가했습니다.
-   - `vm/run/vm-lifecycle.json`이 VM process lifecycle을 명시합니다.
+   - 초기 구현의 `vm/run/vm-lifecycle.json`은 installed runtime에서 `runtime-state.sqlite.vm_lifecycle`로 이전되었습니다. Golden-rootfs build VM의 lifecycle JSON은 별도 compile-proof 계약입니다.
    - VM launcher가 `starting`, `bootstrapping`, `stopping`, `stopped`, `failed`를 기록합니다.
    - `failed`는 `disk-attachment-invalid` 같은 terminal reason을 contract로 남깁니다.
 2. Health snapshot이 VM lifecycle contract를 소비합니다.

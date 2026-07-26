@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:catalog-observation-admission",
+  "title": "CatalogObservationAdmission",
+  "description": "The Recorder Observation Catalog owner's durable admission receipt. Duplicate and quarantined are explicit persisted outcomes; an unknown write outcome is a CommandAdmissionFailure, not this receipt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "outcome",
+    "receivedAt",
+    "persistedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "duplicate",
+        "quarantined"
+      ]
+    },
+    "observationReference": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+    },
+    "duplicateOfObservationReference": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+    },
+    "issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    },
+    "receivedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "persistedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "accepted"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "observationReference"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "duplicateOfObservationReference"
+              ]
+            },
+            {
+              "required": [
+                "issue"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "duplicate"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "duplicateOfObservationReference"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "observationReference"
+              ]
+            },
+            {
+              "required": [
+                "issue"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "quarantined"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "issue"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "observationReference"
+              ]
+            },
+            {
+              "required": [
+                "duplicateOfObservationReference"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

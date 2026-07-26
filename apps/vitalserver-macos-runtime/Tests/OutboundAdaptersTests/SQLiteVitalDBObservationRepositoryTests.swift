@@ -119,7 +119,7 @@ private struct Harness {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
+        database = directory.appendingPathComponent(RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB)
         repository = SQLiteVitalDBObservationRepository(store: makeVitalDBProjectionStore(url: database))
     }
 

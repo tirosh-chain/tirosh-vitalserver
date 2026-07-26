@@ -153,6 +153,20 @@ def test_collector_summarizes_recorder_activity_from_audit_events() -> None:
     assert [bucket["messageCount"] for bucket in activity["buckets"]] == [2]
     assert activity["buckets"][0]["bucketSeconds"] == 60
     assert activity["buckets"][0]["byteCount"] == 250
+    assert activity["buckets"][0]["firstObservedAt"] == _iso(bucket_started + 10)
+    assert activity["buckets"][0]["lastObservedAt"] == _iso(bucket_started + 20)
+    assert document["activityBuckets"] == [
+        {
+            "vrcode": "VR_A",
+            "bucketStartedAt": activity["buckets"][0]["bucketStartedAt"],
+            "bucketSeconds": 60,
+            "messageCount": 2,
+            "byteCount": 250,
+            "roomCount": 5,
+            "firstObservedAt": _iso(bucket_started + 10),
+            "lastObservedAt": _iso(bucket_started + 20),
+        }
+    ]
 
 
 def test_collector_reports_audit_source_read_issues() -> None:

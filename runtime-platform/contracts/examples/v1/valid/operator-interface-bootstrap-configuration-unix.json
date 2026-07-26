@@ -1,0 +1,5 @@
+{
+  "schemaVersion": "v1",
+  "bootstrapConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json",
+  "localAdministrationDescriptorPath": "/Library/Application Support/VitalServerRuntimePlatform/control/host-agent.local.json"
+}

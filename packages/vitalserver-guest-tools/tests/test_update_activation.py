@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import subprocess
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -13,26 +11,16 @@ from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction, ObservationPhase
 
 
-def test_run_activate_update_consumes_request_before_activation_side_effects(
-    tmp_path: Path,
+def test_run_activate_update_runs_activation_without_request_result_contract(
     monkeypatch: Any,
 ) -> None:
-    request = tmp_path / "activate-update.request"
-    result = tmp_path / "activate-update-result.json"
-    request.write_text(
-        json.dumps({"requestId": "activate-1", "version": "1.2.3"}),
-        encoding="utf-8",
-    )
     events: list[str] = []
 
-    monkeypatch.setattr(update_activation, "REQUEST_FILE", request)
-    monkeypatch.setattr(update_activation, "RESULT_FILE", result)
     monkeypatch.setattr(update_activation, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(update_activation, "utc_now", lambda: "2026-06-10T00:00:00Z")
     monkeypatch.setattr(
         update_activation,
         "activate_runtime",
-        lambda: events.append(f"activate-runtime:request-exists={request.exists()}"),
+        lambda: events.append("activate-runtime"),
     )
     monkeypatch.setattr(
         update_activation,
@@ -43,13 +31,9 @@ def test_run_activate_update_consumes_request_before_activation_side_effects(
     update_activation.run_activate_update()
 
     assert events == [
-        "activate-runtime:request-exists=False",
+        "activate-runtime",
         "observe:activation-post",
     ]
-    document = json.loads(result.read_text(encoding="utf-8"))
-    assert document["requestId"] == "activate-1"
-    assert document["status"] == "completed"
-    assert not request.exists()
 
 
 def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
@@ -57,10 +41,18 @@ def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
 ) -> None:
     events: list[str] = []
 
+    def migrate_control_store() -> None:
+        events.append("migrate-control-store")
+
     monkeypatch.setattr(
         update_activation,
         "install_guest_tools_runtime",
         lambda: events.append("install"),
+    )
+    monkeypatch.setattr(
+        update_activation,
+        "migrate_guest_control_store",
+        migrate_control_store,
     )
     monkeypatch.setattr(
         update_activation,
@@ -94,37 +86,32 @@ def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
     )
     monkeypatch.setattr(
         update_activation,
-        "write_current_state",
+        "write_runtime_observation_outputs",
         lambda: events.append("write-state"),
     )
-    monkeypatch.setattr(
-        update_activation,
-        "start_optional_testkit",
-        lambda: events.append("start-testkit"),
-    )
-
     update_activation.activate_runtime()
 
     compose_down = (
-        "run:docker compose --project-name vitalserver "
+        "run:docker compose --env-file /mnt/runtime/compose.env "
+        "--project-name vitalserver "
         "-f /mnt/tirosh/deploy/compose.yaml down --remove-orphans"
     )
     assert events == [
         "install",
+        "migrate-control-store",
         "observe:activation-pre",
         "quiesce-compose",
         "load-images",
         compose_down,
         "compose:up",
         f"systemctl:restart:{RuntimeService.CONTAINER_LOGS.value}",
-        f"systemctl:restart:{RuntimeService.RUNTIME_STATE.value}",
+        f"systemctl:restart:{RuntimeService.RUNTIME_OBSERVATION.value}",
         "write-state",
         "run:sync",
-        "start-testkit",
     ]
 
 
-def test_quiesce_compose_units_stops_testkit_then_compose(
+def test_quiesce_compose_units_stops_compose(
     monkeypatch: Any,
 ) -> None:
     events: list[str] = []
@@ -143,11 +130,8 @@ def test_quiesce_compose_units_stops_testkit_then_compose(
     update_activation.quiesce_compose_units()
 
     assert events == [
-        f"systemctl:stop:{RuntimeService.TESTKIT.value}",
-        f"state:{RuntimeService.TESTKIT.value}:inactive",
         f"systemctl:stop:{RuntimeService.COMPOSE.value}",
         f"state:{RuntimeService.COMPOSE.value}:inactive",
-        f"systemctl:reset-failed:{RuntimeService.TESTKIT.value}",
         f"systemctl:reset-failed:{RuntimeService.COMPOSE.value}",
     ]
 
@@ -175,11 +159,8 @@ def test_quiesce_compose_units_accepts_failed_unit_state(
     update_activation.quiesce_compose_units()
 
     assert events == [
-        f"systemctl:stop:{RuntimeService.TESTKIT.value}",
-        f"state:{RuntimeService.TESTKIT.value}:inactive",
         f"systemctl:stop:{RuntimeService.COMPOSE.value}",
         f"state:{RuntimeService.COMPOSE.value}:failed",
-        f"systemctl:reset-failed:{RuntimeService.TESTKIT.value}",
         f"systemctl:reset-failed:{RuntimeService.COMPOSE.value}",
     ]
 
@@ -201,7 +182,7 @@ def test_quiesce_compose_units_fails_when_unit_remains_active(
         lambda command, **kwargs: _record_service_state(
             events,
             command,
-            {RuntimeService.TESTKIT.value: "active"},
+            {RuntimeService.COMPOSE.value: "active"},
         ),
     )
 
@@ -212,8 +193,8 @@ def test_quiesce_compose_units_fails_when_unit_remains_active(
         update_activation.quiesce_compose_units()
 
     assert events == [
-        f"systemctl:stop:{RuntimeService.TESTKIT.value}",
-        f"state:{RuntimeService.TESTKIT.value}:active",
+        f"systemctl:stop:{RuntimeService.COMPOSE.value}",
+        f"state:{RuntimeService.COMPOSE.value}:active",
     ]
 
 

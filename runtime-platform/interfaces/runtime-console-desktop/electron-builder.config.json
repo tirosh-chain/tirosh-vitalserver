@@ -1,0 +1,43 @@
+{
+  "appId": "com.tirosh.vitalserver.runtime-console",
+  "productName": "VitalServer Runtime Console",
+  "artifactName": "VitalServer Runtime Console-${version}-${arch}.${ext}",
+  "directories": {
+    "output": "../../.tmp/runtime-console-desktop"
+  },
+  "files": [
+    "dist/**",
+    "!dist/**/*.map",
+    "package.json"
+  ],
+  "asar": true,
+  "npmRebuild": false,
+  "electronVersion": "41.7.1",
+  "mac": {
+    "executableName": "VitalServer Runtime Console",
+    "category": "public.app-category.utilities",
+    "icon": "assets/runtime-console.icns",
+    "target": [
+      "dmg"
+    ]
+  },
+  "win": {
+    "executableName": "vitalserver-runtime-console",
+    "icon": "assets/runtime-console-512.png",
+    "target": [
+      "nsis"
+    ]
+  },
+  "linux": {
+    "executableName": "vitalserver-runtime-console",
+    "category": "Utility",
+    "icon": "assets/runtime-console-512.png",
+    "maintainer": "Tirosh Chain <seungbae.ji@gmail.com>",
+    "target": [
+      "AppImage"
+    ]
+  },
+  "deb": {
+    "artifactName": "vitalserver-runtime-console_${version}_${arch}.${ext}"
+  }
+}

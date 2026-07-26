@@ -94,7 +94,7 @@ final class RuntimeFileReaderTests: XCTestCase {
 
         XCTAssertEqual(
             displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: archive)),
-            "Archive: update-bundle-1.2.3.tar.gz\nVerify to inspect manifest and checksums."
+            "Archive: update-bundle-1.2.3.tar.gz\nCheck integrity to inspect manifest and checksums. Publisher authenticity is unverified."
         )
     }
 
@@ -413,14 +413,17 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertThrowsError(try RuntimeBackup.loadRedisBackups(fileStore: fileStore))
     }
 
-    func testRuntimeDataBackupListTreatsMissingManagedDirectoryAsEmpty() throws {
+    func testRuntimeDataBackupListReportsMissingManagedDirectoryDistinctFromEmpty() throws {
         let fileStore = PathStateRuntimeFileStore(pathStates: [
             RuntimeControlClientConstants.Paths.runtimeDataBackups: .missing,
         ])
 
-        let backups = try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)
-
-        XCTAssertEqual(backups, [])
+        XCTAssertThrowsError(try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupListError,
+                .unexpectedPathState(path: RuntimeControlClientConstants.Paths.runtimeDataBackups, state: "missing")
+            )
+        }
     }
 
     func testRuntimeDataBackupListIncludesAutomaticBackupDirectories() throws {

@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tirosh.local/contracts/vitalrecorder-observation-v1.schema.json",
+  "title": "Vital Recorder device health observation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "deviceId", "bootId", "sequence", "kind", "collectionState", "deviceObservedAt", "uptimeSeconds", "ntpState", "payload", "readIssues"],
+  "properties": {
+    "schemaVersion": {"const": "v1"},
+    "eventId": {"type": "string", "minLength": 5, "maxLength": 512},
+    "deviceId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"},
+    "siteId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"},
+    "bootId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "sequence": {"type": "integer", "minimum": 1},
+    "kind": {"const": "device-health"},
+    "collectionState": {"enum": ["ok", "partial"]},
+    "deviceObservedAt": {"type": "string", "format": "date-time"},
+    "uptimeSeconds": {"$ref": "#/$defs/numberReading"},
+    "ntpState": {"enum": ["synchronized", "host-clock-only", "unsynchronized", "invalid", "read-failed", "unsupported"]},
+    "payload": {"$ref": "#/$defs/payload"},
+    "readIssues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "state", "detail"],
+        "properties": {
+          "field": {"type": "string"},
+          "state": {"$ref": "#/$defs/readState"},
+          "detail": {"type": "string"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "readState": {"enum": ["ok", "missing", "invalid", "failed", "unsupported"]},
+    "reading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": {"$ref": "#/$defs/readState"},
+        "value": {},
+        "detail": {"type": "string"}
+      },
+      "allOf": [{
+        "if": {"properties": {"state": {"const": "ok"}}},
+        "then": {"required": ["value"], "not": {"required": ["detail"]}},
+        "else": {"required": ["detail"], "not": {"required": ["value"]}}
+      }]
+    },
+    "stringReading": {"allOf": [{"$ref": "#/$defs/reading"}, {"properties": {"value": {"type": "string"}}}]},
+    "numberReading": {"allOf": [{"$ref": "#/$defs/reading"}, {"properties": {"value": {"type": "number"}}}]},
+    "integerReading": {"allOf": [{"$ref": "#/$defs/reading"}, {"properties": {"value": {"type": "integer", "minimum": 0}}}]},
+    "signedIntegerReading": {"allOf": [{"$ref": "#/$defs/reading"}, {"properties": {"value": {"type": "integer"}}}]},
+    "booleanReading": {"allOf": [{"$ref": "#/$defs/reading"}, {"properties": {"value": {"type": "boolean"}}}]},
+    "stringArrayReading": {"allOf": [{"$ref": "#/$defs/reading"}, {"properties": {"value": {"type": "array", "items": {"type": "string"}}}}]},
+    "numberArrayReading": {"allOf": [{"$ref": "#/$defs/reading"}, {"properties": {"value": {"type": "array", "items": {"type": "number"}}}}]},
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "memory", "storage", "raspberryPi", "network", "vitalRecorder", "publisher", "services", "pstore", "time"],
+      "properties": {
+        "system": {"$ref": "#/$defs/system"},
+        "memory": {"$ref": "#/$defs/memory"},
+        "storage": {"$ref": "#/$defs/storage"},
+        "raspberryPi": {"$ref": "#/$defs/raspberryPi"},
+        "network": {"$ref": "#/$defs/network"},
+        "vitalRecorder": {"$ref": "#/$defs/vitalRecorder"},
+        "publisher": {"$ref": "#/$defs/publisher"},
+        "services": {"$ref": "#/$defs/services"},
+        "pstore": {"$ref": "#/$defs/pstore"},
+        "time": {"$ref": "#/$defs/time"},
+        "peripherals": {"$ref": "#/$defs/peripherals"}
+      }
+    },
+    "system": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model", "kernelRelease", "loadAverage"],
+      "properties": {"model": {"$ref": "#/$defs/stringReading"}, "kernelRelease": {"$ref": "#/$defs/stringReading"}, "loadAverage": {"$ref": "#/$defs/numberArrayReading"}, "pressure": {"$ref": "#/$defs/pressure"}}
+    },
+    "pressureResource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["someAvg10", "someAvg60", "someAvg300", "someTotalMicroseconds"],
+      "properties": {
+        "someAvg10": {"$ref": "#/$defs/numberReading"}, "someAvg60": {"$ref": "#/$defs/numberReading"},
+        "someAvg300": {"$ref": "#/$defs/numberReading"}, "someTotalMicroseconds": {"$ref": "#/$defs/integerReading"},
+        "full": {"type": "object", "additionalProperties": false, "required": ["avg10", "totalMicroseconds"], "properties": {"avg10": {"$ref": "#/$defs/numberReading"}, "totalMicroseconds": {"$ref": "#/$defs/integerReading"}}}
+      }
+    },
+    "pressure": {"type": "object", "additionalProperties": false, "required": ["cpu", "memory", "io"], "properties": {"cpu": {"$ref": "#/$defs/pressureResource"}, "memory": {"$ref": "#/$defs/pressureResource"}, "io": {"$ref": "#/$defs/pressureResource"}}},
+    "memory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["totalBytes", "availableBytes", "swapTotalBytes", "swapFreeBytes", "dirtyBytes", "writebackBytes", "oomKillCount", "pageMajorFaults"],
+      "properties": {"totalBytes": {"$ref": "#/$defs/integerReading"}, "availableBytes": {"$ref": "#/$defs/integerReading"}, "swapTotalBytes": {"$ref": "#/$defs/integerReading"}, "swapFreeBytes": {"$ref": "#/$defs/integerReading"}, "dirtyBytes": {"$ref": "#/$defs/integerReading"}, "writebackBytes": {"$ref": "#/$defs/integerReading"}, "oomKillCount": {"$ref": "#/$defs/integerReading"}, "pageMajorFaults": {"$ref": "#/$defs/integerReading"}}
+    },
+    "filesystem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "mountPoint", "filesystemType", "mountOptions", "totalBytes", "availableBytes", "usedPercent", "inodesTotal", "inodesFree"],
+      "properties": {
+        "path": {"type": "string"}, "mountPoint": {"$ref": "#/$defs/stringReading"}, "filesystemType": {"$ref": "#/$defs/stringReading"}, "mountOptions": {"$ref": "#/$defs/stringReading"},
+        "totalBytes": {"$ref": "#/$defs/integerReading"}, "availableBytes": {"$ref": "#/$defs/integerReading"}, "usedPercent": {"$ref": "#/$defs/numberReading"}, "inodesTotal": {"$ref": "#/$defs/integerReading"}, "inodesFree": {"$ref": "#/$defs/integerReading"},
+        "source": {"$ref": "#/$defs/stringReading"}, "readOnly": {"$ref": "#/$defs/booleanReading"}, "blockIo": {"$ref": "#/$defs/blockIo"}
+      }
+    },
+    "blockIo": {"type": "object", "additionalProperties": false, "required": ["device", "readsCompleted", "readBytes", "writesCompleted", "writeBytes", "ioInProgress", "ioTimeMillis"], "properties": {"device": {"$ref": "#/$defs/stringReading"}, "readsCompleted": {"$ref": "#/$defs/integerReading"}, "readBytes": {"$ref": "#/$defs/integerReading"}, "writesCompleted": {"$ref": "#/$defs/integerReading"}, "writeBytes": {"$ref": "#/$defs/integerReading"}, "ioInProgress": {"$ref": "#/$defs/integerReading"}, "ioTimeMillis": {"$ref": "#/$defs/integerReading"}}},
+    "storage": {"type": "object", "additionalProperties": false, "required": ["root", "data", "ext4Filesystems"], "properties": {"root": {"$ref": "#/$defs/filesystem"}, "data": {"$ref": "#/$defs/filesystem"}, "ext4Filesystems": {"type": "array", "items": {"$ref": "#/$defs/ext4Filesystem"}}}},
+    "ext4Filesystem": {"type": "object", "additionalProperties": false, "required": ["name", "errorsCount", "warningCount"], "properties": {"name": {"type": "string"}, "errorsCount": {"$ref": "#/$defs/integerReading"}, "warningCount": {"$ref": "#/$defs/integerReading"}}},
+    "raspberryPi": {
+      "type": "object", "additionalProperties": false,
+      "required": ["temperatureCelsius", "throttleFlags", "resetFlags"],
+      "properties": {
+        "temperatureCelsius": {"$ref": "#/$defs/numberReading"},
+        "pmicTemperatureCelsius": {"$ref": "#/$defs/numberReading"},
+        "armFrequencyHertz": {"$ref": "#/$defs/integerReading"},
+        "coreVoltageVolts": {"$ref": "#/$defs/numberReading"},
+        "throttleFlags": {"$ref": "#/$defs/stringReading"},
+        "resetFlags": {"$ref": "#/$defs/stringReading"},
+        "throttleStatus": {
+          "type": "object", "additionalProperties": false,
+          "required": ["underVoltageNow", "frequencyCappedNow", "throttledNow", "softTemperatureLimitNow", "underVoltageOccurred", "frequencyCappedOccurred", "throttledOccurred", "softTemperatureLimitOccurred"],
+          "properties": {
+            "underVoltageNow": {"$ref": "#/$defs/booleanReading"}, "frequencyCappedNow": {"$ref": "#/$defs/booleanReading"},
+            "throttledNow": {"$ref": "#/$defs/booleanReading"}, "softTemperatureLimitNow": {"$ref": "#/$defs/booleanReading"},
+            "underVoltageOccurred": {"$ref": "#/$defs/booleanReading"}, "frequencyCappedOccurred": {"$ref": "#/$defs/booleanReading"},
+            "throttledOccurred": {"$ref": "#/$defs/booleanReading"}, "softTemperatureLimitOccurred": {"$ref": "#/$defs/booleanReading"}
+          }
+        }
+      }
+    },
+    "interface": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "present", "ifIndex", "driver", "devicePath", "busType", "operState", "carrier", "carrierChanges", "rxErrors", "txErrors", "rxDropped", "txDropped"],
+      "properties": {
+        "name": {"type": "string"}, "present": {"$ref": "#/$defs/booleanReading"}, "ifIndex": {"$ref": "#/$defs/integerReading"},
+        "driver": {"$ref": "#/$defs/stringReading"}, "devicePath": {"$ref": "#/$defs/stringReading"}, "busType": {"$ref": "#/$defs/stringReading"},
+        "usb": {"type": "object", "additionalProperties": false, "required": ["vendorId", "productId", "portPath"], "properties": {"vendorId": {"$ref": "#/$defs/stringReading"}, "productId": {"$ref": "#/$defs/stringReading"}, "portPath": {"$ref": "#/$defs/stringReading"}, "busNumber": {"$ref": "#/$defs/integerReading"}, "deviceNumber": {"$ref": "#/$defs/integerReading"}, "speedMbps": {"$ref": "#/$defs/numberReading"}, "deviceRevision": {"$ref": "#/$defs/stringReading"}, "authorized": {"$ref": "#/$defs/booleanReading"}, "powerControl": {"$ref": "#/$defs/stringReading"}, "runtimeStatus": {"$ref": "#/$defs/stringReading"}, "autosuspendDelayMillis": {"$ref": "#/$defs/signedIntegerReading"}}},
+        "wireless": {"type": "object", "additionalProperties": false, "required": ["linkQuality", "signalDbm", "noiseDbm"], "properties": {"linkQuality": {"$ref": "#/$defs/numberReading"}, "signalDbm": {"$ref": "#/$defs/numberReading"}, "noiseDbm": {"$ref": "#/$defs/numberReading"}, "associated": {"$ref": "#/$defs/booleanReading"}, "station": {"$ref": "#/$defs/wirelessStation"}}},
+        "operState": {"$ref": "#/$defs/stringReading"}, "carrier": {"$ref": "#/$defs/booleanReading"}, "carrierChanges": {"$ref": "#/$defs/integerReading"}, "rxErrors": {"$ref": "#/$defs/integerReading"}, "txErrors": {"$ref": "#/$defs/integerReading"}, "rxDropped": {"$ref": "#/$defs/integerReading"}, "txDropped": {"$ref": "#/$defs/integerReading"}
+      }
+    },
+    "wirelessStation": {"type": "object", "additionalProperties": false, "required": ["frequencyMhz", "rxBitrateMbps", "txBitrateMbps", "txRetries", "txFailed", "inactiveMillis", "connectedSeconds"], "properties": {"frequencyMhz": {"$ref": "#/$defs/integerReading"}, "rxBitrateMbps": {"$ref": "#/$defs/numberReading"}, "txBitrateMbps": {"$ref": "#/$defs/numberReading"}, "txRetries": {"$ref": "#/$defs/integerReading"}, "txFailed": {"$ref": "#/$defs/integerReading"}, "inactiveMillis": {"$ref": "#/$defs/integerReading"}, "connectedSeconds": {"$ref": "#/$defs/integerReading"}}},
+    "network": {"type": "object", "additionalProperties": false, "required": ["interfaces", "ipv4Addresses", "defaultRoute"], "properties": {"interfaces": {"type": "array", "items": {"$ref": "#/$defs/interface"}}, "ipv4Addresses": {"$ref": "#/$defs/stringArrayReading"}, "defaultRoute": {"$ref": "#/$defs/stringReading"}}},
+    "vitalRecorder": {
+      "type": "object", "additionalProperties": false,
+      "required": ["serviceName", "activeState", "subState", "result", "mainExitStatus", "restartCount"],
+      "properties": {"serviceName": {"type": "string"}, "activeState": {"$ref": "#/$defs/stringReading"}, "subState": {"$ref": "#/$defs/stringReading"}, "result": {"$ref": "#/$defs/stringReading"}, "mainExitStatus": {"$ref": "#/$defs/numberReading"}, "restartCount": {"$ref": "#/$defs/integerReading"}, "resources": {"$ref": "#/$defs/cgroupResources"}}
+    },
+    "cgroupResources": {"type": "object", "additionalProperties": false, "required": ["controlGroup", "cpuUsageMicroseconds", "cpuThrottledMicroseconds", "memoryCurrentBytes", "memoryPeakBytes", "tasksCurrent", "ioReadBytes", "ioWriteBytes"], "properties": {"controlGroup": {"$ref": "#/$defs/stringReading"}, "cpuUsageMicroseconds": {"$ref": "#/$defs/integerReading"}, "cpuThrottledMicroseconds": {"$ref": "#/$defs/integerReading"}, "memoryCurrentBytes": {"$ref": "#/$defs/integerReading"}, "memoryPeakBytes": {"$ref": "#/$defs/integerReading"}, "tasksCurrent": {"$ref": "#/$defs/integerReading"}, "ioReadBytes": {"$ref": "#/$defs/integerReading"}, "ioWriteBytes": {"$ref": "#/$defs/integerReading"}}},
+    "peripherals": {"type": "object", "additionalProperties": false, "required": ["serialDevices"], "properties": {"serialDevices": {"type": "array", "items": {"$ref": "#/$defs/serialDevice"}}}},
+    "serialDevice": {"type": "object", "additionalProperties": false, "required": ["path", "present", "driver", "devicePath", "busType"], "properties": {"path": {"type": "string", "pattern": "^/dev/"}, "present": {"$ref": "#/$defs/booleanReading"}, "driver": {"$ref": "#/$defs/stringReading"}, "devicePath": {"$ref": "#/$defs/stringReading"}, "busType": {"$ref": "#/$defs/stringReading"}}},
+    "publisher": {
+      "type": "object", "additionalProperties": false,
+      "required": ["serviceName", "activeState", "subState", "result", "restartCount", "bufferBytes", "bufferLimitBytes"],
+      "properties": {"serviceName": {"const": "vitalrecorder-publisher.service"}, "activeState": {"$ref": "#/$defs/stringReading"}, "subState": {"$ref": "#/$defs/stringReading"}, "result": {"$ref": "#/$defs/stringReading"}, "restartCount": {"$ref": "#/$defs/integerReading"}, "bufferBytes": {"$ref": "#/$defs/integerReading"}, "bufferLimitBytes": {"type": "integer", "minimum": 8388608}}
+    },
+    "service": {"type": "object", "additionalProperties": false, "required": ["serviceName", "loadState", "activeState", "subState", "result", "mainExitStatus", "restartCount"], "properties": {"serviceName": {"type": "string"}, "loadState": {"$ref": "#/$defs/stringReading"}, "activeState": {"$ref": "#/$defs/stringReading"}, "subState": {"$ref": "#/$defs/stringReading"}, "result": {"$ref": "#/$defs/stringReading"}, "mainExitStatus": {"$ref": "#/$defs/signedIntegerReading"}, "restartCount": {"$ref": "#/$defs/integerReading"}}},
+    "services": {"type": "object", "additionalProperties": false, "required": ["systemRunning", "failedUnits", "heartbeat", "networkManager", "wpaSupplicant", "observer", "maintenanceTimer"], "properties": {"systemRunning": {"$ref": "#/$defs/stringReading"}, "failedUnits": {"$ref": "#/$defs/stringReading"}, "heartbeat": {"$ref": "#/$defs/service"}, "networkManager": {"$ref": "#/$defs/service"}, "wpaSupplicant": {"$ref": "#/$defs/service"}, "observer": {"$ref": "#/$defs/service"}, "maintenanceTimer": {"$ref": "#/$defs/service"}}},
+    "pstore": {"type": "object", "additionalProperties": false, "required": ["state", "files"], "properties": {"state": {"$ref": "#/$defs/stringReading"}, "files": {"$ref": "#/$defs/stringArrayReading"}}},
+    "time": {
+      "type": "object", "additionalProperties": false,
+      "required": ["wallClock", "chronyLeapState", "chronyReference", "chronyStratum", "lastOffsetSeconds"],
+      "properties": {"wallClock": {"$ref": "#/$defs/stringReading"}, "chronyLeapState": {"$ref": "#/$defs/stringReading"}, "chronyReference": {"$ref": "#/$defs/stringReading"}, "chronyStratum": {"$ref": "#/$defs/integerReading"}, "lastOffsetSeconds": {"$ref": "#/$defs/numberReading"}}
+    }
+  }
+}

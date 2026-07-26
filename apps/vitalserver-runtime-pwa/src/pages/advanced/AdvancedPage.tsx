@@ -1,34 +1,42 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
-  useApplyRuntimeSettings,
+  useApplyRuntimeProductSettings,
   useCreateRedisBackup,
   useCreateRuntimeDataBackup,
+  useRuntimeStack,
+  useRuntimeServiceResources,
   useHostBackups,
   useRedisBackups,
   useRepairDatastore,
-  useRepairProxy,
-  useRepairRuntime,
-  useRepairVMDisk,
+  useRestartRuntimeProvider,
   useRuntimeDataBackups,
-  useRuntimeCapabilities,
-  useRuntimeSettings,
-  useRuntimeOverview,
-  useStartRuntimeServices,
-  useStopRuntimeServices,
+  useControlCapabilities,
+  usePlatformOperationState,
+  useRuntimeProductSettings,
+  usePlatformState,
+  useRestartGuestService,
+  useStartGuestService,
+  useStopGuestService,
   useRollbackBackup,
   useRestoreRuntimeDataBackup
 } from "@/console/hooks";
 import {
-  canApplyRuntimeSettings,
-  canControlRecovery
+  canApplyRuntimeProductSettings,
+  canRepairRuntimeDatastore,
+  canRestartRuntimeProvider
 } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import type {
-  RuntimeSettings,
-  RuntimeControlOverview,
-  RuntimeBackup
+  PlatformState,
+  RuntimeProductSettings,
+  PlatformOperationState,
+  RuntimeGuestControlStackStatus,
+  RuntimeGuestControlServiceOperation,
+  RuntimeGuestServiceResource,
+  RuntimeBackup,
+  RuntimeCommandResponse,
+  RuntimeProviderCommandResponse
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
-import { validateRuntimeSettings } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import { formatHTTPStatus } from "@/domain/runtime-control/formatting/http";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
@@ -36,7 +44,6 @@ import {
   formatRuntimeState,
   runtimeStateTone
 } from "@/domain/runtime-control/formatting/runtimeState";
-import { useAppSettings } from "@/config/AppSettingsContext";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { CommandResult } from "@/components/CommandResult";
 import { DataTable } from "@/components/DataTable";
@@ -45,25 +52,110 @@ import { KeyValueRows } from "@/components/KeyValueRows";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 
+type RuntimeOverviewPresentation = {
+  status?: PlatformState;
+};
+
+type OperationResultSource =
+  | "apply-runtime-settings"
+  | "rollback-backup"
+  | "create-runtime-data-backup"
+  | "restore-runtime-data-backup"
+  | "create-redis-backup"
+  | "restart-runtime-provider"
+  | "repair-datastore"
+  | "start-guest-service"
+  | "stop-guest-service"
+  | "restart-guest-service";
+
+type OperationResult =
+  | {
+      kind: "command";
+      result: RuntimeCommandResponse | undefined;
+      error: Error | null;
+    }
+  | {
+      kind: "provider";
+      result: RuntimeProviderCommandResponse | undefined;
+      error: Error | null;
+    }
+  | {
+      kind: "guest";
+      result: RuntimeGuestControlServiceOperation | undefined;
+      error: Error | null;
+    };
+
+function commandOperationResult(
+  result: RuntimeCommandResponse | undefined,
+  error: Error | null
+): OperationResult {
+  return { kind: "command", result, error };
+}
+
+function providerOperationResult(
+  result: RuntimeProviderCommandResponse | undefined,
+  error: Error | null
+): OperationResult {
+  return { kind: "provider", result, error };
+}
+
+function guestOperationResult(
+  result: RuntimeGuestControlServiceOperation | undefined,
+  error: Error | null
+): OperationResult {
+  return { kind: "guest", result, error };
+}
+
+function platformServiceRunning(
+  state: PlatformState | undefined,
+  role: PlatformState["services"][number]["role"]
+): boolean | undefined {
+  const service = state?.services.find((candidate) => candidate.role === role);
+  return service ? service.state === "running" : undefined;
+}
+
 export function AdvancedPage() {
-  const appSettings = useAppSettings();
-  const overview = useRuntimeOverview();
-  const capabilities = useRuntimeCapabilities();
-  const hostBackups = useHostBackups();
-  const redisBackups = useRedisBackups();
-  const runtimeDataBackups = useRuntimeDataBackups();
-  const runtimeSettings = useRuntimeSettings();
-  const applySettings = useApplyRuntimeSettings();
+  const platformState = usePlatformState();
+  const operationState = usePlatformOperationState();
+  const capabilities = useControlCapabilities();
+  const canManageBackups = capabilities.data?.canRollback === true;
+  const unavailableBackupMessage = capabilities.isPending
+    ? "Loading backup capability..."
+    : capabilities.isError
+      ? "Backup capability could not be read."
+      : "Backup and rollback operations are not supported by this Runtime Control API.";
+  const unavailableRuntimeProviderControlMessage = capabilities.isPending
+    ? "Loading Runtime Provider control capability..."
+    : capabilities.isError
+      ? "Runtime Provider control capability could not be read."
+      : "Runtime Provider control is not supported by this Platform Agent.";
+  const unavailableDatastoreRepairMessage = capabilities.isPending
+    ? "Loading data store repair capability..."
+    : capabilities.isError
+      ? "Data store repair capability could not be read."
+      : "Data store repair is not supported by this Runtime Controller.";
+  const runtimeStack = useRuntimeStack();
+  const runtimeServiceResources = useRuntimeServiceResources(
+    runtimeStack.data?.services.map((service) => service.service) ?? []
+  );
+  const hostBackups = useHostBackups(canManageBackups);
+  const redisBackups = useRedisBackups(canManageBackups);
+  const runtimeDataBackups = useRuntimeDataBackups(canManageBackups);
+  const runtimeSettingsRead = useRuntimeProductSettings();
+  const runtimeSettings =
+    runtimeSettingsRead.data?.state === "loaded"
+      ? runtimeSettingsRead.data.settings ?? undefined
+      : undefined;
+  const applySettings = useApplyRuntimeProductSettings();
   const rollbackBackup = useRollbackBackup();
   const createRedisBackup = useCreateRedisBackup();
   const createRuntimeDataBackup = useCreateRuntimeDataBackup();
   const restoreRuntimeDataBackup = useRestoreRuntimeDataBackup();
-  const startServices = useStartRuntimeServices();
-  const stopServices = useStopRuntimeServices();
-  const repairRuntime = useRepairRuntime();
-  const repairProxy = useRepairProxy();
+  const startGuestService = useStartGuestService();
+  const stopGuestService = useStopGuestService();
+  const restartGuestService = useRestartGuestService();
+  const restartRuntimeProvider = useRestartRuntimeProvider();
   const repairDatastore = useRepairDatastore();
-  const repairVMDisk = useRepairVMDisk();
 
   const [selectedHostBackup, setSelectedHostBackup] =
     useState<RuntimeBackup | null>(null);
@@ -71,137 +163,161 @@ export function AdvancedPage() {
     useState<RuntimeBackup | null>(null);
   const [selectedRuntimeDataBackup, setSelectedRuntimeDataBackup] =
     useState<RuntimeBackup | null>(null);
-  const [proxyPort, setProxyPort] = useState("");
+  const [operationResultSource, setOperationResultSource] =
+    useState<OperationResultSource | null>(null);
   const [vitalServerURL, setVitalServerURL] = useState("");
   const [remoteConsoleURL, setRemoteConsoleURL] = useState("");
-  const [resetAdminPassword, setResetAdminPassword] = useState(false);
-  const [newAdminPassword, setNewAdminPassword] = useState("");
 
   useEffect(() => {
-    if (!runtimeSettings.data) {
+    if (!runtimeSettings) {
       setVitalServerURL("");
       setRemoteConsoleURL("");
-      setResetAdminPassword(false);
-      setNewAdminPassword("");
       return;
     }
-    setVitalServerURL(runtimeSettings.data.vitalServerURL);
-    setRemoteConsoleURL(runtimeSettings.data.remoteConsoleURL);
-    setResetAdminPassword(runtimeSettings.data.changeAdminPassword);
-    setNewAdminPassword(runtimeSettings.data.adminPassword);
-  }, [runtimeSettings.data]);
+    setVitalServerURL(runtimeSettings.vitalServerURL);
+    setRemoteConsoleURL(runtimeSettings.remoteConsoleURL);
+  }, [runtimeSettings]);
 
-  const canRollback = capabilities.data?.canRollback === true;
-  const canRepair = canControlRecovery(capabilities.data);
-  const canApplySettings = canApplyRuntimeSettings(capabilities.data);
+  const canRollback = canManageBackups;
+  const canRestartProvider = canRestartRuntimeProvider(capabilities.data);
+  const canRepairDatastore = canRepairRuntimeDatastore(capabilities.data);
+  const canApplySettings = canApplyRuntimeProductSettings(capabilities.data);
   const canEditNetworkExposure =
     capabilities.data?.canEditNetworkExposure === true;
-  const canResetAdminPassword =
-    capabilities.data?.canResetAdminPassword === true;
-  const canControlServices =
-    capabilities.data?.canControlRuntimeServices === true;
-
-  const latestCommand = useMemo(
-    () =>
-      startServices.data ??
-      stopServices.data ??
-      repairRuntime.data ??
-      repairProxy.data ??
-      repairDatastore.data ??
-      repairVMDisk.data ??
-      applySettings.data ??
-      rollbackBackup.data ??
-      createRuntimeDataBackup.data ??
-      restoreRuntimeDataBackup.data ??
-      createRedisBackup.data,
-    [
-      createRuntimeDataBackup.data,
-      createRedisBackup.data,
-      repairDatastore.data,
-      repairVMDisk.data,
-      repairProxy.data,
-      repairRuntime.data,
+  const canControlGuestServices =
+    capabilities.data?.canControlGuestServices === true;
+  const operationResults: Record<OperationResultSource, OperationResult> = {
+    "apply-runtime-settings": guestOperationResult(
       applySettings.data,
+      applySettings.error
+    ),
+    "rollback-backup": commandOperationResult(
       rollbackBackup.data,
-      startServices.data,
-      stopServices.data,
-      restoreRuntimeDataBackup.data
-    ]
-  );
-
-  const latestError =
-    startServices.error ??
-    stopServices.error ??
-    repairRuntime.error ??
-    repairProxy.error ??
-    repairDatastore.error ??
-    repairVMDisk.error ??
-    applySettings.error ??
-    rollbackBackup.error ??
-    createRuntimeDataBackup.error ??
-    restoreRuntimeDataBackup.error ??
-    createRedisBackup.error;
-  const configuredProxyPort =
-    parseOptionalNumber(proxyPort) ??
-    overview.data?.settings?.proxyPort ??
-    overview.data?.status?.proxyPort ??
-    appSettings.runtimeControl.defaultProxyPort;
+      rollbackBackup.error
+    ),
+    "create-runtime-data-backup": commandOperationResult(
+      createRuntimeDataBackup.data,
+      createRuntimeDataBackup.error
+    ),
+    "restore-runtime-data-backup": commandOperationResult(
+      restoreRuntimeDataBackup.data,
+      restoreRuntimeDataBackup.error
+    ),
+    "create-redis-backup": commandOperationResult(
+      createRedisBackup.data,
+      createRedisBackup.error
+    ),
+    "restart-runtime-provider": providerOperationResult(
+      restartRuntimeProvider.data,
+      restartRuntimeProvider.error
+    ),
+    "repair-datastore": guestOperationResult(
+      repairDatastore.data,
+      repairDatastore.error
+    ),
+    "start-guest-service": guestOperationResult(
+      startGuestService.data,
+      startGuestService.error
+    ),
+    "stop-guest-service": guestOperationResult(
+      stopGuestService.data,
+      stopGuestService.error
+    ),
+    "restart-guest-service": guestOperationResult(
+      restartGuestService.data,
+      restartGuestService.error
+    )
+  };
+  const operationResult = operationResultSource
+    ? operationResults[operationResultSource]
+    : commandOperationResult(undefined, null);
+  const platformOverview =
+    platformState.data
+      ? { status: platformState.data }
+      : undefined;
 
   const networkSettings =
-    runtimeSettings.data &&
-    updatedRuntimeSettings(runtimeSettings.data, {
+    runtimeSettings &&
+    updatedRuntimeSettings(runtimeSettings, {
       vitalServerURL,
       remoteConsoleURL
-    });
-  const adminSettings =
-    runtimeSettings.data &&
-    updatedRuntimeSettings(runtimeSettings.data, {
-      changeAdminPassword: resetAdminPassword,
-      adminPassword: resetAdminPassword ? newAdminPassword : ""
     });
   const networkValidation = networkSettings
     ? validateAdvancedNetworkSettings(networkSettings)
     : { valid: false, errors: ["Runtime settings are not loaded."] };
-  const adminValidation = adminSettings
-    ? validateRuntimeSettings(adminSettings)
-    : { valid: false, errors: ["Runtime settings are not loaded."] };
   const canApplyNetworkSettings =
     Boolean(networkSettings) &&
     canApplySettings &&
-    canEditNetworkExposure &&
     networkValidation.valid &&
     !applySettings.isPending;
-  const canApplyAdminSettings =
-    Boolean(adminSettings) &&
-    canApplySettings &&
-    adminValidation.valid &&
-    !applySettings.isPending &&
-    (!resetAdminPassword || canResetAdminPassword);
 
   const applyRuntimeSettings = (
-    settings: RuntimeSettings | false | undefined
+    settings: RuntimeProductSettings | false | undefined
   ) => {
     if (!settings) {
       return;
     }
+    setOperationResultSource("apply-runtime-settings");
     applySettings.mutate({ settings });
   };
 
   return (
     <div className="page-stack">
       <Panel title="Diagnostics">
-        <Diagnostics overview={overview.data} />
-        {overview.isError ? (
-          <ErrorState title="Failed to read runtime diagnostics" error={overview.error} />
+          <Diagnostics
+            overview={platformOverview}
+            operationState={operationState.data}
+            operationStateError={operationState.error}
+          />
+        {platformState.isError ? (
+          <ErrorState title="Failed to read platform state" error={platformState.error} />
         ) : null}
       </Panel>
 
-      <Panel title="VM health">
-        <VMHealth overview={overview.data} />
+      <Panel title="Runtime provider health">
+        <VMHealth overview={platformOverview} />
       </Panel>
 
-      <Panel title="Service health">
-        <ServiceHealth overview={overview.data} />
+      <Panel title="Platform services">
+        <PlatformServices state={platformState.data} />
+      </Panel>
+
+      <Panel title="Runtime product services">
+        <GuestServiceControls
+          stackStatus={runtimeStack.data}
+          resourceReads={runtimeServiceResources}
+          stackStatusError={runtimeStack.isError ? runtimeStack.error : null}
+          disabled={!canControlGuestServices}
+          isPending={
+            startGuestService.isPending ||
+            stopGuestService.isPending ||
+            restartGuestService.isPending
+          }
+          onStart={(service) => {
+            setOperationResultSource("start-guest-service");
+            startGuestService.mutate(service);
+          }}
+          onStop={(service) => {
+            setOperationResultSource("stop-guest-service");
+            stopGuestService.mutate(service);
+          }}
+          onRestart={(service) => {
+            setOperationResultSource("restart-guest-service");
+            restartGuestService.mutate(service);
+          }}
+        />
+      </Panel>
+
+      <Panel title="Access endpoints">
+        <KeyValueRows
+          rows={[
+            {
+              label: "Public proxy",
+              value: formatHTTPStatus(platformState.data?.publicProxyHTTP)
+            }
+          ]}
+        />
+        <APICatalog platformState={platformState.data} />
       </Panel>
 
       <Panel title="Recovery operations">
@@ -209,24 +325,56 @@ export function AdvancedPage() {
           Use these actions when the runtime is installed but unhealthy after
           update, rollback, or unexpected shutdown.
         </p>
+        {capabilities.isError ? (
+          <ErrorState
+            title="Failed to read control capabilities"
+            error={capabilities.error}
+          />
+        ) : null}
+        {!capabilities.isPending && !capabilities.isError && !canManageBackups ? (
+          <p className="muted">
+            Backup and rollback operations are not supported by this Runtime
+            Control API.
+          </p>
+        ) : null}
+
+        <div className="subsection">
+          <h3>Runtime Control connection</h3>
+          <p className="muted">
+            Reloads this console and requests a new local browser session from
+            the Platform Agent. This does not rotate the automation token or
+            restart VitalServer.
+          </p>
+          <div className="action-row">
+            <button type="button" onClick={() => window.location.reload()}>
+              Reconnect Runtime Control
+            </button>
+          </div>
+        </div>
 
         <div className="subsection">
           <h3>Update recovery</h3>
           <BackupTable
-            rows={hostBackups.data ?? []}
+            rows={canManageBackups ? hostBackups.data ?? [] : []}
             selected={selectedHostBackup}
             onSelect={setSelectedHostBackup}
-            emptyText="No rollback backups are available."
+            emptyText={
+              canManageBackups
+                ? "No rollback backups are available."
+                : unavailableBackupMessage
+            }
           />
           <div className="action-row">
             <ConfirmButton
               confirmMessage="Rollback to the selected managed backup? Runtime services may restart."
               disabled={!selectedHostBackup || rollbackBackup.isPending || !canRollback}
-              onClick={() =>
-                selectedHostBackup?.path
-                  ? rollbackBackup.mutate(selectedHostBackup.path)
-                  : undefined
-              }
+              onClick={() => {
+                if (!selectedHostBackup?.path) {
+                  return;
+                }
+                setOperationResultSource("rollback-backup");
+                rollbackBackup.mutate(selectedHostBackup.path);
+              }}
             >
               Rollback
             </ConfirmButton>
@@ -246,16 +394,26 @@ export function AdvancedPage() {
             runtime state, observability history, and Redis data.
           </p>
           <BackupTable
-            rows={runtimeDataBackups.data ?? []}
+            rows={canManageBackups ? runtimeDataBackups.data ?? [] : []}
             selected={selectedRuntimeDataBackup}
             onSelect={setSelectedRuntimeDataBackup}
-            emptyText="No VitalServer backups are available."
+            emptyText={
+              canManageBackups
+                ? "No VitalServer backups are available."
+                : unavailableBackupMessage
+            }
           />
           <div className="action-row">
             <ConfirmButton
               confirmMessage="Create a VitalServer backup now?"
-              disabled={createRuntimeDataBackup.isPending || !canRepair}
-              onClick={() => createRuntimeDataBackup.mutate("")}
+              disabled={
+                createRuntimeDataBackup.isPending ||
+                !canManageBackups
+              }
+              onClick={() => {
+                setOperationResultSource("create-runtime-data-backup");
+                createRuntimeDataBackup.mutate("");
+              }}
             >
               Create Backup
             </ConfirmButton>
@@ -264,13 +422,15 @@ export function AdvancedPage() {
               disabled={
                 !selectedRuntimeDataBackup?.path ||
                 restoreRuntimeDataBackup.isPending ||
-                !canRepair
+                !canManageBackups
               }
-              onClick={() =>
-                selectedRuntimeDataBackup?.path
-                  ? restoreRuntimeDataBackup.mutate(selectedRuntimeDataBackup.path)
-                  : undefined
-              }
+              onClick={() => {
+                if (!selectedRuntimeDataBackup?.path) {
+                  return;
+                }
+                setOperationResultSource("restore-runtime-data-backup");
+                restoreRuntimeDataBackup.mutate(selectedRuntimeDataBackup.path);
+              }}
             >
               Restore Backup
             </ConfirmButton>
@@ -284,61 +444,61 @@ export function AdvancedPage() {
         </div>
 
         <div className="subsection">
-          <h3>Runtime repair</h3>
+          <h3>Runtime Provider</h3>
           <p className="muted">
-            Use Repair Runtime first when VitalServer is unhealthy and the exact
-            cause is unclear.
+            Restart the Platform-owned Runtime Provider. Guest readiness remains
+            reported by the Runtime Controller.
           </p>
           <div className="action-row">
             <ConfirmButton
-              confirmMessage="Restart and repair runtime services?"
-              disabled={repairRuntime.isPending || !canRepair}
-              onClick={() => repairRuntime.mutate()}
+              confirmMessage="Restart the Runtime Provider?"
+              disabled={
+                restartRuntimeProvider.isPending || !canRestartProvider
+              }
+              onClick={() => {
+                setOperationResultSource("restart-runtime-provider");
+                restartRuntimeProvider.mutate();
+              }}
             >
-              Repair Runtime
+              Restart Runtime Provider
             </ConfirmButton>
+          </div>
+          {!canRestartProvider ? (
+            <p className="muted">{unavailableRuntimeProviderControlMessage}</p>
+          ) : null}
+
+          <div className="subsection">
+            <h3>Guest data store repair</h3>
+            <p className="muted">
+              This operation is owned by the Runtime Controller and can create a
+              persisted Guest operation result.
+            </p>
+            <div className="action-row">
+              {canRepairDatastore ? (
+                <ConfirmButton
+                  confirmMessage="Repair the Redis data store? Redis may create a backup and truncate a corrupted AOF tail."
+                  disabled={repairDatastore.isPending}
+                  onClick={() => {
+                    setOperationResultSource("repair-datastore");
+                    repairDatastore.mutate();
+                  }}
+                >
+                  Repair Data Store
+                </ConfirmButton>
+              ) : (
+                <p className="muted">
+                  {unavailableDatastoreRepairMessage}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="subsection">
-            <h3>Advanced repair tools</h3>
+            <h3>Platform-specific maintenance</h3>
             <p className="muted">
-              Use these tools only when diagnostics or support identifies a
-              specific failure source.
+              Host proxy and VM storage repair require platform-specific
+              maintenance workflows and are not available in the common console.
             </p>
-            <div className="action-row">
-              <ConfirmButton
-                confirmMessage="Repair the host proxy service on the selected port?"
-                disabled={repairProxy.isPending || !canRepair}
-                onClick={() => repairProxy.mutate(configuredProxyPort)}
-              >
-                Repair Proxy
-              </ConfirmButton>
-              <ConfirmButton
-                confirmMessage="Create a Redis backup, then recreate the VM disk from the installed base image? If the current VM cannot create a Redis backup, repair continues because the old VM disk is archived before replacement. Vital files stored on the host are preserved."
-                disabled={repairVMDisk.isPending || !canRepair}
-                onClick={() => repairVMDisk.mutate()}
-              >
-                Repair VM Disk
-              </ConfirmButton>
-              <ConfirmButton
-                confirmMessage="Repair the Redis data store? Redis may create a backup and truncate a corrupted AOF tail."
-                disabled={repairDatastore.isPending || !canRepair}
-                onClick={() => repairDatastore.mutate()}
-              >
-                Repair Data Store
-              </ConfirmButton>
-            </div>
-            <label>
-              Proxy port
-              <input
-                type="number"
-                min="1"
-                max="65535"
-                value={proxyPort}
-                onChange={(event) => setProxyPort(event.target.value)}
-                placeholder="Use configured port"
-              />
-            </label>
           </div>
 
           <div className="subsection">
@@ -348,16 +508,25 @@ export function AdvancedPage() {
               backup for normal backup and restore.
             </p>
             <BackupTable
-              rows={redisBackups.data ?? []}
+              rows={canManageBackups ? redisBackups.data ?? [] : []}
               selected={selectedRedisBackup}
               onSelect={setSelectedRedisBackup}
-              emptyText="No Redis backups are available."
+              emptyText={
+                canManageBackups
+                  ? "No Redis backups are available."
+                  : unavailableBackupMessage
+              }
             />
             <div className="action-row">
               <ConfirmButton
                 confirmMessage="Create a recoverable Redis backup now?"
-                disabled={createRedisBackup.isPending || !canRepair}
-                onClick={() => createRedisBackup.mutate("")}
+                disabled={
+                  createRedisBackup.isPending || !canManageBackups
+                }
+                onClick={() => {
+                  setOperationResultSource("create-redis-backup");
+                  createRedisBackup.mutate("");
+                }}
               >
                 Create Redis-only Backup
               </ConfirmButton>
@@ -422,8 +591,8 @@ export function AdvancedPage() {
         {networkValidation.errors.length ? (
           <ValidationErrors title="Network settings need attention" errors={networkValidation.errors} />
         ) : null}
-        {runtimeSettings.isError ? (
-          <ErrorState title="Failed to read settings" error={runtimeSettings.error} />
+        {runtimeSettingsRead.isError ? (
+          <ErrorState title="Failed to read settings" error={runtimeSettingsRead.error} />
         ) : null}
         <div className="action-row">
           <ConfirmButton
@@ -436,79 +605,37 @@ export function AdvancedPage() {
         </div>
       </Panel>
 
-      <Panel title="Admin operations">
-        <p className="muted">
-          Administrative runtime actions that affect access or runtime service
-          availability.
-        </p>
-        <div className="settings-toggles">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={resetAdminPassword}
-              disabled={!canResetAdminPassword}
-              onChange={(event) => setResetAdminPassword(event.target.checked)}
-            />
-            Reset admin password
-          </label>
-        </div>
-        {resetAdminPassword ? (
-          <label>
-            New admin password
-            <input
-              type="password"
-              value={newAdminPassword}
-              disabled={!canResetAdminPassword}
-              onChange={(event) => setNewAdminPassword(event.target.value)}
-            />
-          </label>
-        ) : null}
-        {adminValidation.errors.length ? (
-          <ValidationErrors title="Admin settings need attention" errors={adminValidation.errors} />
-        ) : null}
-        <div className="action-row">
-          <ConfirmButton
-            confirmMessage="Apply runtime settings? This may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
-            disabled={!canApplyAdminSettings}
-            onClick={() => applyRuntimeSettings(adminSettings)}
-          >
-            Apply Settings
-          </ConfirmButton>
-        </div>
-
-        <div className="subsection">
-          <h3>Runtime service controls</h3>
-          <p className="muted">
-            Starts or stops the VM, host proxy, and watchdog together. Use Stop
-            for planned maintenance, then Start to bring VitalServer back online.
-          </p>
-          <div className="action-row">
-            <ConfirmButton
-              confirmMessage="Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
-              disabled={startServices.isPending || !canControlServices}
-              onClick={() => startServices.mutate()}
-            >
-              Start Runtime Services
-            </ConfirmButton>
-            <ConfirmButton
-              confirmMessage="Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
-              disabled={stopServices.isPending || !canControlServices}
-              onClick={() => stopServices.mutate()}
-            >
-              Stop Runtime Services
-            </ConfirmButton>
-          </div>
-        </div>
-      </Panel>
-
       <Panel title="Operation result">
-        <CommandResult result={latestCommand} error={latestError} />
+        {operationResult.kind === "provider" ? (
+          <RuntimeProviderCommandResult
+            command={operationResult.result}
+            error={operationResult.error}
+          />
+        ) : operationResult.kind === "guest" ? (
+          <GuestServiceOperationResult
+            operation={operationResult.result}
+            error={operationResult.error}
+          />
+        ) : (
+          <CommandResult
+            result={operationResult.result}
+            error={operationResult.error}
+          />
+        )}
       </Panel>
     </div>
   );
 }
 
-function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefined }) {
+function Diagnostics({
+  overview,
+  operationState,
+  operationStateError
+}: {
+  overview: RuntimeOverviewPresentation | undefined;
+  operationState: PlatformOperationState | undefined;
+  operationStateError: Error | null;
+}) {
   const status = overview?.status;
   return (
     <KeyValueRows
@@ -516,34 +643,22 @@ function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefine
         {
           label: "Runtime state",
           value: (
-            <StatusBadge tone={runtimeStateTone(status?.runtimeState)}>
-              {formatRuntimeState(status?.runtimeState)}
+            <StatusBadge tone={runtimeStateTone(status?.platformHealth)}>
+              {formatRuntimeState(status?.platformHealth)}
             </StatusBadge>
           )
         },
-        { label: "Operation", value: status?.operation ?? "Unknown" },
-        { label: "Runtime version", value: status?.runtimeVersion ?? "Unknown" },
-        { label: "VM IP", value: status?.vmIP ?? "Waiting" },
-        ...(status?.statusDocumentError
-          ? [
-              {
-                label: "Status document",
-                value: `Read failed: ${status.statusDocumentError}`
-              }
-            ]
-          : []),
-        ...(status?.guestRuntimeStateError
-          ? [
-              {
-                label: "Guest runtime state",
-                value: `Read failed: ${status.guestRuntimeStateError}`
-              }
-            ]
-          : []),
+        {
+          label: "Operation",
+          value: operationState?.activeOperation ?? NOT_REPORTED,
+          detail: operationStateDetail(operationState, operationStateError)
+        },
+        { label: "Installed version", value: status?.installedVersion ?? "Unknown" },
+        { label: "Runtime endpoint", value: status?.runtimeEndpoint ?? "Waiting" },
         {
           label: "Failure reasons",
-          value: status?.failureReasons?.length
-            ? status.failureReasons.join(", ")
+          value: status?.healthIssues?.length
+            ? status.healthIssues.join(", ")
             : "-"
         }
       ]}
@@ -551,12 +666,39 @@ function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefine
   );
 }
 
-function VMHealth({ overview }: { overview: RuntimeControlOverview | undefined }) {
+function operationStateDetail(
+  operationState: PlatformOperationState | undefined,
+  operationStateError: Error | null
+) {
+  if (operationStateError) {
+    return `Operation state read failed: ${operationStateError.message}`;
+  }
+  if (!operationState) {
+    return "Operation state not reported";
+  }
+
+  const details = [
+    `install: ${operationState.install.state}`,
+    `lease: ${operationState.lease.state}`
+  ];
+  if (operationState.install.readError) {
+    details.push(`install readError: ${operationState.install.readError}`);
+  }
+  if (operationState.lease.readError) {
+    details.push(`lease readError: ${operationState.lease.readError}`);
+  }
+  if (operationState.lease.staleReason) {
+    details.push(`lease staleReason: ${operationState.lease.staleReason}`);
+  }
+  return details.join(", ");
+}
+
+function VMHealth({ overview }: { overview: RuntimeOverviewPresentation | undefined }) {
   const status = overview?.status;
-  const runtimeInstalled = status?.runtimeInstalled;
-  const vmServiceLoaded = status?.vmServiceLoaded;
-  const vmIP = status?.vmIP?.trim();
-  const vmErrors = status?.vmErrors?.filter((error) => error.trim().length > 0);
+  const runtimeInstallationState = status?.runtimeInstallationState;
+  const vmServiceLoaded = platformServiceRunning(status, "runtime-provider");
+  const runtimeEndpoint = status?.runtimeEndpoint?.trim();
+  const providerErrors = status?.runtimeProviderErrors?.filter((error) => error.trim().length > 0);
 
   return (
     <KeyValueRows
@@ -564,25 +706,21 @@ function VMHealth({ overview }: { overview: RuntimeControlOverview | undefined }
         {
           label: "Runtime installation",
           value: (
-            <StatusBadge tone={booleanTone(runtimeInstalled)}>
-              {runtimeInstalled === undefined
-                ? NOT_REPORTED
-                : runtimeInstalled
-                  ? "Installed"
-                  : "Missing"}
+            <StatusBadge tone={runtimeInstallationTone(runtimeInstallationState)}>
+              {formatRuntimeInstallationState(runtimeInstallationState)}
             </StatusBadge>
           )
         },
         {
-          label: "VM state",
+          label: "Runtime provider state",
           value: (
-            <StatusBadge tone={vmStateTone(status?.vmState)}>
-              {formatVMState(status?.vmState)}
+            <StatusBadge tone={vmStateTone(status?.runtimeProviderState)}>
+              {formatVMState(status?.runtimeProviderState)}
             </StatusBadge>
           )
         },
         {
-          label: "VM service",
+          label: "Runtime provider service",
           value: (
             <StatusBadge tone={booleanTone(vmServiceLoaded)}>
               {formatServiceLoaded(vmServiceLoaded)}
@@ -590,20 +728,20 @@ function VMHealth({ overview }: { overview: RuntimeControlOverview | undefined }
           )
         },
         {
-          label: "VM IP address",
+          label: "Runtime endpoint",
           value: (
-            <StatusBadge tone={vmIP ? "success" : "warning"}>
-              {vmIP || NOT_REPORTED}
+            <StatusBadge tone={runtimeEndpoint ? "success" : "warning"}>
+              {runtimeEndpoint || NOT_REPORTED}
             </StatusBadge>
           )
         },
-        ...(vmErrors?.length
+        ...(providerErrors?.length
           ? [
               {
-                label: "VM errors",
+                label: "Runtime provider errors",
                 value: (
                   <StatusBadge tone="warning">
-                    {vmErrors.join(", ")}
+                    {providerErrors.join(", ")}
                   </StatusBadge>
                 )
               }
@@ -614,71 +752,343 @@ function VMHealth({ overview }: { overview: RuntimeControlOverview | undefined }
   );
 }
 
-function ServiceHealth({ overview }: { overview: RuntimeControlOverview | undefined }) {
-  const status = overview?.status;
-  const composeServices = status?.containerObservation?.composeServices ?? [];
-  const observerService = composeServices.find(
-    (service) => service.service === "vitaldb-observer"
+function PlatformServices({ state }: { state: PlatformState | undefined }) {
+  if (!state) {
+    return <p className="muted">Platform service state has not been read.</p>;
+  }
+
+  return (
+    <DataTable
+      rows={state.services}
+      getRowKey={(service) => service.role}
+      columns={[
+        {
+          key: "role",
+          header: "Role",
+          render: (service) => platformServiceLabel(service.role)
+        },
+        {
+          key: "state",
+          header: "State",
+          render: (service) => (
+            <StatusBadge tone={platformServiceTone(service.state)}>
+              {service.state}
+            </StatusBadge>
+          )
+        },
+        {
+          key: "readError",
+          header: "Read error",
+          render: (service) => service.readError ?? "-"
+        }
+      ]}
+      emptyText="No Platform service state was reported."
+    />
   );
-  const services = [
-    {
-      label: "Proxy service",
-      value: formatServiceLoaded(status?.proxyServiceLoaded),
-      healthy: status?.proxyServiceLoaded
-    },
-    {
-      label: "Guest log sync service",
-      value: formatServiceLoaded(status?.guestLogSyncServiceLoaded),
-      healthy: status?.guestLogSyncServiceLoaded
-    },
-    {
-      label: "Sleep prevention service",
-      value: formatServiceLoaded(status?.sleepPreventionServiceLoaded),
-      healthy: status?.sleepPreventionServiceLoaded
-    },
-    {
-      label: "Watchdog service",
-      value: formatServiceLoaded(status?.watchdogServiceLoaded),
-      healthy: status?.watchdogServiceLoaded
-    },
-    {
-      label: "VitalServer",
-      value: formatHTTPStatus(status?.guestHTTP),
-      healthy: null
-    },
-    {
-      label: "Network access",
-      value: formatHTTPStatus(status?.hostProxyHTTP),
-      healthy: null
-    },
-    {
-      label: "VitalDB Observer",
-      value: formatComposeService(observerService),
-      healthy: composeServiceHealthy(observerService)
-    },
-    {
-      label: "Redis UI",
-      value: formatHTTPStatus(status?.redisUIHTTP),
-      healthy: null
-    },
+}
+
+function platformServiceLabel(
+  role: PlatformState["services"][number]["role"]
+): string {
+  const labels: Record<typeof role, string> = {
+    "runtime-provider": "Runtime provider",
+    "public-proxy": "Public proxy",
+    "log-sync": "Runtime log sync",
+    "sleep-prevention": "Sleep prevention",
+    watchdog: "Watchdog"
+  };
+  return labels[role];
+}
+
+function platformServiceTone(
+  state: PlatformState["services"][number]["state"]
+): "success" | "warning" | "danger" | "neutral" {
+  if (state === "running") {
+    return "success";
+  }
+  if (state === "stopped" || state === "not-installed" || state === "unavailable") {
+    return "neutral";
+  }
+  if (state === "failed" || state === "permission-denied" || state === "read-failed") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function APICatalog({
+  platformState
+}: {
+  platformState: PlatformState | undefined;
+}) {
+  const proxyPort = platformState?.publicProxyPort;
+  if (!proxyPort) {
+    return (
+      <p className="muted">
+        API links are unavailable until the Host proxy port is reported.
+      </p>
+    );
+  }
+
+  const baseURL = `http://127.0.0.1:${proxyPort}`;
+  const rows = [
     {
       label: "Swagger UI",
-      value: formatHTTPStatus(status?.swaggerUIHTTP),
-      healthy: null
+      value: `${baseURL}/swagger/`
+    },
+    {
+      label: "VitalServer API",
+      value: `${baseURL}/swagger/docs/openapi.yaml`
+    },
+    {
+      label: "Runtime Control API",
+      value: `${baseURL}/swagger/docs/macos-runtime/runtime-control.openapi.json`
+    },
+    {
+      label: "Recorder Ingress API",
+      value: `${baseURL}/swagger/docs/openapi/recorder-ingress.openapi.yaml`
+    },
+    {
+      label: "VitalDB Observer API",
+      value: `${baseURL}/swagger/docs/openapi/vitaldb-observer.openapi.yaml`
     }
   ];
 
   return (
     <KeyValueRows
-      rows={services.map((service) => ({
-        label: service.label,
+      rows={rows.map((row) => ({
+        label: row.label,
         value: (
-          <StatusBadge tone={serviceTone(service.healthy, service.value)}>
-            {service.value}
-          </StatusBadge>
+          <a href={row.value} target="_blank" rel="noreferrer">
+            {row.value}
+          </a>
         )
       }))}
     />
+  );
+}
+
+function GuestServiceControls({
+  stackStatus,
+  resourceReads,
+  stackStatusError,
+  disabled,
+  isPending,
+  onStart,
+  onStop,
+  onRestart
+}: {
+  stackStatus: RuntimeGuestControlStackStatus | undefined;
+  resourceReads: Array<{
+    service: string;
+    resource: RuntimeGuestServiceResource | undefined;
+    error: Error | null;
+  }>;
+  stackStatusError: Error | null;
+  disabled: boolean;
+  isPending: boolean;
+  onStart: (service: string) => void;
+  onStop: (service: string) => void;
+  onRestart: (service: string) => void;
+}) {
+  const statuses = stackStatus?.services ?? [];
+  const resourceByService = new Map(
+    resourceReads.flatMap((read) =>
+      read.resource ? [[read.service, read.resource] as const] : []
+    )
+  );
+  const resourceIssueByService = new Map(
+    resourceReads.flatMap((read) =>
+      read.error ? [[read.service, read.error.message] as const] : []
+    )
+  );
+  const knownServices = statuses
+    .map((serviceStatus) => serviceStatus.service)
+    .concat(Array.from(resourceByService.keys()))
+    .concat(Array.from(resourceIssueByService.keys()))
+    .filter((service, index, services) => services.indexOf(service) === index)
+    .sort();
+  const stackStatusIssue =
+    stackStatus && stackStatus.state !== "loaded"
+      ? `Runtime stack status is ${stackStatus.state}.`
+      : "";
+  const guestServicesReadError = stackStatusError?.message ?? stackStatusIssue;
+  const guestServicesReadFailed =
+    stackStatusError !== null || stackStatusIssue.length > 0;
+
+  if (knownServices.length === 0 && !guestServicesReadFailed) {
+    return null;
+  }
+
+  return (
+    <div className="subsection">
+      <h3>Observed state and control</h3>
+      {knownServices.length > 0 ? (
+        <DataTable
+          rows={knownServices.map((service) => {
+            const serviceStatus = statuses.find(
+              (candidate) => candidate.service === service
+            );
+            const resource = resourceByService.get(service);
+            return {
+              id: service,
+              service,
+              state: serviceStatus?.state ?? NOT_REPORTED,
+              health: serviceStatus?.health ?? NOT_REPORTED,
+              spec: resource?.spec.state ?? NOT_REPORTED,
+              desired: resource?.spec.desiredState ?? NOT_REPORTED,
+              statusRead: resource?.status.readError
+                ? `${resource.status.readError.kind}: ${resource.status.readError.message}`
+                : resource?.status.state ?? NOT_REPORTED,
+              observed: resource?.status.observedState ?? NOT_REPORTED,
+              conditions: resource?.conditions.length
+                ? resource.conditions
+                    .map(
+                      (condition) =>
+                        `${condition.type}=${condition.status} ${condition.reason}: ${condition.message}`
+                    )
+                    .join("; ")
+                : NOT_REPORTED,
+              lastOperation: resource?.lastOperationId ?? NOT_REPORTED,
+              resourceIssue: resourceIssueByService.get(service) ?? ""
+            };
+          })}
+          getRowKey={(row) => row.id}
+          columns={[
+            { key: "service", header: "Service", render: (row) => row.service },
+            { key: "state", header: "State", render: (row) => row.state },
+            { key: "health", header: "Health", render: (row) => row.health },
+            { key: "spec", header: "Spec", render: (row) => row.spec },
+            { key: "desired", header: "Desired", render: (row) => row.desired },
+            { key: "statusRead", header: "Status read", render: (row) => row.statusRead },
+            { key: "observed", header: "Observed", render: (row) => row.observed },
+            { key: "conditions", header: "Conditions", render: (row) => row.conditions },
+            {
+              key: "lastOperation",
+              header: "Last operation",
+              render: (row) => row.lastOperation
+            },
+            {
+              key: "resourceIssue",
+              header: "Resource read",
+              render: (row) =>
+                row.resourceIssue || (resourceByService.has(row.service) ? "OK" : NOT_REPORTED)
+            },
+            {
+              key: "actions",
+              header: "Actions",
+              render: (row) => (
+                <div className="action-row compact">
+                  <ConfirmButton
+                    confirmMessage={`Start Runtime service ${row.service}?`}
+                    disabled={disabled || isPending}
+                    onClick={() => onStart(row.service)}
+                  >
+                    Start
+                  </ConfirmButton>
+                  <ConfirmButton
+                    confirmMessage={`Stop Runtime service ${row.service}?`}
+                    disabled={disabled || isPending}
+                    onClick={() => onStop(row.service)}
+                  >
+                    Stop
+                  </ConfirmButton>
+                  <ConfirmButton
+                    confirmMessage={`Restart Runtime service ${row.service}?`}
+                    disabled={disabled || isPending}
+                    onClick={() => onRestart(row.service)}
+                  >
+                    Restart
+                  </ConfirmButton>
+                </div>
+              )
+            }
+          ]}
+          emptyText="No Runtime product services are reported."
+        />
+      ) : null}
+      {guestServicesReadFailed ? (
+        <ErrorState
+          title="Failed to read Runtime product services"
+          error={new Error(guestServicesReadError)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function GuestServiceOperationResult({
+  operation,
+  error
+}: {
+  operation: RuntimeGuestControlServiceOperation | undefined;
+  error: Error | null;
+}) {
+  if (error) {
+    return <ErrorState error={error} />;
+  }
+
+  if (!operation) {
+    return <p className="muted">No operation has completed yet.</p>;
+  }
+
+  return (
+    <pre className="command-output">
+      {[
+        `operationId: ${operation.operationId}`,
+        `service: ${operation.service}`,
+        `command: ${operation.command}`,
+        `state: ${operation.state}`,
+        operation.failure
+          ? `failure: ${operation.failure.kind} ${operation.failure.message}`
+          : ""
+      ]
+        .filter(Boolean)
+        .join("\n")}
+    </pre>
+  );
+}
+
+function RuntimeProviderCommandResult({
+  command,
+  error
+}: {
+  command: RuntimeProviderCommandResponse | undefined;
+  error: Error | null;
+}) {
+  if (error) {
+    return <ErrorState error={error} />;
+  }
+
+  if (!command) {
+    return <p className="muted">No operation has completed yet.</p>;
+  }
+
+  return (
+    <pre className="command-output">
+      {[
+        `operationId: ${command.operationId}`,
+        `action: ${command.action}`,
+        `state: ${command.state}`,
+        `provider resource: ${command.provider.state}`,
+        command.provider.document
+          ? `provider lifecycle: ${command.provider.document.state}`
+          : "",
+        command.provider.document?.terminalReason
+          ? `provider terminal reason: ${command.provider.document.terminalReason}`
+          : "",
+        command.provider.document?.message
+          ? `provider lifecycle message: ${command.provider.document.message}`
+          : "",
+        command.provider.readError
+          ? `provider readError: ${command.provider.readError}`
+          : "",
+        command.failure
+          ? `failure: ${command.failure.kind} ${command.failure.message}`
+          : ""
+      ]
+        .filter(Boolean)
+        .join("\n")}
+    </pre>
   );
 }
 
@@ -699,19 +1109,6 @@ function ValidationErrors({
   );
 }
 
-function serviceTone(
-  healthy: boolean | null | undefined,
-  value: string
-): "success" | "warning" | "neutral" {
-  if (healthy === true) {
-    return "success";
-  }
-  if (healthy === false || value === NOT_REPORTED) {
-    return "warning";
-  }
-  return "neutral";
-}
-
 function booleanTone(
   value: boolean | null | undefined
 ): "success" | "warning" | "neutral" {
@@ -722,6 +1119,36 @@ function booleanTone(
     return "warning";
   }
   return "neutral";
+}
+
+function runtimeInstallationTone(
+  value: string | null | undefined
+): "success" | "warning" | "neutral" {
+  if (value === "executable") {
+    return "success";
+  }
+  return "warning";
+}
+
+function formatRuntimeInstallationState(value: string | null | undefined): string {
+  if (!value) {
+    return NOT_REPORTED;
+  }
+  if (value === "executable") {
+    return "Executable";
+  }
+  if (value === "present") {
+    return "Present but not executable";
+  }
+  if (value === "missing") {
+    return "Missing";
+  }
+  if (value.startsWith("inspect-failed")) {
+    return value.includes(":")
+      ? `Inspect failed: ${value.split(":").slice(1).join(":").trim()}`
+      : "Inspect failed";
+  }
+  return value;
 }
 
 function vmStateTone(
@@ -754,68 +1181,25 @@ function formatServiceLoaded(value: boolean | null | undefined): string {
   return value ? "Running" : "Stopped";
 }
 
-function formatComposeService(
-  service:
-    | {
-        state?: string | null;
-        health?: string | null;
-      }
-    | undefined
-): string {
-  const health = service?.health?.trim();
-  if (health) {
-    return health.charAt(0).toUpperCase() + health.slice(1);
-  }
-  const state = service?.state?.trim();
-  if (state) {
-    return state.charAt(0).toUpperCase() + state.slice(1);
-  }
-  return NOT_REPORTED;
-}
-
-function composeServiceHealthy(
-  service:
-    | {
-        state?: string | null;
-        health?: string | null;
-      }
-    | undefined
-): boolean | null {
-  if (!service) {
-    return null;
-  }
-  if (service.health === "healthy") {
-    return true;
-  }
-  if (service.health) {
-    return false;
-  }
-  if (service.state === "running") {
-    return true;
-  }
-  return false;
-}
-
 function updatedRuntimeSettings(
-  current: RuntimeSettings,
-  updates: Partial<RuntimeSettings>
-): RuntimeSettings {
+  current: RuntimeProductSettings,
+  updates: Partial<RuntimeProductSettings>
+): RuntimeProductSettings {
   return {
     ...current,
     ...updates
   };
 }
 
-function validateAdvancedNetworkSettings(settings: RuntimeSettings): {
+function validateAdvancedNetworkSettings(settings: RuntimeProductSettings): {
   valid: boolean;
   errors: string[];
 } {
-  const validation = validateRuntimeSettings(settings);
-  const errors = [...validation.errors];
-  if (!isAbsoluteHTTPURL(settings.vitalServerURL)) {
+  const errors: string[] = [];
+  if (settings.vitalServerURL && !isAbsoluteHTTPURL(settings.vitalServerURL)) {
     errors.push("VitalServer URL must be an absolute http/https URL.");
   }
-  if (!isAbsoluteHTTPURL(settings.remoteConsoleURL)) {
+  if (settings.remoteConsoleURL && !isAbsoluteHTTPURL(settings.remoteConsoleURL)) {
     errors.push("Remote Console URL must be an absolute http/https URL.");
   }
   return {
@@ -884,13 +1268,4 @@ function backupName(path: string | undefined): string {
   }
   const parts = path.split("/");
   return parts[parts.length - 1] || path;
-}
-
-function parseOptionalNumber(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }

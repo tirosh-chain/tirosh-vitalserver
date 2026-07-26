@@ -5,11 +5,12 @@ public enum RuntimeDataBackupKind: String, Codable, Equatable, Sendable {
 }
 
 public enum RuntimeDataBackupCompatibility {
-    public static let currentRestoreCompatibilityVersion = 1
+    public static let currentRestoreCompatibilityVersion = 2
 }
 
 public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatable, Sendable {
     case redisData = "redis-data"
+    case postgresDatabase = "postgres-database"
     case runtimeVMConfig = "runtime-vm-config"
     case guestRuntimeConfig = "guest-runtime-config"
     case guestRuntimeSettings = "guest-runtime-settings"
@@ -19,8 +20,9 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
     case runtimeEventsDocument = "runtime-events-document"
     case runtimeObservabilityDatabase = "runtime-observability-database"
 
-    public static let requiredForUIContinuity: [RuntimeDataBackupArtifactID] = [
+    public static let manifestArtifactOrder: [RuntimeDataBackupArtifactID] = [
         .redisData,
+        .postgresDatabase,
         .runtimeVMConfig,
         .guestRuntimeConfig,
         .guestRuntimeSettings,
@@ -33,6 +35,7 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
 
     public static let requiredForRecovery: [RuntimeDataBackupArtifactID] = [
         .redisData,
+        .postgresDatabase,
         .runtimeVMConfig,
         .guestRuntimeConfig,
         .guestRuntimeSettings,
@@ -40,7 +43,7 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
         .startOnBootState,
     ]
 
-    public static let optionalForUIContinuity: [RuntimeDataBackupArtifactID] = [
+    public static let optionalForDiagnosticsContinuity: [RuntimeDataBackupArtifactID] = [
         .runtimeStatusDocument,
         .runtimeEventsDocument,
         .runtimeObservabilityDatabase,
@@ -50,6 +53,8 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
         switch self {
         case .redisData:
             return "redis-data.tar.gz"
+        case .postgresDatabase:
+            return "postgres-database.tar.gz"
         case .runtimeVMConfig:
             return "runtime-vm-config.json"
         case .guestRuntimeConfig:
@@ -61,11 +66,11 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
         case .startOnBootState:
             return "start-on-boot-state.json"
         case .runtimeStatusDocument:
-            return RuntimeFileNames.runtimeStatus
+            return RuntimeDiagnosticsArtifactFileNames.runtimeStatus
         case .runtimeEventsDocument:
-            return RuntimeFileNames.runtimeEvents
+            return RuntimeDiagnosticsArtifactFileNames.runtimeEvents
         case .runtimeObservabilityDatabase:
-            return RuntimeFileNames.runtimeObservabilityDB
+            return RuntimeDiagnosticsArtifactFileNames.runtimeObservabilityDB
         }
     }
 }
@@ -84,6 +89,7 @@ public enum RuntimeDataBackupSourceKind: String, Codable, Equatable, Sendable {
     case file
     case sqliteSnapshot = "sqlite-snapshot"
     case dockerVolumeArchive = "docker-volume-archive"
+    case postgresBackupArchive = "postgres-backup-archive"
     case generatedState = "generated-state"
 }
 

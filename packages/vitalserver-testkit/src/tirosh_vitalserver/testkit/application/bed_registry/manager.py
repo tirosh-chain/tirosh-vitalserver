@@ -25,8 +25,7 @@ class BedRegistry:
         self._store = store
         self._lock = RLock()
         self._beds_by_room_name: dict[str, Bed] = {
-            bed.room_name: bed
-            for bed in load_stored_beds(store)
+            bed.room_name: bed for bed in load_stored_beds(store)
         }
 
     def list_beds(self) -> tuple[Bed, ...]:
@@ -74,10 +73,12 @@ class BedRegistry:
         )
 
         with self._lock:
+            registered_by_room_name = dict(self._beds_by_room_name)
             for bed in beds:
-                self._beds_by_room_name[bed.room_name] = bed
-            registered_beds = tuple(self._beds_by_room_name.values())
+                registered_by_room_name[bed.room_name] = bed
+            registered_beds = tuple(registered_by_room_name.values())
             self._save(registered_beds)
+            self._beds_by_room_name = registered_by_room_name
             return beds
 
     def _create_generated_beds(
@@ -102,21 +103,30 @@ class BedRegistry:
 
         with self._lock:
             beds = tuple(self._beds_by_room_name.values())
-            self._beds_by_room_name.clear()
             self._delete_all()
+            self._beds_by_room_name.clear()
             return beds
 
     def delete_beds(self, room_names: tuple[str, ...]) -> tuple[Bed, ...]:
         """Delete selected registered bed identities."""
 
-        resolved_room_names = self.require_registered_room_names(room_names)
+        resolved_room_names = normalize_bed_room_names(room_names)
 
         with self._lock:
+            missing = tuple(
+                room_name
+                for room_name in resolved_room_names
+                if room_name not in self._beds_by_room_name
+            )
+            if missing:
+                raise BedNotRegisteredError(missing)
+            remaining_by_room_name = dict(self._beds_by_room_name)
             deleted = tuple(
-                self._beds_by_room_name.pop(room_name)
+                remaining_by_room_name.pop(room_name)
                 for room_name in resolved_room_names
             )
-            self._save(tuple(self._beds_by_room_name.values()))
+            self._save(tuple(remaining_by_room_name.values()))
+            self._beds_by_room_name = remaining_by_room_name
             return deleted
 
     def _save(self, beds: tuple[Bed, ...]) -> None:

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "v1",
+  "assemblyId": "macos-runtime-platform-package-0.2.0-dev",
+  "assemblyDeclarationSHA256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "release": {
+    "deliveryPlanId": "macos-runtime-platform-release",
+    "productVersion": "0.2.0-dev"
+  },
+  "guestArtifactCompilationInputAssembly": {
+    "assemblyId": "guest-input-assembly-0.2.0-dev",
+    "receipt": {
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "guestArtifactCompilation": {
+    "compilationId": "guest-artifact-build-0.2.0-dev",
+    "artifactSetId": "vitalserver-guest-arm64-0.2.0-dev",
+    "receipt": {
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "macOSGuestArtifactManifest": {
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  },
+  "macOSHostPackage": {
+    "fileName": "VitalServerRuntimePlatform-0.2.0-dev.pkg",
+    "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "macOSHostPackageVerification": {
+    "releaseDeliveryPlanId": "macos-runtime-platform-release",
+    "payloadBasePath": "/Library/Application Support/VitalServerRuntimePlatform",
+    "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "completedAt": "2026-07-18T08:12:00Z"
+}

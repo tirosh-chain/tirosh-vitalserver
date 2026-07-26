@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-local-administration-endpoint-descriptor",
+  "title": "HostLocalAdministrationEndpointDescriptor",
+  "description": "C52 Host Agent-published public descriptor for the one OS-local administration transport. It exposes only the selected local transport address. Authorization policy, identities, credentials, Host deployment input, and runtime state are not descriptor fields.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "transport", "address"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "transport": { "const": "unix-domain-socket" },
+        "address": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 104,
+          "pattern": "^/[^\\\\]*$",
+          "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "transport", "address"],
+      "properties": {
+        "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+        "transport": { "const": "windows-named-pipe" },
+        "address": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 256,
+          "pattern": "^\\\\\\\\\\.\\\\pipe\\\\[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        }
+      }
+    }
+  ]
+}

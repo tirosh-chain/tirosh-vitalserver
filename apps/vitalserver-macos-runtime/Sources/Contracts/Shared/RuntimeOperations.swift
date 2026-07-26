@@ -14,7 +14,7 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
     case rollback
     case redisBackup
     case redisRestore
-    case reconcileGuestCompose
+    case reconcileGuestStack
     case runtimeDataBackup
     case automaticBackup
     case runtimeDataRestore
@@ -55,8 +55,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             self = .redisBackup
         case "redis-restore":
             self = .redisRestore
-        case "reconcile-compose":
-            self = .reconcileGuestCompose
+        case "guest-stack-reconcile":
+            self = .reconcileGuestStack
         case "runtime-data-backup":
             self = .runtimeDataBackup
         case "automatic-backup":
@@ -110,8 +110,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             return "redis-backup"
         case .redisRestore:
             return "redis-restore"
-        case .reconcileGuestCompose:
-            return "reconcile-compose"
+        case .reconcileGuestStack:
+            return "guest-stack-reconcile"
         case .runtimeDataBackup:
             return "runtime-data-backup"
         case .automaticBackup:

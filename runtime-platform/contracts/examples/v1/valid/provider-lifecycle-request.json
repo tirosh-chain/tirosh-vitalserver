@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "request-start-001",
+  "providerId": "guest-vm",
+  "action": "start"
+}

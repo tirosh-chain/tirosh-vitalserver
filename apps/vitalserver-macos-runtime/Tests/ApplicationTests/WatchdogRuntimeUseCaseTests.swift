@@ -62,7 +62,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.printMessage, "watchdog: recovery disabled")
     }
 
-    func testRecoveryDecisionPlansExplicitComposeReconcileEvent() {
+    func testRecoveryDecisionPlansPlatformVMRestartForRuntimeReadinessFailure() {
         let useCase = WatchdogRuntimeUseCase()
 
         let decision = useCase.recoveryDecision(
@@ -80,18 +80,13 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
             return XCTFail("expected recovery execution plan")
         }
         XCTAssertEqual(plan.reason, "host-proxy-http-502, guest-http-503")
-        XCTAssertTrue(plan.recoveryPlan.reconcileGuestCompose)
-        XCTAssertFalse(plan.recoveryPlan.restartVM)
-        XCTAssertFalse(plan.recoveryPlan.restartProxy)
-        XCTAssertEqual(
-            plan.composeReconcileEventMessage,
-            "watchdog compose reconcile dispatched services=guest-compose"
-        )
-        XCTAssertNil(plan.vmRestartEventMessage)
-        XCTAssertNil(plan.proxyRestartEventMessage)
+        XCTAssertTrue(plan.recoveryPlan.restartVM)
+        XCTAssertTrue(plan.recoveryPlan.restartProxy)
+        XCTAssertEqual(plan.vmRestartEventMessage, "watchdog restart dispatched services=vm,guest-log-sync")
+        XCTAssertEqual(plan.proxyRestartEventMessage, "watchdog restart dispatched services=proxy")
         XCTAssertEqual(
             plan.plannedEventMessage,
-            "watchdog recovery planned compose=true vm=false proxy=false reasons=guest-http-unhealthy-503"
+            "watchdog platform recovery planned vm=true proxy=true reasons=guest-http-unhealthy-503,vm-restart-requires-proxy-restart"
         )
     }
 
@@ -112,10 +107,8 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         guard case .recover(let plan) = decision else {
             return XCTFail("expected recovery execution plan")
         }
-        XCTAssertFalse(plan.recoveryPlan.reconcileGuestCompose)
         XCTAssertTrue(plan.recoveryPlan.restartVM)
         XCTAssertTrue(plan.recoveryPlan.restartProxy)
-        XCTAssertNil(plan.composeReconcileEventMessage)
         XCTAssertEqual(
             plan.vmRestartEventMessage,
             "watchdog restart dispatched services=vm,guest-log-sync"
@@ -123,7 +116,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.proxyRestartEventMessage, "watchdog restart dispatched services=proxy")
         XCTAssertEqual(
             plan.plannedEventMessage,
-            "watchdog recovery planned compose=false vm=true proxy=true reasons=missing-vm-ip,guest-http-unhealthy-missing-vm-ip,vm-restart-requires-proxy-restart"
+            "watchdog platform recovery planned vm=true proxy=true reasons=missing-vm-ip,guest-http-unhealthy-missing-vm-ip,vm-restart-requires-proxy-restart"
         )
     }
 
@@ -152,55 +145,6 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
             "watchdog recovery deferred: recovery-blocked-vm-service-state-read_failed__launchctl_denied, recovery-blocked-proxy-service-state-permission_denied__launchctl_denied"
         )
         XCTAssertEqual(plan.printMessage, "watchdog: deferred")
-    }
-
-    func testDeferredObservationPreservesInstallInitializationStatus() {
-        let useCase = WatchdogRuntimeUseCase()
-        let deferred = WatchdogRuntimeObservedStatusPlan(
-            status: .degraded,
-            message: "watchdog recovery deferred: vm-lifecycle-bootstrapping",
-            eventType: .recoveryDeferred,
-            printMessage: "watchdog: deferred",
-            logMessage: "watchdog recovery deferred: vm-lifecycle-bootstrapping"
-        )
-
-        let plan = useCase.observedStatusPlan(
-            deferred,
-            currentStatus: .loaded(status(
-                level: .initializing,
-                operation: .install,
-                updatedAt: "2026-05-22T00:00:00Z"
-            ))
-        )
-
-        XCTAssertEqual(plan.status, .initializing)
-        XCTAssertEqual(plan.message, deferred.message)
-        XCTAssertEqual(plan.eventType, .recoveryDeferred)
-    }
-
-    func testDeferredObservationDoesNotPreserveMissingFailedOrNonInstallStatus() {
-        let useCase = WatchdogRuntimeUseCase()
-        let deferred = WatchdogRuntimeObservedStatusPlan(
-            status: .degraded,
-            message: "watchdog recovery deferred: vm-lifecycle-bootstrapping",
-            eventType: .recoveryDeferred,
-            printMessage: "watchdog: deferred",
-            logMessage: "watchdog recovery deferred: vm-lifecycle-bootstrapping"
-        )
-
-        XCTAssertEqual(useCase.observedStatusPlan(deferred, currentStatus: .missing).status, .degraded)
-        XCTAssertEqual(useCase.observedStatusPlan(deferred, currentStatus: .failed("permission denied")).status, .degraded)
-        XCTAssertEqual(
-            useCase.observedStatusPlan(
-                deferred,
-                currentStatus: .loaded(status(
-                    level: .initializing,
-                    operation: .applyBundle,
-                    updatedAt: "2026-05-22T00:00:00Z"
-                ))
-            ).status,
-            .degraded
-        )
     }
 
     func testLifecycleMarkPlanOnlyMarksStartingOrBootstrappingLifecycle() {
@@ -234,152 +178,6 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.printMessage, "watchdog: critical")
     }
 
-    func testStatusManagedOperationGuardPlanBlocksFreshProtectedOperation() {
-        let useCase = WatchdogRuntimeUseCase()
-
-        let plan = useCase.statusManagedOperationGuardPlan(
-            status: status(level: .updating, operation: .applyBundle, updatedAt: "2026-05-22T00:00:00Z"),
-            now: date("2026-05-22T00:05:00Z"),
-            graceSeconds: 1_800
-        )
-
-        XCTAssertEqual(plan.activeOperation, .applyBundle)
-        XCTAssertNil(plan.logMessage)
-    }
-
-    func testStatusManagedOperationGuardPlanDoesNotBlockInitializationHealthObservation() {
-        let useCase = WatchdogRuntimeUseCase()
-
-        let plan = useCase.statusManagedOperationGuardPlan(
-            status: status(level: .initializing, operation: .install, updatedAt: "2026-05-22T00:00:00Z"),
-            now: date("2026-05-22T00:05:00Z"),
-            graceSeconds: 1_800
-        )
-
-        XCTAssertNil(plan.activeOperation)
-        XCTAssertNil(plan.logMessage)
-    }
-
-    func testStatusManagedOperationGuardPlanDoesNotHideInvalidOrStaleState() {
-        let useCase = WatchdogRuntimeUseCase()
-
-        let invalid = useCase.statusManagedOperationGuardPlan(
-            status: status(level: .recovering, operation: .rollback, updatedAt: "not-a-date"),
-            now: date("2026-05-22T00:05:00Z"),
-            graceSeconds: 1_800
-        )
-        let stale = useCase.statusManagedOperationGuardPlan(
-            status: status(level: .recovering, operation: .rollback, updatedAt: "2026-05-22T00:00:00Z"),
-            now: date("2026-05-22T00:31:00Z"),
-            graceSeconds: 1_800
-        )
-
-        XCTAssertNil(invalid.activeOperation)
-        XCTAssertEqual(
-            invalid.logMessage,
-            "watchdog active operation guard ignored invalid updatedAt operation=rollback updatedAt=not-a-date"
-        )
-        XCTAssertNil(stale.activeOperation)
-        XCTAssertEqual(
-            stale.logMessage,
-            "watchdog active operation guard expired operation=rollback ageSeconds=1860"
-        )
-    }
-
-    func testGuestBootstrapGuardDoesNotBlockAfterVMLifecycleDeadline() {
-        let useCase = WatchdogRuntimeUseCase()
-
-        let plan = useCase.guestBootstrapManagedOperationGuardPlan(
-            operation: .install,
-            updatedAt: date("2026-05-22T00:09:00Z"),
-            vmLifecycle: RuntimeVMLifecycleDocument(
-                state: .bootstrapping,
-                operation: .install,
-                startedAt: "2026-05-22T00:00:00Z",
-                updatedAt: "2026-05-22T00:00:01Z",
-                deadlineAt: "2026-05-22T00:10:00Z",
-                message: "VM process started; waiting for guest runtime"
-            ),
-            now: date("2026-05-22T00:10:01Z"),
-            graceSeconds: 1_800
-        )
-
-        XCTAssertNil(plan.activeOperation)
-        XCTAssertEqual(
-            plan.logMessage,
-            "watchdog guest bootstrap guard expired by VM lifecycle deadline operation=install state=bootstrapping deadlineAt=2026-05-22T00:10:00Z"
-        )
-    }
-
-    func testGuestBootstrapGuardBlocksBeforeVMLifecycleDeadline() {
-        let useCase = WatchdogRuntimeUseCase()
-
-        let plan = useCase.guestBootstrapManagedOperationGuardPlan(
-            operation: .install,
-            updatedAt: date("2026-05-22T00:09:00Z"),
-            vmLifecycle: RuntimeVMLifecycleDocument(
-                state: .bootstrapping,
-                operation: .install,
-                startedAt: "2026-05-22T00:00:00Z",
-                updatedAt: "2026-05-22T00:00:01Z",
-                deadlineAt: "2026-05-22T00:10:00Z",
-                message: "VM process started; waiting for guest runtime"
-            ),
-            now: date("2026-05-22T00:09:30Z"),
-            graceSeconds: 1_800
-        )
-
-        XCTAssertEqual(plan.activeOperation, .install)
-        XCTAssertNil(plan.logMessage)
-    }
-
-    func testStatusManagedOperationGuardPlanPreservesLoadResultMeanings() {
-        let useCase = WatchdogRuntimeUseCase()
-        let now = date("2026-05-22T00:05:00Z")
-
-        let loaded = useCase.statusManagedOperationGuardPlan(
-            loadResult: .loaded(status(level: .updating, operation: .applyBundle, updatedAt: "2026-05-22T00:00:00Z")),
-            now: now,
-            graceSeconds: 1_800
-        )
-        let missing = useCase.statusManagedOperationGuardPlan(
-            loadResult: .missing,
-            now: now,
-            graceSeconds: 1_800
-        )
-        let failed = useCase.statusManagedOperationGuardPlan(
-            loadResult: .failed("permission denied"),
-            now: now,
-            graceSeconds: 1_800
-        )
-
-        XCTAssertEqual(loaded.activeOperation, .applyBundle)
-        XCTAssertNil(loaded.logMessage)
-        XCTAssertNil(missing.activeOperation)
-        XCTAssertNil(missing.logMessage)
-        XCTAssertNil(failed.activeOperation)
-        XCTAssertEqual(
-            failed.logMessage,
-            "watchdog active operation guard ignored status read failure error=permission denied"
-        )
-    }
-
-    func testGuestBootstrapGuardKeepsMissingUpdatedAtExplicitlyActive() {
-        let useCase = WatchdogRuntimeUseCase()
-
-        let plan = useCase.guestBootstrapManagedOperationGuardPlan(
-            operation: .unknown("bootstrap"),
-            updatedAt: nil,
-            now: date("2026-05-22T00:31:00Z"),
-            graceSeconds: 1_800
-        )
-
-        XCTAssertEqual(plan.activeOperation, .unknown("bootstrap"))
-        XCTAssertEqual(
-            plan.logMessage,
-            "watchdog guest bootstrap guard active without updatedAt operation=bootstrap"
-        )
-    }
 }
 
 private func healthSnapshot(
@@ -428,38 +226,4 @@ private func runningLifecycle() -> RuntimeVMLifecycleDocument {
         startedAt: "2026-05-31T00:00:00Z",
         updatedAt: "2026-05-31T00:00:01Z"
     )
-}
-
-private func status(
-    level: RuntimeStatusLevel,
-    operation: RuntimeOperation,
-    updatedAt: String
-) -> RuntimeStatusDocument {
-    RuntimeStatusDocument(
-        product: "VitalServerHelper",
-        status: level,
-        operation: operation,
-        message: "status",
-        updatedAt: updatedAt,
-        productRoot: "/product",
-        runtimeHome: "/product/vm",
-        runtimeVersion: "0.1.0",
-        vmService: .loaded,
-        proxyService: .loaded,
-        watchdogService: .loaded,
-        vmIP: "192.168.64.2",
-        proxyPort: 80,
-        hostProxyHTTP: "200",
-        guestHTTP: "200",
-        redisUIHTTP: "200",
-        swaggerUIHTTP: "200",
-        rootfsBase: .present,
-        vmDisk: .present,
-        failureReasons: [],
-        latestBackup: nil
-    )
-}
-
-private func date(_ value: String) -> Date {
-    ISO8601DateFormatter().date(from: value)!
 }

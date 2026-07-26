@@ -38,6 +38,10 @@ dmg_staging_dir = ".tmp/vitalserver-vm-dmg"
 template_file = "ai.tirosh.vitalserver.helper.vm.plist.template"
 installed_plist = "ai.tirosh.vitalserver.helper.vm.plist"
 
+[macos.launchd.platform_agent]
+template_file = "ai.tirosh.vitalserver.helper.platform-agent.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.platform-agent.plist"
+
 [macos.launchd.proxy]
 template_file = "ai.tirosh.vitalserver.helper.proxy.plist.template"
 installed_plist = "ai.tirosh.vitalserver.helper.proxy.plist"
@@ -102,31 +106,32 @@ platform = "linux/arm64"
 bundle_path = ".tmp/vitalserver-vm-pkg/docker-images/vitalserver-images.tar.gz"
 optional_bundle_path = ".tmp/vitalserver-vm-pkg/optional-docker-images/vitalserver-optional-images.tar.gz"
 app_dockerfile = "apps/vitalserver/docker/Dockerfile"
-recorder_ingress_image = "vitalserver-recorder-ingress:0.1.0"
+postgres_migrator_image = "vitalserver-postgres-migrator:0.2.0"
+postgres_migrator_dockerfile = "apps/vitalserver-postgres-migrator/Dockerfile"
+recorder_ingress_image = "vitalserver-recorder-ingress:0.2.1"
 recorder_ingress_dockerfile = "apps/vitalserver-recorder-ingress/Dockerfile"
-recorder_recovery_image = "vitalserver-recorder-recovery:0.1.0"
+recorder_recovery_image = "vitalserver-recorder-recovery:0.2.0"
 recorder_recovery_dockerfile = "apps/vitalserver-recorder-recovery/Dockerfile"
-vitaldb_observer_image = "vitaldb-observer:0.1.0"
+vitaldb_observer_image = "vitaldb-observer:0.2.0"
 vitaldb_observer_dockerfile = "apps/vitaldb-observer/Dockerfile"
-redis_relay_image = "vitalserver-redis-relay:0.1.0"
+redis_relay_image = "vitalserver-redis-relay:0.2.0"
 redis_relay_dockerfile = "apps/vitalserver-redis-relay/Dockerfile"
-testkit_image = "vitalserver-testkit:0.1.1"
-testkit_dockerfile = "packages/vitalserver-testkit/Dockerfile"
+lab_image = "vitalserver-lab:0.2.0"
+lab_dockerfile = "apps/vitalserver-lab/Dockerfile"
 images = [
   "vitalserver:2.3.4",
-  "vitalserver-recorder-ingress:0.1.0",
-  "vitalserver-recorder-recovery:0.1.0",
-  "vitaldb-observer:0.1.0",
-  "vitalserver-redis-relay:0.1.0",
+  "vitalserver-postgres-migrator:0.2.0",
+  "vitalserver-recorder-ingress:0.2.1",
+  "vitalserver-recorder-recovery:0.2.0",
+  "vitaldb-observer:0.2.0",
+  "vitalserver-redis-relay:0.2.0",
+  "vitalserver-lab:0.2.0",
+  "postgres:16-alpine",
   "redis:3.2.12-alpine",
   "ghcr.io/joeferner/redis-commander:0.9.0",
   "swaggerapi/swagger-ui:v5.17.14",
   "nginx:1.24-alpine",
 ]
-optional_images = [
-  "vitalserver-testkit:0.1.1",
-]
-
 [guest.deploy]
 docker_image_bundle_destination = "docker-images/vitalserver-images.tar.gz"
 optional_docker_image_bundle_destination = "optional-docker-images/vitalserver-optional-images.tar.gz"
@@ -137,17 +142,17 @@ python_wheel_projects = [
 include = [
   "apps/vitalserver/docker",
   "apps/vitalserver/runtime",
+  "apps/vitalserver-postgres-migrator",
   "apps/vitalserver-recorder-ingress",
   "apps/vitalserver-recorder-recovery",
   "packages/vitalserver-core",
+  "packages/vitalserver-vitalfile",
   "apps/vitaldb-observer",
   "apps/vitalserver-redis-relay",
+  "apps/vitalserver-lab",
   "vendor/vitalserver/vitalserver-old",
   { source = "docs/api/vitalserver.openapi.yaml", destination = "docs/openapi.yaml" },
   { source = "docs/api/recorder-ingress.openapi.yaml", destination = "docs/openapi/recorder-ingress.openapi.yaml" },
   { source = "docs/api/vitaldb-observer.openapi.yaml", destination = "docs/openapi/vitaldb-observer.openapi.yaml" },
-  { source = "docs/runtime/macos/runtime-control.openapi.json", destination = "docs/macos-runtime/runtime-control.openapi.json" },
-]
-optional_include = [
-  "packages/vitalserver-testkit",
+  { source = "docs/runtime/runtime-control.openapi.json", destination = "docs/macos-runtime/runtime-control.openapi.json" },
 ]

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "v1",
+  "runtimeId": "guest-node-linux-amd64",
+  "runtimeVersion": "20.19.3",
+  "architecture": "amd64",
+  "operatingSystem": "linux",
+  "license": "MIT",
+  "distributionContract": "release input supplies one immutable Node.js Linux AMD64 distribution root containing bin/node; the Guest Node Services bundle composer copies it without selecting, downloading, or executing it"
+}

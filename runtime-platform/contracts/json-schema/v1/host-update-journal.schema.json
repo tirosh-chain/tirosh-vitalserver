@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-journal",
+  "title": "HostUpdateJournal",
+  "description": "C29 durable Host-owned update operation/recovery state. It stores C25 recovery input and stable digests, never the evolving C26 document itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "journalRevision", "operationId", "requestId", "installationId", "expectedInstallationRevision", "bundleReferenceId", "bootstrapEnvelope", "bootstrapEnvelopeId", "bootstrapSignedSha256", "nextUpdaterSha256", "updateSpecificationSha256", "targetRelease", "layerOrder", "state", "createdAt", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "journalRevision": { "type": "integer", "minimum": 1 },
+    "operationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "installationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "expectedInstallationRevision": { "type": "integer", "minimum": 1 },
+    "bundleReferenceId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "bootstrapEnvelope": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope" },
+    "bootstrapEnvelopeId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "bootstrapSignedSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "nextUpdaterSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "updateSpecificationSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "targetRelease": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/Release" },
+    "layerOrder": { "type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/UpdateLayer" } },
+    "state": { "type": "string", "enum": ["requested", "bootstrap-staged", "handoff-pending", "applying", "succeeded", "failed", "interrupted"] },
+    "bootstrapReceipt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-receipt" },
+    "executionReport": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-execution-report" },
+    "failure": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" },
+    "createdAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "updatedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "requested" } }, "required": ["state"] },
+      "then": { "not": { "anyOf": [{ "required": ["bootstrapReceipt"] }, { "required": ["executionReport"] }, { "required": ["failure"] }] } }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["bootstrap-staged", "handoff-pending", "applying"] } }, "required": ["state"] },
+      "then": { "required": ["bootstrapReceipt"], "not": { "anyOf": [{ "required": ["executionReport"] }, { "required": ["failure"] }] } }
+    },
+    {
+      "if": { "properties": { "state": { "const": "succeeded" } }, "required": ["state"] },
+      "then": { "required": ["executionReport"], "not": { "required": ["failure"] } }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["failed", "interrupted"] } }, "required": ["state"] },
+      "then": { "required": ["failure"] }
+    }
+  ]
+}

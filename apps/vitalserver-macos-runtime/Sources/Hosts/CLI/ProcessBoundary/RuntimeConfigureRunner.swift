@@ -10,33 +10,36 @@ import Errors
 public struct RuntimeConfigureActions {
     public var resizeVMDiskIfNeeded: (Int) throws -> Void
     public var setInstalledProxyPort: (Int) throws -> Void
+    public var restartPlatformAgent: () throws -> Void
     public var readSecretFile: (URL) throws -> String
     public var restrictSecretFile: (URL) throws -> Void
     public var setStartOnBoot: (Bool) throws -> Void
     public var setSystemSleepPrevention: (Bool) throws -> Void
     public var setAutomaticBackupSchedule: (Bool, [String]) throws -> Void
-    public var reconcileGuestComposeServices: () throws -> Void
+    public var reconcileGuestStackServices: () throws -> Void
     public var restartRuntimeServices: () throws -> Void
 
     public init(
         resizeVMDiskIfNeeded: @escaping (Int) throws -> Void,
         setInstalledProxyPort: @escaping (Int) throws -> Void,
+        restartPlatformAgent: @escaping () throws -> Void,
         readSecretFile: @escaping (URL) throws -> String,
         restrictSecretFile: @escaping (URL) throws -> Void,
         setStartOnBoot: @escaping (Bool) throws -> Void,
         setSystemSleepPrevention: @escaping (Bool) throws -> Void,
         setAutomaticBackupSchedule: @escaping (Bool, [String]) throws -> Void,
-        reconcileGuestComposeServices: @escaping () throws -> Void,
+        reconcileGuestStackServices: @escaping () throws -> Void,
         restartRuntimeServices: @escaping () throws -> Void
     ) {
         self.resizeVMDiskIfNeeded = resizeVMDiskIfNeeded
         self.setInstalledProxyPort = setInstalledProxyPort
+        self.restartPlatformAgent = restartPlatformAgent
         self.readSecretFile = readSecretFile
         self.restrictSecretFile = restrictSecretFile
         self.setStartOnBoot = setStartOnBoot
         self.setSystemSleepPrevention = setSystemSleepPrevention
         self.setAutomaticBackupSchedule = setAutomaticBackupSchedule
-        self.reconcileGuestComposeServices = reconcileGuestComposeServices
+        self.reconcileGuestStackServices = reconcileGuestStackServices
         self.restartRuntimeServices = restartRuntimeServices
     }
 }
@@ -77,12 +80,13 @@ public struct RuntimeConfigureCompositionOperations {
     let fileStore: RuntimeFileStore
     let resizeVMDiskIfNeeded: (Int) throws -> Void
     let setInstalledProxyPort: (Int) throws -> Void
+    let restartPlatformAgent: () throws -> Void
     let readSecretFile: (URL) throws -> String
     let restrictSecretFile: (URL) throws -> Void
     let setStartOnBoot: (Bool) throws -> Void
     let setSystemSleepPrevention: (Bool) throws -> Void
     let setAutomaticBackupSchedule: (Bool, [String]) throws -> Void
-    let reconcileGuestComposeServices: () throws -> Void
+    let reconcileGuestStackServices: () throws -> Void
     let restartRuntimeServices: () throws -> Void
     let log: (String) -> Void
 
@@ -90,24 +94,26 @@ public struct RuntimeConfigureCompositionOperations {
         fileStore: RuntimeFileStore,
         resizeVMDiskIfNeeded: @escaping (Int) throws -> Void,
         setInstalledProxyPort: @escaping (Int) throws -> Void,
+        restartPlatformAgent: @escaping () throws -> Void,
         readSecretFile: @escaping (URL) throws -> String,
         restrictSecretFile: @escaping (URL) throws -> Void,
         setStartOnBoot: @escaping (Bool) throws -> Void,
         setSystemSleepPrevention: @escaping (Bool) throws -> Void,
         setAutomaticBackupSchedule: @escaping (Bool, [String]) throws -> Void,
-        reconcileGuestComposeServices: @escaping () throws -> Void,
+        reconcileGuestStackServices: @escaping () throws -> Void,
         restartRuntimeServices: @escaping () throws -> Void,
         log: @escaping (String) -> Void
     ) {
         self.fileStore = fileStore
         self.resizeVMDiskIfNeeded = resizeVMDiskIfNeeded
         self.setInstalledProxyPort = setInstalledProxyPort
+        self.restartPlatformAgent = restartPlatformAgent
         self.readSecretFile = readSecretFile
         self.restrictSecretFile = restrictSecretFile
         self.setStartOnBoot = setStartOnBoot
         self.setSystemSleepPrevention = setSystemSleepPrevention
         self.setAutomaticBackupSchedule = setAutomaticBackupSchedule
-        self.reconcileGuestComposeServices = reconcileGuestComposeServices
+        self.reconcileGuestStackServices = reconcileGuestStackServices
         self.restartRuntimeServices = restartRuntimeServices
         self.log = log
     }
@@ -125,16 +131,27 @@ public enum RuntimeConfigureComposition {
             actions: RuntimeConfigureActions(
                 resizeVMDiskIfNeeded: operations.resizeVMDiskIfNeeded,
                 setInstalledProxyPort: operations.setInstalledProxyPort,
+                restartPlatformAgent: operations.restartPlatformAgent,
                 readSecretFile: operations.readSecretFile,
                 restrictSecretFile: operations.restrictSecretFile,
                 setStartOnBoot: operations.setStartOnBoot,
                 setSystemSleepPrevention: operations.setSystemSleepPrevention,
                 setAutomaticBackupSchedule: operations.setAutomaticBackupSchedule,
-                reconcileGuestComposeServices: operations.reconcileGuestComposeServices,
+                reconcileGuestStackServices: operations.reconcileGuestStackServices,
                 restartRuntimeServices: operations.restartRuntimeServices
             ),
             maximumAllowedCPUCount: context.maximumAllowedCPUCount,
             maximumAllowedMemoryGiB: context.maximumAllowedMemoryGiB,
+            prepareHostStateStore: {
+                _ = try SQLiteHostRuntimeStateDatabase(
+                    url: context.installedPaths.runtimeStateDatabase,
+                    fileStore: operations.fileStore
+                ).initialize()
+            },
+            hostSettingsRepository: SQLiteRuntimeHostSettingsRepository(
+                databaseURL: context.installedPaths.runtimeStateDatabase,
+                transitionDecider: RuntimeHostSettingsActivationUseCase()
+            ),
             log: operations.log
         )
     }
@@ -147,6 +164,8 @@ public struct RuntimeConfigureRunner {
     private let actions: RuntimeConfigureActions
     private let maximumAllowedCPUCount: Int
     private let maximumAllowedMemoryGiB: Int
+    private let prepareHostStateStore: () throws -> Void
+    private let hostSettingsRepository: any RuntimeHostSettingsRepository
     private let log: (String) -> Void
 
     public init(
@@ -156,6 +175,8 @@ public struct RuntimeConfigureRunner {
         actions: RuntimeConfigureActions,
         maximumAllowedCPUCount: Int,
         maximumAllowedMemoryGiB: Int,
+        prepareHostStateStore: @escaping () throws -> Void,
+        hostSettingsRepository: any RuntimeHostSettingsRepository,
         log: @escaping (String) -> Void
     ) {
         self.installedPaths = installedPaths
@@ -164,11 +185,15 @@ public struct RuntimeConfigureRunner {
         self.actions = actions
         self.maximumAllowedCPUCount = maximumAllowedCPUCount
         self.maximumAllowedMemoryGiB = maximumAllowedMemoryGiB
+        self.prepareHostStateStore = prepareHostStateStore
+        self.hostSettingsRepository = hostSettingsRepository
         self.log = log
     }
 
     public func configure(_ command: RuntimeConfigureCommand) throws -> RuntimeConfigureResult {
         do {
+            try prepareHostStateStore()
+            _ = try loadOrImportHostSettings()
             let result = try RunConfigureRuntimeUseCase<VMRuntimeConfig>().configure(
                 configureRuntimeRequest(from: command),
                 context: configureRuntimeContext(),
@@ -186,14 +211,23 @@ public struct RuntimeConfigureRunner {
     private func configureRuntimeOperations() -> ConfigureRuntimeOperations<VMRuntimeConfig> {
         ConfigureRuntimeOperations(
             readers: ConfigureRuntimeStateReaders(
-                loadVMConfig: { url in
-                    try VMRuntimeConfigComposition.load(from: url, fileStore: fileStore)
+                loadVMConfig: { _ in
+                    try JSONDecoder().decode(
+                        VMRuntimeConfig.self,
+                        from: try loadHostSettings().payload.vmConfigJSON
+                    )
                 },
-                loadGuestRuntimeConfig: { url in
-                    try loadGuestRuntimeConfig(from: url)
+                loadGuestRuntimeConfig: { _ in
+                    try JSONDecoder().decode(
+                        GuestRuntimeConfigDocument.self,
+                        from: try loadHostSettings().payload.guestRuntimeConfigJSON
+                    )
                 },
-                loadGuestRuntimeSettings: { url in
-                    try loadGuestRuntimeSettings(from: url)
+                loadGuestRuntimeSettings: { _ in
+                    try JSONDecoder().decode(
+                        GuestRuntimeSettingsDocument.self,
+                        from: try loadHostSettings().payload.guestRuntimeSettingsJSON
+                    )
                 },
                 loadVMDiskSizeGiB: {
                     try loadVMDiskSizeGiB()
@@ -209,8 +243,17 @@ public struct RuntimeConfigureRunner {
                 encodeGuestRuntimeSettings: { settings in
                     try prettyJSONEncoder().encode(settings)
                 },
-                writeData: { data, url, options in
-                    try fileStore.writeData(data, to: url, options: options)
+                persistAndMaterialize: { vmData, vmURL, guestConfigData, guestConfigURL, guestSettingsData, guestSettingsURL in
+                    try persistAndMaterializeHostSettings(
+                        RuntimeHostSettingsPayload(
+                            vmConfigJSON: vmData,
+                            guestRuntimeConfigJSON: guestConfigData,
+                            guestRuntimeSettingsJSON: guestSettingsData
+                        ),
+                        vmURL: vmURL,
+                        guestConfigURL: guestConfigURL,
+                        guestSettingsURL: guestSettingsURL
+                    )
                 }
             ),
             effects: ConfigureRuntimeEffects(
@@ -243,7 +286,7 @@ public struct RuntimeConfigureRunner {
                 return change
             }
         }
-        return ConfigureRuntimeRequest(changes: changes, restart: request.restart)
+        return ConfigureRuntimeRequest(changes: changes, activation: request.activation)
     }
 
     private func executeConfigureEffects(_ plannedEffects: [ConfigureRuntimeEffect]) throws {
@@ -255,6 +298,15 @@ public struct RuntimeConfigureRunner {
                 try actions.resizeVMDiskIfNeeded(diskGiB)
             case .setInstalledProxyPort(let port):
                 try actions.setInstalledProxyPort(port)
+            case .setRuntimeControlPort(let port):
+                try updateRuntimeControlSettings { settings in
+                    settings = RuntimeControlSettingsDocument(
+                        logArchiveRetentionDays: settings.logArchiveRetentionDays,
+                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
+                        runtimeControlPort: port
+                    )
+                }
+                try actions.restartPlatformAgent()
             case .setStartOnBoot(let enabled):
                 try actions.setStartOnBoot(enabled)
             case .setSystemSleepPrevention(let enabled):
@@ -266,7 +318,7 @@ public struct RuntimeConfigureRunner {
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: days,
                         logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
-                        redisRelay: settings.redisRelay
+                        runtimeControlPort: settings.runtimeControlPort
                     )
                 }
             case .setLogArchiveMaximumGiB(let gib):
@@ -274,13 +326,11 @@ public struct RuntimeConfigureRunner {
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: settings.logArchiveRetentionDays,
                         logArchiveMaximumGiB: gib,
-                        redisRelay: settings.redisRelay
+                        runtimeControlPort: settings.runtimeControlPort
                     )
                 }
-            case .writeRedisRelayConfiguration(let redisRelay):
-                try writeRedisRelayConfiguration(redisRelay)
-            case .reconcileGuestComposeServices:
-                try actions.reconcileGuestComposeServices()
+            case .reconcileGuestStackServices:
+                try actions.reconcileGuestStackServices()
             case .restrictSecretFile(let url):
                 try actions.restrictSecretFile(url)
             case .restartRuntimeServices:
@@ -300,15 +350,6 @@ public struct RuntimeConfigureRunner {
             withIntermediateDirectories: true
         )
         try fileStore.writeData(data, to: installedPaths.runtimeControlSettings, options: .atomic)
-    }
-
-    private func writeRedisRelayConfiguration(
-        _ settings: ConfigureRuntimeRedisRelaySettings
-    ) throws {
-        try RuntimeRedisRelayConfigurationWriter(
-            installedPaths: installedPaths,
-            fileStore: fileStore
-        ).writeConfigured(settings)
     }
 
     private func loadRuntimeControlSettings() throws -> RuntimeControlSettingsDocument {
@@ -408,6 +449,77 @@ public struct RuntimeConfigureRunner {
         return try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: data)
     }
 
+    private func loadOrImportHostSettings() throws -> RuntimeHostSettingsRecord {
+        switch hostSettingsRepository.loadHostSettings() {
+        case .loaded(let record):
+            return record
+        case .missing:
+            _ = try VMRuntimeConfigComposition.load(from: configURL, fileStore: fileStore)
+            _ = try loadGuestRuntimeConfig(from: installedPaths.guestRuntimeConfig)
+            _ = try loadGuestRuntimeSettings(from: installedPaths.guestRuntimeSettings)
+            let payload = RuntimeHostSettingsPayload(
+                vmConfigJSON: try fileStore.readData(configURL),
+                guestRuntimeConfigJSON: try fileStore.readData(installedPaths.guestRuntimeConfig),
+                guestRuntimeSettingsJSON: try fileStore.readData(installedPaths.guestRuntimeSettings)
+            )
+            _ = try JSONDecoder().decode(VMRuntimeConfig.self, from: payload.vmConfigJSON)
+            _ = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: payload.guestRuntimeConfigJSON)
+            _ = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: payload.guestRuntimeSettingsJSON)
+            return try hostSettingsRepository.importMaterializedHostSettings(
+                payload,
+                importedAt: timestamp()
+            )
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
+    }
+
+    private func loadHostSettings() throws -> RuntimeHostSettingsRecord {
+        switch hostSettingsRepository.loadHostSettings() {
+        case .loaded(let record):
+            return record
+        case .missing:
+            throw LauncherError.runtimeOperationFailed("Host settings SQLite state is missing")
+        case .failed(let reason):
+            throw LauncherError.runtimeOperationFailed(reason)
+        }
+    }
+
+    private func persistAndMaterializeHostSettings(
+        _ payload: RuntimeHostSettingsPayload,
+        vmURL: URL,
+        guestConfigURL: URL,
+        guestSettingsURL: URL
+    ) throws {
+        let current = try loadHostSettings()
+        let desired = try hostSettingsRepository.saveDesiredHostSettings(
+            payload,
+            expectedRevision: current.revision,
+            desiredAt: timestamp()
+        )
+        try fileStore.writeData(payload.vmConfigJSON, to: vmURL, options: .atomic)
+        try fileStore.writeData(payload.guestRuntimeConfigJSON, to: guestConfigURL, options: .atomic)
+        try fileStore.writeData(payload.guestRuntimeSettingsJSON, to: guestSettingsURL, options: .atomic)
+        let materialized = RuntimeHostSettingsPayload(
+            vmConfigJSON: try fileStore.readData(vmURL),
+            guestRuntimeConfigJSON: try fileStore.readData(guestConfigURL),
+            guestRuntimeSettingsJSON: try fileStore.readData(guestSettingsURL)
+        )
+        guard materialized == payload else {
+            throw LauncherError.runtimeOperationFailed(
+                "Host settings materialization verification failed revision=\(desired.revision)"
+            )
+        }
+        _ = try hostSettingsRepository.markHostSettingsMaterialized(
+            revision: desired.revision,
+            materializedAt: timestamp()
+        )
+    }
+
+    private func timestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
+
     private func prettyJSONEncoder() -> JSONEncoder {
         VMRuntimeConfigComposition.prettyJSONEncoder()
     }
@@ -417,7 +529,7 @@ public struct RuntimeConfigureRunner {
     ) throws -> ConfigureRuntimeRequest<Contracts.RuntimeNetworkMode> {
         ConfigureRuntimeRequest(
             changes: try command.changes.map { try configureRuntimeChange($0) },
-            restart: command.restart
+            activation: command.activation
         )
     }
 
@@ -437,6 +549,8 @@ public struct RuntimeConfigureRunner {
             return .bridgedInterface(value)
         case .proxyPort(let value):
             return .proxyPort(value)
+        case .runtimeControlPort(let value):
+            return .runtimeControlPort(value)
         case .vitalFilesDirectory(let value):
             return .vitalFilesDirectory(value)
         case .vitalServerURL(let value):
@@ -483,29 +597,7 @@ public struct RuntimeConfigureRunner {
             return .logArchiveRetentionDays(value)
         case .logArchiveMaximumGiB(let value):
             return .logArchiveMaximumGiB(value)
-        case .redisRelaySettingsFile(let value):
-            return .redisRelay(try redisRelaySettings(from: value))
         }
-    }
-
-    private func redisRelaySettings(from url: URL) throws -> ConfigureRuntimeRedisRelaySettings {
-        let data = try actions.readSecretFile(url).data(using: .utf8) ?? Data()
-        let settings = try JSONDecoder().decode(RuntimeRedisRelaySettings.self, from: data)
-        return ConfigureRuntimeRedisRelaySettings(
-            enabled: settings.enabled,
-            target: ConfigureRuntimeRedisRelayTarget(
-                url: settings.target.url,
-                username: settings.target.username,
-                password: settings.target.password,
-                clearPassword: settings.target.clearPassword,
-                passwordConfigured: settings.target.passwordConfigured,
-                tls: settings.target.tls
-            ),
-            scope: ConfigureRuntimeRedisRelayScope(rawValue: settings.scope.rawValue) ?? .vitalReconstruction,
-            includeRecorderNetworkContext: settings.includeRecorderNetworkContext,
-            intervalSeconds: settings.intervalSeconds,
-            scanCount: settings.scanCount
-        )
     }
 
     private func recorderIngressSettings(from url: URL) throws -> RuntimeRecorderIngressSettings {

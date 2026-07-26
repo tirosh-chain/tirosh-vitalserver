@@ -82,7 +82,7 @@ public enum RuntimeFreshInstallPreflightPolicy {
 
     private static func serviceBlockers(_ states: [RuntimeFreshInstallServiceState]) -> [String] {
         var blockers: [String] = []
-        for service in RuntimeManagedService.stopOrder {
+        for service in RuntimeManagedService.uninstallOrder {
             guard let state = states.first(where: { $0.label == service.label })?.state else {
                 blockers.append("launchd-service-state-missing:label=\(service.label)")
                 continue

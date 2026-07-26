@@ -13,12 +13,12 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
         try harness.runner.run(.startAll)
 
         XCTAssertEqual(harness.events, [
-            "log:runtime services start requested",
-            "status:recovering:start-services:runtime services start requested",
+            "log:host runtime services start requested",
+            "status:recovering:start-services:host runtime services start requested",
             "start:true:true:true",
             "wait:true:true:true",
-            "status:healthy:start-services:runtime services started",
-            "log:runtime services started",
+            "status:healthy:start-services:host runtime services started",
+            "log:host runtime services started",
         ])
     }
 
@@ -28,13 +28,13 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
         try harness.runner.run(.repairAll)
 
         XCTAssertEqual(harness.events, [
-            "log:runtime services repair requested",
-            "status:recovering:repair-services:runtime services repair requested",
+            "log:host runtime services repair requested",
+            "status:recovering:repair-services:host runtime services repair requested",
             "stop",
             "start:true:true:true",
             "wait:true:true:true",
-            "status:healthy:repair-services:runtime services repaired",
-            "log:runtime services repaired",
+            "status:healthy:repair-services:host runtime services repaired",
+            "log:host runtime services repaired",
         ])
     }
 
@@ -59,10 +59,10 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
         try harness.runner.run(.stopAll)
 
         XCTAssertEqual(harness.events, [
-            "log:runtime services stop requested",
+            "log:host runtime services stop requested",
             "stop",
-            "status:degraded:stop-services:runtime services stopped",
-            "log:runtime services stopped",
+            "status:degraded:stop-services:host runtime services stopped",
+            "log:host runtime services stopped",
         ])
     }
 
@@ -73,8 +73,8 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
         XCTAssertThrowsError(try harness.runner.run(.startAll))
 
         XCTAssertEqual(harness.events, [
-            "log:runtime services start requested",
-            "status:recovering:start-services:runtime services start requested",
+            "log:host runtime services start requested",
+            "status:recovering:start-services:host runtime services start requested",
             "start:true:true:true",
         ])
     }

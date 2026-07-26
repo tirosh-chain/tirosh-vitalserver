@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:guest-linux-boot-artifact-extraction-receipt",
+  "title": "GuestLinuxBootArtifactExtractionReceipt",
+  "description": "C42 immutable evidence that a byte-identified ARM64 whole-disk ext4 image produced one uncompressed Linux Image for the macOS Virtualization boot loader, one initial ramdisk, and one root-storage artifact. It proves neither a C35 compilation, Guest boot, systemd startup, nor package installation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractionId", "architecture", "extractionDeclarationSHA256", "sourceImage", "bootResources", "rootStorage", "completedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "extractionId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "architecture": { "const": "arm64" },
+    "extractionDeclarationSHA256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "sourceImage": { "$ref": "#/$defs/SourceImageIdentity" },
+    "bootResources": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/ArtifactIdentity" }
+    },
+    "rootStorage": { "$ref": "#/$defs/ArtifactIdentity" },
+    "completedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "$defs": {
+    "SourceImageIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "ArtifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "relativePath", "sizeBytes", "sha256"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "relativePath": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    }
+  }
+}

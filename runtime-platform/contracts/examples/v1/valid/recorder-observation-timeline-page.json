@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "v1",
+  "recorderId": "recorder-lab-0001",
+  "items": [
+    {
+      "schemaVersion": "v1",
+      "id": "catalog-observation-1",
+      "sourceIdentity": {
+        "kind": "recorder-self-observation",
+        "recorderId": "recorder-lab-0001",
+        "bootId": "boot-0001",
+        "sequence": 42,
+        "occurredAt": "2026-07-17T00:00:00Z"
+      },
+      "envelope": {
+        "schemaVersion": "v1",
+        "protocolVersion": "v1",
+        "recorderId": "recorder-lab-0001",
+        "bootId": "boot-0001",
+        "sequence": 42,
+        "occurredAt": "2026-07-17T00:00:00Z",
+        "time": { "state": "not-reported" },
+        "runtime": { "state": "ready", "version": "0.1.0" }
+      },
+      "receivedAt": "2026-07-17T00:00:02Z",
+      "persistedAt": "2026-07-17T00:00:02Z"
+    }
+  ],
+  "nextCursor": "eyJwZXJzaXN0ZWRBdCI6IjIwMjYtMDctMTdUMDA6MDA6MDJaIiwib2JzZXJ2YXRpb25JZCI6ImNhdGFsb2ctb2JzZXJ2YXRpb24tMSJ9"
+}

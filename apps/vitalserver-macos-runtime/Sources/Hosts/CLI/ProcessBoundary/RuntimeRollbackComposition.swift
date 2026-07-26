@@ -15,6 +15,11 @@ public struct RuntimeRollbackCompositionContext {
     }
 }
 
+public enum RuntimeRollbackInvocation: Equatable, Sendable {
+    case standalone(operationID: String, startedAt: String)
+    case applyBundleRecovery(parentOperationID: String)
+}
+
 public struct RuntimeRollbackCompositionOperations {
     let fileStore: RuntimeFileStore
     let requireLatestBackup: () throws -> URL
@@ -28,6 +33,8 @@ public struct RuntimeRollbackCompositionOperations {
     let restoreRuntimeToolsIfExists: (URL) throws -> Void
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let writeProgress: (RuntimeStepExecutionEvent) throws -> Void
+    let workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository
+    let workflowOperationStateTimestamp: () -> String
     let log: (String) -> Void
 
     public init(
@@ -43,6 +50,8 @@ public struct RuntimeRollbackCompositionOperations {
         restoreRuntimeToolsIfExists: @escaping (URL) throws -> Void,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
         writeProgress: @escaping (RuntimeStepExecutionEvent) throws -> Void,
+        workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository,
+        workflowOperationStateTimestamp: @escaping () -> String,
         log: @escaping (String) -> Void
     ) {
         self.fileStore = fileStore
@@ -57,6 +66,8 @@ public struct RuntimeRollbackCompositionOperations {
         self.restoreRuntimeToolsIfExists = restoreRuntimeToolsIfExists
         self.writeStatus = writeStatus
         self.writeProgress = writeProgress
+        self.workflowOperationStateRepository = workflowOperationStateRepository
+        self.workflowOperationStateTimestamp = workflowOperationStateTimestamp
         self.log = log
     }
 }
@@ -72,7 +83,77 @@ public struct RuntimeRollbackComposition {
         RuntimeRollbackComposition(context: context, operations: operations)
     }
 
-    public func rollback(_ command: RuntimeRollbackCommand) throws {
+    public func rollback(
+        _ command: RuntimeRollbackCommand,
+        invocation: RuntimeRollbackInvocation
+    ) throws {
+        switch invocation {
+        case .standalone(let operationID, let startedAt):
+            try rollbackStandalone(
+                command,
+                operationID: operationID,
+                startedAt: startedAt
+            )
+        case .applyBundleRecovery(let parentOperationID):
+            operations.log(
+                "runtime rollback executing as apply-bundle recovery parentOperationId=\(parentOperationID)"
+            )
+            try runWorkflow(command, writeProgress: writeDiagnosticProgress)
+        }
+    }
+
+    private func rollbackStandalone(
+        _ command: RuntimeRollbackCommand,
+        operationID: String,
+        startedAt: String
+    ) throws {
+        let persistence = PersistRuntimeWorkflowOperationStateUseCase()
+        try persistence.start(
+            repository: operations.workflowOperationStateRepository,
+            operationID: operationID,
+            operation: .rollback,
+            message: "runtime rollback started",
+            occurredAt: startedAt
+        )
+        do {
+            try runWorkflow(command) { event in
+                try persistence.record(
+                    repository: operations.workflowOperationStateRepository,
+                    operationID: operationID,
+                    event: event,
+                    occurredAt: operations.workflowOperationStateTimestamp()
+                )
+                writeDiagnosticProgress(event)
+            }
+            try persistence.complete(
+                repository: operations.workflowOperationStateRepository,
+                operationID: operationID,
+                message: "runtime rollback completed",
+                occurredAt: operations.workflowOperationStateTimestamp()
+            )
+        } catch {
+            let operationFailure = RuntimeErrorDescription.describe(error)
+            do {
+                try persistence.fail(
+                    repository: operations.workflowOperationStateRepository,
+                    operationID: operationID,
+                    message: "runtime rollback failed: \(operationFailure)",
+                    reasonCodes: ["rollback-failed"],
+                    occurredAt: operations.workflowOperationStateTimestamp()
+                )
+            } catch {
+                throw RollbackRuntimeUseCaseError.operationFailed(
+                    "runtime rollback failed operationId=\(operationID) operationFailure=\(operationFailure) statePersistenceFailure=\(RuntimeErrorDescription.describe(error))"
+                )
+            }
+            throw error
+        }
+    }
+
+    private func runWorkflow(
+        _ command: RuntimeRollbackCommand,
+        writeProgress: @escaping (RuntimeStepExecutionEvent) throws -> Void
+    ) throws {
         try RollbackRuntimeWorkflow().run(
             command,
             context: RollbackRuntimeExecutionContext(
@@ -120,11 +201,22 @@ public struct RuntimeRollbackComposition {
                 startRuntimeServices: operations.startRuntimeServices,
                 waitForHealth: operations.waitForHealth,
                 writeStatus: operations.writeStatus,
-                writeProgress: operations.writeProgress,
+                writeProgress: writeProgress,
                 describeError: RuntimeErrorDescription.describe,
                 log: operations.log
             )
         )
+    }
+
+    private func writeDiagnosticProgress(_ event: RuntimeStepExecutionEvent) {
+        do {
+            try operations.writeProgress(event)
+        } catch {
+            operations.log(RuntimeOperationReportingUseCase().progressWriteFailedLogMessage(
+                event: event,
+                reason: RuntimeErrorDescription.describe(error)
+            ))
+        }
     }
 
     private func serviceRestartPolicy() -> RuntimeServiceRestartPolicy {

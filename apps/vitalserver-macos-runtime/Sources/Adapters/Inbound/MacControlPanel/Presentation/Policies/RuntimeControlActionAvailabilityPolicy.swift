@@ -4,12 +4,12 @@ import Errors
 public struct RuntimeControlActionAvailabilityPolicy {
     public init() {}
 
-    public func isRuntimeExecutable(_ status: RuntimeStatus) -> Bool {
-        status.effectiveRuntimeInstallationState.isExecutable
+    public func isRuntimeExecutable(_ status: PlatformState) -> Bool {
+        status.runtimeInstallationState.isExecutable
     }
 
     public func canApplyUpdate(
-        status: RuntimeStatus,
+        status: PlatformState,
         capabilities: RuntimeControlCapabilities,
         updateInProgress: Bool,
         hasSelectedBundle: Bool,
@@ -23,7 +23,7 @@ public struct RuntimeControlActionAvailabilityPolicy {
     }
 
     public func canApplySettings(
-        status: RuntimeStatus,
+        status: PlatformState,
         isBusy: Bool,
         canApplyForCurrentConnection: Bool
     ) -> Bool {
@@ -33,7 +33,7 @@ public struct RuntimeControlActionAvailabilityPolicy {
     }
 
     public func canCreateRedisBackup(
-        status: RuntimeStatus,
+        status: PlatformState,
         capabilities: RuntimeControlCapabilities,
         isBusy: Bool
     ) -> Bool {
@@ -45,7 +45,7 @@ public struct RuntimeControlActionAvailabilityPolicy {
     }
 
     public func canManageRedisBackup(
-        status: RuntimeStatus,
+        status: PlatformState,
         capabilities: RuntimeControlCapabilities,
         isBusy: Bool
     ) -> Bool {
@@ -55,7 +55,7 @@ public struct RuntimeControlActionAvailabilityPolicy {
     }
 
     public func canManageRuntimeDataBackup(
-        status: RuntimeStatus,
+        status: PlatformState,
         capabilities: RuntimeControlCapabilities,
         isBusy: Bool
     ) -> Bool {
@@ -64,12 +64,12 @@ public struct RuntimeControlActionAvailabilityPolicy {
             && isRuntimeExecutable(status)
     }
 
-    public func canRepairRuntime(status: RuntimeStatus, isBusy: Bool) -> Bool {
+    public func canRepairRuntime(status: PlatformState, isBusy: Bool) -> Bool {
         !isBusy && isRuntimeExecutable(status)
     }
 
     public func canControlRuntimeServices(
-        status: RuntimeStatus,
+        status: PlatformState,
         capabilities: RuntimeControlCapabilities,
         isBusy: Bool
     ) -> Bool {
@@ -79,7 +79,7 @@ public struct RuntimeControlActionAvailabilityPolicy {
     }
 
     public func canUninstallRuntime(
-        status: RuntimeStatus,
+        status: PlatformState,
         capabilities: RuntimeControlCapabilities,
         isBusy: Bool
     ) -> Bool {

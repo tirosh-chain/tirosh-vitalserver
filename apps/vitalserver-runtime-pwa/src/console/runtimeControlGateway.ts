@@ -1,94 +1,184 @@
 import type {
-  RuntimeApplySettingsRequest,
+  RuntimeApplyProductSettingsRequest,
+  RuntimeApplyPlatformSettingsRequest,
+  RuntimeAdminPasswordRequest,
   RuntimeBackup,
   RuntimeBackupRequest,
   RuntimeCommandResponse,
-  RuntimeControlCapabilities,
-  RuntimeControlOverview,
+  ControlCapabilities,
+  PlatformCapabilities,
+  RuntimeCapabilities,
   RuntimeEventHistory,
   RuntimeExportLogsRequest,
+  RuntimeGuestControlStackStatus,
+  RuntimeLabBedCreateRequest,
+  RuntimeLabBedDeleteRequest,
+  RuntimeLabBedList,
+  RuntimeLabRecorderCreateRequest,
+  RuntimeLabRecorderDeleteRequest,
+  RuntimeLabRecorderList,
+  RuntimeLabRecorderResponse,
+  RuntimeLabScenarioList,
+  RuntimeLabSessionCreateRequest,
+  RuntimeLabSessionResponse,
+  RuntimeLabSessionList,
+  RuntimeLabVitalFileList,
+  RuntimeLabVitalFileUploadRequest,
+  RuntimeLabVitalFileUploadResponse,
+  RuntimeLabVitalFileReplayRequest,
+  RuntimeGuestControlServiceOperation,
+  RuntimeGuestServiceResource,
+  RuntimeGuestServiceControlRequest,
   RuntimeLogExportResult,
   RuntimeLogTextRequest,
   RuntimeLogTextResponse,
-  RuntimeSettings,
-  RuntimeStatus,
-  RuntimeTestKitCreateBedsRequest,
-  RuntimeTestKitDeleteBedsRequest,
-  RuntimeTestKitRecorderDeletionRequest,
-  RuntimeTestKitRestartRequest,
-  RuntimeTestKitSession,
-  RuntimeTestKitSessionSelectionRequest,
-  RuntimeTestKitStatus,
-  RuntimeTestKitVirtualRecorderStartRequest,
+  PlatformOperationState,
+  PlatformWorkflowOperation,
+  PlatformWorkflowResource,
+  RuntimeRedisRelayStatusReadResult,
+  RuntimeRedisRelaySettingsRead,
+  RuntimeRedisRelaySettingsApplyRequest,
+  RuntimeVitalDBObservationSnapshot,
+  RuntimeVitalRecorderActivityWindow,
+  RuntimeVitalRecorderActivityWindowQuery,
+  RuntimeVitalRecorderVitalFileHistory,
+  RuntimeRecorderObservabilityDetail,
+  RuntimeRecorderObservabilityIncidentQuery,
+  RuntimeRecorderObservabilityIncidents,
+  RuntimeRecorderObservabilityTimeline,
+  RuntimeRecorderObservabilityTimelineQuery,
+  RuntimeReleaseInfo,
+  RuntimeInstallInfo,
+  RuntimeProductSettingsRead,
+  RuntimePlatformSettingsRead,
+  RuntimeProviderCommandResponse,
+  PlatformState,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest,
   RuntimeUpdateBundleSummaryResponse,
+  VitalDBBedVisibilityRequest,
   VitalDBBeds,
+  VitalDBRecorderVisibilityRequest,
   VitalDBRecorders,
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import type { RuntimeEventTypeValue } from "@/domain/runtime-control/contracts/runtimeEventTypes";
 
 export type RuntimeEventQuery = {
   limit?: number;
-  type?: string;
+  type?: RuntimeEventTypeValue;
   since?: string;
   cursor?: string;
 };
 
 export type RuntimeControlGateway = {
-  getCapabilities(): Promise<RuntimeControlCapabilities>;
-  getOverview(): Promise<RuntimeControlOverview>;
-  getStatus(): Promise<RuntimeStatus>;
-  getSettings(): Promise<RuntimeSettings>;
-  applySettings(request: RuntimeApplySettingsRequest): Promise<RuntimeCommandResponse>;
-  startRuntimeServices(): Promise<RuntimeCommandResponse>;
-  stopRuntimeServices(): Promise<RuntimeCommandResponse>;
-  uninstallRuntime(request: RuntimeUninstallRequest): Promise<RuntimeCommandResponse>;
+  getPlatformCapabilities(): Promise<PlatformCapabilities>;
+  getRuntimeCapabilities(): Promise<RuntimeCapabilities>;
+  getCapabilities(): Promise<ControlCapabilities>;
+  getPlatformState(): Promise<PlatformState>;
+  getRedisRelayStatus(): Promise<RuntimeRedisRelayStatusReadResult>;
+  getRuntimeRedisRelaySettings(): Promise<RuntimeRedisRelaySettingsRead>;
+  applyRuntimeRedisRelaySettings(
+    request: RuntimeRedisRelaySettingsApplyRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
+  getLatestVitalDBObservation(): Promise<RuntimeVitalDBObservationSnapshot>;
+  getOperationState(): Promise<PlatformOperationState>;
+  getPlatformWorkflow(): Promise<PlatformWorkflowResource>;
+  getRuntimeProductSettings(): Promise<RuntimeProductSettingsRead>;
+  getRuntimePlatformSettings(): Promise<RuntimePlatformSettingsRead>;
+  applyRuntimePlatformSettings(
+    request: RuntimeApplyPlatformSettingsRequest
+  ): Promise<RuntimeCommandResponse>;
+  applyRuntimeProductSettings(
+    request: RuntimeApplyProductSettingsRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
+  applyRuntimeAdminPassword(
+    request: RuntimeAdminPasswordRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
+  getLabScenarios(): Promise<RuntimeLabScenarioList>;
+  getLabBeds(): Promise<RuntimeLabBedList>;
+  getLabRecorders(): Promise<RuntimeLabRecorderList>;
+  createLabBeds(request: RuntimeLabBedCreateRequest): Promise<RuntimeLabBedList>;
+  deleteLabBeds(request: RuntimeLabBedDeleteRequest): Promise<RuntimeLabBedList>;
+  resetLabBeds(): Promise<RuntimeLabBedList>;
+  createLabRecorders(
+    request: RuntimeLabRecorderCreateRequest
+  ): Promise<RuntimeLabRecorderList>;
+  deleteLabRecorders(
+    request: RuntimeLabRecorderDeleteRequest
+  ): Promise<RuntimeLabRecorderList>;
+  resetLabRecorders(): Promise<RuntimeLabRecorderList>;
+  getLabSessions(): Promise<RuntimeLabSessionList>;
+  createLabSession(
+    request: RuntimeLabSessionCreateRequest
+  ): Promise<RuntimeLabSessionResponse>;
+  getLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
+  startLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
+  stopLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
+  finishLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
+  startLabRecorder(
+    sessionId: string,
+    recorderId: string
+  ): Promise<RuntimeLabRecorderResponse>;
+  stopLabRecorder(
+    sessionId: string,
+    recorderId: string
+  ): Promise<RuntimeLabRecorderResponse>;
+  getLabVitalFiles(): Promise<RuntimeLabVitalFileList>;
+  uploadLabVitalFiles(
+    request: RuntimeLabVitalFileUploadRequest
+  ): Promise<RuntimeLabVitalFileUploadResponse>;
+  replayLabVitalFile(
+    request: RuntimeLabVitalFileReplayRequest
+  ): Promise<RuntimeLabSessionResponse>;
+  getRuntimeStack(): Promise<RuntimeGuestControlStackStatus>;
+  getGuestServiceResource(service: string): Promise<RuntimeGuestServiceResource>;
+  startGuestService(
+    request: RuntimeGuestServiceControlRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
+  stopGuestService(
+    request: RuntimeGuestServiceControlRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
+  restartGuestService(
+    request: RuntimeGuestServiceControlRequest
+  ): Promise<RuntimeGuestControlServiceOperation>;
+  uninstallRuntime(request: RuntimeUninstallRequest): Promise<PlatformWorkflowOperation>;
   getRuntimeEvents(query?: RuntimeEventQuery): Promise<RuntimeEventHistory>;
   getRecorders(): Promise<VitalDBRecorders>;
+  getRecorderActivity(
+    query: RuntimeVitalRecorderActivityWindowQuery
+  ): Promise<RuntimeVitalRecorderActivityWindow>;
+  getRecorderVitalFiles(vrcode: string): Promise<RuntimeVitalRecorderVitalFileHistory>;
+  getRecorderObservability(vrcode: string): Promise<RuntimeRecorderObservabilityDetail>;
+  getRecorderObservabilityTimeline(
+    query: RuntimeRecorderObservabilityTimelineQuery
+  ): Promise<RuntimeRecorderObservabilityTimeline>;
+  getRecorderObservabilityIncidents(
+    query: RuntimeRecorderObservabilityIncidentQuery
+  ): Promise<RuntimeRecorderObservabilityIncidents>;
+  getReleaseInfo(): Promise<RuntimeReleaseInfo>;
+  getInstallInfo(): Promise<RuntimeInstallInfo>;
+  hideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;
+  unhideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;
+  deleteRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;
   getBeds(): Promise<VitalDBBeds>;
+  hideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds>;
+  unhideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds>;
+  deleteBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds>;
   getRelationships(): Promise<VitalDBRelationships>;
-  getTestKitStatus(): Promise<RuntimeTestKitStatus>;
-  createTestKitBeds(
-    request: RuntimeTestKitCreateBedsRequest
-  ): Promise<unknown>;
-  deleteTestKitBeds(
-    request: RuntimeTestKitDeleteBedsRequest
-  ): Promise<unknown>;
-  resetTestKitBeds(): Promise<unknown>;
-  startTestKitVirtualRecorders(
-    request: RuntimeTestKitVirtualRecorderStartRequest
-  ): Promise<RuntimeTestKitSession>;
-  stopTestKitVirtualRecorders(
-    request: RuntimeTestKitSessionSelectionRequest
-  ): Promise<RuntimeTestKitSession | null>;
-  pauseTestKitVirtualRecorders(
-    request: RuntimeTestKitSessionSelectionRequest
-  ): Promise<RuntimeTestKitSession | null>;
-  resumeTestKitVirtualRecorders(
-    request: RuntimeTestKitSessionSelectionRequest
-  ): Promise<RuntimeTestKitSession | null>;
-  restartTestKitVirtualRecorders(
-    request: RuntimeTestKitRestartRequest
-  ): Promise<RuntimeTestKitSession | null>;
-  deleteTestKitVirtualRecorders(
-    request: RuntimeTestKitSessionSelectionRequest
-  ): Promise<RuntimeTestKitSession | null>;
-  resetTestKitVirtualRecorders(): Promise<RuntimeTestKitStatus>;
-  deleteTestKitOrphanVRecorder(
-    request: RuntimeTestKitRecorderDeletionRequest
-  ): Promise<unknown>;
   readLogs(request: RuntimeLogTextRequest): Promise<RuntimeLogTextResponse>;
   exportLogs(request: RuntimeExportLogsRequest): Promise<RuntimeLogExportResult>;
+  createPlatformSupportExport(): Promise<PlatformWorkflowOperation>;
   summarizeUpdateBundle(
     request: RuntimeUpdateBundleRequest
   ): Promise<RuntimeUpdateBundleSummaryResponse>;
   verifyUpdateBundle(
     request: RuntimeUpdateBundleRequest
-  ): Promise<RuntimeCommandResponse>;
+  ): Promise<PlatformWorkflowOperation>;
   applyUpdateBundle(
     request: RuntimeUpdateBundleRequest
-  ): Promise<RuntimeCommandResponse>;
+  ): Promise<PlatformWorkflowOperation>;
+  rollbackRelease(): Promise<PlatformWorkflowOperation>;
   listHostBackups(): Promise<RuntimeBackup[]>;
   listRedisBackups(): Promise<RuntimeBackup[]>;
   listRuntimeDataBackups(): Promise<RuntimeBackup[]>;
@@ -104,8 +194,6 @@ export type RuntimeControlGateway = {
   ): Promise<RuntimeCommandResponse>;
   createRedisBackup(): Promise<RuntimeCommandResponse>;
   createRuntimeDataBackup(): Promise<RuntimeCommandResponse>;
-  repairRuntime(): Promise<RuntimeCommandResponse>;
-  repairProxy(proxyPort: number): Promise<RuntimeCommandResponse>;
-  repairDatastore(): Promise<RuntimeCommandResponse>;
-  repairVMDisk(): Promise<RuntimeCommandResponse>;
+  restartRuntimeProvider(): Promise<RuntimeProviderCommandResponse>;
+  repairDatastore(): Promise<RuntimeGuestControlServiceOperation>;
 };

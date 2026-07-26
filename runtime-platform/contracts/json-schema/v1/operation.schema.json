@@ -1,0 +1,296 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:operation",
+  "title": "Operation",
+  "description": "A durable long-running workflow owned by one service.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "kind",
+    "requestId",
+    "target",
+    "requestedAt",
+    "state"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "kind": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resourceType",
+        "resourceId",
+        "requestedResourceRevision"
+      ],
+      "properties": {
+        "resourceType": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "resourceId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestedResourceRevision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "requestedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "acceptedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "startedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "finishedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "requested",
+        "accepted",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "interrupted"
+      ]
+    },
+    "failure": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    },
+    "terminalReason": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    },
+    "evidenceReferences": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "requested"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "acceptedAt"
+              ]
+            },
+            {
+              "required": [
+                "startedAt"
+              ]
+            },
+            {
+              "required": [
+                "finishedAt"
+              ]
+            },
+            {
+              "required": [
+                "failure"
+              ]
+            },
+            {
+              "required": [
+                "terminalReason"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "accepted"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "acceptedAt"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "startedAt"
+              ]
+            },
+            {
+              "required": [
+                "finishedAt"
+              ]
+            },
+            {
+              "required": [
+                "failure"
+              ]
+            },
+            {
+              "required": [
+                "terminalReason"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "running"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "acceptedAt",
+          "startedAt"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "finishedAt"
+              ]
+            },
+            {
+              "required": [
+                "failure"
+              ]
+            },
+            {
+              "required": [
+                "terminalReason"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "succeeded"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "acceptedAt",
+          "startedAt",
+          "finishedAt"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "failure"
+              ]
+            },
+            {
+              "required": [
+                "terminalReason"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "failed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "acceptedAt",
+          "startedAt",
+          "finishedAt",
+          "failure"
+        ],
+        "not": {
+          "required": [
+            "terminalReason"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "cancelled"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "finishedAt",
+          "terminalReason"
+        ],
+        "not": {
+          "required": [
+            "failure"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "interrupted"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "startedAt",
+          "finishedAt",
+          "terminalReason"
+        ],
+        "not": {
+          "required": [
+            "failure"
+          ]
+        }
+      }
+    }
+  ]
+}

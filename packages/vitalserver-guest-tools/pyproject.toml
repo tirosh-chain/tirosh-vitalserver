@@ -1,9 +1,14 @@
 [project]
 name = "tirosh-vitalserver-guest-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = "Guest-side tools for Tirosh VitalServer runtime."
-requires-python = ">=3.11"
-dependencies = []
+requires-python = ">=3.12"
+dependencies = [
+  "SQLAlchemy==2.0.51",
+  "alembic==1.16.5",
+  "psycopg[binary]==3.3.4",
+  "tirosh-vitalserver-core",
+]
 
 [project.scripts]
 tirosh-guest-observed = "tirosh_guest_tools.adapters.inbound.cli:guest_observed"
@@ -11,8 +16,8 @@ tirosh-guest-observe = "tirosh_guest_tools.adapters.inbound.cli:guest_observe"
 tirosh-guest-container-logs = "tirosh_guest_tools.adapters.inbound.cli:guest_container_logs"
 tirosh-guest-diagnostics = "tirosh_guest_tools.adapters.inbound.cli:guest_diagnostics"
 tirosh-runtime-env = "tirosh_guest_tools.adapters.inbound.cli:runtime_env"
-tirosh-write-runtime-state = "tirosh_guest_tools.adapters.inbound.cli:write_runtime_state_command"
-tirosh-runtime-state = "tirosh_guest_tools.adapters.inbound.cli:runtime_state"
+tirosh-write-runtime-observation = "tirosh_guest_tools.adapters.inbound.cli:write_runtime_observation_command"
+tirosh-runtime-observation = "tirosh_guest_tools.adapters.inbound.cli:runtime_observation"
 tirosh-vitalserver-health = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_health"
 tirosh-vitalserver-compose = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_compose"
 tirosh-vitalserver-sync-host-time = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_sync_host_time"
@@ -20,15 +25,15 @@ tirosh-vitalserver-bootstrap = "tirosh_guest_tools.adapters.inbound.cli:vitalser
 tirosh-vitalserver-rootfs-smoke = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_rootfs_smoke"
 tirosh-vitalserver-runtime-boot-smoke = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_runtime_boot_smoke"
 tirosh-vitalserver-runtime-data-prepare = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_runtime_data_prepare"
-tirosh-vitalserver-command-poller = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_command_poller"
+tirosh-vitalserver-guest-control-api = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_guest_control_api"
 tirosh-vitalserver-redis-backup = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_backup"
 tirosh-vitalserver-redis-restore = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_restore"
-tirosh-vitalserver-reconcile-compose = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_reconcile_compose"
 tirosh-vitalserver-repair-datastore = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_repair_datastore"
 tirosh-vitalserver-activate-update = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_activate_update"
 tirosh-vitalserver-prepare-update-shutdown = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_prepare_update_shutdown"
 tirosh-guest-tools-install-runtime = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_install_runtime"
 tirosh-guest-tools-install-config = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_install_config"
+tirosh-guest-tools-migrate-control-store = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_migrate_control_store"
 
 [build-system]
 requires = ["hatchling"]

@@ -119,8 +119,33 @@ public struct RuntimeInstallVMRuntimeConfigurator<Config: RuntimeInstallMutableV
             try operations.createDirectory(directory, true)
         }
 
-        var config = try loadExistingOrDefaultConfig()
+        let config = try configured(input: input)
 
+        let encoded = try operations.encodeConfig(config)
+        try operations.createDirectory(context.configURL.deletingLastPathComponent(), true)
+        try operations.writeData(encoded, context.configURL, [])
+    }
+
+    public func configured(
+        input: RuntimeInstallVMRuntimeConfigurationInput<Config.InstallNetworkMode>
+    ) throws -> Config {
+        var config = try loadExistingOrDefaultConfig()
+        apply(input: input, to: &config)
+        return config
+    }
+
+    public func configuredFromDefault(
+        input: RuntimeInstallVMRuntimeConfigurationInput<Config.InstallNetworkMode>
+    ) -> Config {
+        var config = operations.defaultConfig()
+        apply(input: input, to: &config)
+        return config
+    }
+
+    private func apply(
+        input: RuntimeInstallVMRuntimeConfigurationInput<Config.InstallNetworkMode>,
+        to config: inout Config
+    ) {
         config.installCPUCount = input.cpuCount
         config.installMemoryMiB = UInt64(input.memoryGiB * 1024)
         config.installNetworkMode = input.networkMode
@@ -142,10 +167,6 @@ public struct RuntimeInstallVMRuntimeConfigurator<Config: RuntimeInstallMutableV
         config.installPreventSystemSleep = input.preventSystemSleep
         config.installSSHAuthorizedKeys = input.sshAuthorizedKeys
         operations.ensureRuntimeDefaults(&config)
-
-        let encoded = try operations.encodeConfig(config)
-        try operations.createDirectory(context.configURL.deletingLastPathComponent(), true)
-        try operations.writeData(encoded, context.configURL, [])
     }
 
     private func loadExistingOrDefaultConfig() throws -> Config {

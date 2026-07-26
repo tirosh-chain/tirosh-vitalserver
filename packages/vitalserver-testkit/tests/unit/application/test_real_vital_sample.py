@@ -5,6 +5,10 @@ from typing import cast
 
 import pytest
 
+from tirosh_vitalserver.core.domain.vital_file import (
+    VitalFileFormatVersion,
+    VitalTrackKind,
+)
 from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
     RealVitalFileHeader,
     RealVitalReaderPort,
@@ -81,6 +85,57 @@ def test_full_real_sample_preserves_all_source_tracks() -> None:
     assert tracks["SPHB"]["montype"] == "SPHB"
     assert tracks["SET_FIO2"]["montype"] == "0"
     assert tracks["SET_FIO2"]["sourceMontype"] == 0
+
+
+def test_full_real_classifies_one_hertz_waveform_from_explicit_kind() -> None:
+    reader = FakeRealVitalReader(
+        tracks=(
+            track(
+                "Source/WAVE",
+                "Source",
+                "WAVE",
+                "",
+                0,
+                1.0,
+                kind=VitalTrackKind.WAVEFORM,
+            ),
+        ),
+        samples={("Source/WAVE", 1.0): [0.1]},
+    )
+
+    payload = build_real_vital_recorder_payload(
+        reader,
+        Path("source.vital"),
+        scenario=RealVitalSampleScenario.FULL_REAL,
+        duration_seconds=1,
+    )
+
+    assert track_map(only_room(payload))["WAVE"]["type"] == "wav"
+
+
+def test_full_real_rejects_string_track_explicitly() -> None:
+    reader = FakeRealVitalReader(
+        tracks=(
+            track(
+                "Source/LABEL",
+                "Source",
+                "LABEL",
+                "",
+                0,
+                0.0,
+                kind=VitalTrackKind.STRING,
+            ),
+        ),
+        samples={},
+    )
+
+    with pytest.raises(ValueError, match="does not support string track"):
+        build_real_vital_recorder_payload(
+            reader,
+            Path("source.vital"),
+            scenario=RealVitalSampleScenario.FULL_REAL,
+            duration_seconds=1,
+        )
 
 
 def test_bloodbag_sample_requires_sphb_source_track() -> None:
@@ -187,6 +242,7 @@ class FakeRealVitalReader(RealVitalReaderPort):
     ) -> None:
         self._header = RealVitalFileHeader(
             path=Path("source.vital"),
+            format_version=VitalFileFormatVersion.V3,
             dtstart=1000.0,
             dtend=1100.0,
             tracks=tracks,
@@ -215,9 +271,16 @@ def track(
     unit: str,
     montype: int,
     srate: float,
+    *,
+    kind: VitalTrackKind | None = None,
 ) -> RealVitalTrackHeader:
     return RealVitalTrackHeader(
         dtname=dtname,
+        kind=(
+            kind
+            if kind is not None
+            else (VitalTrackKind.WAVEFORM if srate > 1.0 else VitalTrackKind.NUMERIC)
+        ),
         dname=dname,
         name=name,
         unit=unit,

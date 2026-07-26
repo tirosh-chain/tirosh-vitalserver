@@ -1,8 +1,8 @@
 [project]
 name = "tirosh-vitalserver"
-version = "0.1.0"
+version = "0.2.0"
 description = "Production wrapper and validation workspace for upstream VitalServer."
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
   "jupyter>=1.1.1",
   "pydantic-settings>=2.14.1",
@@ -11,6 +11,7 @@ dependencies = [
   "tirosh-vitalserver-guest-tools",
   "tirosh-vitalserver-recorder-recovery",
   "tirosh-vitalserver-testkit",
+  "tirosh-vitalserver-vitalfile",
 ]
 
 [dependency-groups]
@@ -30,6 +31,7 @@ members = [
   "packages/vitalserver-devtools",
   "packages/vitalserver-guest-tools",
   "packages/vitalserver-testkit",
+  "packages/vitalserver-vitalfile",
 ]
 
 [tool.uv.sources]
@@ -38,6 +40,7 @@ tirosh-vitalserver-devtools = { workspace = true }
 tirosh-vitalserver-guest-tools = { workspace = true }
 tirosh-vitalserver-recorder-recovery = { workspace = true }
 tirosh-vitalserver-testkit = { workspace = true }
+tirosh-vitalserver-vitalfile = { workspace = true }
 
 [tool.ruff]
 src = [
@@ -46,11 +49,14 @@ src = [
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-vitalfile/src",
   "packages/vitalserver-core/tests",
   "apps/vitalserver-recorder-recovery/tests",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
+  "packages/vitalserver-vitalfile/tests",
   "apps/vitaldb-observer",
+  "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
   "scripts",
 ]
@@ -67,7 +73,7 @@ exclude = [
   "vendor/*",
 ]
 line-length = 88
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -93,6 +99,7 @@ known-first-party = [
   "tirosh_vitalserver",
   "tirosh_guest_tools",
   "vitaldb_observer",
+  "vitalserver_lab",
 ]
 
 [tool.mypy]
@@ -109,8 +116,11 @@ files = [
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-vitalfile/src",
   "packages/vitalserver-testkit/tests",
+  "packages/vitalserver-vitalfile/tests",
   "apps/vitaldb-observer",
+  "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
   "scripts",
 ]
@@ -121,19 +131,21 @@ mypy_path = [
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-vitalfile/src",
   "apps/vitaldb-observer",
+  "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
 ]
 namespace_packages = true
 no_implicit_optional = true
-python_version = "3.14"
+python_version = "3.12"
 show_error_codes = true
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_unused_ignores = true
 
 [tool.pytest.ini_options]
-addopts = "-ra -v"
+addopts = "-ra -v --import-mode=importlib"
 pythonpath = [
   ".",
   "packages/vitalserver-core/src",
@@ -141,7 +153,9 @@ pythonpath = [
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-vitalfile/src",
   "apps/vitaldb-observer",
+  "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
 ]
 testpaths = [
@@ -150,6 +164,8 @@ testpaths = [
   "packages/vitalserver-devtools/tests",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
+  "packages/vitalserver-vitalfile/tests",
   "apps/vitaldb-observer/tests",
+  "apps/vitalserver-lab/tests",
   "apps/vitalserver-redis-relay/tests",
 ]

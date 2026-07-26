@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
-from dataclasses import replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from tirosh_vitalserver.devtools.adapters.build_config import load_config
-from tirosh_vitalserver.devtools.adapters.guest_services.docker_images import (
-    build_docker_image_bundle as run_docker_image_bundle,
+from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    require_rootfs_artifact_guest_deploy_match,
+    require_rootfs_artifact_guest_deploy_material_sha256,
+    require_rootfs_artifact_receipt,
+    rootfs_artifact_manifest_path,
+)
+from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
+    guest_deploy_material_sha256,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     remove_path,
@@ -18,6 +23,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import
     attached_disk_images,
     attached_image_mount_points,
     detach_dmg_attachment,
+    expand_pkg_payload,
     hdiutil_verify_image,
     stage_troubleshooting_tools,
 )
@@ -27,6 +33,9 @@ from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     build_pkg as run_build_pkg,
 )
+from tirosh_vitalserver.devtools.adapters.macos_release.package_receipts import (
+    read_package_receipt,
+)
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     build_app_bundle,
     build_swift,
@@ -35,14 +44,12 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.shell_commands import run
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
-from tirosh_vitalserver.devtools.application.guest_service_plans import (
-    docker_image_bundle_build_plan,
-)
 from tirosh_vitalserver.devtools.application.inputs import (
     MacOSPackageCleanInput,
     MacOSPackageInstallInput,
     NginxBundleInput,
     ReleaseDmgArtifactVerifyInput,
+    ReleasePackageEnvironmentPreflightInput,
     ReleasePackageInput,
     ReleaseTroubleshootingToolsInput,
     ReleaseTroubleshootingToolsVerifyInput,
@@ -60,17 +67,18 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
 from tirosh_vitalserver.devtools.config.release_manifest import load_release_manifest
-from tirosh_vitalserver.devtools.core.guest_services import (
-    ComposeServiceImageReference,
-    DockerImagePlan,
-    RootfsInputMetadataPlan,
-    compose_service_image_references,
-    guest_deploy_plan,
-)
+from tirosh_vitalserver.devtools.core.guest_services import RootfsInputMetadataPlan
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     settings_install_home,
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
+from tirosh_vitalserver.devtools.core.macos_release.package_install import (
+    NumericPackageVersion,
+    PackageReceiptAbsent,
+    PackageReceiptPresent,
+    PackageReceiptReadFailed,
+    classify_package_install_intent,
+)
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
     default_pkg_output,
     default_troubleshooting_tools_output,
@@ -133,10 +141,18 @@ def preflight_release_package(
     raise SystemExit(1)
 
 
-def release_package_preflight_report(
-    input: ReleasePackageInput,
-    *,
-    output_kind: str,
+def preflight_release_package_environment(
+    input: ReleasePackageEnvironmentPreflightInput,
+) -> int:
+    report = release_package_environment_preflight_report(input)
+    print_preflight_report(report)
+    if report.passed:
+        return 0
+    raise SystemExit(1)
+
+
+def release_package_environment_preflight_report(
+    input: ReleasePackageEnvironmentPreflightInput,
 ) -> PreflightReport:
     root = repo_root()
     settings = load_macos_release_settings(input.config, root)
@@ -146,43 +162,95 @@ def release_package_preflight_report(
         settings=settings,
         release=release,
         requested_output=resolve_path(root, input.output) if input.output else None,
-        output_kind=output_kind,
+        output_kind=input.output_kind,
     )
-    rootfs_base = resolve_path(root, input.rootfs_base)
-    golden_runtime_dir = resolve_path(root, input.golden_runtime_dir)
     checks: list[PreflightCheck] = [
         check_required_tool("swift"),
         check_required_tool("codesign"),
         check_required_tool("pkgbuild"),
-        check_required_file(rootfs_base, "rootfs-base"),
-        check_required_file(golden_runtime_dir / "Image", "golden-kernel-image"),
-        check_required_file(golden_runtime_dir / "initrd.img", "golden-initrd"),
         check_output_path(outputs.pkg_output, "pkg-output"),
     ]
-    if output_kind == "dmg":
-        checks.append(check_required_tool("hdiutil"))
-        checks.append(check_output_path(outputs.dmg_output, "dmg-output"))
-        checks.append(check_dmg_output_state(outputs.dmg_output))
-    checks.extend(
-        docker_image_bundle_preflight_checks(
-            root=root,
-            config=input.config,
-            bundle_path=settings.docker_bundle,
-            platform=input.docker_platform,
-            compression_threads=input.compression_threads,
-            include_optional="testkit" in release.optional_container_services,
-            compose_path=settings.runtime_dir / "Support/Guest/compose.yaml",
-            deploy_include_sources=[
-                include.source for include in settings.guest_deploy.includes
+    if input.output_kind == "dmg":
+        checks.extend(
+            [
+                check_required_tool("hdiutil"),
+                check_output_path(outputs.dmg_output, "dmg-output"),
+                check_dmg_output_state(outputs.dmg_output),
             ]
-            + (
-                [include.source for include in settings.guest_deploy.optional_includes]
-                if "testkit" in release.optional_container_services
-                else []
-            ),
+        )
+    return PreflightReport(
+        name=f"release-{input.output_kind}-environment",
+        checks=tuple(checks),
+    )
+
+
+def release_package_preflight_report(
+    input: ReleasePackageInput,
+    *,
+    output_kind: str,
+) -> PreflightReport:
+    root = repo_root()
+    environment_report = release_package_environment_preflight_report(
+        ReleasePackageEnvironmentPreflightInput(
+            config=input.config,
+            release_file=input.release_file,
+            output=input.output,
+            output_kind=output_kind,
         )
     )
+    rootfs_base = resolve_path(root, input.rootfs_base)
+    golden_runtime_dir = resolve_path(root, input.golden_runtime_dir)
+    rootfs_base_check = check_required_file(rootfs_base, "rootfs-base")
+    checks: list[PreflightCheck] = [
+        *environment_report.checks,
+        rootfs_base_check,
+        check_required_file(golden_runtime_dir / "Image", "golden-kernel-image"),
+        check_required_file(golden_runtime_dir / "initrd.img", "golden-initrd"),
+    ]
+    if not rootfs_base_check.blocks:
+        checks.append(
+            check_compiled_guest_deploy_matches_rootfs_artifact(
+                rootfs_base=rootfs_base,
+                guest_deploy_source=resolve_path(root, input.guest_deploy_source),
+            )
+        )
     return PreflightReport(name=f"release-{output_kind}", checks=tuple(checks))
+
+
+def check_compiled_guest_deploy_matches_rootfs_artifact(
+    *,
+    rootfs_base: Path,
+    guest_deploy_source: Path,
+) -> PreflightCheck:
+    source_check = check_required_dir(
+        guest_deploy_source,
+        "compiled-guest-deploy",
+    )
+    if source_check.blocks:
+        return source_check
+    try:
+        actual = require_rootfs_artifact_guest_deploy_match(
+            rootfs_base,
+            guest_deploy_source,
+        )
+    except SystemExit as error:
+        detail = str(error)
+        return PreflightCheck(
+            name="compiled-guest-deploy",
+            status=(
+                PreflightStatus.BLOCKED
+                if "does not match rootfs artifact receipt" in detail
+                else PreflightStatus.INVALID
+            ),
+            message="compiled Guest deploy does not match rootfs artifact receipt",
+            detail=detail,
+        )
+    return PreflightCheck(
+        name="compiled-guest-deploy",
+        status=PreflightStatus.PASSED,
+        message="compiled Guest deploy matches rootfs proof",
+        detail=f"sha256={actual}",
+    )
 
 
 def release_dmg_artifact_report(
@@ -201,6 +269,7 @@ def release_dmg_artifact_report(
     dmg_output = outputs.dmg_output
     checks: list[PreflightCheck] = [
         check_required_tool("hdiutil"),
+        check_required_tool("pkgutil"),
         check_required_file(dmg_output, "dmg-artifact"),
     ]
     if any(check.blocks for check in checks):
@@ -212,6 +281,7 @@ def release_dmg_artifact_report(
         inspect_dmg_layout(
             dmg_output=dmg_output,
             installer_pkg_name=settings.outputs.dmg_installer_pkg_name,
+            install_home_path=settings_install_home(settings),
         )
     )
     return PreflightReport(name="release-dmg-artifact", checks=tuple(checks))
@@ -317,6 +387,7 @@ def inspect_dmg_layout(
     *,
     dmg_output: Path,
     installer_pkg_name: str,
+    install_home_path: str,
 ) -> list[PreflightCheck]:
     checks: list[PreflightCheck] = []
     attachment = None
@@ -333,12 +404,19 @@ def inspect_dmg_layout(
         ]
     try:
         mount = attachment.mount_point
-        checks.append(
-            check_required_mounted_file(
-                mount / installer_pkg_name,
-                "dmg-installer-pkg",
-            )
+        installer_pkg = mount / installer_pkg_name
+        installer_pkg_check = check_required_mounted_file(
+            installer_pkg,
+            "dmg-installer-pkg",
         )
+        checks.append(installer_pkg_check)
+        if not installer_pkg_check.blocks:
+            checks.extend(
+                inspect_dmg_installer_pkg_payload(
+                    installer_pkg=installer_pkg,
+                    install_home_path=install_home_path,
+                )
+            )
         tools_dir = mount / "Troubleshooting Tools"
         checks.append(
             check_required_mounted_dir(tools_dir, "dmg-troubleshooting-tools")
@@ -378,6 +456,132 @@ def inspect_dmg_layout(
                 )
             )
     return checks
+
+
+def inspect_dmg_installer_pkg_payload(
+    *,
+    installer_pkg: Path,
+    install_home_path: str,
+) -> list[PreflightCheck]:
+    try:
+        with TemporaryDirectory(prefix="vitalserver-dmg-pkg-") as temporary_dir:
+            payload = expand_pkg_payload(
+                installer_pkg,
+                Path(temporary_dir) / "expanded",
+            )
+            checks = [
+                PreflightCheck(
+                    name="dmg-pkg-expand",
+                    status=PreflightStatus.PASSED,
+                    message=f"installer package payload expanded: {installer_pkg}",
+                )
+            ]
+            checks.extend(
+                verify_dmg_pkg_rootfs_material(
+                    payload=payload,
+                    install_home_path=install_home_path,
+                )
+            )
+            return checks
+    except (OSError, RuntimeError) as error:
+        return [
+            PreflightCheck(
+                name="dmg-pkg-expand",
+                status=PreflightStatus.FAILED,
+                message="failed to expand installer package payload",
+                detail=f"{installer_pkg}: {error}",
+            )
+        ]
+
+
+def verify_dmg_pkg_rootfs_material(
+    *,
+    payload: Path,
+    install_home_path: str,
+) -> list[PreflightCheck]:
+    installed_home = payload / install_home_path.strip("/")
+    rootfs = installed_home / "runtime" / "rootfs-base.raw.gz"
+    rootfs_manifest = rootfs_artifact_manifest_path(rootfs)
+    guest_deploy = installed_home / "data" / "deploy"
+    checks = [
+        check_required_payload_file(rootfs, "dmg-payload-rootfs-base"),
+        check_required_payload_file(
+            rootfs_manifest,
+            "dmg-payload-rootfs-manifest",
+        ),
+        check_required_mounted_dir(guest_deploy, "dmg-payload-guest-deploy"),
+    ]
+    if any(check.blocks for check in checks):
+        return checks
+    try:
+        document = require_rootfs_artifact_receipt(rootfs)
+        expected_guest_deploy_sha256 = (
+            require_rootfs_artifact_guest_deploy_material_sha256(
+                document,
+                rootfs_manifest,
+            )
+        )
+    except SystemExit as error:
+        checks.append(
+            PreflightCheck(
+                name="dmg-payload-rootfs-receipt",
+                status=PreflightStatus.INVALID,
+                message="packaged rootfs receipt is invalid",
+                detail=str(error),
+            )
+        )
+        return checks
+    checks.append(
+        PreflightCheck(
+            name="dmg-payload-rootfs-receipt",
+            status=PreflightStatus.PASSED,
+            message="packaged rootfs receipt matches its artifact and compile proof",
+        )
+    )
+    try:
+        actual_guest_deploy_sha256 = guest_deploy_material_sha256(guest_deploy)
+    except SystemExit as error:
+        checks.append(
+            PreflightCheck(
+                name="dmg-payload-guest-deploy-material-sha256",
+                status=PreflightStatus.INVALID,
+                message="packaged Guest deploy material is invalid",
+                detail=str(error),
+            )
+        )
+        return checks
+    if actual_guest_deploy_sha256 != expected_guest_deploy_sha256:
+        checks.append(
+            PreflightCheck(
+                name="dmg-payload-guest-deploy-material-sha256",
+                status=PreflightStatus.FAILED,
+                message="packaged Guest deploy material digest does not match manifest",
+                detail=(
+                    f"expected={expected_guest_deploy_sha256} "
+                    f"actual={actual_guest_deploy_sha256} path={guest_deploy}"
+                ),
+            )
+        )
+    else:
+        checks.append(
+            PreflightCheck(
+                name="dmg-payload-guest-deploy-material-sha256",
+                status=PreflightStatus.PASSED,
+                message="packaged Guest deploy material digest matches manifest",
+            )
+        )
+    return checks
+
+
+def check_required_payload_file(path: Path, name: str) -> PreflightCheck:
+    if path.is_symlink():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.INVALID,
+            message="required package payload file must not be a symlink",
+            detail=str(path),
+        )
+    return check_required_mounted_file(path, name)
 
 
 def check_required_mounted_file(path: Path, name: str) -> PreflightCheck:
@@ -636,405 +840,6 @@ def check_dmg_output_state(dmg_output: Path) -> PreflightCheck:
     )
 
 
-def docker_image_bundle_preflight_checks(
-    *,
-    root: Path,
-    config: Path,
-    bundle_path: Path,
-    platform: str | None,
-    compression_threads: int | None,
-    include_optional: bool,
-    compose_path: Path,
-    deploy_include_sources: list[Path],
-) -> list[PreflightCheck]:
-    build_config = load_config(config)
-    docker_config = load_docker_images_config(build_config, root)
-    plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=docker_config,
-        bundle_path=bundle_path,
-        platform=platform,
-        compression_threads=compression_threads,
-    )
-    checks = docker_image_plan_preflight_checks(plan.image_plan)
-    checks.extend(
-        guest_compose_contract_preflight_checks(
-            root=root,
-            compose_path=compose_path,
-            plan=plan.image_plan,
-            known_images=set(docker_config.images) | set(docker_config.optional_images),
-            deploy_include_sources=deploy_include_sources,
-            optional_images=set(docker_config.optional_images),
-            include_optional=include_optional,
-        )
-    )
-    if (
-        include_optional
-        and docker_config.optional_images
-        and docker_config.optional_bundle_path is not None
-    ):
-        optional_config = replace(docker_config, images=docker_config.optional_images)
-        optional_plan = docker_image_bundle_build_plan(
-            root=root,
-            docker_config=optional_config,
-            bundle_path=docker_config.optional_bundle_path,
-            platform=platform,
-            compression_threads=compression_threads,
-        )
-        checks.extend(docker_image_plan_preflight_checks(optional_plan.image_plan))
-    return checks
-
-
-def guest_compose_contract_preflight_checks(
-    *,
-    root: Path,
-    compose_path: Path,
-    plan: DockerImagePlan,
-    known_images: set[str],
-    deploy_include_sources: list[Path],
-    optional_images: set[str] | None = None,
-    include_optional: bool = False,
-) -> list[PreflightCheck]:
-    compose_text, error = read_text_for_preflight(compose_path)
-    if error:
-        return [
-            PreflightCheck(
-                name="guest-compose-contract",
-                status=PreflightStatus.UNAVAILABLE,
-                message="could not read guest compose file",
-                detail=f"{compose_path}: {error}",
-            )
-        ]
-    references = compose_service_image_references(compose_text)
-    if optional_images and not include_optional:
-        references = tuple(
-            reference
-            for reference in references
-            if reference.image not in optional_images
-        )
-    if not references:
-        return [
-            PreflightCheck(
-                name="guest-compose-contract",
-                status=PreflightStatus.INVALID,
-                message="guest compose did not declare any service images",
-                detail=str(compose_path),
-            )
-        ]
-
-    checks: list[PreflightCheck] = []
-    dockerfiles_by_image = dockerfile_contracts_by_image(plan)
-    for reference in references:
-        checks.append(
-            check_compose_image_is_bundled(
-                reference=reference,
-                known_images=known_images,
-            )
-        )
-        if reference.dockerfile is None:
-            continue
-        checks.append(
-            check_compose_dockerfile_is_configured(
-                root=root,
-                reference=reference,
-                dockerfiles_by_image=dockerfiles_by_image,
-            )
-        )
-        checks.append(
-            check_compose_dockerfile_is_deployed(
-                reference=reference,
-                deploy_include_sources=deploy_include_sources,
-            )
-        )
-    return checks
-
-
-def dockerfile_contracts_by_image(plan: DockerImagePlan) -> dict[str, Path]:
-    return {
-        plan.app_image: plan.app_dockerfile,
-        plan.recorder_ingress_image: plan.recorder_ingress_dockerfile,
-        plan.recorder_recovery_image: plan.recorder_recovery_dockerfile,
-        plan.vitaldb_observer_image: plan.vitaldb_observer_dockerfile,
-        plan.redis_relay_image: plan.redis_relay_dockerfile,
-        plan.testkit_image: plan.testkit_dockerfile,
-    }
-
-
-def check_compose_image_is_bundled(
-    *,
-    reference: ComposeServiceImageReference,
-    known_images: set[str],
-) -> PreflightCheck:
-    if reference.image in known_images:
-        return PreflightCheck(
-            name=f"guest-compose-image:{reference.service}",
-            status=PreflightStatus.PASSED,
-            message="guest compose image is declared in VM docker image config",
-            detail=reference.image,
-        )
-    return PreflightCheck(
-        name=f"guest-compose-image:{reference.service}",
-        status=PreflightStatus.INVALID,
-        message="guest compose image is not declared in VM docker image config",
-        detail=f"service={reference.service} image={reference.image}",
-    )
-
-
-def check_compose_dockerfile_is_configured(
-    *,
-    root: Path,
-    reference: ComposeServiceImageReference,
-    dockerfiles_by_image: dict[str, Path],
-) -> PreflightCheck:
-    configured = dockerfiles_by_image.get(reference.image)
-    if configured is None:
-        return PreflightCheck(
-            name=f"guest-compose-dockerfile:{reference.service}",
-            status=PreflightStatus.INVALID,
-            message="guest compose build image has no configured dockerfile",
-            detail=f"service={reference.service} image={reference.image}",
-        )
-    configured_relative = configured.relative_to(root)
-    if reference.dockerfile == configured_relative:
-        return PreflightCheck(
-            name=f"guest-compose-dockerfile:{reference.service}",
-            status=PreflightStatus.PASSED,
-            message="guest compose dockerfile matches VM docker image config",
-            detail=str(reference.dockerfile),
-        )
-    return PreflightCheck(
-        name=f"guest-compose-dockerfile:{reference.service}",
-        status=PreflightStatus.INVALID,
-        message="guest compose dockerfile does not match VM docker image config",
-        detail=(
-            f"service={reference.service} compose={reference.dockerfile} "
-            f"config={configured_relative}"
-        ),
-    )
-
-
-def check_compose_dockerfile_is_deployed(
-    *,
-    reference: ComposeServiceImageReference,
-    deploy_include_sources: list[Path],
-) -> PreflightCheck:
-    dockerfile = reference.dockerfile
-    if dockerfile is not None and path_is_covered_by_include(
-        dockerfile,
-        deploy_include_sources,
-    ):
-        return PreflightCheck(
-            name=f"guest-compose-deploy:{reference.service}",
-            status=PreflightStatus.PASSED,
-            message="guest compose dockerfile is covered by guest deploy includes",
-            detail=str(dockerfile),
-        )
-    return PreflightCheck(
-        name=f"guest-compose-deploy:{reference.service}",
-        status=PreflightStatus.INVALID,
-        message="guest compose dockerfile is not covered by guest deploy includes",
-        detail=f"service={reference.service} dockerfile={dockerfile}",
-    )
-
-
-def path_is_covered_by_include(path: Path, include_sources: list[Path]) -> bool:
-    for source in include_sources:
-        if path == source or path.is_relative_to(source):
-            return True
-    return False
-
-
-def docker_image_plan_preflight_checks(plan: DockerImagePlan) -> list[PreflightCheck]:
-    docker_tool = check_required_tool("docker")
-    checks = [docker_tool]
-    checks.append(check_required_file(plan.app_dockerfile, "dockerfile:app"))
-    if plan.recorder_ingress_image in plan.images:
-        checks.append(
-            check_required_file(
-                plan.recorder_ingress_dockerfile,
-                "dockerfile:recorder-ingress",
-            )
-        )
-    if plan.recorder_recovery_image in plan.images:
-        checks.append(
-            check_required_file(
-                plan.recorder_recovery_dockerfile,
-                "dockerfile:recorder-recovery",
-            )
-        )
-    if plan.vitaldb_observer_image in plan.images:
-        checks.append(
-            check_required_file(
-                plan.vitaldb_observer_dockerfile,
-                "dockerfile:vitaldb-observer",
-            )
-        )
-    if plan.redis_relay_image in plan.images:
-        checks.append(
-            check_required_file(
-                plan.redis_relay_dockerfile,
-                "dockerfile:redis-relay",
-            )
-        )
-    if plan.testkit_image in plan.images:
-        checks.append(
-            check_required_file(
-                plan.testkit_dockerfile,
-                "dockerfile:testkit",
-            )
-        )
-    if not docker_tool.blocks:
-        checks.extend(
-            check_docker_manifest(image=image, platform=plan.platform)
-            for image in plan.pull_images
-        )
-    return checks
-
-
-def check_docker_manifest(*, image: str, platform: str) -> PreflightCheck:
-    local_platform = docker_local_image_platform(image)
-    if local_platform == platform:
-        return PreflightCheck(
-            name=f"docker-manifest:{image}",
-            status=PreflightStatus.PASSED,
-            message="local docker image matches requested platform",
-            detail=f"image={image} platform={platform}",
-        )
-
-    command = ["docker", "manifest", "inspect", image]
-    try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except FileNotFoundError:
-        return PreflightCheck(
-            name=f"docker-manifest:{image}",
-            status=PreflightStatus.MISSING,
-            message="docker command is missing",
-            detail=image,
-        )
-    except subprocess.TimeoutExpired:
-        return PreflightCheck(
-            name=f"docker-manifest:{image}",
-            status=PreflightStatus.UNAVAILABLE,
-            message="docker manifest inspect timed out",
-            detail=docker_manifest_unavailable_detail(
-                image=image,
-                platform=platform,
-                reason="timeout",
-            ),
-        )
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        return PreflightCheck(
-            name=f"docker-manifest:{image}",
-            status=PreflightStatus.UNAVAILABLE,
-            message="docker image manifest is unavailable",
-            detail=docker_manifest_unavailable_detail(
-                image=image,
-                platform=platform,
-                reason=stderr,
-            ),
-        )
-    try:
-        document = json.loads(result.stdout)
-    except json.JSONDecodeError as error:
-        return PreflightCheck(
-            name=f"docker-manifest:{image}",
-            status=PreflightStatus.INVALID,
-            message="docker image manifest output is invalid JSON",
-            detail=f"image={image} error={error}",
-        )
-    if not docker_manifest_supports_platform(document, platform):
-        return PreflightCheck(
-            name=f"docker-manifest:{image}",
-            status=PreflightStatus.INVALID,
-            message="docker image manifest does not include requested platform",
-            detail=f"image={image} platform={platform}",
-        )
-    return PreflightCheck(
-        name=f"docker-manifest:{image}",
-        status=PreflightStatus.PASSED,
-        message="docker image manifest is available",
-        detail=f"image={image} platform={platform}",
-    )
-
-
-def docker_manifest_unavailable_detail(
-    *,
-    image: str,
-    platform: str,
-    reason: str,
-) -> str:
-    return (
-        f"image={image} platform={platform} reason={reason}; "
-        f"retry after network/Docker Hub access recovers, or pre-pull with "
-        f"`docker pull --platform {platform} {image}` so preflight can use the "
-        "local image platform check"
-    )
-
-
-def docker_local_image_platform(image: str) -> str | None:
-    try:
-        result = subprocess.run(
-            ["docker", "image", "inspect", image],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return None
-    if result.returncode != 0:
-        return None
-    try:
-        document = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(document, list) or not document:
-        return None
-    image_document = document[0]
-    if not isinstance(image_document, dict):
-        return None
-    os_name = image_document.get("Os")
-    architecture = image_document.get("Architecture")
-    if not isinstance(os_name, str) or not isinstance(architecture, str):
-        return None
-    return f"{os_name}/{architecture}"
-
-
-def docker_manifest_supports_platform(document: object, platform: str) -> bool:
-    requested_os, requested_architecture = docker_platform_parts(platform)
-    if not isinstance(document, dict):
-        return False
-    manifests = document.get("manifests")
-    if not isinstance(manifests, list):
-        return True
-    for manifest in manifests:
-        if not isinstance(manifest, dict):
-            continue
-        manifest_platform = manifest.get("platform")
-        if not isinstance(manifest_platform, dict):
-            continue
-        if (
-            manifest_platform.get("os") == requested_os
-            and manifest_platform.get("architecture") == requested_architecture
-        ):
-            return True
-    return False
-
-
-def docker_platform_parts(platform: str) -> tuple[str, str]:
-    parts = platform.split("/")
-    if len(parts) < 2 or not parts[0] or not parts[1]:
-        return platform, ""
-    return parts[0], parts[1]
-
-
 def build_troubleshooting_tools(input: ReleaseTroubleshootingToolsInput) -> int:
     root = repo_root()
     settings = load_macos_release_settings(input.config, root)
@@ -1091,6 +896,36 @@ def install_pkg(input: MacOSPackageInstallInput) -> int:
     if not pkg_output.is_file():
         raise SystemExit(
             f"missing {pkg_output}. Run: make vm-pkg-dev or make vm-pkg-release"
+        )
+    target_version = NumericPackageVersion.parse(release.helper_version)
+    if target_version is None:
+        raise SystemExit(
+            "package install target version is invalid "
+            f"value={release.helper_version}"
+        )
+    receipt = read_package_receipt(settings.package_identifier)
+    if isinstance(receipt, PackageReceiptReadFailed):
+        raise SystemExit(
+            "package install receipt preflight failed "
+            f"identifier={receipt.identifier} stage={receipt.stage.value} "
+            f"reason={receipt.reason}"
+        )
+    if isinstance(receipt, PackageReceiptPresent):
+        intent = classify_package_install_intent(
+            receipt.version,
+            target_version,
+        )
+        raise SystemExit(
+            "package install blocked "
+            f"intent={intent.value} identifier={receipt.identifier} "
+            f"installedVersion={receipt.version.raw_value} "
+            f"targetVersion={target_version.raw_value}; "
+            "VitalServer Helper direct PKG installs are fresh-only for this release"
+        )
+    if not isinstance(receipt, PackageReceiptAbsent):
+        raise SystemExit(
+            "package install receipt preflight returned unsupported state "
+            f"identifier={settings.package_identifier}"
         )
     try:
         if input.install_settings:
@@ -1175,14 +1010,7 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
             ),
         )
     )
-    optional_docker_bundle = build_docker_image_bundles_from_config(
-        root=root,
-        config=input.config,
-        bundle_path=settings.docker_bundle,
-        platform=input.docker_platform,
-        compression_threads=input.compression_threads,
-        include_optional="testkit" in release.optional_container_services,
-    )
+    guest_deploy_source = resolve_path(root, input.guest_deploy_source)
     package_vm_home = settings.pkg_root / settings_install_home(settings).strip("/")
 
     return PackageContext(
@@ -1196,19 +1024,9 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
         app_bundle=settings.app_bundle,
         runtime_cli=settings.runtime_cli,
         nginx_bundle=settings.nginx_bundle,
-        docker_bundle=settings.docker_bundle,
         rootfs_base=resolve_path(root, input.rootfs_base),
         golden_runtime_dir=resolve_path(root, input.golden_runtime_dir),
-        guest_deploy_plan=guest_deploy_plan(
-            root=root,
-            runtime_dir=runtime_dir,
-            deploy_dir=package_vm_home / "data/deploy",
-            vm_home=package_vm_home,
-            config=settings.guest_deploy,
-            docker_bundle=settings.docker_bundle,
-            optional_docker_bundle=optional_docker_bundle,
-            include_optional="testkit" in release.optional_container_services,
-        ),
+        guest_deploy_source=guest_deploy_source,
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=package_vm_home / "data/deploy",
             base_url=ubuntu_config.base_url,
@@ -1219,49 +1037,3 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
         proxy_port=input.proxy_port,
         settings=settings,
     )
-
-
-def build_docker_image_bundles_from_config(
-    *,
-    root: Path,
-    config: Path,
-    bundle_path: Path,
-    platform: str | None,
-    compression_threads: int | None,
-    include_optional: bool,
-) -> Path | None:
-    build_config = load_config(config)
-    docker_config = load_docker_images_config(build_config, root)
-    plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=docker_config,
-        bundle_path=bundle_path,
-        platform=platform,
-        compression_threads=compression_threads,
-    )
-    run_docker_image_bundle(
-        plan=plan.image_plan,
-        bundle_path=plan.bundle_path,
-        compression_threads_value=plan.compression_threads,
-    )
-    if (
-        not include_optional
-        or not docker_config.optional_images
-        or docker_config.optional_bundle_path is None
-    ):
-        return None
-
-    optional_config = replace(docker_config, images=docker_config.optional_images)
-    optional_plan = docker_image_bundle_build_plan(
-        root=root,
-        docker_config=optional_config,
-        bundle_path=docker_config.optional_bundle_path,
-        platform=platform,
-        compression_threads=compression_threads,
-    )
-    run_docker_image_bundle(
-        plan=optional_plan.image_plan,
-        bundle_path=optional_plan.bundle_path,
-        compression_threads_value=optional_plan.compression_threads,
-    )
-    return optional_plan.bundle_path

@@ -12,6 +12,8 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
             "8",
             "--network",
             "bridged",
+            "--runtime-control-port",
+            "18444",
             "--restart",
         ])
 
@@ -19,6 +21,7 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
             changes: [
                 .cpu(8),
                 .network(.bridged),
+                .runtimeControlPort(18444),
             ],
             restart: true
         )))
@@ -36,6 +39,30 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
             XCTAssertEqual(
                 error as? RuntimeLifecycleCommandParseError,
                 .unsupportedCommand("runtime unknown")
+            )
+        }
+    }
+
+    func testParsesExplicitVMRuntimeRestartIntent() throws {
+        let command = try RuntimeLifecycleCommand.parseArguments([
+            "configure",
+            "--restart-vm-runtime",
+        ])
+
+        XCTAssertEqual(command, .configure(RuntimeConfigureCommand(
+            activation: .restartVMRuntime
+        )))
+    }
+
+    func testRejectsConflictingActivationIntents() {
+        XCTAssertThrowsError(try RuntimeLifecycleCommand.parseArguments([
+            "configure",
+            "--restart",
+            "--restart-vm-runtime",
+        ])) { error in
+            XCTAssertEqual(
+                error as? RuntimeLifecycleCommandParseError,
+                .missingArgument("--restart and --restart-vm-runtime are mutually exclusive")
             )
         }
     }

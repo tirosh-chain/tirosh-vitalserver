@@ -23,6 +23,7 @@ Vital Server Helper는 VitalServer 자체를 대체하지 않습니다. VitalSer
 |---|---|
 | runtime 상태 | Helper app과 Runtime Control API의 상태 화면 |
 | recorder/bed activity | Recorders/Beds 화면과 observability event |
+| 버전별 변경과 호환성 | [Release Notes](changelog.md) |
 | Redis relay | Settings의 Redis relay 설정과 Advanced 상태 확인 |
 | 지원 자료 | logs, runtime event, support bundle |
 | update 적용 | Product Update bundle 검증과 적용 흐름 |
@@ -33,12 +34,13 @@ Vital Server Helper는 VitalServer 자체를 대체하지 않습니다. VitalSer
 
 처음 읽는다면 아래 순서가 좋습니다.
 
-1. [Usage](usage.md)에서 설치 후 어떤 화면과 절차를 쓰는지 봅니다.
-2. [Support Scope](scope.md)에서 현재 제공하는 범위와 지원 예정 범위를 확인합니다.
-3. [Runtime Status](runtime-status.md)에서 Helper app 상태값의 의미를 봅니다.
-4. [Observability Events](observability-events.md)에서 event와 anomaly를 해석합니다.
-5. [Clean Uninstall and Reset for Reinstall](clean-uninstall.md)에서 내부 clean uninstall과 reset command의 차이를 봅니다.
-6. [Reset for Reinstall command](reset-installer.md)는 재설치가 막혔을 때만 봅니다.
+1. [Release Notes](changelog.md)에서 설치하려는 version과 Recorder 호환성을 확인합니다.
+2. [Usage](usage.md)에서 설치 후 어떤 화면과 절차를 쓰는지 봅니다.
+3. [Support Scope](scope.md)에서 현재 제공하는 범위와 지원 예정 범위를 확인합니다.
+4. [Runtime Status](runtime-status.md)에서 Helper app 상태값의 의미를 봅니다.
+5. [Observability Events](observability-events.md)에서 event와 anomaly를 해석합니다.
+6. [Clean Uninstall and Reset for Reinstall](clean-uninstall.md)에서 내부 clean uninstall과 reset command의 차이를 봅니다.
+7. [Reset for Reinstall command](reset-installer.md)는 재설치가 막혔을 때만 봅니다.
 
 ## 2. 현재 설치 대상
 

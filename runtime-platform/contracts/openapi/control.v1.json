@@ -1,0 +1,2253 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "VitalServer Runtime Platform Control API",
+    "version": "1.0.0",
+    "description": "Public control-plane API v1. Every read returns an owner-supplied ReadResult. Commands return a durable Operation, a CommandRejection when they were not admitted, or a typed admission/forwarding failure when existence cannot safely be inferred; they do not synthesize state from another owner."
+  },
+  "paths": {
+    "/v1/runtime/topology": {
+      "get": {
+        "operationId": "getRuntimeTopology",
+        "summary": "Read the Guest Runtime-owned topology resource",
+        "x-owner": "guest-runtime",
+        "responses": {
+          "200": {
+            "description": "Explicit topology read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeTopologyReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/topology:apply": {
+      "post": {
+        "operationId": "applyRuntimeTopology",
+        "summary": "Request topology application",
+        "x-owner": "guest-runtime",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "../json-schema/v1/runtime-topology-apply-command.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The command was accepted and has a durable operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/operation.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input was rejected before an operation existed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The Guest Runtime could not determine command admission. Retry the exact requestId after Guest recovery.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAdmissionFailure"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Host facade could not reach the configured Guest endpoint before command admission; no Guest operation exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The Host facade attempted command forwarding but cannot state whether the Guest command exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/facade-forwarding-failure.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/operations/{operationId}": {
+      "get": {
+        "operationId": "getRuntimeOperation",
+        "summary": "Read a durable Runtime operation",
+        "x-owner": "guest-runtime",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OperationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit operation read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/operational-state/backups": {
+      "post": {
+        "operationId": "admitGuestOperationalStateBackup",
+        "summary": "Admit one Guest operational-state backup into the configured immutable destination",
+        "x-owner": "guest-runtime",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "../json-schema/v1/guest-operational-state-backup-command.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The backup command was durably admitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/guest-operational-state-backup-operation.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The command document was invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requestId already names a different backup or restore command",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The Guest owner cannot determine whether admission committed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAdmissionFailure"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Guest operational-state owner is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAdmissionFailure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/operational-state/restores": {
+      "post": {
+        "operationId": "admitGuestOperationalStateRestore",
+        "summary": "Admit one immutable manifest restore into an explicitly provisioned empty target",
+        "x-owner": "guest-runtime",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "../json-schema/v1/guest-operational-state-restore-command.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The restore command was durably admitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/guest-operational-state-backup-operation.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The command document was invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requestId already names a different backup or restore command",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The Guest owner cannot determine whether admission committed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAdmissionFailure"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Guest operational-state owner is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAdmissionFailure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/operational-state/identity": {
+      "get": {
+        "operationId": "getGuestOperationalStateIdentity",
+        "summary": "Read the atomic Guest SQLite and PostgreSQL owner identity",
+        "x-owner": "guest-runtime",
+        "responses": {
+          "200": {
+            "description": "Explicit Guest operational-state identity read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestOperationalStateIdentityReadResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "One or both Guest operational-state owners are unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/read-result.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/operational-state/operations/{operationId}": {
+      "get": {
+        "operationId": "getGuestOperationalStateOperation",
+        "summary": "Read one durable Guest operational-state backup or restore operation",
+        "x-owner": "guest-runtime",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OperationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit Guest operational-state operation read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestOperationalStateOperationReadResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Guest operational-state owner is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/read-result.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/capabilities": {
+      "get": {
+        "operationId": "getRuntimeCapabilities",
+        "summary": "Read explicit upstream provider capabilities",
+        "x-owner": "guest-runtime",
+        "responses": {
+          "200": {
+            "description": "Explicit capability read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/readiness": {
+      "get": {
+        "operationId": "getRuntimeReadiness",
+        "summary": "Read Runtime service-owned readiness",
+        "x-owner": "guest-runtime",
+        "responses": {
+          "200": {
+            "description": "Explicit readiness read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceReadinessReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/lab/sessions": {
+      "get": {
+        "operationId": "listLabSessions",
+        "summary": "List Guest Runtime Lab-owned sessions",
+        "x-owner": "guest-runtime-lab",
+        "responses": {
+          "200": {
+            "description": "Explicit Lab session collection read result",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LabSessionCollectionReadResult" } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createLabSession",
+        "summary": "Create a prepared Lab session and its owned beds and virtual recorders",
+        "x-owner": "guest-runtime-lab",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/lab-commands.schema.json#/$defs/CreateLabSessionCommand" } } }
+        },
+        "responses": {
+          "202": { "description": "Created durable Lab operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "The command was rejected before a Lab operation existed", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Lab command admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/sessions/{sessionId}": {
+      "get": {
+        "operationId": "getLabSession",
+        "summary": "Read one Guest Runtime Lab-owned session",
+        "x-owner": "guest-runtime-lab",
+        "parameters": [{ "$ref": "#/components/parameters/SessionId" }],
+        "responses": {
+          "200": { "description": "Explicit Lab session read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LabSessionReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/beds": {
+      "get": {
+        "operationId": "listLabBeds",
+        "summary": "List Guest Runtime Lab-owned beds",
+        "x-owner": "guest-runtime-lab",
+        "responses": {
+          "200": { "description": "Explicit Lab bed collection read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LabBedCollectionReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/beds/{bedId}": {
+      "get": {
+        "operationId": "getLabBed",
+        "summary": "Read one Guest Runtime Lab-owned bed",
+        "x-owner": "guest-runtime-lab",
+        "parameters": [{ "$ref": "#/components/parameters/BedId" }],
+        "responses": {
+          "200": { "description": "Explicit Lab bed read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LabBedReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/recorders": {
+      "get": {
+        "operationId": "listVirtualRecorders",
+        "summary": "List Guest Runtime Lab-owned virtual recorders",
+        "x-owner": "guest-runtime-lab",
+        "responses": {
+          "200": { "description": "Explicit virtual recorder collection read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VirtualRecorderCollectionReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/recorders/{virtualRecorderId}": {
+      "get": {
+        "operationId": "getVirtualRecorder",
+        "summary": "Read one Guest Runtime Lab-owned virtual recorder",
+        "x-owner": "guest-runtime-lab",
+        "parameters": [{ "$ref": "#/components/parameters/VirtualRecorderId" }],
+        "responses": {
+          "200": { "description": "Explicit virtual recorder read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VirtualRecorderReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/resources:command": {
+      "post": {
+        "operationId": "executeLabResourceCommand",
+        "summary": "Execute an explicit Lab start, stop, visibility, detach, or delete command",
+        "x-owner": "guest-runtime-lab",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/lab-commands.schema.json#/$defs/LabResourceCommand" } } }
+        },
+        "responses": {
+          "202": { "description": "Created durable Lab operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "The command was rejected before a Lab operation existed", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Lab command admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/replay-sources": {
+      "post": {
+        "operationId": "admitLabReplaySource",
+        "summary": "Stream one complete user-uploaded .vital file into the Lab replay source owner",
+        "description": "The bounded base64url JSON command in X-Vital-Lab-Replay-Source-Command declares byteSize and sha256. The application/x-vital body remains one immutable source object and is not reclassified as a Recorder upload or Gateway cold-path artifact.",
+        "x-owner": "guest-runtime-lab-replay-source",
+        "parameters": [
+          {
+            "name": "X-Vital-Lab-Replay-Source-Command",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 16384 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-vital": {
+              "schema": { "type": "string", "format": "binary" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "The exact request was already admitted and its object was reverified", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/lab-replay-source-admission-receipt.schema.json" } } } },
+          "202": { "description": "The complete source object was admitted", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/lab-replay-source-admission-receipt.schema.json" } } } },
+          "400": { "description": "The command header was malformed or invalid", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } },
+          "413": { "description": "The declared source exceeds the configured limit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } },
+          "415": { "description": "The body media type is not application/x-vital", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } },
+          "422": { "description": "The streamed bytes do not match the declared size and digest", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } },
+          "503": { "description": "The owner outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/replays": {
+      "post": {
+        "operationId": "admitLabReplay",
+        "summary": "Create one durable replay operation for an admitted Lab replay source",
+        "description": "Admission persists the pending-file-validation operation and its validate-file effect atomically. It does not claim that file validation, message send, or upstream delivery succeeded.",
+        "x-owner": "guest-runtime-lab-replay",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "../json-schema/v1/lab-replay-command.schema.json" }
+            }
+          }
+        },
+        "responses": {
+          "202": { "description": "Durable replay operation admitted", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/lab-replay-operation.schema.json" } } } },
+          "400": { "description": "The replay command is malformed or invalid", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "409": { "description": "The requestId was already used for a different replay command", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Replay admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } },
+          "503": { "description": "The Lab replay owner is unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/replays/{replayId}": {
+      "get": {
+        "operationId": "getLabReplay",
+        "summary": "Read the Guest-owned replay operation including typed terminal failure",
+        "x-owner": "guest-runtime-lab-replay",
+        "parameters": [
+          {
+            "name": "replayId",
+            "in": "path",
+            "required": true,
+            "schema": { "$ref": "../json-schema/v1/common.schema.json#/$defs/Identifier" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Explicit replay operation read result", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/read-result.schema.json" } } } },
+          "503": { "description": "The Lab replay owner is unavailable", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/read-result.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/runtime/lab/deletion-receipts/{receiptId}": {
+      "get": {
+        "operationId": "getLabDeletionReceipt",
+        "summary": "Read explicit Lab deletion and retained-artifact evidence",
+        "x-owner": "guest-runtime-lab",
+        "parameters": [{ "$ref": "#/components/parameters/ReceiptId" }],
+        "responses": {
+          "200": { "description": "Explicit deletion receipt read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeletionReceiptReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/archive/exports": {
+      "post": {
+        "operationId": "exportLabArtifact",
+        "summary": "Finalize a stopped virtual recorder source and export its artifact",
+        "x-owner": "archive-export",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/artifact-export-command.schema.json" } } }
+        },
+        "responses": {
+          "202": { "description": "Created durable Archive Export operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "The command was rejected before an Archive operation existed", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Archive command admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/archive/export-provider": {
+      "get": {
+        "operationId": "getArchiveExportProviderConfiguration",
+        "summary": "Read the non-secret Archive Export provider reference",
+        "description": "The Archive Export owner publishes only its configured provider reference. This read is not Recorder finalization evidence, artifact formation, upload, indexing, or provider reachability.",
+        "x-owner": "archive-export",
+        "responses": {
+          "200": {
+            "description": "Archive Export provider configuration read result",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/read-result.schema.json" } } }
+          },
+          "503": {
+            "description": "Archive Export is not composed",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/read-result.schema.json" } } }
+          }
+        }
+      }
+    },
+    "/v1/runtime/archive/credential-material": {
+      "get": {
+        "operationId": "getRuntimeArchiveCredentialMaterialAvailability",
+        "summary": "Read non-secret indexed-library credential-material availability through local administration only",
+        "x-owner": "guest-secret-material",
+        "x-local-administration-only": true,
+        "responses": {
+          "200": {
+            "description": "Non-secret C51 availability for the C46-selected indexed-library provider",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-availability.schema.json" } } }
+          },
+          "503": {
+            "description": "The selected topology has no configurable indexed-library credential-material owner",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-availability.schema.json" } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "provisionRuntimeArchiveCredentialMaterial",
+        "summary": "Provision one C51 document through local administration only",
+        "x-owner": "guest-secret-material",
+        "x-local-administration-only": true,
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/vitalserver-indexed-library-credential-material.schema.json" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "C51 was atomically provisioned; no credential value is returned",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-provisioning-outcome.schema.json" } } }
+          },
+          "400": {
+            "description": "The C51 command was rejected and no private write occurred",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-provisioning-outcome.schema.json" } } }
+          },
+          "503": {
+            "description": "The private credential-material write could not be completed",
+            "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/guest-archive-credential-material-provisioning-outcome.schema.json" } } }
+          }
+        }
+      }
+    },
+    "/v1/runtime/archive/manifests/{artifactId}": {
+      "get": {
+        "operationId": "getRuntimeArtifactManifest",
+        "summary": "Read a Guest Runtime Archive Export immutable manifest",
+        "x-owner": "archive-export",
+        "parameters": [{ "$ref": "#/components/parameters/ArtifactId" }],
+        "responses": {
+          "200": { "description": "Explicit artifact manifest read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ArtifactManifestReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/archive/export-receipts/{receiptId}": {
+      "get": {
+        "operationId": "getRuntimeExportReceipt",
+        "summary": "Read a Guest Runtime Archive Export receipt",
+        "x-owner": "archive-export",
+        "parameters": [{ "$ref": "#/components/parameters/ReceiptId" }],
+        "responses": {
+          "200": { "description": "Explicit Archive Export receipt read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExportReceiptReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/artifacts/{artifactId}": {
+      "get": {
+        "operationId": "getRuntimeArchiveArtifact",
+        "summary": "Read Archive Export-owned artifact lineage and independent upstream outcomes",
+        "x-owner": "archive-export",
+        "parameters": [{ "$ref": "#/components/parameters/ArtifactId" }],
+        "responses": {
+          "200": {
+            "description": "Explicit Archive artifact detail read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveArtifactDetailReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/external-upstreams": {
+      "get": {
+        "operationId": "listExternalUpstreamIntegrations",
+        "summary": "List Guest Runtime-owned external upstream integrations",
+        "x-owner": "guest-runtime-external-upstream",
+        "responses": {
+          "200": { "description": "Explicit external integration collection read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExternalUpstreamIntegrationCollectionReadResult" } } } }
+        }
+      },
+      "post": {
+        "operationId": "applyExternalUpstreamIntegration",
+        "summary": "Persist and explicitly observe an external upstream integration",
+        "x-owner": "guest-runtime-external-upstream",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/external-upstream-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Durable external integration operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "External integration admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/external-upstreams/{integrationId}": {
+      "get": {
+        "operationId": "getExternalUpstreamIntegration",
+        "summary": "Read one Guest Runtime-owned external upstream integration",
+        "x-owner": "guest-runtime-external-upstream",
+        "parameters": [{ "$ref": "#/components/parameters/IntegrationId" }],
+        "responses": {
+          "200": { "description": "Explicit external integration read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExternalUpstreamIntegrationReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/relay-targets": {
+      "get": {
+        "operationId": "listOutboundRelayTargets",
+        "summary": "List Guest Runtime-owned outbound relay targets",
+        "x-owner": "guest-runtime-relay",
+        "responses": {
+          "200": { "description": "Explicit relay target collection read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OutboundRelayTargetCollectionReadResult" } } } }
+        }
+      },
+      "post": {
+        "operationId": "applyOutboundRelayTarget",
+        "summary": "Persist and explicitly observe an outbound relay target",
+        "x-owner": "guest-runtime-relay",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/outbound-relay-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Durable relay target operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Relay target admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/relay-targets/{targetId}": {
+      "get": {
+        "operationId": "getOutboundRelayTarget",
+        "summary": "Read one Guest Runtime-owned outbound relay target",
+        "x-owner": "guest-runtime-relay",
+        "parameters": [{ "$ref": "#/components/parameters/RelayTargetId" }],
+        "responses": {
+          "200": { "description": "Explicit relay target read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OutboundRelayTargetReadResult" } } } }
+        }
+      }
+    },
+    "/v1/time/authorities": {
+      "post": {
+        "operationId": "applyGuestTimeAuthority",
+        "summary": "Apply Guest Runtime-owned time authority configuration",
+        "x-owner": "guest-runtime-time-authority",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/time-authority-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Durable Time Authority operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Time Authority admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/time/authorities/{authorityId}": {
+      "get": {
+        "operationId": "getGuestTimeAuthority",
+        "summary": "Read Guest Runtime-owned time authority configuration and quality",
+        "x-owner": "guest-runtime-time-authority",
+        "parameters": [{ "$ref": "#/components/parameters/AuthorityId" }],
+        "responses": {
+          "200": { "description": "Explicit Time Authority read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TimeAuthorityReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/recorders": {
+      "get": {
+        "operationId": "listRecorderObservabilitySummaries",
+        "summary": "Read one bounded Catalog-owned Recorder discovery page",
+        "x-owner": "guest-runtime-observation-catalog",
+        "parameters": [
+          { "$ref": "#/components/parameters/RecorderHistoryLimit" },
+          { "$ref": "#/components/parameters/RecorderHistoryCursor" }
+        ],
+        "responses": {
+          "200": { "description": "Bounded Recorder observability summary page", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecorderObservabilitySummaryPageReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/catalog/recorder-observations/{observationId}": {
+      "get": {
+        "operationId": "getCatalogObservation",
+        "summary": "Read one immutable Recorder self-observation Catalog projection",
+        "x-owner": "guest-runtime-observation-catalog",
+        "parameters": [{ "$ref": "#/components/parameters/ObservationId" }],
+        "responses": {
+          "200": { "description": "Explicit Catalog observation read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogObservationReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/recorders/{recorderId}/observability": {
+      "get": {
+        "operationId": "getRecorderObservabilitySummary",
+        "summary": "Read the Catalog-owned current Recorder observability projection",
+        "x-owner": "guest-runtime-observation-catalog",
+        "parameters": [{ "$ref": "#/components/parameters/RecorderId" }],
+        "responses": {
+          "200": { "description": "Explicit Recorder observability summary read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecorderObservabilitySummaryReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/recorders": {
+      "get": {
+        "operationId": "listRecorderObservabilitySummaries",
+        "summary": "Read one bounded Catalog-owned page of current Recorder projections",
+        "x-owner": "guest-runtime-observation-catalog",
+        "parameters": [
+          { "$ref": "#/components/parameters/RecorderHistoryLimit" },
+          { "$ref": "#/components/parameters/RecorderHistoryCursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded Recorder observability summary page read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecorderObservabilitySummaryPageReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/recorders/{recorderId}/observability/timeline": {
+      "get": {
+        "operationId": "getRecorderObservationTimeline",
+        "summary": "Read one bounded immutable Recorder observation timeline page",
+        "x-owner": "guest-runtime-observation-catalog",
+        "parameters": [
+          { "$ref": "#/components/parameters/RecorderId" },
+          { "$ref": "#/components/parameters/RecorderHistoryLimit" },
+          { "$ref": "#/components/parameters/RecorderHistoryCursor" }
+        ],
+        "responses": {
+          "200": { "description": "Bounded Recorder observation timeline read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecorderObservationTimelineReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/recorders/{recorderId}/observability/incidents": {
+      "get": {
+        "operationId": "getRecorderIncidentHistory",
+        "summary": "Read one bounded page of Recorder-reported typed issues",
+        "x-owner": "guest-runtime-observation-catalog",
+        "parameters": [
+          { "$ref": "#/components/parameters/RecorderId" },
+          { "$ref": "#/components/parameters/RecorderHistoryLimit" },
+          { "$ref": "#/components/parameters/RecorderHistoryCursor" }
+        ],
+        "responses": {
+          "200": { "description": "Bounded Recorder incident history read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecorderIncidentHistoryReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/recorders/{recorderId}/artifacts": {
+      "get": {
+        "operationId": "getRecorderArchiveArtifacts",
+        "summary": "Read one bounded page of artifacts explicitly attributed to a Recorder",
+        "description": "Only matched Archive attribution is returned. A reported bed name is evidence and never serves as Recorder identity.",
+        "x-owner": "archive-export",
+        "parameters": [
+          { "$ref": "#/components/parameters/RecorderId" },
+          { "$ref": "#/components/parameters/RecorderHistoryLimit" },
+          { "$ref": "#/components/parameters/RecorderHistoryCursor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bounded Recorder artifact page read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecorderArtifactPageReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/recorders/{recorderId}/observability-expectation": {
+      "post": {
+        "operationId": "applyRecorderObservabilityExpectation",
+        "summary": "Persist an explicit revisioned Recorder observability expectation",
+        "x-owner": "guest-runtime-observation-catalog",
+        "parameters": [{ "$ref": "#/components/parameters/RecorderId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/recorder-observability-expectation-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Expectation event and current projections were durably persisted", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/recorder-expectation-receipt.schema.json" } } } },
+          "400": { "description": "Expectation command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "409": { "description": "Request ownership or expected revision conflict", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Expectation persistence outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/recorder-assignments": {
+      "post": {
+        "operationId": "admitRecorderAssignmentEvidence",
+        "summary": "Persist explicit time-bounded Recorder assignment evidence",
+        "x-owner": "guest-runtime-recorder-assignment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "../json-schema/v1/recorder-assignment-evidence-command.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Recorder assignment evidence was accepted or already durably owned by the same request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-assignment-evidence-receipt.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Recorder assignment command rejected before admission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "requestId is already bound to different assignment evidence",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recorder Assignment persistence outcome is unavailable or unknown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandAdmissionFailure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/runtime/telemetry/pipelines": {
+      "post": {
+        "operationId": "applyGuestTelemetryPipeline",
+        "summary": "Apply Guest Runtime-owned OpenTelemetry pipeline configuration",
+        "x-owner": "guest-runtime-telemetry-pipeline",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/telemetry-pipeline-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Durable telemetry pipeline operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Telemetry pipeline admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/telemetry/pipelines/{pipelineId}": {
+      "get": {
+        "operationId": "getGuestTelemetryPipeline",
+        "summary": "Read Guest Runtime-owned telemetry pipeline state",
+        "x-owner": "guest-runtime-telemetry-pipeline",
+        "parameters": [{ "$ref": "#/components/parameters/PipelineId" }],
+        "responses": {
+          "200": { "description": "Explicit telemetry pipeline read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TelemetryPipelineReadResult" } } } }
+        }
+      }
+    },
+    "/v1/runtime/telemetry/signals": {
+      "post": {
+        "operationId": "emitGuestTelemetrySignal",
+        "summary": "Emit one redacted and bounded diagnostic signal",
+        "x-owner": "guest-runtime-telemetry-pipeline",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/telemetry-signal-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Durable diagnostic emission operation; read the resulting receipt through its explicit resource id", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "Command rejected before a receipt exists", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "500": { "description": "Telemetry signal admission outcome is unknown", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CommandAdmissionFailure" } } } }
+        }
+      }
+    },
+    "/v1/runtime/telemetry/receipts/{receiptId}": {
+      "get": {
+        "operationId": "getGuestTelemetryEmissionReceipt",
+        "summary": "Read a Guest Runtime telemetry emission receipt",
+        "x-owner": "guest-runtime-telemetry-pipeline",
+        "parameters": [{ "$ref": "#/components/parameters/ReceiptId" }],
+        "responses": {
+          "200": { "description": "Explicit telemetry emission receipt read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TelemetryEmissionReceiptReadResult" } } } }
+        }
+      }
+    },
+    "/v1/time/clock-quality": {
+      "get": {
+        "operationId": "getClockQuality",
+        "summary": "Read Time Authority-owned clock quality",
+        "x-owner": "time-authority",
+        "responses": {
+          "200": {
+            "description": "Explicit clock quality read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClockQualityReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recorder-ingress/receipts/{receiptId}": {
+      "get": {
+        "operationId": "getIngressReceipt",
+        "summary": "Read a Recorder Gateway-owned ingress receipt",
+        "x-owner": "recorder-gateway",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReceiptId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit ingress receipt read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngressReceiptReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recorder-ingress/delivery-receipts/{receiptId}": {
+      "get": {
+        "operationId": "getDeliveryReceipt",
+        "summary": "Read a Recorder Gateway-owned upstream delivery receipt",
+        "x-owner": "recorder-gateway",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReceiptId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit upstream delivery receipt read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryReceiptReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recorder-cold-path/captures/{coldPathCaptureId}": {
+      "get": {
+        "operationId": "getRecorderColdPathCapture",
+        "summary": "Read a Recorder Gateway-owned cold-path capture aggregate",
+        "x-owner": "recorder-gateway",
+        "x-network-scope": "guest-loopback-only",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ColdPathCaptureId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit Recorder cold-path capture read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecorderColdPathCaptureReadResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is outside the Guest-loopback control boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-rejection.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recorder-cold-path/captures/{coldPathCaptureId}:packet-sequence": {
+      "get": {
+        "operationId": "getRecorderColdPathPacketSequence",
+        "summary": "Read the immutable raw packet sequence for a finalized Recorder Gateway capture",
+        "description": "Guest-loopback-only. A binary success response is raw source evidence, not a .vital artifact, upload receipt, or indexing claim. A non-available owner read is returned as an explicit JSON ReadResult.",
+        "x-owner": "recorder-gateway",
+        "x-network-scope": "guest-loopback-only",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ColdPathCaptureId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A receipt-finalized raw packet sequence, or an explicit non-available read result",
+            "content": {
+              "application/vnd.tirosh.recorder-gateway.cold-path-packet-sequence+jsonl": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/read-result.schema.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is outside the Guest-loopback control boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-rejection.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recorder-cold-path/captures/{coldPathCaptureId}:finalize": {
+      "post": {
+        "operationId": "finalizeRecorderColdPathCapture",
+        "summary": "Finalize a Recorder Gateway cold-path capture into raw packet-sequence evidence",
+        "description": "Guest-loopback-only. A successful response attests only to raw packet-sequence source evidence; it does not attest to .vital formation, artifact upload, or upstream indexing.",
+        "x-owner": "recorder-gateway",
+        "x-network-scope": "guest-loopback-only",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ColdPathCaptureId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-command.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The capture was finalized, or the exact requestId was replayed idempotently",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-receipt.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The command was rejected before cold-path finalization was admitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is outside the Guest-loopback control boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recorder Gateway could not determine whether finalization was durably admitted; retry the exact requestId after recovery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/recorder-cold-path/finalization-receipts/{coldPathCaptureFinalizationReceiptId}": {
+      "get": {
+        "operationId": "getRecorderColdPathCaptureFinalizationReceipt",
+        "summary": "Read Recorder Gateway raw packet-sequence finalization evidence",
+        "x-owner": "recorder-gateway",
+        "x-network-scope": "guest-loopback-only",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ColdPathCaptureFinalizationReceiptId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit Recorder cold-path finalization receipt read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecorderColdPathCaptureFinalizationReceiptReadResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is outside the Guest-loopback control boundary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-rejection.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/archive/manifests/{artifactId}": {
+      "get": {
+        "operationId": "getArtifactManifest",
+        "summary": "Read an immutable Artifact Manifest",
+        "x-owner": "archive-export",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ArtifactId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit artifact manifest read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactManifestReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/archive/export-receipts/{receiptId}": {
+      "get": {
+        "operationId": "getExportReceipt",
+        "summary": "Read an Archive Export receipt",
+        "x-owner": "archive-export",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReceiptId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit export receipt read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportReceiptReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/platform/installation": {
+      "get": {
+        "operationId": "getPlatformInstallation",
+        "summary": "Read the Host Agent-owned installation resource",
+        "x-owner": "host-agent",
+        "responses": {
+          "200": {
+            "description": "Explicit Host installation read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformInstallationReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/platform/guest-runtime-control-endpoint": {
+      "get": {
+        "operationId": "getPlatformGuestRuntimeControlEndpoint",
+        "summary": "Read the Host Agent-owned Guest Runtime Control endpoint resource",
+        "x-owner": "host-agent",
+        "responses": {
+          "200": {
+            "description": "Explicit Host Guest Runtime Control endpoint read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuestRuntimeControlEndpointReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/platform/guest:start": {
+      "post": {
+        "operationId": "startPlatformGuest",
+        "summary": "Request a Host-owned Guest provider start",
+        "x-owner": "host-agent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "../json-schema/v1/guest-lifecycle-command.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The Host Agent accepted the lifecycle command and created a durable Host operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/operation.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The lifecycle command was rejected before a Host operation existed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Host Agent could not determine lifecycle command admission. Retry the exact requestId after Host recovery.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/platform/guest:stop": {
+      "post": {
+        "operationId": "stopPlatformGuest",
+        "summary": "Request a Host-owned Guest provider stop",
+        "x-owner": "host-agent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "../json-schema/v1/guest-lifecycle-command.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The Host Agent accepted the lifecycle command and created a durable Host operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/operation.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The lifecycle command was rejected before a Host operation existed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Host Agent could not determine lifecycle command admission. Retry the exact requestId after Host recovery.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/platform/guest:reboot": {
+      "post": {
+        "operationId": "rebootPlatformGuest",
+        "summary": "Request a Host-owned Guest provider reboot",
+        "x-owner": "host-agent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "../json-schema/v1/guest-lifecycle-command.schema.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The Host Agent accepted the lifecycle command and created a durable Host operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/operation.schema.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The lifecycle command was rejected before a Host operation existed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-rejection.schema.json"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The Host Agent could not determine lifecycle command admission. Retry the exact requestId after Host recovery.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/platform/time/authorities": {
+      "post": {
+        "operationId": "applyHostTimeAuthority",
+        "summary": "Apply Host Agent-owned time authority configuration",
+        "x-owner": "host-agent-time-authority",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/time-authority-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Durable Host Time Authority operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host time command admission outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/platform/time/authorities/{authorityId}": {
+      "get": {
+        "operationId": "getHostTimeAuthority",
+        "summary": "Read Host Agent-owned time authority configuration and quality",
+        "x-owner": "host-agent-time-authority",
+        "parameters": [{ "$ref": "#/components/parameters/AuthorityId" }],
+        "responses": {
+          "200": { "description": "Explicit Host Time Authority read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TimeAuthorityReadResult" } } } }
+        }
+      }
+    },
+    "/v1/platform/time/clock-quality": {
+      "get": {
+        "operationId": "getHostClockQuality",
+        "summary": "Read Host Agent-owned clock quality",
+        "x-owner": "host-agent-time-authority",
+        "responses": {
+          "200": { "description": "Explicit Host clock quality read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ClockQualityReadResult" } } } }
+        }
+      }
+    },
+    "/v1/platform/telemetry/pipelines": {
+      "post": {
+        "operationId": "applyHostTelemetryPipeline",
+        "summary": "Apply Host Agent-owned OpenTelemetry pipeline configuration",
+        "x-owner": "host-agent-telemetry-pipeline",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/telemetry-pipeline-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Durable Host telemetry pipeline operation", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host telemetry pipeline admission outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/platform/telemetry/pipelines/{pipelineId}": {
+      "get": {
+        "operationId": "getHostTelemetryPipeline",
+        "summary": "Read Host Agent-owned telemetry pipeline state",
+        "x-owner": "host-agent-telemetry-pipeline",
+        "parameters": [{ "$ref": "#/components/parameters/PipelineId" }],
+        "responses": {
+          "200": { "description": "Explicit Host telemetry pipeline read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TelemetryPipelineReadResult" } } } }
+        }
+      }
+    },
+    "/v1/platform/telemetry/signals": {
+      "post": {
+        "operationId": "emitHostTelemetrySignal",
+        "summary": "Emit one Host diagnostic signal after redaction and cardinality policy",
+        "x-owner": "host-agent-telemetry-pipeline",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/telemetry-signal-command.schema.json" } } } },
+        "responses": {
+          "202": { "description": "Durable Host diagnostic emission operation; read the resulting receipt through its explicit resource id", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/operation.schema.json" } } } },
+          "400": { "description": "Command rejected before a receipt exists", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host telemetry signal admission outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/platform/telemetry/receipts/{receiptId}": {
+      "get": {
+        "operationId": "getHostTelemetryEmissionReceipt",
+        "summary": "Read a Host Agent telemetry emission receipt",
+        "x-owner": "host-agent-telemetry-pipeline",
+        "parameters": [{ "$ref": "#/components/parameters/ReceiptId" }],
+        "responses": {
+          "200": { "description": "Explicit Host telemetry emission receipt read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TelemetryEmissionReceiptReadResult" } } } }
+        }
+      }
+    },
+    "/v1/platform/updates": {
+      "post": {
+        "operationId": "applyHostUpdate",
+        "summary": "Admit a signed immutable Host update bootstrap envelope",
+        "description": "Host-local update channel. The browser-facing authentication and maintenance surface is a later product capability; this endpoint must not be exposed beyond its Host-local transport boundary.",
+        "x-owner": "host-agent-update-journal",
+        "x-network-scope": "host-local",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-command.schema.json" } } }
+        },
+        "responses": {
+          "202": { "description": "Durably admitted Host update operation and journal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateWorkflowOutcome" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host update admission outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/platform/update-bundles:import": {
+      "post": {
+        "operationId": "importHostUpdateBundle",
+        "summary": "Atomically import one Host-local offline release bundle directory",
+        "description": "The source directory is selected through an OS-authorized local operator interface and is interpreted only by the Host. A successful import means complete immutable bytes were published under the Host bundle store; it does not claim C25 trust verification or update success.",
+        "x-owner": "host-update-bundle-store",
+        "x-network-scope": "host-local",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-bundle-control.schema.json#/$defs/HostUpdateBundleImportCommand" } } } },
+        "responses": {
+          "201": { "description": "New or idempotently existing immutable imported bundle", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-bundle-control.schema.json#/$defs/HostUpdateBundleImportReceipt" } } } },
+          "400": { "description": "Import command or selected bundle rejected", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host bundle-store outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/platform/update-bundles/{bundleId}": {
+      "get": {
+        "operationId": "getHostUpdateBundle",
+        "summary": "Read one Host-owned imported update-bundle declaration",
+        "description": "The declared C25 envelope is not a trust-verification result.",
+        "x-owner": "host-update-bundle-store",
+        "x-network-scope": "host-local",
+        "parameters": [{ "$ref": "#/components/parameters/UpdateBundleId" }],
+        "responses": {
+          "200": { "description": "Explicit imported-bundle read result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateBundleReadResult" } } } }
+        }
+      }
+    },
+    "/v1/platform/update-bundles/{bundleId}:apply": {
+      "post": {
+        "operationId": "applyImportedHostUpdateBundle",
+        "summary": "Bind a Host-owned imported bundle to the existing durable C27 update workflow",
+        "description": "Host reads the stored C25 declaration and performs the normal C27 bootstrap verification and staged handoff. The caller cannot provide a separate envelope.",
+        "x-owner": "host-agent-update-journal",
+        "x-network-scope": "host-local",
+        "parameters": [{ "$ref": "#/components/parameters/UpdateBundleId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-bundle-control.schema.json#/$defs/HostUpdateBundleApplyCommand" } } } },
+        "responses": {
+          "202": { "description": "Durably admitted Host update operation and journal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateWorkflowOutcome" } } } },
+          "400": { "description": "Command rejected before admission", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host update admission outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/platform/updates/{updateId}": {
+      "get": {
+        "operationId": "getHostUpdateJournal",
+        "summary": "Read Host-owned durable update handoff and recovery state",
+        "x-owner": "host-agent-update-journal",
+        "x-network-scope": "host-local",
+        "parameters": [{ "$ref": "#/components/parameters/UpdateId" }],
+        "responses": {
+          "200": { "description": "Explicit Host update journal read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateJournalReadResult" } } } }
+        }
+      }
+    },
+    "/v1/platform/updates/{updateId}:complete": {
+      "post": {
+        "operationId": "completeHostUpdate",
+        "summary": "Settle a Host update from staged next-updater evidence",
+        "description": "Host-local next-updater channel. The route updateId and report updateId must match; the Host-owned expected journal revision protects recovery handoff ownership.",
+        "x-owner": "host-agent-update-journal",
+        "x-network-scope": "host-local",
+        "parameters": [{ "$ref": "#/components/parameters/UpdateId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/update-completion-command.schema.json" } } }
+        },
+        "responses": {
+          "202": { "description": "Settled or idempotently replayed Host update operation and journal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateWorkflowOutcome" } } } },
+          "400": { "description": "Completion command rejected", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host update completion outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
+    "/v1/platform/operations/{operationId}": {
+      "get": {
+        "operationId": "getPlatformOperation",
+        "summary": "Read a durable Host Agent operation",
+        "x-owner": "host-agent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OperationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explicit Host operation read result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "OperationId": {
+        "name": "operationId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ReceiptId": {
+        "name": "receiptId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ColdPathCaptureId": {
+        "name": "coldPathCaptureId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ColdPathCaptureFinalizationReceiptId": {
+        "name": "coldPathCaptureFinalizationReceiptId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ArtifactId": {
+        "name": "artifactId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SessionId": {
+        "name": "sessionId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "BedId": {
+        "name": "bedId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "VirtualRecorderId": {
+        "name": "virtualRecorderId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RecorderId": {
+        "name": "recorderId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RecorderHistoryLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "RecorderHistoryCursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "IntegrationId": {
+        "name": "integrationId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "RelayTargetId": {
+        "name": "targetId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "AuthorityId": {
+        "name": "authorityId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ObservationId": {
+        "name": "observationId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "PipelineId": {
+        "name": "pipelineId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "UpdateId": {
+        "name": "updateId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "UpdateBundleId": {
+        "name": "bundleId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "schemas": {
+      "RuntimeTopologyReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/runtime-topology.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "PlatformInstallationReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/platform-installation.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "GuestRuntimeControlEndpointReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/guest-runtime-control-endpoint.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "FacadeForwardingFailure": {
+        "$ref": "../json-schema/v1/facade-forwarding-failure.schema.json"
+      },
+      "CommandAdmissionFailure": {
+        "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+      },
+      "OperationReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/operation.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "GuestOperationalStateOperationReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/guest-operational-state-backup-operation.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "GuestOperationalStateIdentityReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/guest-operational-state-identity.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "CapabilityReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/capability-document.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "ServiceReadinessReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/service-readiness.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "ClockQualityReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/clock-quality.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "IngressReceiptReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/ingress-receipt.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "DeliveryReceiptReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/delivery-receipt.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "RecorderColdPathCaptureReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/recorder-cold-path-capture.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "RecorderColdPathCaptureFinalizationReceiptReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/recorder-cold-path-capture-finalization-receipt.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "ArtifactManifestReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/artifact-manifest.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "ArchiveArtifactDetailReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/archive-artifact-detail.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "ExportReceiptReadResult": {
+        "allOf": [
+          {
+            "$ref": "../json-schema/v1/read-result.schema.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "../json-schema/v1/export-receipt.schema.json"
+              }
+            }
+          }
+        ]
+      },
+      "LabSessionReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          {
+            "type": "object",
+            "properties": {
+              "value": { "$ref": "../json-schema/v1/lab-resources.schema.json#/$defs/LabSession" }
+            }
+          }
+        ]
+      },
+      "LabSessionCollectionReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": { "$ref": "../json-schema/v1/lab-resources.schema.json#/$defs/LabSession" }
+              }
+            }
+          }
+        ]
+      },
+      "LabBedReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          {
+            "type": "object",
+            "properties": {
+              "value": { "$ref": "../json-schema/v1/lab-resources.schema.json#/$defs/LabBed" }
+            }
+          }
+        ]
+      },
+      "LabBedCollectionReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": { "$ref": "../json-schema/v1/lab-resources.schema.json#/$defs/LabBed" }
+              }
+            }
+          }
+        ]
+      },
+      "VirtualRecorderReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          {
+            "type": "object",
+            "properties": {
+              "value": { "$ref": "../json-schema/v1/lab-resources.schema.json#/$defs/VirtualRecorder" }
+            }
+          }
+        ]
+      },
+      "VirtualRecorderCollectionReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": { "$ref": "../json-schema/v1/lab-resources.schema.json#/$defs/VirtualRecorder" }
+              }
+            }
+          }
+        ]
+      },
+      "DeletionReceiptReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          {
+            "type": "object",
+            "properties": {
+              "value": { "$ref": "../json-schema/v1/deletion-receipt.schema.json" }
+            }
+          }
+        ]
+      },
+      "ExternalUpstreamIntegrationReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/external-upstream-integration.schema.json" } } }
+        ]
+      },
+      "ExternalUpstreamIntegrationCollectionReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "type": "array", "items": { "$ref": "../json-schema/v1/external-upstream-integration.schema.json" } } } }
+        ]
+      },
+      "OutboundRelayTargetReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/outbound-relay-target.schema.json" } } }
+        ]
+      },
+      "OutboundRelayTargetCollectionReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "type": "array", "items": { "$ref": "../json-schema/v1/outbound-relay-target.schema.json" } } } }
+        ]
+      },
+      "TimeAuthorityReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/time-authority.schema.json" } } }
+        ]
+      },
+      "CatalogObservationReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/catalog-observation.schema.json" } } }
+        ]
+      },
+      "RecorderObservabilitySummaryReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/recorder-observability-summary.schema.json" } } }
+        ]
+      },
+      "RecorderObservabilitySummaryPageReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/recorder-observability-summary-page.schema.json" } } }
+        ]
+      },
+      "RecorderObservabilitySummaryPageReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/recorder-observability-summary-page.schema.json" } } }
+        ]
+      },
+      "RecorderObservationTimelineReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/recorder-observation-timeline-page.schema.json" } } }
+        ]
+      },
+      "RecorderIncidentHistoryReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/recorder-incident-page.schema.json" } } }
+        ]
+      },
+      "RecorderArtifactPageReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/recorder-artifact-page.schema.json" } } }
+        ]
+      },
+      "TelemetryPipelineReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/telemetry-pipeline.schema.json" } } }
+        ]
+      },
+      "TelemetryEmissionReceiptReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/telemetry-emission-receipt.schema.json" } } }
+        ]
+      },
+      "HostUpdateJournalReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/host-update-journal.schema.json" } } }
+        ]
+      },
+      "HostUpdateBundleReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/host-update-bundle-control.schema.json#/$defs/HostUpdateBundleDeclaration" } } }
+        ]
+      },
+      "HostUpdateWorkflowOutcome": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation", "journal"],
+        "properties": {
+          "operation": { "$ref": "../json-schema/v1/operation.schema.json" },
+          "journal": { "$ref": "../json-schema/v1/host-update-journal.schema.json" }
+        }
+      }
+    }
+  }
+}

@@ -24,7 +24,8 @@
 | recorder/bed 관측 수정             | `apps/vitaldb-observer`와 macOS runtime의 observability reader                                       |
 | update/recovery 흐름 수정          | `apps/vitalserver-macos-runtime/Sources/Workflow`와 `Sources/Hosts/CLI`                              |
 | packaging 또는 release bundle 수정 | `packages/vitalserver-devtools`, `apps/vitalserver-macos-runtime/Support`, `Makefile`                |
-| testkit 수정                       | `packages/vitalserver-testkit`와 runtime TestKit API                                                 |
+| Product Lab 수정                   | `apps/vitalserver-lab`, Runtime Control `/runtime/lab/*`, Guest Control `/runtime/lab/*`                          |
+| dev testkit 수정                   | `packages/vitalserver-testkit`                                                                       |
 | 문서 수정                          | `site-docs/`와 `docs/`                                                                               |
 
 ### 1-2. 헷갈리기 쉬운 기준
@@ -66,6 +67,7 @@ Repository root에서는 먼저 두 가지만 구분하면 됩니다.
 | `apps/vitalserver`               | Vital Server를 Helper runtime 안에서 실행하기 위한 wrapper |
 | `apps/vitalserver-macos-runtime` | macOS Helper app, host runtime, VM 관리, packaging         |
 | `apps/vitalserver-runtime-pwa`   | browser에서 여는 Runtime Control UI                        |
+| `apps/vitalserver-lab`           | Product Lab scenario, session, virtual recorder, `.vital` replay API |
 | `apps/vitaldb-observer`          | Redis/proxy를 읽어 recorder/bed 상태를 정리                |
 | `apps/vitalserver-recorder-ingress`   | VRecorder command와 audit event를 관측                     |
 | `apps/vitalserver-recorder-recovery`  | recorder ingress raw archive를 `.vital`로 복구하는 service |
@@ -76,7 +78,7 @@ Repository root에서는 먼저 두 가지만 구분하면 됩니다.
 
 | 경로                               | 역할                                                        |
 | ---------------------------------- | ----------------------------------------------------------- |
-| `packages/vitalserver-testkit`     | 가상 recorder와 smoke/load 검증 도구                        |
+| `packages/vitalserver-testkit`     | dev-only simulated recorder와 smoke/load 검증 도구          |
 | `packages/vitalserver-devtools`    | packaging, VM image, update bundle을 만드는 도구            |
 | `packages/vitalserver-guest-tools` | Linux guest 안에서 상태, update, logs, repair를 다루는 도구 |
 
@@ -113,16 +115,15 @@ Sources/
 
 `Contracts`, `Domain`, `Application`, `Workflow`, `Bootstrap`, `Hosts`, `Errors`의 책임 기준은 [Architecture](architecture.md)의 `코드 경계`와 [Delivery & Validation](delivery-validation.md)의 test rule에서 더 자세히 설명합니다. 이 문서의 다음 절은 그중에서도 파일 위치를 자주 찾아야 하는 외부 연결 코드를 조금 더 풀어 설명합니다.
 
-### 3-3. TestKit과 Dev Console
+### 3-3. Product Lab과 Dev Console
 
-Dev 배포판의 QA 기능은 단순 test support가 아니라 제품 검증 기능입니다. Production source에서 `Testing`이라는 포괄 이름을 쓰기보다, 기능 이름인 `TestKit` 또는 `DevConsole`로 드러냅니다.
+Runtime v2의 virtual recorder와 `.vital` replay 기능은 Product Lab이 소유합니다. TestKit은 dev/load 검증 도구로 남길 수 있지만, Runtime Control API나 Mac Helper product UI의 기능 이름과 폴더 경계가 되면 안 됩니다.
 
 ```text
-Contracts/RuntimeControl/TestKit/
 Adapters/Inbound/RuntimeControlAPI/DevConsole/
-Adapters/Inbound/RuntimeControlAPI/TestKit/
-Adapters/Inbound/MacControlPanel/Presentation/TestKit/
-Adapters/Outbound/MacRuntimeControlClient/TestKit/
+Adapters/Inbound/MacControlPanel/Presentation/Lab/
+Adapters/Outbound/GuestControl/
+Contracts/Shared/RuntimeLabContracts.swift
 ```
 
 ## 4. 자주 들어가는 외부 연결 코드
@@ -140,18 +141,17 @@ Adapters/Inbound/RuntimeControlAPI/
   Boundary/
   Transport/
   DevConsole/
-  TestKit/
 ```
 
-이 폴더 안에서도 역할을 나눕니다. HTTP 요청/응답을 다루는 코드, API route를 고르는 코드, 개발용 확인 화면, TestKit endpoint가 서로 섞이지 않게 합니다.
+이 폴더 안에서도 역할을 나눕니다. HTTP 요청/응답을 다루는 코드, API route를 고르는 코드, 개발용 확인 화면이 서로 섞이지 않게 합니다. Product Lab route는 별도 TestKit endpoint 폴더가 아니라 Runtime Control API boundary catalog와 Guest Control client 계약을 통해 노출합니다.
 
 | 수정하려는 것       | 먼저 볼 곳                                        |
 | ------------------- | ------------------------------------------------- |
 | API route 추가/변경 | `Boundary/`와 endpoint catalog                    |
 | HTTP 요청/응답 처리 | `Transport/`                                      |
 | 개발용 확인 화면    | `DevConsole/`                                     |
-| testkit endpoint    | `TestKit/`                                        |
-| OpenAPI 문서        | `docs/runtime/macos/runtime-control.openapi.json` |
+| Product Lab route   | `Boundary/`와 `Contracts/Shared/RuntimeLabContracts.swift` |
+| OpenAPI 문서        | `docs/runtime/runtime-control.openapi.json` |
 
 주의할 점은 API가 상태를 새로 만들면 안 된다는 것입니다. API는 이미 읽은 runtime 상태, event, recorder/bed activity를 response로 전달합니다.
 
@@ -166,8 +166,8 @@ Adapters/Inbound/MacControlPanel/
   Presentation/
     Copy/
     Formatting/
+    Lab/
     Policies/
-    TestKit/
     ViewModels/
     Views/
 ```
@@ -179,6 +179,7 @@ Adapters/Inbound/MacControlPanel/
 | 버튼/라벨 문구                      | `Presentation/Copy/`       |
 | 시간, byte, URL 같은 표시 형식      | `Presentation/Formatting/` |
 | 상태를 어떤 문구/색/행동으로 보일지 | `Presentation/Policies/`   |
+| Product Lab 화면                    | `Presentation/Lab/`        |
 | 화면 상태와 command 연결            | `Presentation/ViewModels/` |
 | SwiftUI 화면                        | `Presentation/Views/`      |
 | release version/generated 값        | `Generated/`               |
@@ -199,10 +200,9 @@ Adapters/Outbound/MacRuntimeControlClient/
   Logs/
   Reads/
   Settings/
-  TestKit/
 ```
 
-이 영역은 실패를 가장 조심해야 합니다. 파일이 없으면 missing, 권한 문제가 있으면 failed, 정상적으로 읽었는데 결과가 없으면 empty로 전달해야 합니다.
+이 영역은 실패를 가장 조심해야 합니다. 파일이 없으면 missing, 권한 문제가 있으면 failed, 정상적으로 읽었는데 결과가 없으면 empty로 전달해야 합니다. Guest-owned service, Lab, VitalDB product state는 `Adapters/Outbound/GuestControl/`을 통해 Guest Control API에서 읽고 실행합니다.
 
 | 수정하려는 것                  | 먼저 볼 곳     |
 | ------------------------------ | -------------- |
@@ -212,7 +212,7 @@ Adapters/Outbound/MacRuntimeControlClient/
 | log 읽기/export                | `Logs/`        |
 | status, diagnostics, file read | `Reads/`       |
 | settings 읽기/쓰기             | `Settings/`    |
-| testkit control                | `TestKit/`     |
+| Guest service/Lab/VitalDB API  | `Adapters/Outbound/GuestControl/` |
 
 ## 5. 문서 노출 기준
 
@@ -278,7 +278,7 @@ Dev 문서는 “왜 그렇게 만들었고, 어디를 고쳐야 하는가”를
 | status/read 변경            | read failure를 empty success로 바꾸지 않음                   |
 | update/recovery/repair 변경 | Workflow에 순서와 진행 상태를 두고 실패 event를 남김         |
 | packaging 변경              | release artifact, install/update/uninstall 문서를 함께 확인  |
-| testkit 변경                | 검증 기능이 product-facing QA 기능이라는 점을 유지           |
+| testkit 변경                | dev-only simulated recorder와 smoke/load 검증 도구 경계를 유지 |
 
 ### 6-3. 피해야 할 것
 

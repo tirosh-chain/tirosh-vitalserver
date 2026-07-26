@@ -14,7 +14,6 @@ class RuntimeConfig:
     public_port: int
     redis_host: str
     redis_port: int
-    testkit_enabled: bool
     trust_proxy: bool
     vital_files_directory: str
 
@@ -30,7 +29,6 @@ def runtime_config_from_json(document: dict[str, Any]) -> RuntimeConfig:
         public_port=required_int(document, RuntimeConfigKey.PUBLIC_PORT, minimum=1),
         redis_host=required_str(document, RuntimeConfigKey.REDIS_HOST),
         redis_port=required_int(document, RuntimeConfigKey.REDIS_PORT, minimum=1),
-        testkit_enabled=required_bool(document, RuntimeConfigKey.TESTKIT_ENABLED),
         trust_proxy=required_bool(document, RuntimeConfigKey.TRUST_PROXY),
         vital_files_directory=required_str(
             document,

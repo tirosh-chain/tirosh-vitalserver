@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-set -eEuo pipefail
+set -Euo pipefail
 
 MOUNT_TAG="tirosh"
 MOUNT_POINT="/mnt/tirosh"
+DEPLOY_DIR="${MOUNT_POINT}/deploy"
 VITAL_FILES_MOUNT_TAG="tirosh-vital-files"
 VITAL_FILES_MOUNT_POINT="/mnt/tirosh-vital-files"
 RUNTIME_DIR="${MOUNT_POINT}/run"
@@ -12,30 +13,25 @@ FAILURE_FILE="${RUNTIME_DIR}/rootfs-failure.json"
 IDENTITY_CLEANUP_FILE="${RUNTIME_DIR}/rootfs-identity-cleanup.json"
 APT_PLAN_TEXT_FILE="${RUNTIME_DIR}/rootfs-apt-plan.txt"
 APT_PLAN_JSON_FILE="${RUNTIME_DIR}/rootfs-apt-plan.json"
+APT_PROGRESS_JSON_FILE="${RUNTIME_DIR}/rootfs-apt-progress.json"
 APT_INSTALLED_TEXT_FILE="${RUNTIME_DIR}/rootfs-apt-installed.txt"
 APT_INSTALLED_JSON_FILE="${RUNTIME_DIR}/rootfs-apt-installed.json"
+APT_BASE_PROOF_FILE="/var/lib/vitalserver/rootfs-apt-base.json"
+APT_PACKAGES_FILE="${DEPLOY_DIR}/rootfs-apt-packages.txt"
 APT_SNAPSHOT_CONF="/etc/apt/apt.conf.d/50vitalserver-snapshot"
 POLICY_RC_D="/usr/sbin/policy-rc.d"
 POLICY_RC_D_BACKUP="/usr/sbin/policy-rc.d.vitalserver-backup"
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
-PYTHON_WHEEL_DIR="${MOUNT_POINT}/deploy/python-wheels"
+GUEST_TOOLS_INSTALL_PROOF_FILE="${GUEST_TOOLS_HOME}/install-proof.json"
+PYTHON_WHEEL_DIR="${DEPLOY_DIR}/python-wheels"
 ROOTFS_STAGE="startup"
+ROOTFS_FAILURE_RECORDED=0
+APT_INDEX_UPDATE_TIMEOUT_SECONDS=1800
+APT_INSTALL_TIMEOUT_SECONDS=1800
+APT_PROGRESS_INTERVAL_SECONDS=30
 
-RUNTIME_APT_PACKAGES=(
-  avahi-daemon
-  busybox-static
-  ca-certificates
-  cloud-guest-utils
-  curl
-  docker.io
-  docker-compose-v2
-  procps
-  psmisc
-  python3-minimal
-  python3-venv
-  util-linux
-)
+RUNTIME_APT_PACKAGES=()
 
 ROOTFS_BLOCKED_UPGRADE_PACKAGES=(
   bsdextrautils
@@ -73,18 +69,20 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-record_failure() {
+record_failure_once() {
   local exit_code="$1"
   local stage="$2"
 
-  if [ "${exit_code}" -eq 0 ]; then
+  if [ "${ROOTFS_FAILURE_RECORDED}" -eq 1 ]; then
     return
   fi
+  ROOTFS_FAILURE_RECORDED=1
+
   if [ ! -d "${RUNTIME_DIR}" ]; then
     return
   fi
 
-  python3 - "${FAILURE_FILE}" "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" "${stage}" "${exit_code}" "${APT_PLAN_JSON_FILE}" "${RUNTIME_MANIFEST_FILE}" <<'PY' || true
+  python3 - "${FAILURE_FILE}" "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" "${stage}" "${exit_code}" "${APT_PROGRESS_JSON_FILE}" "${APT_PLAN_JSON_FILE}" "${RUNTIME_MANIFEST_FILE}" <<'PY' || true
 import json
 import sys
 from datetime import UTC, datetime
@@ -94,8 +92,9 @@ failure_path = Path(sys.argv[1])
 input_path = Path(sys.argv[2])
 stage = sys.argv[3]
 exit_code = int(sys.argv[4])
-apt_plan_path = Path(sys.argv[5])
-manifest_path = Path(sys.argv[6])
+apt_progress_path = Path(sys.argv[5])
+apt_plan_path = Path(sys.argv[6])
+manifest_path = Path(sys.argv[7])
 run_id = ""
 try:
     document = json.loads(input_path.read_text(encoding="utf-8"))
@@ -112,6 +111,7 @@ failure_path.write_text(
             "stage": stage,
             "exitCode": exit_code,
             "reason": "guest-rootfs-prepare-failed",
+            "aptProgressPath": str(apt_progress_path),
             "aptPlanPath": str(apt_plan_path),
             "manifestPath": str(manifest_path),
         },
@@ -124,7 +124,31 @@ failure_path.write_text(
 PY
 }
 
-trap 'record_failure "$?" "${ROOTFS_STAGE}"' ERR
+# ERR is the explicit fail-fast boundary. Bash does not invoke it for every
+# expansion failure, so EXIT writes the same failure proof for those paths and
+# returns Bash's original status (for example, 127 for nounset).
+handle_rootfs_error() {
+  local exit_code="$1"
+
+  trap - ERR
+  set +e
+  record_failure_once "${exit_code}" "${ROOTFS_STAGE}"
+  exit "${exit_code}"
+}
+
+handle_rootfs_exit() {
+  local exit_code="$1"
+
+  trap - ERR EXIT
+  set +e
+  if [ "${exit_code}" -ne 0 ]; then
+    record_failure_once "${exit_code}" "${ROOTFS_STAGE}"
+  fi
+  exit "${exit_code}"
+}
+
+trap 'handle_rootfs_error "$?"' ERR
+trap 'handle_rootfs_exit "$?"' EXIT
 
 mount_share() {
   local tag="$1"
@@ -209,6 +233,21 @@ if not isinstance(snapshot, str) or not re.fullmatch(r"\d{8}T\d{6}Z", snapshot):
     )
 print(snapshot)
 PY
+}
+
+read_runtime_apt_packages() {
+  ROOTFS_STAGE="apt-package-contract"
+  if [ ! -s "${APT_PACKAGES_FILE}" ]; then
+    printf "error: rootfs APT package contract is unavailable: %s\n" "${APT_PACKAGES_FILE}" >&2
+    return 1
+  fi
+  mapfile -t RUNTIME_APT_PACKAGES < <(
+    sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "${APT_PACKAGES_FILE}"
+  )
+  if [ "${#RUNTIME_APT_PACKAGES[@]}" -eq 0 ]; then
+    printf "error: rootfs APT package contract is empty: %s\n" "${APT_PACKAGES_FILE}" >&2
+    return 1
+  fi
 }
 
 read_guest_clock_utc() {
@@ -346,9 +385,98 @@ if blocked:
 PY
 }
 
+record_apt_progress() {
+  local stage="$1"
+  local status="$2"
+  local active_command="$3"
+  local command_timeout_seconds="$4"
+
+  python3 - "${APT_PROGRESS_JSON_FILE}" "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" "${stage}" "${status}" "${active_command}" "${command_timeout_seconds}" <<'PY'
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+output = Path(sys.argv[1])
+metadata_path = Path(sys.argv[2])
+stage = sys.argv[3]
+status = sys.argv[4]
+active_command = sys.argv[5]
+command_timeout_seconds = int(sys.argv[6])
+metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+run_id = metadata.get("runId")
+if not isinstance(run_id, str) or not run_id:
+    raise SystemExit("error: rootfs input metadata is missing runId")
+document = {
+    "schemaVersion": 1,
+    "runId": run_id,
+    "stage": stage,
+    "status": status,
+    "updatedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "activeCommand": active_command,
+    "activeCommandTimeoutSeconds": command_timeout_seconds,
+}
+temporary = output.with_suffix(output.suffix + ".tmp")
+temporary.write_text(
+    json.dumps(document, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+temporary.replace(output)
+PY
+}
+
+run_apt_command_with_progress() {
+  local stage="$1"
+  local command_timeout_seconds="$2"
+  local active_command="$3"
+  local command_pid
+  local command_status
+  shift 3
+
+  ROOTFS_STAGE="${stage}"
+  record_apt_progress \
+    "${ROOTFS_STAGE}" \
+    "running" \
+    "${active_command}" \
+    "${command_timeout_seconds}"
+  timeout --signal=TERM "${command_timeout_seconds}" "$@" &
+  command_pid="$!"
+  while kill -0 "${command_pid}" >/dev/null 2>&1; do
+    sleep "${APT_PROGRESS_INTERVAL_SECONDS}"
+    if kill -0 "${command_pid}" >/dev/null 2>&1; then
+      record_apt_progress \
+        "${ROOTFS_STAGE}" \
+        "running" \
+        "${active_command}" \
+        "${command_timeout_seconds}"
+    fi
+  done
+  command_status=0
+  wait "${command_pid}" || command_status="$?"
+  if [ "${command_status}" -ne 0 ]; then
+    record_apt_progress \
+      "${ROOTFS_STAGE}" \
+      "failed" \
+      "${active_command}" \
+      "${command_timeout_seconds}"
+    return "${command_status}"
+  fi
+  record_apt_progress \
+    "${ROOTFS_STAGE}" \
+    "passed" \
+    "${active_command}" \
+    "${command_timeout_seconds}"
+}
+
 update_apt_indexes() {
-  ROOTFS_STAGE="apt-index-update"
-  apt-get update
+  run_apt_command_with_progress \
+    "apt-index-update" \
+    "${APT_INDEX_UPDATE_TIMEOUT_SECONDS}" \
+    "apt-get update" \
+    apt-get \
+    -o Acquire::Retries=5 \
+    -o APT::Update::Error-Mode=any \
+    update
 }
 
 record_installed_runtime_packages() {
@@ -389,6 +517,152 @@ output.write_text(
 PY
 }
 
+write_apt_base_proof() {
+  ROOTFS_STAGE="apt-base-proof"
+  mkdir -p "$(dirname "${APT_BASE_PROOF_FILE}")"
+  python3 - "${APT_BASE_PROOF_FILE}" "${APT_INSTALLED_JSON_FILE}" "${APT_SNAPSHOT}" "${RUNTIME_APT_PACKAGES[*]}" <<'PY'
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+output = Path(sys.argv[1])
+installed_path = Path(sys.argv[2])
+snapshot = sys.argv[3]
+required_packages = sorted(value for value in sys.argv[4].split() if value)
+installed = json.loads(installed_path.read_text(encoding="utf-8"))
+packages = installed.get("packages")
+if not isinstance(packages, dict):
+    raise SystemExit("error: installed APT package proof has no packages object")
+missing = sorted(package for package in required_packages if package not in packages)
+if missing:
+    raise SystemExit(
+        "error: cannot publish APT base proof; missing packages: " + ",".join(missing)
+    )
+document = {
+    "schemaVersion": 1,
+    "status": "passed",
+    "snapshot": snapshot,
+    "requiredPackages": required_packages,
+    "installedPackages": packages,
+    "preparedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+temporary = output.with_suffix(output.suffix + ".tmp")
+temporary.write_text(
+    json.dumps(document, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+temporary.replace(output)
+PY
+}
+
+verify_apt_base_proof() {
+  ROOTFS_STAGE="apt-base-verify"
+  APT_SNAPSHOT="$(read_apt_snapshot)"
+  export APT_SNAPSHOT
+  python3 - "${APT_BASE_PROOF_FILE}" "${APT_INSTALLED_JSON_FILE}" "${APT_PLAN_JSON_FILE}" "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" "${APT_SNAPSHOT}" "${RUNTIME_APT_PACKAGES[*]}" "${ROOTFS_BLOCKED_UPGRADE_PACKAGES[*]}" <<'PY'
+import json
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+proof_path = Path(sys.argv[1])
+installed_output = Path(sys.argv[2])
+plan_output = Path(sys.argv[3])
+metadata_path = Path(sys.argv[4])
+expected_snapshot = sys.argv[5]
+required_packages = sorted(value for value in sys.argv[6].split() if value)
+guard_packages = sorted(value for value in sys.argv[7].split() if value)
+try:
+    proof = json.loads(proof_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"error: APT base proof is unavailable or invalid: {proof_path}: {error}")
+if (
+    not isinstance(proof, dict)
+    or proof.get("schemaVersion") != 1
+    or proof.get("status") != "passed"
+    or proof.get("snapshot") != expected_snapshot
+    or proof.get("requiredPackages") != required_packages
+):
+    raise SystemExit(
+        "error: APT base proof contract mismatch: "
+        f"path={proof_path} expectedSnapshot={expected_snapshot}"
+    )
+proof_packages = proof.get("installedPackages")
+if not isinstance(proof_packages, dict):
+    raise SystemExit(f"error: APT base proof has no installedPackages object: {proof_path}")
+actual_packages = {}
+for package in required_packages + ["containerd", "runc"]:
+    completed = subprocess.run(
+        ["dpkg-query", "-W", "-f=${Version}", package],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        raise SystemExit(f"error: cached APT base is missing package: {package}")
+    actual_packages[package] = completed.stdout.strip()
+    if proof_packages.get(package) != actual_packages[package]:
+        raise SystemExit(
+            "error: cached APT base package version differs from proof: "
+            f"package={package} proof={proof_packages.get(package)!r} "
+            f"actual={actual_packages[package]!r}"
+        )
+audit = subprocess.run(["dpkg", "--audit"], capture_output=True, text=True, check=False)
+if audit.returncode != 0 or audit.stdout.strip() or audit.stderr.strip():
+    raise SystemExit(
+        "error: cached APT base has incomplete dpkg state: "
+        + (audit.stdout or audit.stderr).strip()
+    )
+installed_output.write_text(
+    json.dumps(
+        {
+            "schemaVersion": 1,
+            "generatedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "source": "verified-apt-base-cache",
+            "packages": actual_packages,
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+run_id = metadata.get("runId")
+if not isinstance(run_id, str) or not run_id:
+    raise SystemExit("error: rootfs input metadata is missing runId")
+plan_output.write_text(
+    json.dumps(
+        {
+            "schemaVersion": 1,
+            "runId": run_id,
+            "generatedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "status": "allowed",
+            "source": "verified-apt-base-cache",
+            "snapshot": expected_snapshot,
+            "installPackages": required_packages,
+            "guardPackages": guard_packages,
+            "blockedUpgrades": [],
+            "newPackages": [],
+            "upgradedPackages": [],
+            "removedPackages": [],
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
+  record_apt_progress \
+    "apt-base-verify" \
+    "passed" \
+    "verify cached APT base proof" \
+    "0"
+}
+
 install_runtime_packages() {
   local apt_install_status
 
@@ -407,12 +681,18 @@ install_runtime_packages() {
   ROOTFS_STAGE="apt-install"
   install_service_start_blocker
   apt_install_status=0
-  apt-get install -y --no-install-recommends "${RUNTIME_APT_PACKAGES[@]}" || apt_install_status="$?"
+  run_apt_command_with_progress \
+    "apt-install" \
+    "${APT_INSTALL_TIMEOUT_SECONDS}" \
+    "apt-get install" \
+    apt-get install -y --no-install-recommends "${RUNTIME_APT_PACKAGES[@]}" \
+    || apt_install_status="$?"
   remove_service_start_blocker
   if [ "${apt_install_status}" -ne 0 ]; then
     return "${apt_install_status}"
   fi
   record_installed_runtime_packages
+  write_apt_base_proof
 
   apt-get clean
   rm -rf /var/lib/apt/lists/*
@@ -484,18 +764,10 @@ PY
 }
 
 install_guest_tools_for_rootfs_smoke() {
-  local wheel
-
   ROOTFS_STAGE="guest-tools-install"
-  wheel="$(find "${PYTHON_WHEEL_DIR}" -maxdepth 1 -name 'tirosh_vitalserver_guest_tools-*.whl' -type f | sort | tail -n 1 || true)"
-  if [ -z "${wheel}" ]; then
-    printf "error: missing guest tools wheel under %s\n" "${PYTHON_WHEEL_DIR}" >&2
-    return 1
-  fi
-
-  mkdir -p "${GUEST_TOOLS_HOME}"
-  python3 -m venv --clear "${GUEST_TOOLS_VENV}"
-  "${GUEST_TOOLS_VENV}/bin/pip" install --no-index --no-deps "${wheel}"
+  python3 "${DEPLOY_DIR}/install-guest-tools-runtime.py" \
+    --wheel-dir "${PYTHON_WHEEL_DIR}" \
+    --guest-tools-home "${GUEST_TOOLS_HOME}"
   ln -sf "${GUEST_TOOLS_VENV}/bin/tirosh-vitalserver-rootfs-smoke" /usr/local/bin/tirosh-vitalserver-rootfs-smoke
 }
 
@@ -503,7 +775,14 @@ mount_share "${MOUNT_TAG}" "${MOUNT_POINT}"
 mount_share "${VITAL_FILES_MOUNT_TAG}" "${VITAL_FILES_MOUNT_POINT}"
 mkdir -p "${RUNTIME_DIR}"
 
-install_runtime_packages
+read_runtime_apt_packages
+if [ -s "${APT_BASE_PROOF_FILE}" ]; then
+  configure_guest_clock
+  verify_apt_base_proof
+  printf "Reusing verified APT-prepared rootfs base: %s\n" "${APT_BASE_PROOF_FILE}"
+else
+  install_runtime_packages
+fi
 ROOTFS_STAGE="runtime-package-verify"
 verify_runtime_packages
 install_guest_tools_for_rootfs_smoke
@@ -516,7 +795,7 @@ systemctl enable avahi-daemon
 cleanup_rootfs_identity_state
 
 ROOTFS_STAGE="ready-marker"
-python3 - "${RUNTIME_MANIFEST_FILE}" "${READY_FILE}" "${IDENTITY_CLEANUP_FILE}" <<'PY'
+python3 - "${RUNTIME_MANIFEST_FILE}" "${READY_FILE}" "${IDENTITY_CLEANUP_FILE}" "${GUEST_TOOLS_INSTALL_PROOF_FILE}" <<'PY'
 import json
 import subprocess
 import sys
@@ -526,8 +805,35 @@ from pathlib import Path
 manifest_path = Path(sys.argv[1])
 ready_path = Path(sys.argv[2])
 identity_cleanup_path = Path(sys.argv[3])
+guest_tools_install_proof_path = Path(sys.argv[4])
 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 identity_cleanup = json.loads(identity_cleanup_path.read_text(encoding="utf-8"))
+try:
+    guest_tools_install_proof = json.loads(
+        guest_tools_install_proof_path.read_text(encoding="utf-8")
+    )
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(
+        "Guest Tools install proof is unavailable or invalid: "
+        f"{guest_tools_install_proof_path}: {error}"
+    ) from error
+if not isinstance(guest_tools_install_proof, dict):
+    raise SystemExit(
+        "Guest Tools install proof must be an object: "
+        f"{guest_tools_install_proof_path}"
+    )
+dependencies = guest_tools_install_proof.get("dependencies")
+if (
+    guest_tools_install_proof.get("status") != "passed"
+    or not isinstance(guest_tools_install_proof.get("target"), str)
+    or not isinstance(dependencies, dict)
+    or not isinstance(dependencies.get("alembic"), str)
+    or not isinstance(dependencies.get("sqlalchemy"), str)
+):
+    raise SystemExit(
+        "Guest Tools install proof is incomplete: "
+        f"{guest_tools_install_proof_path}"
+    )
 
 
 def command_output(command):
@@ -549,6 +855,16 @@ ready_path.write_text(
             },
             "manifest": str(manifest_path),
             "pythonVenv": "ready",
+            "pythonDependencies": {
+                "status": "passed",
+                "proof": str(guest_tools_install_proof_path),
+                "target": guest_tools_install_proof["target"],
+                "dependencies": dependencies,
+                "guestWheelSHA256": guest_tools_install_proof.get("guestWheelSHA256"),
+                "requirementsSHA256": guest_tools_install_proof.get(
+                    "requirementsSHA256"
+                ),
+            },
         },
         indent=2,
         sort_keys=True,

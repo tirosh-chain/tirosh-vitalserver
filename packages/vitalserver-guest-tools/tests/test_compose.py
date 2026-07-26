@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,26 @@ from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
 from tirosh_guest_tools.domain.errors import GuestContractError, GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.infrastructure import common
+
+
+def configure_compose_paths(monkeypatch: Any, root: Path) -> None:
+    monkeypatch.setattr(compose, "DEPLOY_DIR", root)
+    monkeypatch.setattr(
+        compose,
+        "RUNTIME_CONFIG_FILE",
+        root / RuntimeFileName.RUNTIME_CONFIG.value,
+    )
+    monkeypatch.setattr(
+        compose,
+        "RUNTIME_SETTINGS_FILE",
+        root / RuntimeFileName.RUNTIME_SETTINGS.value,
+    )
+    monkeypatch.setattr(
+        compose,
+        "COMPOSE_RUNTIME_LIMITS_FILE",
+        root / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value,
+    )
+    monkeypatch.setattr(compose, "COMPOSE_ENVIRONMENT_FILE", root / "compose.env")
 
 
 def test_container_bind_source_directories_cover_compose_runtime_binds() -> None:
@@ -34,8 +56,11 @@ def test_container_bind_source_directories_cover_compose_runtime_binds() -> None
             if not isinstance(volume, dict) or volume.get("type") != "bind":
                 continue
             source = volume.get("source")
-            if isinstance(source, str) and source.startswith(runtime_root + "/"):
-                runtime_bind_sources.add(source)
+            if isinstance(source, str):
+                match = re.fullmatch(r"\$\{[A-Z0-9_]+:-(.+)\}", source)
+                explicit_source = match.group(1) if match else source
+                if explicit_source.startswith(runtime_root + "/"):
+                    runtime_bind_sources.add(explicit_source)
 
     prepared_sources = {
         str(path)
@@ -44,7 +69,7 @@ def test_container_bind_source_directories_cover_compose_runtime_binds() -> None
     assert runtime_bind_sources == prepared_sources
 
 
-def test_testkit_container_can_read_mounted_vital_files() -> None:
+def test_lab_container_can_read_mounted_vital_files() -> None:
     compose_path = (
         Path(__file__).resolve().parents[3]
         / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
@@ -60,15 +85,86 @@ def test_testkit_container_can_read_mounted_vital_files() -> None:
         service="app",
         target="/opt/vitalserver/vital_files",
     )
-    testkit_bind = bind_volume(
+    lab_bind = bind_volume(
         services,
-        service="testkit",
+        service="lab",
         target="/mnt/tirosh-vital-files",
     )
 
     assert app_bind["source"] == expected_source
-    assert testkit_bind["source"] == expected_source
-    assert testkit_bind["read_only"] is True
+    assert lab_bind["source"] == expected_source
+    assert lab_bind["read_only"] is True
+
+
+def test_runtime_compose_includes_postgres_service() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    services = document.get("services")
+    assert isinstance(services, dict)
+    volumes = document.get("volumes")
+    assert isinstance(volumes, dict)
+
+    postgres = services.get("postgres")
+    assert isinstance(postgres, dict)
+    assert postgres["image"] == "postgres:16-alpine"
+    assert postgres["environment"]["POSTGRES_DB"] == "vitalserver"
+    assert postgres["ports"] == ["127.0.0.1:15432:5432"]
+    assert "postgres-data" in volumes
+
+
+def test_runtime_compose_gates_products_on_postgres_migration() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    services = document["services"]
+
+    migration = services["postgres-migrate"]
+    assert migration["image"] == "vitalserver-postgres-migrator:0.2.0"
+    assert migration["restart"] == "no"
+    assert migration["depends_on"]["postgres"]["condition"] == "service_healthy"
+    assert migration["environment"]["VITALSERVER_DATABASE_URL"] == (
+        "postgresql://vitalserver@postgres:5432/vitalserver"
+    )
+    assert (
+        services["recorder-ingress"]["depends_on"]["postgres-migrate"]["condition"]
+        == "service_completed_successfully"
+    )
+    assert (
+        services["lab"]["depends_on"]["postgres-migrate"]["condition"]
+        == "service_completed_successfully"
+    )
+
+
+def test_runtime_compose_includes_lab_product_service() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    services = document.get("services")
+    assert isinstance(services, dict)
+
+    lab = services.get("lab")
+    assert isinstance(lab, dict)
+    assert lab["image"] == "vitalserver-lab:0.2.0"
+    assert lab["build"]["dockerfile"] == "apps/vitalserver-lab/Dockerfile"
+    assert lab["depends_on"]["postgres"]["condition"] == "service_healthy"
+    assert lab["ports"] == ["127.0.0.1:18085:8080"]
+    assert lab["environment"]["VITALSERVER_LAB_SESSION_STORE"] == "postgres"
+    assert lab["environment"]["VITALSERVER_LAB_DATABASE_URL"] == (
+        "postgresql://vitalserver@postgres:5432/vitalserver"
+    )
+    assert lab["environment"]["PGPASSWORD"] == (
+        "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
+    )
+    assert lab["restart"] == "unless-stopped"
 
 
 def bind_volume(
@@ -180,7 +276,7 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
@@ -198,6 +294,74 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
         == str(12 * 1024 * 1024)
     )
     assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
+
+
+def test_load_runtime_env_materializes_explicit_compose_environment(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": 'secret#"value',
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+    configure_compose_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+    monkeypatch.setenv("VITALSERVER_HTTP_PORT", "9999")
+
+    compose.load_runtime_env()
+
+    values = {
+        name: json.loads(value)
+        for name, value in (
+            line.split("=", 1)
+            for line in (tmp_path / "compose.env").read_text(
+                encoding="utf-8"
+            ).splitlines()
+        )
+    }
+    assert values["VITALSERVER_ADMIN_PASSWORD"] == 'secret#"value'
+    assert values["VITALSERVER_PUBLIC_HOST"] == "vital.example.test"
+    assert values["RECORDER_INGRESS_SEND_DATA_MODE"] == "observe_only"
+    assert len(values["RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN"]) >= 32
+    assert (
+        values["RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN"]
+        == (tmp_path / "recorder-ingress-expectation-control-token")
+        .read_text(encoding="utf-8")
+        .strip()
+    )
+    assert "VITALSERVER_HTTP_PORT" not in values
+
+
+def test_expectation_control_credential_is_stable_and_invalid_state_is_not_replaced(
+    tmp_path: Any,
+) -> None:
+    path = tmp_path / "expectation-token"
+
+    first = compose.ensure_recorder_ingress_expectation_control_token(path)
+    second = compose.ensure_recorder_ingress_expectation_control_token(path)
+
+    assert len(first) >= 32
+    assert second == first
+    assert path.stat().st_mode & 0o777 == 0o600
+
+    path.write_text("short\n", encoding="utf-8")
+    with pytest.raises(GuestContractError) as error:
+        compose.ensure_recorder_ingress_expectation_control_token(path)
+    assert error.value.code == "recorder-expectation-control-credential-invalid"
+    assert path.read_text(encoding="utf-8") == "short\n"
 
 
 def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(
@@ -248,7 +412,7 @@ def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     compose.load_runtime_env()
@@ -346,7 +510,7 @@ def test_load_runtime_env_writes_compose_runtime_memory_limits(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     compose.load_runtime_env()
@@ -386,7 +550,7 @@ def test_load_runtime_env_uses_redis_heavy_default_memory_limits(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     compose.load_runtime_env()
@@ -430,7 +594,7 @@ def test_load_runtime_env_removes_compose_runtime_memory_limits_when_disabled(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     compose.load_runtime_env()
@@ -446,13 +610,24 @@ def test_compose_command_uses_runtime_limits_override_when_present(
         "services: {}\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(common, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(
+        common,
+        "COMPOSE_FILE",
+        tmp_path / RuntimeFileName.COMPOSE.value,
+    )
+    monkeypatch.setattr(
+        common,
+        "COMPOSE_RUNTIME_LIMITS_FILE",
+        tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value,
+    )
 
     command = common.compose_command(["config"])
 
     assert command == [
         "docker",
         "compose",
+        "--env-file",
+        str(common.COMPOSE_ENVIRONMENT_FILE),
         "--project-name",
         common.PROJECT_NAME,
         "-f",
@@ -463,7 +638,7 @@ def test_compose_command_uses_runtime_limits_override_when_present(
     ]
 
 
-def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_replay(
+def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_observe_only(
     monkeypatch: Any,
     tmp_path: Any,
 ) -> None:
@@ -485,7 +660,7 @@ def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_re
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
@@ -496,7 +671,7 @@ def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_re
 
     compose.load_runtime_env()
 
-    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "observe_only"
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "1000"
     assert (
         compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
@@ -537,7 +712,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_mode(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     with pytest.raises(GuestContractError) as error:
@@ -571,7 +746,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_replay_settings(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     with pytest.raises(GuestContractError) as error:
@@ -605,7 +780,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_settings_object(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     with pytest.raises(GuestContractError) as error:
@@ -646,7 +821,7 @@ def test_load_runtime_env_rejects_recorder_ingress_concurrency_inversion(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    configure_compose_paths(monkeypatch, tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
 
     with pytest.raises(GuestContractError) as error:
@@ -687,17 +862,58 @@ def test_stop_compose_action_stops_services_in_explicit_order(monkeypatch: Any) 
 
     assert events == [
         "compose:config --services:timeout=None",
-        "compose:stop --timeout 30 testkit:timeout=40",
         "compose:stop --timeout 30 edge:timeout=40",
         "compose:stop --timeout 30 swagger-ui:timeout=40",
         "compose:stop --timeout 30 redis-ui:timeout=40",
         "compose:stop --timeout 30 recorder-ingress:timeout=40",
         "compose:stop --timeout 30 vitaldb-observer:timeout=40",
         "compose:stop --timeout 30 redis-relay:timeout=40",
+        "compose:stop --timeout 30 lab:timeout=40",
         "compose:stop --timeout 90 app:timeout=100",
+        "compose:stop --timeout 60 postgres:timeout=70",
         "compose:stop --timeout 60 redis:timeout=70",
         "sync",
     ]
+
+
+def test_start_ordered_starts_postgres_before_product_services(
+    monkeypatch: Any,
+) -> None:
+    events: list[str] = []
+
+    def checked_compose_stub(arguments: list[str], *, stage: str) -> None:
+        events.append("checked-compose:" + " ".join(arguments) + f":stage={stage}")
+
+    monkeypatch.setattr(compose, "checked_compose", checked_compose_stub)
+    monkeypatch.setattr(
+        compose,
+        "wait_for_postgres",
+        lambda: events.append("wait-for-postgres"),
+    )
+    monkeypatch.setattr(
+        compose,
+        "wait_for_redis",
+        lambda: events.append("wait-for-redis"),
+    )
+    monkeypatch.setattr(compose, "wait_for_app", lambda: events.append("wait-for-app"))
+
+    compose.start_ordered()
+
+    assert events[:5] == [
+        "checked-compose:up --pull never --no-build -d postgres:stage=postgres startup",
+        "wait-for-postgres",
+        "checked-compose:up --pull never --no-build --no-deps --force-recreate "
+        "--abort-on-container-exit --exit-code-from postgres-migrate "
+        "postgres-migrate:stage=postgres schema migration",
+        "checked-compose:up --pull never --no-build -d redis:stage=redis startup",
+        "wait-for-redis",
+    ]
+    assert (
+        "checked-compose:up --pull never --no-build -d app recorder-recovery "
+        "recorder-ingress "
+        "vitaldb-observer redis-relay lab redis-ui swagger-ui"
+        ":stage=application service startup"
+    ) in events
 
 
 def test_up_compose_action_prepares_recorder_ingress_bind_sources(
@@ -819,68 +1035,6 @@ def test_compose_services_reports_empty_stdout(monkeypatch: Any) -> None:
     assert "docker compose config --services produced empty stdout" in str(error.value)
 
 
-def test_testkit_stop_compose_action_stops_only_testkit(monkeypatch: Any) -> None:
-    calls: list[list[str]] = []
-
-    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
-    monkeypatch.setattr(compose, "load_runtime_env", lambda: object())
-    monkeypatch.setattr(
-        compose,
-        "compose",
-        lambda arguments, **kwargs: calls.append(arguments),
-    )
-    monkeypatch.setattr(
-        compose,
-        "run",
-        lambda arguments, **kwargs: calls.append(arguments),
-    )
-
-    compose.run_compose_action(ComposeAction.TESTKIT_STOP)
-
-    assert calls == [
-        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
-        ["sync"],
-    ]
-
-
-def test_testkit_restart_compose_action_recreates_only_testkit(
-    monkeypatch: Any,
-) -> None:
-    calls: list[list[str]] = []
-
-    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
-    monkeypatch.setattr(
-        compose,
-        "prepare_container_bind_source_directories",
-        lambda: None,
-    )
-    monkeypatch.setattr(compose, "load_optional_docker_images", lambda: None)
-    monkeypatch.setattr(
-        compose,
-        "load_runtime_env",
-        lambda: type("RuntimeConfigStub", (), {"testkit_enabled": True})(),
-    )
-    monkeypatch.setattr(
-        compose,
-        "checked_compose",
-        lambda arguments, **kwargs: calls.append(arguments),
-    )
-    monkeypatch.setattr(
-        compose,
-        "compose",
-        lambda arguments, **kwargs: calls.append(arguments),
-    )
-
-    compose.run_compose_action(ComposeAction.TESTKIT_RESTART)
-
-    assert calls == [
-        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
-        ["up", "-d", ComposeService.TESTKIT.value],
-    ]
-
-
 def test_stop_compose_action_reports_timeout_as_dependency_failure(
     monkeypatch: Any,
 ) -> None:
@@ -919,3 +1073,20 @@ def test_stop_compose_action_reports_timeout_as_dependency_failure(
         in error.value.message
     )
     assert error.value.details["remainingServices"] == ["app", "redis"]
+
+
+@pytest.mark.parametrize("health", [None, "", "   "])
+def test_compose_service_state_maps_unreported_health_explicitly(
+    health: str | None,
+) -> None:
+    row: dict[str, object] = {
+        "Service": "app",
+        "Name": "vitalserver-app-1",
+        "State": "created",
+    }
+    if health is not None:
+        row["Health"] = health
+
+    state = compose.compose_service_state_from_json(row)
+
+    assert state.health == "not_reported"

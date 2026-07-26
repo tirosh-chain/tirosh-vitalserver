@@ -19,12 +19,12 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         let coordinator = RuntimeHealthNotificationCoordinator(notifier: notifier)
 
         coordinator.handleTransition(to: startingStatus())
-        coordinator.handleTransition(to: criticalStatus(message: "proxy failed"))
+        coordinator.handleTransition(to: criticalStatus())
 
         XCTAssertEqual(notifier.notifications, [
             CapturedNotification(
                 title: AppConstants.Notifications.criticalTitle,
-                body: "proxy failed"
+                body: AppConstants.Notifications.criticalBody
             ),
         ])
     }
@@ -34,12 +34,12 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         let coordinator = RuntimeHealthNotificationCoordinator(notifier: notifier)
 
         coordinator.handleTransition(to: startingStatus())
-        coordinator.handleTransition(to: degradedStatus(message: "recovering"))
+        coordinator.handleTransition(to: degradedStatus())
 
         XCTAssertEqual(notifier.notifications, [
             CapturedNotification(
                 title: AppConstants.Notifications.needsAttentionTitle,
-                body: "recovering"
+                body: AppConstants.Notifications.needsAttentionBody
             ),
         ])
     }
@@ -48,7 +48,7 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         let notifier = CapturingHealthNotifier()
         let coordinator = RuntimeHealthNotificationCoordinator(notifier: notifier)
 
-        coordinator.handleTransition(to: criticalStatus(message: nil))
+        coordinator.handleTransition(to: criticalStatus())
         coordinator.handleTransition(to: readyStatus())
         coordinator.handleTransition(to: startingStatus())
         coordinator.handleTransition(to: readyStatus())
@@ -61,46 +61,43 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         ])
     }
 
-    private func notInstalledStatus() -> RuntimeStatus {
-        RuntimeStatus()
+    private func notInstalledStatus() -> PlatformState {
+        platformState()
     }
 
-    private func startingStatus() -> RuntimeStatus {
-        var status = RuntimeStatus()
-        status.runtimeInstalled = true
-        status.runtimeState = RuntimeState.installing
+    private func startingStatus() -> PlatformState {
+        var status = platformState()
+        status.runtimeInstallationState = .executable
+        status.platformHealth = RuntimeState.installing
         return status
     }
 
-    private func criticalStatus(message: String?) -> RuntimeStatus {
-        var status = RuntimeStatus()
-        status.runtimeInstalled = true
-        status.runtimeState = RuntimeState.critical
-        status.statusMessage = message
+    private func criticalStatus() -> PlatformState {
+        var status = platformState()
+        status.runtimeInstallationState = .executable
+        status.platformHealth = RuntimeState.critical
         return status
     }
 
-    private func degradedStatus(message: String?) -> RuntimeStatus {
-        var status = RuntimeStatus()
-        status.runtimeInstalled = true
-        status.runtimeState = RuntimeState.degraded
-        status.statusMessage = message
+    private func degradedStatus() -> PlatformState {
+        var status = platformState()
+        status.runtimeInstallationState = .executable
+        status.platformHealth = RuntimeState.degraded
         return status
     }
 
-    private func readyStatus() -> RuntimeStatus {
-        var status = RuntimeStatus()
-        status.runtimeInstalled = true
-        status.vmServiceLoaded = true
-        status.proxyServiceLoaded = true
-        status.watchdogServiceLoaded = true
-        status.vmServiceState = .loaded
-        status.proxyServiceState = .loaded
-        status.watchdogServiceState = .loaded
-        status.runtimeState = RuntimeState.healthy
-        status.vmIP = "192.0.2.10"
-        status.guestHTTP = "200"
-        status.hostProxyHTTP = "200"
+    private func readyStatus() -> PlatformState {
+        var status = platformState()
+        status.runtimeInstallationState = .executable
+        status.services = [
+            PlatformServiceStatus(role: .runtimeProvider, state: .loaded),
+            PlatformServiceStatus(role: .publicProxy, state: .loaded),
+            PlatformServiceStatus(role: .watchdog, state: .loaded),
+        ]
+        status.platformHealth = RuntimeState.healthy
+        status.runtimeEndpoint = "192.0.2.10"
+        status.runtimeControllerHTTP = "200"
+        status.publicProxyHTTP = "200"
         return status
     }
 }

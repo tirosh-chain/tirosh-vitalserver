@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "v1",
+  "releaseSetId": "linux-runtime-platform-020-delivery",
+  "releaseDeliveryPlan": {
+    "planId": "linux-runtime-platform-release",
+    "productVersion": "0.2.0-dev",
+    "platform": "linux",
+    "providerKind": "linux-kvm-libvirt-systemd"
+  },
+  "hostInstallerArtifact": {
+    "kind": "deb",
+    "fileName": "vitalserver-runtime-platform_0.2.0-dev_amd64.deb",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "sizeBytes": 2097152
+  },
+  "runtimeConsoleArtifactReceipt": {
+    "schemaVersion": "v1",
+    "artifact": {
+      "platform": "linux",
+      "kind": "appimage",
+      "fileName": "VitalServer Runtime Console-0.1.0-x86_64.AppImage",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sizeBytes": 1048576
+    },
+    "runtimeConsoleVersion": "0.1.0",
+    "localControlBootstrapContract": {
+      "contractId": "C53",
+      "schemaVersion": "v1"
+    }
+  },
+  "operatorInterfaceBootstrap": {
+    "contractId": "C53",
+    "schemaVersion": "v1",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "installationOrder": ["host-installer", "runtime-console"]
+}

@@ -6,7 +6,11 @@ const path = require("path");
 const moduleLoader = require("module");
 const redis = require("redis");
 const { vitalFileWebPath } = require("./public-paths");
-const { patchMyFilesScript } = require("./static-patches");
+const {
+  patchMyFilesScript,
+  patchVitalServerReader,
+  patchVitalWebviewScript,
+} = require("./static-patches");
 
 const realCpus = os.cpus.bind(os);
 const minCpus = Number.parseInt(process.env.VITALSERVER_MIN_CPUS || "8", 10);
@@ -35,6 +39,26 @@ const realModuleLoad = moduleLoader._load;
 const adminUserKey = "users:admin";
 const redisRetryBaseMs = 500;
 const redisRetryMaxMs = 5000;
+const realJavaScriptExtension = moduleLoader._extensions[".js"];
+
+moduleLoader._extensions[".js"] = function patchedJavaScriptExtension(
+  targetModule,
+  filename
+) {
+  if (
+    path.basename(filename) !== "vitaldb.js" ||
+    path.basename(path.dirname(filename)) !== "include"
+  ) {
+    return realJavaScriptExtension(targetModule, filename);
+  }
+
+  const source = fs.readFileSync(filename, "utf8");
+  const patched = patchVitalServerReader(source);
+  if (!patched.applied) {
+    throw new Error(`[tirosh] failed to patch VitalServer reader: ${patched.reason}`);
+  }
+  targetModule._compile(patched.source, filename);
+};
 
 function shouldRewriteRedisHost(host) {
   return !host || host === "0.0.0.0" || host === "127.0.0.1" || host === "localhost";
@@ -220,25 +244,40 @@ function patchExpressStatic(expressModule) {
       return middleware;
     }
 
-    const myFilesScriptPath = path.join(root, "js", "my-files.js");
+    const scriptPatches = {
+      "/js/my-files.js": {
+        label: "my-files.js",
+        path: path.join(root, "js", "my-files.js"),
+        patch: patchMyFilesScript,
+      },
+      "/js/webview.js": {
+        label: "webview.js",
+        path: path.join(root, "js", "webview.js"),
+        patch: patchVitalWebviewScript,
+      },
+    };
     return function patchedStaticMiddleware(request, response, next) {
       const requestPath = ((request && (request.path || request.url)) || "").split("?")[0];
-      if (requestPath !== "/js/my-files.js" && requestPath !== "js/my-files.js") {
+      const normalizedPath = requestPath.startsWith("/")
+        ? requestPath
+        : `/${requestPath}`;
+      const target = scriptPatches[normalizedPath];
+      if (!target) {
         return middleware(request, response, next);
       }
 
-      fs.readFile(myFilesScriptPath, "utf8", (error, source) => {
+      fs.readFile(target.path, "utf8", (error, source) => {
         if (error) {
           next(error);
           return;
         }
 
-        const patched = patchMyFilesScript(source);
+        const patched = target.patch(source);
         if (!patched.applied) {
           response
             .status(500)
             .type("text/plain")
-            .send(`[tirosh] failed to patch my-files.js: ${patched.reason}`);
+            .send(`[tirosh] failed to patch ${target.label}: ${patched.reason}`);
           return;
         }
 

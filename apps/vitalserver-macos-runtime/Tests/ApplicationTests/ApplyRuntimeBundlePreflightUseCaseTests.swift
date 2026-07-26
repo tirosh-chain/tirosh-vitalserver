@@ -8,7 +8,7 @@ import Errors
 final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     func testPrepareBuildsPreflightContextFromExplicitPortsInOrder() throws {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
         let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
         let backup = URL(fileURLWithPath: "/product/backups/backup-before-1.2.3")
         var events: [String] = []
@@ -20,7 +20,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                 version: "1.2.3",
                 artifacts: [
                     UpdateBundleArtifact(
-                        name: RuntimeFileNames.rootfsBase,
+                        name: RuntimePackageArtifactFileNames.rootfsBase,
                         type: .rootfsBase,
                         sha256: "abc",
                         size: 20
@@ -173,6 +173,68 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
         XCTAssertEqual(requiredSpace, 10 + updateFreeSpaceMarginBytes)
     }
 
+    func testPrepareAcceptsVMImageUpdateWithRootfsWhenUpdaterBridgeIsNotRequired() throws {
+        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
+        let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
+        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
+        let operations = operations(
+            stagedBundle: stagedBundle,
+            manifest: manifest(
+                version: "1.2.3",
+                bundleKind: .vmImageUpdate,
+                artifacts: [
+                    UpdateBundleArtifact(
+                        name: RuntimePackageArtifactFileNames.rootfsBase,
+                        type: .rootfsBase,
+                        sha256: "abc",
+                        size: 20
+                    ),
+                ],
+                requiresTwoPhaseUpdate: false
+            ),
+            observeRootfsStorage: { observedStagedRootfs, observedRootfsBase in
+                XCTAssertEqual(observedStagedRootfs, stagedRootfs)
+                XCTAssertEqual(observedRootfsBase, rootfsBase)
+                return ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: observedStagedRootfs,
+                    stagedRootfsState: .file,
+                    installedRootfsBytes: 10,
+                    incomingRootfsBytes: 20
+                )
+            },
+            directorySize: { _ in 10 }
+        )
+
+        let context = try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: input(rootfsBase: rootfsBase),
+            operations: operations
+        )
+
+        XCTAssertEqual(context.manifest.bundleKind, .vmImageUpdate)
+        XCTAssertFalse(context.manifest.requiresTwoPhaseUpdate)
+        XCTAssertEqual(context.stagedRootfs, stagedRootfs)
+        XCTAssertTrue(context.updatesRootfsBase)
+    }
+
+    func testPrepareStillRejectsExplicitUpdaterBridgeDuringNormalApply() {
+        let operations = operations(
+            manifest: manifest(
+                version: "1.2.3",
+                requiresTwoPhaseUpdate: true
+            )
+        )
+
+        XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: input(),
+            operations: operations
+        )) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "update bundle requires a bridge/two-phase update"
+            )
+        }
+    }
+
     func testPrepareFailsWhenStagedRootfsIsExplicitlyMissing() {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         let operations = operations(
@@ -181,7 +243,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                 version: "1.2.3",
                 artifacts: [
                     UpdateBundleArtifact(
-                        name: RuntimeFileNames.rootfsBase,
+                        name: RuntimePackageArtifactFileNames.rootfsBase,
                         type: .rootfsBase,
                         sha256: "abc",
                         size: 20
@@ -206,7 +268,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
         )) { error in
             XCTAssertEqual(
                 String(describing: error),
-                "missing file: \(stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase).path)"
+                "missing file: \(stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase).path)"
             )
         }
     }
@@ -218,7 +280,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                 version: "1.2.3",
                 artifacts: [
                     UpdateBundleArtifact(
-                        name: RuntimeFileNames.rootfsBase,
+                        name: RuntimePackageArtifactFileNames.rootfsBase,
                         type: .rootfsBase,
                         sha256: "abc",
                         size: 20
@@ -394,19 +456,23 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
 
     private func manifest(
         version: String,
+        bundleKind: UpdateBundleKind = .productUpdate,
         artifacts: [UpdateBundleArtifact] = [],
         minUpdaterVersion: String? = nil,
-        requiresGuestActivation: Bool = false
+        requiresGuestActivation: Bool = false,
+        requiresTwoPhaseUpdate: Bool = false
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
             product: "ai.tirosh.vitalserver.helper",
+            bundleKind: bundleKind,
             helperVersion: version,
             releaseLabel: version,
             targetPlatform: "macos-arm64",
             components: ["updater": version],
             minUpdaterVersion: minUpdaterVersion,
             requiresGuestActivation: requiresGuestActivation,
+            requiresTwoPhaseUpdate: requiresTwoPhaseUpdate,
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: artifacts,
             migrations: []

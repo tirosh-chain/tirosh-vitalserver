@@ -46,12 +46,12 @@ public struct RuntimeStatusRecorderSummaryPolicy {
     }
 
     public func recorderSummary(
-        observation: RuntimeContainerObservation?,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
         vitalDBObservation: VitalDBObservationDocument?,
         now: Date = Date()
     ) -> RuntimeStatusRecorderSummary {
         let summary = RuntimeVitalRecorderSummary(
-            containerObservation: observation,
+            recorderIngressStatusRead: recorderIngressStatusRead,
             vitalDBObservation: vitalDBObservation,
             statusEvaluationTime: ISO8601DateFormatter().string(from: now)
         )

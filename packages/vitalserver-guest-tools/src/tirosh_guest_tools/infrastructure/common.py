@@ -7,13 +7,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.errors import (
     GuestContractError,
     GuestDependencyError,
     GuestOperationRequestError,
 )
-from tirosh_guest_tools.infrastructure.settings import SETTINGS
+from tirosh_guest_tools.infrastructure.settings import SETTINGS, ShareMountMode
 
 MOUNT_TAG = SETTINGS.shares.runtime_tag
 MOUNT_POINT = SETTINGS.shares.runtime_mount
@@ -21,15 +20,22 @@ VITAL_FILES_MOUNT_TAG = SETTINGS.shares.vital_files_tag
 VITAL_FILES_MOUNT_POINT = SETTINGS.shares.vital_files_mount
 DEPLOY_DIR = SETTINGS.paths.deploy_dir
 RUNTIME_DIR = SETTINGS.paths.runtime_dir
+COMPOSE_FILE = SETTINGS.paths.compose_file
+RUNTIME_CONFIG_FILE = SETTINGS.paths.runtime_config_file
+RUNTIME_SETTINGS_FILE = SETTINGS.paths.runtime_settings_file
+COMPOSE_RUNTIME_LIMITS_FILE = SETTINGS.paths.compose_runtime_limits_file
 PROJECT_NAME = SETTINGS.compose.project_name
+COMPOSE_ENVIRONMENT_FILE = SETTINGS.compose.environment_file
 RECORDER_INGRESS_FAILURES_DIR_NAME = "recorder-ingress-failures"
 RECORDER_INGRESS_RAW_ARCHIVE_DIR_NAME = "recorder-ingress-raw"
 RECORDER_INGRESS_RECOVERY_DIR_NAME = "recorder-ingress-recovery"
+RECORDER_INGRESS_OBSERVABILITY_DIR_NAME = "recorder-ingress-observability"
 REDIS_RELAY_STATUS_DIR_NAME = "redis-relay-status"
 CONTAINER_BIND_SOURCE_DIR_NAMES = (
     RECORDER_INGRESS_FAILURES_DIR_NAME,
     RECORDER_INGRESS_RAW_ARCHIVE_DIR_NAME,
     RECORDER_INGRESS_RECOVERY_DIR_NAME,
+    RECORDER_INGRESS_OBSERVABILITY_DIR_NAME,
     REDIS_RELAY_STATUS_DIR_NAME,
 )
 
@@ -38,19 +44,29 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def mount_share(tag: str = MOUNT_TAG, mount_point: Path = MOUNT_POINT) -> None:
+def mount_share(
+    tag: str,
+    mount_point: Path,
+    mode: ShareMountMode,
+) -> None:
     mount_point.mkdir(parents=True, exist_ok=True)
+    if mode == ShareMountMode.NATIVE:
+        return
     if not is_mountpoint(mount_point):
         subprocess.run(["mount", "-t", "virtiofs", tag, str(mount_point)], check=True)
 
 
 def mount_runtime_share() -> None:
-    mount_share(MOUNT_TAG, MOUNT_POINT)
+    mount_share(MOUNT_TAG, MOUNT_POINT, SETTINGS.shares.runtime_mount_mode)
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def mount_vital_files_share() -> None:
-    mount_share(VITAL_FILES_MOUNT_TAG, VITAL_FILES_MOUNT_POINT)
+    mount_share(
+        VITAL_FILES_MOUNT_TAG,
+        VITAL_FILES_MOUNT_POINT,
+        SETTINGS.shares.vital_files_mount_mode,
+    )
 
 
 def container_bind_source_directories(
@@ -76,12 +92,14 @@ def compose_command(arguments: list[str]) -> list[str]:
     command = [
         "docker",
         "compose",
+        "--env-file",
+        str(COMPOSE_ENVIRONMENT_FILE),
         "--project-name",
         PROJECT_NAME,
         "-f",
-        str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
+        str(COMPOSE_FILE),
     ]
-    runtime_limits = DEPLOY_DIR / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value
+    runtime_limits = COMPOSE_RUNTIME_LIMITS_FILE
     if runtime_limits.exists():
         command.extend(["-f", str(runtime_limits)])
     return [*command, *arguments]

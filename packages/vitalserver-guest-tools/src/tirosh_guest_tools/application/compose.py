@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import subprocess
 import time
 from contextlib import suppress
@@ -10,10 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
-from tirosh_guest_tools.contracts import (
-    ComposeService,
-    RuntimeFileName,
-)
+from tirosh_guest_tools.contracts import ComposeJob, ComposeService
 from tirosh_guest_tools.domain.errors import (
     GuestContractError,
     GuestDependencyError,
@@ -22,7 +20,11 @@ from tirosh_guest_tools.domain.errors import (
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.domain.runtime_config import RuntimeConfig
 from tirosh_guest_tools.infrastructure.common import (
+    COMPOSE_ENVIRONMENT_FILE,
+    COMPOSE_RUNTIME_LIMITS_FILE,
     DEPLOY_DIR,
+    RUNTIME_CONFIG_FILE,
+    RUNTIME_SETTINGS_FILE,
     compose_command,
     mount_runtime_share,
     mount_vital_files_share,
@@ -35,24 +37,26 @@ from tirosh_guest_tools.infrastructure.common import (
 logger = logging.getLogger(__name__)
 COMPOSE_STOP_COMMAND_TIMEOUT_BUFFER_SECONDS = 10
 ORDERED_STOP_POLICIES = (
-    (ComposeService.TESTKIT, 30),
     (ComposeService.EDGE, 30),
     (ComposeService.SWAGGER_UI, 30),
     (ComposeService.REDIS_UI, 30),
     (ComposeService.RECORDER_INGRESS, 30),
     (ComposeService.VITALDB_OBSERVER, 30),
     (ComposeService.REDIS_RELAY, 30),
+    (ComposeService.LAB, 30),
     (ComposeService.APP, 90),
+    (ComposeService.POSTGRES, 60),
     (ComposeService.REDIS, 60),
 )
 RUNNING_STATES = {"running", "restarting", "removing", "paused"}
 RECORDER_INGRESS_SEND_DATA_MODES = {
     "passthrough",
+    "observe_only",
     "mirror_spool",
     "spool_only",
     "spool_and_replay",
 }
-DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "spool_and_replay"
+DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "observe_only"
 DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE = 1000
 DEFAULT_RECORDER_INGRESS_REPLAY_MAX_MIB_PER_SECOND = 20
 DEFAULT_RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS = 100000
@@ -81,6 +85,39 @@ DEFAULT_RECORDER_INGRESS_CONTAINER_MEMORY_LIMIT_MIB = 410
 DEFAULT_REDIS_CONTAINER_MEMORY_LIMIT_MIB = 3277
 MIB_BYTES = 1024 * 1024
 MAX_DIAGNOSTIC_OUTPUT_CHARS = 12000
+COMPOSE_ENVIRONMENT_VARIABLES = (
+    "RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS",
+    "RECORDER_INGRESS_RAW_ARCHIVE_ENABLED",
+    "RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES",
+    "RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES",
+    "RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES",
+    "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES",
+    "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS",
+    "RECORDER_INGRESS_SEND_DATA_MODE",
+    "RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS",
+    "RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND",
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS",
+    "VITALSERVER_ADMIN_PASSWORD",
+    "VITALSERVER_PUBLIC_HOST",
+    "VITALSERVER_PUBLIC_PORT",
+    "VITALSERVER_REDIS_HOST",
+    "VITALSERVER_REDIS_PORT",
+    "VITALSERVER_TRUST_PROXY",
+    "VITALSERVER_VITAL_FILES_DIR",
+)
 
 
 @dataclass(frozen=True)
@@ -164,24 +201,11 @@ def run_compose_action(action: ComposeAction | str) -> None:
     action = ComposeAction(action)
     mount_runtime_share()
     mount_vital_files_share()
-    runtime_config = load_runtime_env()
+    load_runtime_env()
 
     if action == ComposeAction.UP:
         prepare_container_bind_source_directories()
         start_ordered()
-    elif action == ComposeAction.TESTKIT_UP:
-        prepare_container_bind_source_directories()
-        start_testkit(runtime_config)
-    elif action == ComposeAction.TESTKIT_UP_LOGGED:
-        prepare_container_bind_source_directories()
-        start_testkit_logged(runtime_config)
-    elif action == ComposeAction.TESTKIT_STOP:
-        stop_testkit()
-        run(["sync"])
-    elif action == ComposeAction.TESTKIT_RESTART:
-        stop_testkit()
-        prepare_container_bind_source_directories()
-        start_testkit_logged(runtime_config)
     elif action == ComposeAction.STOP:
         stop_services_in_order()
         run(["sync"])
@@ -193,7 +217,7 @@ def run_compose_action(action: ComposeAction | str) -> None:
 
 
 def load_runtime_env() -> RuntimeConfig:
-    config = load_config(DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value)
+    config = load_config(RUNTIME_CONFIG_FILE)
     os.environ["VITALSERVER_REDIS_HOST"] = config.redis_host
     os.environ["VITALSERVER_REDIS_PORT"] = str(config.redis_port)
     os.environ["VITALSERVER_TRUST_PROXY"] = "1" if config.trust_proxy else "0"
@@ -201,11 +225,86 @@ def load_runtime_env() -> RuntimeConfig:
     os.environ["VITALSERVER_PUBLIC_PORT"] = str(config.public_port)
     os.environ["VITALSERVER_ADMIN_PASSWORD"] = config.admin_password
     os.environ["VITALSERVER_VITAL_FILES_DIR"] = config.vital_files_directory
-    settings_path = DEPLOY_DIR / RuntimeFileName.RUNTIME_SETTINGS.value
+    os.environ["RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN"] = (
+        ensure_recorder_ingress_expectation_control_token(
+            COMPOSE_ENVIRONMENT_FILE.with_name(
+                "recorder-ingress-expectation-control-token"
+            )
+        )
+    )
+    settings_path = RUNTIME_SETTINGS_FILE
     settings_document = read_json(settings_path)
     load_recorder_ingress_send_data_env(settings_document, settings_path)
     write_compose_runtime_limits(settings_document, settings_path)
+    write_compose_environment_file()
     return config
+
+
+def ensure_recorder_ingress_expectation_control_token(path: Any) -> str:
+    credential_path = os.fspath(path)
+    try:
+        if os.path.exists(credential_path):
+            with open(credential_path, encoding="utf-8") as credential_file:
+                token = credential_file.read().strip()
+            if len(token) < 32:
+                raise GuestContractError(
+                    "Recorder expectation control credential is invalid.",
+                    code="recorder-expectation-control-credential-invalid",
+                )
+            return token
+
+        token = secrets.token_urlsafe(32)
+        temporary_path = credential_path + ".next"
+        os.makedirs(os.path.dirname(credential_path), exist_ok=True)
+        descriptor = os.open(
+            temporary_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                output.write(token + "\n")
+            os.replace(temporary_path, credential_path)
+        except BaseException:
+            with suppress(OSError):
+                os.unlink(temporary_path)
+            raise
+        return token
+    except GuestContractError:
+        raise
+    except OSError as error:
+        raise GuestDependencyError(
+            "Recorder expectation control credential could not be read or written: "
+            f"{credential_path}: {error}",
+            code="recorder-expectation-control-credential-io-failed",
+        ) from error
+
+
+def write_compose_environment_file() -> None:
+    environment: dict[str, str] = {}
+    for name in COMPOSE_ENVIRONMENT_VARIABLES:
+        value = os.environ.get(name)
+        if value is None:
+            raise GuestContractError(
+                f"compose environment value is missing: {name}",
+                code="compose-environment-value-missing",
+            )
+        environment[name] = value
+    content = "".join(
+        f"{name}={json.dumps(value, ensure_ascii=False)}\n"
+        for name, value in environment.items()
+    )
+    output_path = COMPOSE_ENVIRONMENT_FILE
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = output_path.with_name(output_path.name + ".next")
+    try:
+        temporary_path.write_text(content, encoding="utf-8")
+        os.replace(temporary_path, output_path)
+    except OSError as error:
+        raise GuestDependencyError(
+            f"could not write compose environment file: {output_path}: {error}",
+            code="compose-environment-write-failed",
+        ) from error
 
 
 def load_recorder_ingress_send_data_env(
@@ -419,7 +518,7 @@ def write_compose_runtime_limits(
     document: dict[str, Any],
     settings_path: os.PathLike[str] | str,
 ) -> None:
-    output_path = DEPLOY_DIR / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value
+    output_path = COMPOSE_RUNTIME_LIMITS_FILE
     enabled = bool_setting(
         document,
         settings_path,
@@ -749,8 +848,13 @@ def compose_service_state_from_json(row: dict[str, Any]) -> ComposeServiceState:
         container=string_value(row, "Name", "name", "Container", "container"),
         state=string_value(row, "State", "state", "Status", "status"),
         exit_code=int_value(row, "ExitCode", "exitCode"),
-        health=string_value(row, "Health", "health"),
+        health=compose_health_value(row),
     )
+
+
+def compose_health_value(row: dict[str, Any]) -> str:
+    value = string_value(row, "Health", "health").strip()
+    return value if value else "not_reported"
 
 
 def string_value(row: dict[str, Any], *keys: str) -> str:
@@ -830,6 +934,31 @@ def wait_for_redis() -> None:
     raise SystemExit(1)
 
 
+def wait_for_postgres() -> None:
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        completed = compose(
+            [
+                "exec",
+                "-T",
+                ComposeService.POSTGRES.value,
+                "pg_isready",
+                "-U",
+                "vitalserver",
+                "-d",
+                "vitalserver",
+            ],
+            check=False,
+        )
+        if completed.returncode == 0:
+            return
+        time.sleep(2)
+    logger.error("postgres did not become ready")
+    compose(["ps"], check=False)
+    compose(["logs", ComposeService.POSTGRES.value, "--tail=100"], check=False)
+    raise SystemExit(1)
+
+
 def wait_for_app() -> None:
     script = (
         "require('http').get('http://127.0.0.1/check', "
@@ -851,21 +980,49 @@ def wait_for_app() -> None:
     raise SystemExit(1)
 
 
+def run_postgres_migration() -> None:
+    checked_compose(
+        [
+            "up",
+            "--pull",
+            "never",
+            "--no-build",
+            "--no-deps",
+            "--force-recreate",
+            "--abort-on-container-exit",
+            "--exit-code-from",
+            ComposeJob.POSTGRES_MIGRATION.value,
+            ComposeJob.POSTGRES_MIGRATION.value,
+        ],
+        stage="postgres schema migration",
+    )
+
+
 def start_ordered() -> None:
     checked_compose(
-        ["up", "-d", ComposeService.REDIS.value],
+        ["up", "--pull", "never", "--no-build", "-d", ComposeService.POSTGRES.value],
+        stage="postgres startup",
+    )
+    wait_for_postgres()
+    run_postgres_migration()
+    checked_compose(
+        ["up", "--pull", "never", "--no-build", "-d", ComposeService.REDIS.value],
         stage="redis startup",
     )
     wait_for_redis()
     checked_compose(
         [
             "up",
+            "--pull",
+            "never",
+            "--no-build",
             "-d",
             ComposeService.APP.value,
             ComposeService.RECORDER_RECOVERY.value,
             ComposeService.RECORDER_INGRESS.value,
             ComposeService.VITALDB_OBSERVER.value,
             ComposeService.REDIS_RELAY.value,
+            ComposeService.LAB.value,
             ComposeService.REDIS_UI.value,
             ComposeService.SWAGGER_UI.value,
         ],
@@ -873,33 +1030,6 @@ def start_ordered() -> None:
     )
     wait_for_app()
     checked_compose(
-        ["up", "-d", ComposeService.EDGE.value],
+        ["up", "--pull", "never", "--no-build", "-d", ComposeService.EDGE.value],
         stage="edge startup",
     )
-
-
-def start_testkit(runtime_config: RuntimeConfig) -> None:
-    if runtime_config.testkit_enabled:
-        load_optional_docker_images()
-        checked_compose(
-            ["up", "-d", ComposeService.TESTKIT.value],
-            stage="optional testkit startup",
-        )
-
-
-def start_testkit_logged(runtime_config: RuntimeConfig) -> None:
-    if not runtime_config.testkit_enabled:
-        logger.info("optional TestKit service is disabled")
-        return
-    logger.info("starting optional TestKit service via Docker Compose")
-    start_testkit(runtime_config)
-    logger.info("optional TestKit service provisioning completed")
-
-
-def stop_testkit() -> None:
-    logger.info("stopping optional TestKit service via Docker Compose")
-    compose(
-        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
-        timeout_seconds=40,
-    )
-    logger.info("optional TestKit service stopped")

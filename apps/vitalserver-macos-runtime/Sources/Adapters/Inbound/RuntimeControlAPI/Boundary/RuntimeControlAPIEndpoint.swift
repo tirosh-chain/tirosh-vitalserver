@@ -1,31 +1,70 @@
 import Foundation
 
 public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
-    case capabilities
-    case overview
-    case overviewStream
-    case status
-    case statusStream
+    case platformCapabilities
+    case runtimeCapabilities
+    case platformState
+    case platformStateStream
+    case operationState
+    case platformWorkflow
     case events
-    case eventStream
     case vitalDBObservation
     case vitalDBObservationStream
     case vitalDBRecorders
     case vitalDBRecorder
     case vitalDBRecorderActivity
+    case vitalDBRecorderVitalFiles
+    case vitalDBRecorderObservability
+    case vitalDBRecorderObservabilityTimeline
+    case vitalDBRecorderObservabilityIncidents
+    case applyRecorderObservabilityExpectation
     case vitalDBBeds
     case vitalDBBed
     case vitalDBRelationships
+    case hideVitalDBRecorders
+    case unhideVitalDBRecorders
+    case deleteVitalDBRecorders
+    case hideVitalDBBeds
+    case unhideVitalDBBeds
+    case deleteVitalDBBeds
     case health
+    case platformSettings
+    case applyPlatformSettings
     case settings
     case applySettings
+    case applyAdminPassword
     case release
     case installInfo
-    case startServices
-    case stopServices
-    case startTestKitService
-    case stopTestKitService
-    case restartTestKitService
+    case labScenarios
+    case labVitalFiles
+    case labBeds
+    case createLabBeds
+    case deleteLabBeds
+    case resetLabBeds
+    case labRecorders
+    case createLabRecorders
+    case deleteLabRecorders
+    case resetLabRecorders
+    case createLabSession
+    case labSessions
+    case labSession
+    case startLabSession
+    case stopLabSession
+    case finishLabSession
+    case startLabRecorder
+    case stopLabRecorder
+    case replayLabVitalFile
+    case uploadLabVitalFile
+    case guestStackStatus
+    case guestServices
+    case guestServiceStatus
+    case guestServiceResource
+    case redisRelayStatus
+    case redisRelaySettings
+    case applyRedisRelaySettings
+    case startGuestService
+    case stopGuestService
+    case restartGuestService
     case repairRuntimeServices
     case repairProxy
     case repairDatastore
@@ -43,9 +82,21 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case updateBundleSummary
     case verifyUpdateBundle
     case applyUpdateBundle
+    case rollbackRelease
     case rollbackBackup
     case deleteBackup
     case deleteUpdateBackup
     case deleteRuntimeDataBackup
     case exportLogs
+    case createSupportExport
+    case acquireOperationLease
+    case heartbeatOperationLease
+    case releaseOperationLease
+    case guestAddress
+    case putGuestAddress
+    case vmLifecycle
+    case putVMLifecycle
+    case startRuntimeProvider
+    case stopRuntimeProvider
+    case restartRuntimeProvider
 }

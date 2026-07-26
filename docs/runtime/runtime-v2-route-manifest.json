@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "description": "Owner-neutral, read-only Runtime v2 core routes. This manifest is a build-time contract and never enables runtime forwarding by itself.",
+  "routes": [
+    {
+      "id": "platform-state",
+      "operationId": "getPlatformState",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform",
+      "conformance": "required-read"
+    },
+    {
+      "id": "platform-capabilities",
+      "operationId": "getPlatformCapabilities",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform/capabilities",
+      "conformance": "required-read"
+    },
+    {
+      "id": "platform-operations",
+      "operationId": "getPlatformOperationState",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform/operations",
+      "conformance": "required-read"
+    },
+    {
+      "id": "platform-runtime-endpoint",
+      "operationId": "getHostRuntimeGuestAddress",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform/runtime-endpoint",
+      "conformance": "required-read"
+    },
+    {
+      "id": "platform-runtime-provider",
+      "operationId": "getHostRuntimeVMLifecycle",
+      "owner": "platform-agent",
+      "delivery": "handled",
+      "method": "GET",
+      "path": "/platform/runtime-provider",
+      "conformance": "required-read"
+    },
+    {
+      "id": "runtime-capabilities",
+      "operationId": "getRuntimeCapabilities",
+      "owner": "runtime-controller",
+      "delivery": "forwarded",
+      "method": "GET",
+      "path": "/runtime/capabilities",
+      "conformance": "required-read"
+    },
+    {
+      "id": "runtime-services",
+      "operationId": "listRuntimeGuestServices",
+      "owner": "runtime-controller",
+      "delivery": "forwarded",
+      "method": "GET",
+      "path": "/runtime/services",
+      "conformance": "required-read"
+    },
+    {
+      "id": "runtime-stack",
+      "operationId": "getRuntimeGuestStackStatus",
+      "owner": "runtime-controller",
+      "delivery": "forwarded",
+      "method": "GET",
+      "path": "/runtime/stack",
+      "conformance": "required-read"
+    }
+  ]
+}

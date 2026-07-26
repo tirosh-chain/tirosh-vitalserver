@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:catalog-observation",
+  "title": "CatalogObservation",
+  "description": "An immutable Guest Runtime Observation Catalog projection of a Recorder-owned self-observation. Catalog timestamps do not replace the device occurredAt fact.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "sourceIdentity",
+    "envelope",
+    "receivedAt",
+    "persistedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "sourceIdentity": {
+      "$ref": "#/$defs/SourceIdentity"
+    },
+    "envelope": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-observation-envelope"
+    },
+    "receivedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "persistedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "$defs": {
+    "SourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "recorderId",
+        "bootId",
+        "sequence",
+        "occurredAt"
+      ],
+      "properties": {
+        "kind": {
+          "const": "recorder-self-observation"
+        },
+        "recorderId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "bootId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "occurredAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      }
+    }
+  }
+}

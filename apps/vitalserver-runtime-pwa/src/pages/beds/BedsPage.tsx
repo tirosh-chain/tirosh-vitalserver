@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBRecorders, useVitalDBRelationships } from "@/console/hooks";
+import {
+  useDeleteVitalDBBeds,
+  useHideVitalDBBeds,
+  useLabBeds,
+  useUnhideVitalDBBeds,
+  useVitalDBBeds,
+  useVitalDBRelationships
+} from "@/console/hooks";
 import type {
+  RuntimeLabBed,
   VitalDBBedRecord,
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
@@ -24,24 +32,37 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { RelationshipHistory } from "@/pages/relationships/RelationshipHistory";
 
 export function BedsPage() {
-  const recordersQuery = useVitalDBRecorders();
+  const bedsQuery = useVitalDBBeds();
   const relationshipsQuery = useVitalDBRelationships();
+  const labBedsQuery = useLabBeds();
   const allBeds = useMemo(
     () =>
-      recordersQuery.data === undefined
+      bedsQuery.data === undefined
         ? null
-        : [...recordersQuery.data.beds].sort(sortByLastSeen),
-    [recordersQuery.data]
+        : [...bedsQuery.data.beds].sort(sortByLastSeen),
+    [bedsQuery.data]
   );
   const [searchText, setSearchText] = useState("");
-  const beds = allBeds === null ? null : filterBeds(allBeds, searchText);
+  const [showHidden, setShowHidden] = useState(false);
+  const hideBeds = useHideVitalDBBeds();
+  const unhideBeds = useUnhideVitalDBBeds();
+  const deleteBeds = useDeleteVitalDBBeds();
+  const visibleBeds =
+    allBeds === null
+      ? null
+      : allBeds.filter((bed) => showHidden || bed.visibility !== "hidden");
+  const beds = visibleBeds === null ? null : filterBeds(visibleBeds, searchText);
+  const visibilityMutationPending =
+    hideBeds.isPending || unhideBeds.isPending || deleteBeds.isPending;
+  const visibilityMutationError =
+    hideBeds.error ?? unhideBeds.error ?? deleteBeds.error;
   const [selectedBedID, setSelectedBedID] = useState<string | null>(null);
   const selectedBed =
     beds?.find((bed) => bed.bedID === selectedBedID) ??
     beds?.[0] ??
     null;
 
-  const summary = recordersQuery.data?.summary ?? null;
+  const summary = bedsQuery.data?.summary ?? null;
 
   return (
     <div className="page-stack">
@@ -55,10 +76,18 @@ export function BedsPage() {
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
             />
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={showHidden}
+                onChange={(event) => setShowHidden(event.target.checked)}
+              />
+              Show hidden
+            </label>
             <button
               type="button"
-              disabled={recordersQuery.isFetching}
-              onClick={() => recordersQuery.refetch()}
+              disabled={bedsQuery.isFetching}
+              onClick={() => bedsQuery.refetch()}
             >
               Refresh
             </button>
@@ -77,17 +106,21 @@ export function BedsPage() {
             { label: "Bed anomalies", value: summary?.bedAnomalies ?? NOT_REPORTED },
             {
               label: "Data updated",
-              value: formatLocalDateTime(recordersQuery.data?.updatedAt)
+              value: formatLocalDateTime(bedsQuery.data?.updatedAt)
             }
           ]}
         />
 
-        {recordersQuery.isPending ? (
+        {visibilityMutationError ? (
+          <p className="form-error">{mutationErrorMessage(visibilityMutationError)}</p>
+        ) : null}
+
+        {bedsQuery.isPending ? (
           <p className="empty-state">Loading beds...</p>
-        ) : recordersQuery.isError ? (
+        ) : bedsQuery.isError ? (
           <ErrorState
             title="Bed history is not available"
-            error={recordersQuery.error}
+            error={bedsQuery.error}
           />
         ) : beds === null ? (
           <ErrorState
@@ -102,7 +135,7 @@ export function BedsPage() {
             getRowKey={(bed) => bed.bedID}
             selectedKey={selectedBed?.bedID}
             onSelectRow={(bed) => setSelectedBedID(bed.bedID)}
-            emptyText="No beds found."
+            emptyText="No VitalDB bed observations found."
             columns={[
               {
                 key: "bed",
@@ -134,9 +167,54 @@ export function BedsPage() {
                 render: (bed) => formatLocalDateTimeWithAge(bed.lastSeenAt)
               },
               {
+                key: "visibility",
+                header: "Visibility",
+                render: (bed) => formatVisibility(bed.visibility)
+              },
+              {
                 key: "anomaly",
                 header: "Anomaly",
                 render: (bed) => formatAnomalySummary(bed)
+              },
+              {
+                key: "actions",
+                header: "Actions",
+                render: (bed) => (
+                  <div className="toolbar compact-toolbar">
+                    {bed.visibility === "hidden" ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={visibilityMutationPending}
+                          onClick={() => unhideBeds.mutate({ bedIDs: [bed.bedID] })}
+                        >
+                          Unhide
+                        </button>
+                        {showHidden ? (
+                          <button
+                            type="button"
+                            disabled={visibilityMutationPending}
+                            onClick={() => {
+                              if (window.confirm(`Delete hidden bed ${bed.bedID}?`)) {
+                                deleteBeds.mutate({ bedIDs: [bed.bedID] });
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={visibilityMutationPending}
+                        onClick={() => hideBeds.mutate({ bedIDs: [bed.bedID] })}
+                      >
+                        Hide
+                      </button>
+                    )}
+                  </div>
+                )
               }
             ]}
           />
@@ -150,7 +228,141 @@ export function BedsPage() {
           relationshipsError={relationshipsQuery.error}
         />
       ) : null}
+
+      <LabBedsPanel
+        beds={labBedsQuery.data?.beds ?? []}
+        state={labBedsQuery.data?.state}
+        readError={labBedsQuery.data?.readError ?? null}
+        isPending={labBedsQuery.isPending}
+        isError={labBedsQuery.isError}
+        error={labBedsQuery.error}
+        isFetching={labBedsQuery.isFetching}
+        onRefresh={() => labBedsQuery.refetch()}
+      />
     </div>
+  );
+}
+
+function LabBedsPanel({
+  beds,
+  state,
+  readError,
+  isPending,
+  isError,
+  error,
+  isFetching,
+  onRefresh
+}: {
+  beds: RuntimeLabBed[];
+  state: string | undefined;
+  readError: string | null;
+  isPending: boolean;
+  isError: boolean;
+  error: unknown;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  const [selectedBedID, setSelectedBedID] = useState<string | null>(null);
+  const selectedBed =
+    beds.find((bed) => bed.bedId === selectedBedID) ?? beds[0] ?? null;
+
+  return (
+    <>
+      <Panel
+        title="Product Lab beds"
+        actions={
+          <button type="button" disabled={isFetching} onClick={onRefresh}>
+            Refresh
+          </button>
+        }
+      >
+        <MetricStrip
+          metrics={[
+            { label: "Lab beds", value: beds.length },
+            { label: "Read state", value: state ?? NOT_REPORTED },
+            { label: "Read error", value: readError ?? "-" }
+          ]}
+        />
+        {isPending ? (
+          <p className="empty-state">Loading Product Lab beds...</p>
+        ) : isError ? (
+          <ErrorState title="Product Lab beds are not available" error={error} />
+        ) : (
+          <DataTable
+            rows={beds}
+            getRowKey={(bed) => bed.bedId}
+            selectedKey={selectedBed?.bedId}
+            onSelectRow={(bed) => setSelectedBedID(bed.bedId)}
+            emptyText="No Product Lab beds found."
+            columns={[
+              {
+                key: "name",
+                header: "Name",
+                render: (bed) => <strong>{bed.name}</strong>
+              },
+              {
+                key: "bedId",
+                header: "Bed ID",
+                render: (bed) => bed.bedId
+              },
+              {
+                key: "session",
+                header: "Session",
+                render: (bed) => bed.sessionId
+              },
+              {
+                key: "state",
+                header: "State",
+                render: (bed) => (
+                  <StatusBadge tone={labStateTone(bed.state)}>
+                    {bed.state}
+                  </StatusBadge>
+                )
+              },
+              {
+                key: "updated",
+                header: "Updated",
+                render: (bed) => formatLocalDateTime(bed.updatedAt)
+              }
+            ]}
+          />
+        )}
+      </Panel>
+
+      {selectedBed ? <ProductLabBedDetails bed={selectedBed} /> : null}
+    </>
+  );
+}
+
+function ProductLabBedDetails({ bed }: { bed: RuntimeLabBed }) {
+  return (
+    <Panel title="Product Lab Bed Details">
+      <div className="detail-heading">
+        <StatusBadge tone={labStateTone(bed.state)}>
+          <strong>{bed.name}</strong>
+          {bed.state}
+        </StatusBadge>
+        <span>{formatLocalDateTime(bed.updatedAt)}</span>
+      </div>
+
+      <KeyValueRows
+        rows={[
+          { label: "Name", value: bed.name },
+          { label: "Bed ID", value: bed.bedId },
+          { label: "Session", value: bed.sessionId },
+          {
+            label: "State",
+            value: (
+              <StatusBadge tone={labStateTone(bed.state)}>
+                {bed.state}
+              </StatusBadge>
+            )
+          },
+          { label: "Created", value: formatLocalDateTime(bed.createdAt) },
+          { label: "Updated", value: formatLocalDateTime(bed.updatedAt) }
+        ]}
+      />
+    </Panel>
   );
 }
 
@@ -252,6 +464,28 @@ function formatAnomalyKind(value: string | null | undefined): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatVisibility(value: VitalDBBedRecord["visibility"]): string {
+  return value === "hidden" ? "Hidden" : "Visible";
+}
+
+function mutationErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function labStateTone(state: string): "success" | "warning" | "danger" | "neutral" {
+  switch (state) {
+    case "running":
+      return "success";
+    case "accepted":
+    case "stopped":
+      return "warning";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
 function shorten(value: string): string {

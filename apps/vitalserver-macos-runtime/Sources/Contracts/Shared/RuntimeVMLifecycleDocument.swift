@@ -60,6 +60,9 @@ public enum RuntimeVMLifecycleState: Codable, Equatable, Sendable {
 
 public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
     case launchFailed
+    case stopRequestFailed
+    case processExitedWithoutTerminalState
+    case serviceStoppedWithoutTerminalState
     case diskAttachmentInvalid
     case guestFilesystemReadOnly
     case guestDiskIO
@@ -70,6 +73,12 @@ public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
         switch rawValue {
         case "launch-failed":
             self = .launchFailed
+        case "stop-request-failed":
+            self = .stopRequestFailed
+        case "process-exited-without-terminal-state":
+            self = .processExitedWithoutTerminalState
+        case "service-stopped-without-terminal-state":
+            self = .serviceStoppedWithoutTerminalState
         case "disk-attachment-invalid":
             self = .diskAttachmentInvalid
         case "guest-filesystem-read-only":
@@ -87,6 +96,12 @@ public enum RuntimeVMLifecycleTerminalReason: Codable, Equatable, Sendable {
         switch self {
         case .launchFailed:
             return "launch-failed"
+        case .stopRequestFailed:
+            return "stop-request-failed"
+        case .processExitedWithoutTerminalState:
+            return "process-exited-without-terminal-state"
+        case .serviceStoppedWithoutTerminalState:
+            return "service-stopped-without-terminal-state"
         case .diskAttachmentInvalid:
             return "disk-attachment-invalid"
         case .guestFilesystemReadOnly:
@@ -146,6 +161,33 @@ public struct RuntimeVMLifecycleDocument: Codable, Equatable, Sendable {
         self.terminalReason = terminalReason
         self.message = message
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case state
+        case operation
+        case operationID
+        case bootID
+        case startedAt
+        case updatedAt
+        case deadlineAt
+        case terminalReason
+        case message
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(state, forKey: .state)
+        try container.encodeExplicitOptional(operation, forKey: .operation)
+        try container.encodeExplicitOptional(operationID, forKey: .operationID)
+        try container.encodeExplicitOptional(bootID, forKey: .bootID)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encodeExplicitOptional(deadlineAt, forKey: .deadlineAt)
+        try container.encodeExplicitOptional(terminalReason, forKey: .terminalReason)
+        try container.encodeExplicitOptional(message, forKey: .message)
+    }
 }
 
 public extension RuntimeVMLifecycleDocument {
@@ -168,6 +210,12 @@ public extension RuntimeVMLifecycleDocument {
         switch terminalReason {
         case .launchFailed:
             return [.launchFailed(terminalReason.rawValue)]
+        case .stopRequestFailed:
+            return [.unknown(terminalReason.rawValue)]
+        case .processExitedWithoutTerminalState:
+            return [.unknown(terminalReason.rawValue)]
+        case .serviceStoppedWithoutTerminalState:
+            return [.unknown(terminalReason.rawValue)]
         case .diskAttachmentInvalid:
             return [.diskAttachmentInvalid]
         case .guestFilesystemReadOnly:
@@ -178,6 +226,19 @@ public extension RuntimeVMLifecycleDocument {
             return [.guestFilesystemError]
         case .unknown(let value):
             return [.unknown("vm-lifecycle-\(value)")]
+        }
+    }
+}
+
+private extension KeyedEncodingContainer {
+    mutating func encodeExplicitOptional<T: Encodable>(
+        _ value: T?,
+        forKey key: Key
+    ) throws {
+        if let value {
+            try encode(value, forKey: key)
+        } else {
+            try encodeNil(forKey: key)
         }
     }
 }

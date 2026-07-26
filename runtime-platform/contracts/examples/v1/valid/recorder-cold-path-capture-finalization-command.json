@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "v1",
+  "requestId": "recorder-cold-path-finalization-request-0001",
+  "coldPathCaptureId": "recorder-cold-path-capture-0001",
+  "expectedCaptureRevision": 1
+}

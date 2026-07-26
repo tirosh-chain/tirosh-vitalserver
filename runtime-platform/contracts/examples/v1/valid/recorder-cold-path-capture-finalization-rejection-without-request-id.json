@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "v1",
+  "state": "rejected",
+  "issue": {
+    "code": "invalid-recorder-cold-path-finalization-command",
+    "message": "request body must be a JSON object",
+    "retryable": false,
+    "dependency": "recorder-gateway"
+  }
+}

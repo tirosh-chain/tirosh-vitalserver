@@ -1,0 +1,759 @@
+{
+  "schemaVersion": "v1",
+  "contracts": [
+    {
+      "id": "C1",
+      "name": "ReadResult",
+      "owner": "read owner",
+      "boundary": "cross-process read",
+      "schemas": [
+        "json-schema/v1/read-result.schema.json"
+      ]
+    },
+    {
+      "id": "C2",
+      "name": "Operation",
+      "owner": "Host Agent or Guest Runtime",
+      "boundary": "durable workflow",
+      "schemas": [
+        "json-schema/v1/operation.schema.json"
+      ]
+    },
+    {
+      "id": "C3",
+      "name": "RuntimeTopology",
+      "owner": "Guest Runtime",
+      "boundary": "persisted runtime resource",
+      "schemas": [
+        "json-schema/v1/runtime-topology.schema.json"
+      ]
+    },
+    {
+      "id": "C4",
+      "name": "CapabilityDocument",
+      "owner": "Guest Runtime",
+      "boundary": "provider capability projection",
+      "schemas": [
+        "json-schema/v1/capability-document.schema.json"
+      ]
+    },
+    {
+      "id": "C5",
+      "name": "IngressReceipt",
+      "owner": "Recorder Gateway",
+      "boundary": "recorder ingress receipt",
+      "schemas": [
+        "json-schema/v1/ingress-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C6",
+      "name": "ArtifactExportCommand, ArchiveExportProviderConfiguration, ArtifactManifest, ExportReceipt, and Archive artifact lineage",
+      "owner": "Archive Export",
+      "boundary": "artifact finalization and export receipt",
+      "schemas": [
+        "json-schema/v1/artifact-export-command.schema.json",
+        "json-schema/v1/archive-export-provider.schema.json",
+        "json-schema/v1/artifact-manifest.schema.json",
+        "json-schema/v1/export-receipt.schema.json",
+        "json-schema/v1/archive-artifact-detail.schema.json",
+        "json-schema/v1/recorder-artifact-page.schema.json"
+      ]
+    },
+    {
+      "id": "C7",
+      "name": "PlatformInstallation",
+      "owner": "Host Agent",
+      "boundary": "Host-owned installation resource",
+      "schemas": [
+        "json-schema/v1/platform-installation.schema.json"
+      ]
+    },
+    {
+      "id": "C8",
+      "name": "GuestRuntimeControlEndpoint",
+      "owner": "Host Agent",
+      "boundary": "configured Guest Runtime Control HTTP target and independent Platform Provider/transport observations",
+      "schemas": [
+        "json-schema/v1/guest-runtime-control-endpoint.schema.json"
+      ]
+    },
+    {
+      "id": "C9",
+      "name": "GuestLifecycleCommand",
+      "owner": "Host Agent",
+      "boundary": "Host lifecycle command",
+      "schemas": [
+        "json-schema/v1/guest-lifecycle-command.schema.json"
+      ]
+    },
+    {
+      "id": "C10",
+      "name": "ProviderLifecycleRequest and ProviderLifecycleResult",
+      "owner": "Platform provider",
+      "boundary": "Host-to-provider effect and live result",
+      "schemas": [
+        "json-schema/v1/provider-lifecycle-request.schema.json",
+        "json-schema/v1/provider-lifecycle-result.schema.json"
+      ]
+    },
+    {
+      "id": "C11",
+      "name": "FacadeForwardingFailure",
+      "owner": "Host Agent",
+      "boundary": "Host facade command forwarding outcome",
+      "schemas": [
+        "json-schema/v1/facade-forwarding-failure.schema.json"
+      ]
+    },
+    {
+      "id": "C12",
+      "name": "CommandAdmissionFailure",
+      "owner": "Host Agent or Guest Runtime",
+      "boundary": "durable command admission outcome",
+      "schemas": [
+        "json-schema/v1/command-admission-failure.schema.json"
+      ]
+    },
+    {
+      "id": "C13",
+      "name": "DeliveryReceipt",
+      "owner": "Recorder Gateway",
+      "boundary": "upstream delivery attempt outcome",
+      "schemas": [
+        "json-schema/v1/delivery-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C14",
+      "name": "LabSession, LabBed, and VirtualRecorder",
+      "owner": "Guest Runtime Lab",
+      "boundary": "Lab aggregate resource read",
+      "schemas": [
+        "json-schema/v1/lab-resources.schema.json"
+      ]
+    },
+    {
+      "id": "C15",
+      "name": "Lab commands and DeletionReceipt",
+      "owner": "Guest Runtime Lab",
+      "boundary": "Lab lifecycle command and explicit deletion evidence",
+      "schemas": [
+        "json-schema/v1/lab-commands.schema.json",
+        "json-schema/v1/deletion-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C16",
+      "name": "ExternalUpstreamIntegration and apply command",
+      "owner": "Guest Runtime External Upstream",
+      "boundary": "external upstream configuration, observation, and capability projection",
+      "schemas": [
+        "json-schema/v1/external-upstream-integration.schema.json",
+        "json-schema/v1/external-upstream-command.schema.json"
+      ]
+    },
+    {
+      "id": "C17",
+      "name": "OutboundRelayTarget and apply command",
+      "owner": "Guest Runtime Relay",
+      "boundary": "independent external relay integration resource",
+      "schemas": [
+        "json-schema/v1/outbound-relay-target.schema.json",
+        "json-schema/v1/outbound-relay-command.schema.json"
+      ]
+    },
+    {
+      "id": "C18",
+      "name": "TimeAuthority, apply command, and ClockQuality",
+      "owner": "Host Time Authority or Guest Time Authority",
+      "boundary": "node-local NTP configuration and quality observation",
+      "schemas": [
+        "json-schema/v1/time-authority.schema.json",
+        "json-schema/v1/time-authority-command.schema.json",
+        "json-schema/v1/clock-quality.schema.json"
+      ]
+    },
+    {
+      "id": "C19",
+      "name": "RecorderObservationEnvelope, Catalog admission, current summary, ingest, and expectation contracts",
+      "owner": "Vital Recorder source and Guest Runtime Observation Catalog projection",
+      "boundary": "device self-observation source and immutable query projection",
+      "schemas": [
+        "json-schema/v1/recorder-observation-envelope.schema.json",
+        "json-schema/v1/catalog-observation.schema.json",
+        "json-schema/v1/catalog-observation-command.schema.json",
+        "json-schema/v1/catalog-observation-admission.schema.json",
+        "json-schema/v1/recorder-observability-summary.schema.json",
+        "json-schema/v1/recorder-observability-summary-page.schema.json",
+        "json-schema/v1/recorder-observability-expectation-command.schema.json",
+        "json-schema/v1/recorder-expectation-event.schema.json",
+        "json-schema/v1/recorder-expectation-receipt.schema.json",
+        "json-schema/v1/recorder-observation-timeline-page.schema.json",
+        "json-schema/v1/recorder-reported-incident.schema.json",
+        "json-schema/v1/recorder-incident-page.schema.json"
+      ]
+    },
+    {
+      "id": "C20",
+      "name": "TelemetryPipeline, signal command, emission receipt, and correlation",
+      "owner": "Host Telemetry Pipeline or Guest Telemetry Pipeline",
+      "boundary": "redacted and bounded OpenTelemetry diagnostic export",
+      "schemas": [
+        "json-schema/v1/telemetry-pipeline.schema.json",
+        "json-schema/v1/telemetry-pipeline-command.schema.json",
+        "json-schema/v1/telemetry-signal-command.schema.json",
+        "json-schema/v1/telemetry-emission-receipt.schema.json",
+        "json-schema/v1/telemetry-correlation.schema.json"
+      ]
+    },
+    {
+      "id": "C21",
+      "name": "PlatformProviderLifecycleInvocation",
+      "owner": "Host Agent",
+      "boundary": "selected platform provider invocation and idempotency correlation",
+      "schemas": [
+        "json-schema/v1/platform-provider-lifecycle-invocation.schema.json"
+      ]
+    },
+    {
+      "id": "C22",
+      "name": "ProviderInstallationEvidence",
+      "owner": "Platform provider",
+      "boundary": "selected provider VM, Host service, and capability evidence",
+      "schemas": [
+        "json-schema/v1/provider-installation-evidence.schema.json"
+      ]
+    },
+    {
+      "id": "C23",
+      "name": "ReleaseDeliveryPlan",
+      "owner": "Release process",
+      "boundary": "per-platform artifact and required release proof declaration",
+      "schemas": [
+        "json-schema/v1/release-delivery-plan.schema.json"
+      ]
+    },
+    {
+      "id": "C24",
+      "name": "ReleaseDeliveryProofSet",
+      "owner": "Release process",
+      "boundary": "per-platform clean-host, update, rollback, and licensing proof status",
+      "schemas": [
+        "json-schema/v1/release-delivery-proof.schema.json"
+      ]
+    },
+    {
+      "id": "C25",
+      "name": "UpdateBootstrapEnvelope",
+      "owner": "Release process and Host update bootstrapper",
+      "boundary": "immutable signed bootstrap envelope and next-updater staging trust boundary",
+      "schemas": [
+        "json-schema/v1/update-bootstrap-envelope.schema.json"
+      ]
+    },
+    {
+      "id": "C26",
+      "name": "ProductUpdateSpecification",
+      "owner": "Staged next updater",
+      "boundary": "evolving next-updater-only update layer plan",
+      "schemas": [
+        "json-schema/v1/product-update-specification.schema.json"
+      ]
+    },
+    {
+      "id": "C27",
+      "name": "HostUpdateCommand, UpdateBootstrapReceipt, and UpdateCompletionCommand",
+      "owner": "Host Agent and staged next updater",
+      "boundary": "Host-local durable update admission, bootstrap result, and completion command",
+      "schemas": [
+        "json-schema/v1/host-update-command.schema.json",
+        "json-schema/v1/update-bootstrap-receipt.schema.json",
+        "json-schema/v1/update-completion-command.schema.json"
+      ]
+    },
+    {
+      "id": "C28",
+      "name": "UpdateExecutionReport",
+      "owner": "Staged next updater",
+      "boundary": "typed per-layer update and rollback evidence",
+      "schemas": [
+        "json-schema/v1/update-execution-report.schema.json"
+      ]
+    },
+    {
+      "id": "C29",
+      "name": "HostUpdateJournal",
+      "owner": "Host Agent",
+      "boundary": "durable Host-owned update handoff, recovery, and installed-release settlement state",
+      "schemas": [
+        "json-schema/v1/host-update-journal.schema.json"
+      ]
+    },
+    {
+      "id": "C30",
+      "name": "StagedUpdateInvocation",
+      "owner": "Host update bootstrapper and staged next updater",
+      "boundary": "staged update invocation; C26 remains next-updater-owned",
+      "schemas": [
+        "json-schema/v1/staged-update-invocation.schema.json"
+      ]
+    },
+    {
+      "id": "C31",
+      "name": "StagedUpdateHandoff",
+      "owner": "Host update bootstrapper and deployment supervisor",
+      "boundary": "durable Host-local queue reference to the staged C30 invocation",
+      "schemas": [
+        "json-schema/v1/staged-update-handoff.schema.json"
+      ]
+    },
+    {
+      "id": "C32",
+      "name": "MacOSVirtualMachineConfiguration",
+      "owner": "Host deployment configuration",
+      "boundary": "Host Agent to macOS virtual machine supervisor Guest runtime disk provisioning, VM realization, and Host-owned Guest boot console capture",
+      "schemas": [
+        "json-schema/v1/macos-virtual-machine-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C33",
+      "name": "HostAgentDeploymentConfiguration",
+      "owner": "Host deployment configuration",
+      "boundary": "launchd or operator deployment input to one Host Agent service instance",
+      "schemas": [
+        "json-schema/v1/host-agent-deployment-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C34",
+      "name": "MacOSGuestArtifactManifest",
+      "owner": "Guest image compiler",
+      "boundary": "Guest image compiler to macOS Host package composer artifact identity",
+      "schemas": [
+        "json-schema/v1/macos-guest-artifact-manifest.schema.json"
+      ]
+    },
+    {
+      "id": "C35",
+      "name": "GuestArtifactCompilationCommand and GuestArtifactCompilationReceipt",
+      "owner": "Guest image compiler",
+      "boundary": "Release build to Guest artifact compiler immutable inputs and correlated C34 result",
+      "schemas": [
+        "json-schema/v1/guest-artifact-compilation-command.schema.json",
+        "json-schema/v1/guest-artifact-compilation-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C36",
+      "name": "HostEdgeProxyDeploymentConfiguration",
+      "owner": "Host edge proxy deployment",
+      "boundary": "operator or service manager to Host-owned public HTTP/WebSocket edge proxy desired configuration",
+      "schemas": [
+        "json-schema/v1/host-edge-proxy-deployment-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C37",
+      "name": "GuestProductProcessDeploymentConfiguration",
+      "owner": "Guest product process supervisor",
+      "boundary": "Guest service manager to required Guest Runtime and Recorder Gateway process desired configuration",
+      "schemas": [
+        "json-schema/v1/guest-product-process-deployment-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C38",
+      "name": "GuestProductServiceManagerDeploymentConfiguration",
+      "owner": "Guest product service manager deployment",
+      "boundary": "Guest release build to systemd Guest Product process supervisor desired service configuration",
+      "schemas": [
+        "json-schema/v1/guest-product-service-manager-deployment-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C39",
+      "name": "GuestProductBootstrapConfiguration",
+      "owner": "Guest Product release author",
+      "boundary": "Guest Product release author to first-Guest-boot NoCloud payload and service-installation desired configuration",
+      "schemas": [
+        "json-schema/v1/guest-product-bootstrap-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C40",
+      "name": "GuestProductBootstrapVolumeCompositionPlan",
+      "owner": "Guest Product bootstrap release composer",
+      "boundary": "Guest Product release composer to selected NoCloud bootstrap-volume composer explicit delivery plan",
+      "schemas": [
+        "json-schema/v1/guest-product-bootstrap-volume-composition-plan.schema.json"
+      ]
+    },
+    {
+      "id": "C41",
+      "name": "GuestArtifactCompilationInputAssemblyDeclaration and GuestArtifactCompilationInputAssemblyReceipt",
+      "owner": "Release input assembler",
+      "boundary": "explicit Host build sources to one immutable C35 Guest Product input root and assembly evidence",
+      "schemas": [
+        "json-schema/v1/guest-artifact-compilation-input-assembly-declaration.schema.json",
+        "json-schema/v1/guest-artifact-compilation-input-assembly-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C42",
+      "name": "GuestLinuxBootArtifactExtractionDeclaration and GuestLinuxBootArtifactExtractionReceipt",
+      "owner": "Guest Linux boot artifact extractor",
+      "boundary": "immutable ARM64 whole-disk ext4 release source to named kernel, initial ramdisk, root-storage artifacts, and extraction evidence",
+      "schemas": [
+        "json-schema/v1/guest-linux-boot-artifact-extraction-declaration.schema.json",
+        "json-schema/v1/guest-linux-boot-artifact-extraction-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C43",
+      "name": "GuestRootStoragePartitionAssemblyDeclaration and GuestRootStoragePartitionAssemblyReceipt",
+      "owner": "Guest root storage partition assembler",
+      "boundary": "verified C42 whole-disk ext4 root-storage output to one explicit MBR-partitioned C39 root-storage base and assembly evidence",
+      "schemas": [
+        "json-schema/v1/guest-root-storage-partition-assembly-declaration.schema.json",
+        "json-schema/v1/guest-root-storage-partition-assembly-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C44",
+      "name": "GuestProductVitalServerTopologyDeployment",
+      "owner": "Guest Product release author",
+      "boundary": "Guest Product bundled or external VitalServer placement, provider identity, and browser-exposure desired deployment declaration",
+      "schemas": [
+        "json-schema/v1/guest-product-vitalserver-topology-deployment.schema.json"
+      ]
+    },
+    {
+      "id": "C45",
+      "name": "RecorderColdPathCapture, RecorderColdPathCaptureFinalizationCommand, RecorderColdPathCaptureFinalizationReceipt, and RecorderColdPathCaptureFinalizationRejection",
+      "owner": "Recorder Gateway",
+      "boundary": "Recorder Gateway raw packet cold-path capture lifecycle and finalized packet-sequence source evidence",
+      "schemas": [
+        "json-schema/v1/recorder-cold-path-capture.schema.json",
+        "json-schema/v1/recorder-cold-path-capture-finalization-command.schema.json",
+        "json-schema/v1/recorder-cold-path-capture-finalization-receipt.schema.json",
+        "json-schema/v1/recorder-cold-path-capture-finalization-rejection.schema.json"
+      ]
+    },
+    {
+      "id": "C46",
+      "name": "ExternalVitalServerDeliveryConfiguration",
+      "owner": "Guest Product external delivery deployment administrator",
+      "boundary": "C44-selected external VitalServer integration to explicit Recorder Gateway Socket.IO packet-delivery and indexed-library archive endpoint configuration, with an identity-only archive credential reference",
+      "schemas": [
+        "json-schema/v1/external-vitalserver-delivery-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C47",
+      "name": "MacOSReleasePackageAssemblyDeclaration and MacOSReleasePackageAssemblyReceipt",
+      "owner": "Release process",
+      "boundary": "one declared C41-to-C35-to-macOS-PKG-to-expanded-PKG-verification release-build invocation and immutable build receipt",
+      "schemas": [
+        "json-schema/v1/macos-release-package-assembly-declaration.schema.json",
+        "json-schema/v1/macos-release-package-assembly-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C48",
+      "name": "HostProductInstallationManifest",
+      "owner": "Release process",
+      "boundary": "one immutable Host product release catalog and slot, current-release activation identity, hashed Host service definitions, and separately owned mutable stores",
+      "schemas": [
+        "json-schema/v1/host-product-installation-manifest.schema.json"
+      ]
+    },
+    {
+      "id": "C49",
+      "name": "HostInstallationFootprint",
+      "owner": "Host Installation Manager",
+      "boundary": "Host-local observation of a C48 package receipt, release catalog and slot, activation link, service registrations and definition bytes, mutable stores, and unfinished transaction",
+      "schemas": [
+        "json-schema/v1/host-installation-footprint.schema.json"
+      ]
+    },
+    {
+      "id": "C50",
+      "name": "HostInstallationRequest, HostInstallationJournal, and HostInstallationReceipt",
+      "owner": "Host Installation Manager",
+      "boundary": "Host Installation Manager command admission, durable installation transaction state, and explicit preflight or activation outcome",
+      "schemas": [
+        "json-schema/v1/host-installation-lifecycle.schema.json"
+      ]
+    },
+    {
+      "id": "C51",
+      "name": "VitalServerIndexedLibraryCredentialMaterial",
+      "owner": "Guest secret-material owner",
+      "boundary": "Guest-local private VitalServer indexed-library authentication material matched to the identity-only C46 secret reference",
+      "schemas": [
+        "json-schema/v1/vitalserver-indexed-library-credential-material.schema.json"
+      ]
+    },
+    {
+      "id": "C52",
+      "name": "HostLocalAdministrationEndpointDescriptor",
+      "owner": "Host Agent",
+      "boundary": "Host Agent OS-local administration listener readiness to desktop console and platformctl exact local transport selection",
+      "schemas": [
+        "json-schema/v1/host-local-administration-endpoint-descriptor.schema.json"
+      ]
+    },
+    {
+      "id": "C53",
+      "name": "OperatorInterfaceBootstrapConfiguration",
+      "owner": "Host installation configuration",
+      "boundary": "installer-owned Runtime Console launcher input to the Host Agent-published C52 descriptor path",
+      "schemas": [
+        "json-schema/v1/operator-interface-bootstrap-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C54",
+      "name": "HostProductRemovalRequest, HostProductRemovalJournal, and HostProductRemovalReceipt",
+      "owner": "Host Installation Manager",
+      "boundary": "explicit Host product removal admission, durable destructive-operation state, chosen mutable-data disposition, and removal outcome",
+      "schemas": [
+        "json-schema/v1/host-product-removal-lifecycle.schema.json"
+      ]
+    },
+    {
+      "id": "C55",
+      "name": "StagedUpdateLayerEffectReceipt",
+      "owner": "C26-declared layer effect executor",
+      "boundary": "one fixed-protocol, staged layer effect outcome consumed by the next updater before it creates C28 execution evidence",
+      "schemas": [
+        "json-schema/v1/staged-update-layer-effect-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C56",
+      "name": "HostUpdateHandoffSupervisorConfiguration",
+      "owner": "Host update handoff supervisor deployment",
+      "boundary": "deployment-owned C31 queue, C28/C55 evidence, and C52 local-control inputs for one selected next-updater dispatcher",
+      "schemas": [
+        "json-schema/v1/host-update-handoff-supervisor-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C57",
+      "name": "HostUpdateHandoffDispatchReceipt",
+      "owner": "Host update handoff supervisor",
+      "boundary": "immutable C31 dispatch-attempt result distinct from Host-owned C29 update settlement",
+      "schemas": [
+        "json-schema/v1/host-update-handoff-dispatch-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C58",
+      "name": "HostUpdateTrustStore",
+      "owner": "Release process",
+      "boundary": "immutable public update-envelope verification keys deployed to the Host Agent; no private signing material",
+      "schemas": [
+        "json-schema/v1/host-update-trust-store.schema.json"
+      ]
+    },
+    {
+      "id": "C59",
+      "name": "GuestProductReleaseManagerConfiguration, GuestProductReleaseUpdateCommand, and GuestProductReleaseOperation",
+      "owner": "Guest Product Release Manager",
+      "boundary": "Guest-local immutable release staging, current-release activation, health-gated rollback, and durable update outcome; Host code never writes Guest runtime state directly",
+      "schemas": [
+        "json-schema/v1/guest-product-release-management.schema.json"
+      ]
+    },
+    {
+      "id": "C60",
+      "name": "GuestArchiveCredentialMaterialAvailability and GuestArchiveCredentialMaterialProvisioningOutcome",
+      "owner": "Guest secret-material owner",
+      "boundary": "non-secret C51 availability and immediate provisioning outcome through the OS-authorized C52 Host Agent local-administration facade; C51 values are request-only and never become state, receipt, telemetry, package content, or response data",
+      "schemas": [
+        "json-schema/v1/guest-archive-credential-material-availability.schema.json",
+        "json-schema/v1/guest-archive-credential-material-provisioning-outcome.schema.json"
+      ]
+    },
+    {
+      "id": "C61",
+      "name": "GuestProductReleaseEffectExecutorConfiguration",
+      "owner": "Guest Product release delivery",
+      "boundary": "immutable C26 layer-effect desired input for the Host-local C32-to-C59 Guest Product release update operation",
+      "schemas": [
+        "json-schema/v1/guest-product-release-effect-executor-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C62",
+      "name": "NativeGuestMachineProvisioningConfiguration",
+      "owner": "Host deployment configuration",
+      "boundary": "Host deployment to the selected Windows Hyper-V or Linux KVM/libvirt native Guest machine provisioner, binding verified C65 immutable artifact identities to separate mutable runtime storage",
+      "schemas": [
+        "json-schema/v1/native-guest-machine-provisioning-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C63",
+      "name": "NativeGuestMachineProvisioningReceipt",
+      "owner": "Selected native Platform Provider",
+      "boundary": "durable native Guest machine and runtime-storage provisioning evidence, including the verified C65 artifact-set identity, used only for explicit retained-storage reuse",
+      "schemas": [
+        "json-schema/v1/native-guest-machine-provisioning-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C64",
+      "name": "GuestBundledUpstreamImageSetManagerConfiguration, GuestBundledUpstreamImageSetUpdateCommand, and GuestBundledUpstreamImageSetOperation",
+      "owner": "Guest Bundled Upstream Image-set Manager",
+      "boundary": "Guest-local staging, container-engine activation, explicit active image-set state, and durable bundled-upstream update outcome; Host code reaches it only through a declared C32 bridge and never writes its state or invokes its container engine",
+      "schemas": [
+        "json-schema/v1/guest-bundled-upstream-image-set-management.schema.json"
+      ]
+    },
+    {
+      "id": "C65",
+      "name": "NativeGuestArtifactManifest",
+      "owner": "Guest image compiler",
+      "boundary": "Guest image compiler to Windows Hyper-V and Linux KVM/libvirt Host package composition and native Guest provisioning immutable amd64 artifact identity",
+      "schemas": [
+        "json-schema/v1/native-guest-artifact-manifest.schema.json"
+      ]
+    },
+    {
+      "id": "C66",
+      "name": "GuestBundledUpstreamImageSetEffectExecutorConfiguration",
+      "owner": "Guest Bundled Upstream release delivery",
+      "boundary": "immutable C26 layer-effect desired input for the Host-local C32-to-C64 Guest bundled-Upstream image-set update operation",
+      "schemas": [
+        "json-schema/v1/guest-bundled-upstream-image-set-effect-executor-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C67",
+      "name": "HostPlatformReleaseEffectExecutorConfiguration",
+      "owner": "Host Platform release delivery",
+      "boundary": "immutable C26 layer-effect desired input for one fixed, installed Host Installation Manager staged Host Platform release transition",
+      "schemas": [
+        "json-schema/v1/host-platform-release-effect-executor-configuration.schema.json"
+      ]
+    },
+    {
+      "id": "C68",
+      "name": "HostPlatformStagedReleaseUpdate and ExplicitRecovery",
+      "owner": "Host Installation Manager",
+      "boundary": "Host-local verified Host Platform release archive staging, current-release transition, durable operation state, and explicit failure or recovery boundary",
+      "schemas": [
+        "json-schema/v1/host-platform-staged-release-update.schema.json"
+      ]
+    },
+    {
+      "id": "C69",
+      "name": "HostUpdateBundleImportCommand, HostUpdateBundleDeclaration, HostUpdateBundleImportReceipt, and HostUpdateBundleApplyCommand",
+      "owner": "Host update bundle store and Host Agent",
+      "boundary": "OS-local operator-selected offline release bundle to Host-owned immutable store and existing C27 update admission; import does not claim C25 trust verification or update success",
+      "schemas": [
+        "json-schema/v1/host-update-bundle-control.schema.json"
+      ]
+    },
+    {
+      "id": "C70",
+      "name": "HostServiceExecutionDefinition",
+      "owner": "Release process",
+      "boundary": "C48 immutable service command from release composition to the Host Service Runner; it does not register an OS service, observe process health, or select a fallback command",
+      "schemas": [
+        "json-schema/v1/host-service-execution-definition.schema.json"
+      ]
+    },
+    {
+      "id": "C71",
+      "name": "RuntimeConsoleDesktopArtifactReceipt",
+      "owner": "Runtime Console packager",
+      "boundary": "one platform-specific desktop installer artifact to release composition, including exact bytes and the C53 bootstrap contract it consumes; it is not product-installation evidence",
+      "schemas": [
+        "json-schema/v1/runtime-console-desktop-artifact-receipt.schema.json"
+      ]
+    },
+    {
+      "id": "C72",
+      "name": "OperatorDeliveryKitManifest",
+      "owner": "Release process",
+      "boundary": "one C23-selected Host installer plus one verified C71 desktop Console artifact and exact C53 bootstrap identity, in the only supported installation order",
+      "schemas": [
+        "json-schema/v1/operator-delivery-kit-manifest.schema.json"
+      ]
+    },
+    {
+      "id": "C73",
+      "name": "GuestLinuxSourceDiskMaterializationDeclaration and GuestLinuxSourceDiskMaterializationReceipt",
+      "owner": "Guest Linux source disk materializer",
+      "boundary": "one declared ARM64 QCOW2 source image to one immutable raw source disk and materialization evidence before C42 boot-resource extraction",
+      "schemas": [
+        "json-schema/v1/guest-linux-source-disk-materialization.schema.json"
+      ]
+    },
+    {
+      "id": "C74",
+      "name": "ReleaseDeliveryProofAttachmentReview",
+      "owner": "Release process",
+      "boundary": "explicit review of C24 proof fragments and exact evidence material into one new immutable proof-set candidate; it never mutates a source proof set or creates Host installation state",
+      "schemas": [
+        "json-schema/v1/release-delivery-proof-attachment-review.schema.json"
+      ]
+    },
+    {
+      "id": "C75",
+      "name": "LabReplayCommand and LabReplayOperation",
+      "owner": "Guest Runtime Lab replay",
+      "boundary": "one immutable Lab replay source to durable validation, decode, preparation, send, upstream-delivery, or typed terminal failure state",
+      "schemas": [
+        "json-schema/v1/lab-replay-command.schema.json",
+        "json-schema/v1/lab-replay-operation.schema.json"
+      ]
+    },
+    {
+      "id": "C76",
+      "name": "GuestOperationalStateBackupCommand, GuestOperationalStateRestoreCommand, GuestOperationalStateEmptyTargetProof, GuestOperationalStateArtifactInventory, GuestOperationalStateBackupManifest, and GuestOperationalStateBackupOperation",
+      "owner": "Guest operational-state backup workflow",
+      "boundary": "explicit SQLite and PostgreSQL owner snapshot, artifact metadata inventory, immutable publication, and empty-target restore evidence; raw artifact object retention is outside v1",
+      "schemas": [
+        "json-schema/v1/guest-operational-state-backup-command.schema.json",
+        "json-schema/v1/guest-operational-state-restore-command.schema.json",
+        "json-schema/v1/guest-operational-state-empty-target-proof.schema.json",
+        "json-schema/v1/guest-operational-state-artifact-inventory.schema.json",
+        "json-schema/v1/guest-operational-state-backup-manifest.schema.json",
+        "json-schema/v1/guest-operational-state-backup-operation.schema.json"
+      ]
+    },
+    {
+      "id": "C77",
+      "name": "GuestOperationalStateIdentity",
+      "owner": "Guest operational-state and bootstrap evidence owners",
+      "boundary": "one atomic public observation of the Guest Runtime SQLite control-ledger identity, PostgreSQL accumulated-state identity, persisted migration receipt, and aggregate non-secret private-material-set identity; partial, missing, or failed owner reads never become an available installation or reboot proof",
+      "schemas": [
+        "json-schema/v1/guest-operational-state-identity.schema.json"
+      ]
+    },
+    {
+      "id": "C78",
+      "name": "GuestInstalledRuntimeEvidence",
+      "owner": "Guest installed-runtime release evidence runner",
+      "boundary": "one immutable first-boot, direct Recorder upload lineage, or post-reboot observation through the installed Host and Guest public facades; direct upload requires explicit assignment and exact source/artifact owner evidence, while reboot evidence requires a changed Host boot session and stable C77 identity; it never reads Guest files, databases, processes, or logs",
+      "schemas": [
+        "json-schema/v1/guest-installed-runtime-evidence.schema.json"
+      ]
+    },
+    {
+      "id": "C79",
+      "name": "VitalReplayCorpusManifest",
+      "owner": "Release data review",
+      "boundary": "one human-approved non-identifying and redistribution-authorized set of exact Recorder .vital artifacts for v1-v3 replay evidence; automated verification binds declared names, sizes, and digests but never creates the approval decision",
+      "schemas": [
+        "json-schema/v1/vital-replay-corpus-manifest.schema.json"
+      ]
+    }
+  ]
+}

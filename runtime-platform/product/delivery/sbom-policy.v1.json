@@ -1,0 +1,247 @@
+{
+  "schemaVersion": "v1",
+  "generatedAt": "2026-07-17T00:00:00Z",
+  "documentName": "VitalServer Runtime Platform source inventory",
+  "documentNamespace": "https://tirosh.github.io/vitalserver/runtime-platform/source-inventory/v1",
+  "licenseAllowlist": [
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "MIT",
+    "ISC",
+    "Apple-platform-terms"
+  ],
+  "components": [
+    {
+      "id": "host-agent",
+      "name": "Host Agent",
+      "version": "0.1.0-dev",
+      "source": "services/host-agent/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "host-edge-proxy",
+      "name": "Host Edge Proxy",
+      "version": "0.1.0-dev",
+      "source": "services/host-edge-proxy/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "host-installation-manager",
+      "name": "Host Installation Manager",
+      "version": "0.1.0-dev",
+      "source": "services/host-installation-manager/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "host-update-handoff-supervisor",
+      "name": "Host Update Handoff Supervisor",
+      "version": "0.1.0-dev",
+      "source": "services/host-update-handoff-supervisor/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-runtime",
+      "name": "Guest Runtime",
+      "version": "0.1.0-dev",
+      "source": "services/guest-runtime/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-product-process-supervisor",
+      "name": "Guest Product Process Supervisor",
+      "version": "0.1.0-dev",
+      "source": "services/guest-product-process-supervisor/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-product-release-manager",
+      "name": "Guest Product Release Manager",
+      "version": "0.1.0-dev",
+      "source": "services/guest-product-release-manager/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-telemetry-collector",
+      "name": "OpenTelemetry Collector",
+      "version": "0.156.0",
+      "source": "product/observability/guest-telemetry-collector-builder.yaml",
+      "license": "Apache-2.0",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "guest-product-bootstrap-volume-composer",
+      "name": "Guest Product Bootstrap Volume Composer",
+      "version": "0.1.0-dev",
+      "source": "tooling/guest-product-bootstrap-volume-composer/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-linux-boot-artifact-extractor",
+      "name": "Guest Linux Boot Artifact Extractor",
+      "version": "0.1.0-dev",
+      "source": "tooling/guest-linux-boot-artifact-extractor/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-root-storage-partition-assembler",
+      "name": "Guest Root Storage Partition Assembler",
+      "version": "0.1.0-dev",
+      "source": "tooling/guest_root_storage_partition_assembler.py",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "recorder-gateway",
+      "name": "Recorder Gateway",
+      "version": "0.1.0-dev",
+      "source": "services/recorder-gateway/package-lock.json",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "lab-recorder-runner",
+      "name": "Lab Recorder Runner",
+      "version": "0.1.0-dev",
+      "source": "services/lab-recorder-runner/package-lock.json",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "guest-node-linux-arm64",
+      "name": "Guest Node.js Linux ARM64 Runtime",
+      "version": "20.19.3",
+      "source": "product/delivery/guest-node-runtime.v1.json",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "runtime-console-control-contract",
+      "name": "Runtime Console Control Contract",
+      "version": "0.1.0-dev",
+      "source": "interfaces/runtime-console-control-contract/package.json",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "runtime-console-web",
+      "name": "Runtime Console Web Renderer",
+      "version": "0.1.0-dev",
+      "source": "interfaces/runtime-console-web/package.json",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "runtime-console-desktop",
+      "name": "Runtime Console Desktop Shell",
+      "version": "0.1.0-dev",
+      "source": "interfaces/runtime-console-desktop/package.json",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "platformctl",
+      "name": "Platform Control CLI",
+      "version": "0.1.0-dev",
+      "source": "interfaces/platformctl/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "macos-provider",
+      "name": "macOS Virtualization Provider",
+      "version": "0.1.0-dev",
+      "source": "providers/macos-virtualization/Package.swift",
+      "license": "Apple-platform-terms",
+      "noticeStatus": "platform-terms-required"
+    },
+    {
+      "id": "windows-linux-provider-bridges",
+      "name": "Windows and Linux Provider Bridges",
+      "version": "0.1.0-dev",
+      "source": "providers/os-provider-bridge/go.mod",
+      "license": "Apache-2.0",
+      "noticeStatus": "project-notice-required"
+    },
+    {
+      "id": "modernc-sqlite",
+      "name": "modernc.org/sqlite",
+      "version": "v1.38.2",
+      "source": "services/host-agent/go.sum",
+      "license": "BSD-3-Clause",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "go-diskfs",
+      "name": "github.com/diskfs/go-diskfs",
+      "version": "v1.9.3",
+      "source": "tooling/guest-product-bootstrap-volume-composer/go.sum",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "socket-io",
+      "name": "socket.io",
+      "version": "4.8.3",
+      "source": "services/recorder-gateway/package-lock.json",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "socket-io-client",
+      "name": "socket.io-client",
+      "version": "4.8.3",
+      "source": "services/lab-recorder-runner/package-lock.json",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "electron",
+      "name": "electron",
+      "version": "41.7.1",
+      "source": "interfaces/package-lock.json",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "electron-builder",
+      "name": "electron-builder",
+      "version": "25.1.8",
+      "source": "interfaces/package-lock.json",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "app-builder-bin",
+      "name": "app-builder-bin",
+      "version": "5.0.0-alpha.10",
+      "source": "interfaces/package-lock.json",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "react",
+      "name": "react",
+      "version": "19.1.0",
+      "source": "interfaces/package-lock.json",
+      "license": "MIT",
+      "noticeStatus": "third-party-notice-required"
+    },
+    {
+      "id": "typescript",
+      "name": "typescript",
+      "version": "5.9.3",
+      "source": "interfaces/package-lock.json",
+      "license": "Apache-2.0",
+      "noticeStatus": "third-party-notice-required"
+    }
+  ]
+}

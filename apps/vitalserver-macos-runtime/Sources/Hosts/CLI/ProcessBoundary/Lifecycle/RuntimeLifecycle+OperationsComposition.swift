@@ -19,7 +19,14 @@ extension RuntimeLifecycle {
             ),
             operations: RuntimeStatusPrinterCompositionOperations(
                 latestBackupPath: { try latestBackup()?.path },
-                runtimeStatusDocument: statusReporter.loadStatusResult,
+                currentStatus: {
+                    let snapshot = runtimeHealthSnapshot()
+                    let decision = RefreshRuntimeHealthUseCase().decision(snapshot: snapshot)
+                    return RuntimeStatusPrinterCurrentStatus(
+                        status: decision.status,
+                        vmIP: snapshot.vmIP
+                    )
+                },
                 runtimeVersionValue: runtimeVersionValue,
                 installedProxyPort: healthChecker.installedProxyPort,
                 hostProxyHTTPStatus: { url in
@@ -79,14 +86,14 @@ extension RuntimeLifecycle {
 
     func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuardComposition {
         RuntimeManagedOperationGuardComposition.make(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            statusReporter: statusReporter,
-            operationLeaseRepository: JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease),
-            guestGateway: guestGateway,
+            operationLeaseReader: runtimeOperationLeaseOwner(),
             now: { clock.now },
             log: log
         )
+    }
+
+    func runtimeOperationLeaseOwner() -> any RuntimeOperationLeaseOwner {
+        runtimeOperationLeaseOwnerFactory()
     }
 
     func runtimeWatchdogRunner() -> RuntimeWatchdogRunnerComposition {
@@ -100,7 +107,6 @@ extension RuntimeLifecycle {
                 activeManagedOperation: {
                     runtimeManagedOperationGuard().activeOperation()
                 },
-                currentRuntimeStatus: statusReporter.loadStatusResult,
                 healthSnapshot: {
                     runtimeHealthSnapshot()
                 },
@@ -112,9 +118,6 @@ extension RuntimeLifecycle {
                 },
                 automaticRecoveryEnabled: {
                     try automaticRecoveryEnabled()
-                },
-                reconcileGuestCompose: {
-                    try reconcileGuestComposeServices()
                 },
                 restartVMRuntime: {
                     try restartVMRuntimeForWatchdogRecovery()
@@ -191,6 +194,9 @@ extension RuntimeLifecycle {
                 setInstalledProxyPort: { port in
                     try setInstalledProxyPort(port)
                 },
+                restartPlatformAgent: {
+                    try restartOrStartLaunchdService(.platformAgent)
+                },
                 readSecretFile: { url in
                     try readSecretFile(url)
                 },
@@ -206,8 +212,8 @@ extension RuntimeLifecycle {
                 setAutomaticBackupSchedule: { enabled, scheduleTimes in
                     try setAutomaticBackupSchedule(enabled: enabled, scheduleTimes: scheduleTimes)
                 },
-                reconcileGuestComposeServices: {
-                    try reconcileGuestComposeServices()
+                reconcileGuestStackServices: {
+                    try reconcileGuestStackServicesThroughGuestControl()
                 },
                 restartRuntimeServices: {
                     try restartRuntimeAfterSettingsApply()

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "v1",
+  "id": "ingress-receipt-0001",
+  "requestId": "ingress-request-0001",
+  "recorderId": "recorder-lab-0001",
+  "connection": {
+    "sessionId": "socket-session-0001",
+    "protocolVersion": "v1",
+    "bootId": "boot-0001"
+  },
+  "packet": {
+    "packetId": "packet-0001",
+    "byteCount": 512,
+    "payloadDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "receivedAt": "2026-07-17T00:00:00Z",
+    "parseState": "accepted"
+  },
+  "ingressState": "accepted",
+  "durableIngressStateHandoff": {
+    "state": "stored",
+    "durableIngressStateReceiptId": "durable-ingress-state-receipt-0001",
+    "persistedAt": "2026-07-17T00:00:00Z"
+  },
+  "coldPathCapture": {
+    "state": "captured",
+    "captureReference": {
+      "resourceType": "recorder-cold-path-capture",
+      "resourceId": "recorder-cold-path-capture-0001"
+    },
+    "persistedAt": "2026-07-17T00:00:00Z"
+  },
+  "delivery": {
+    "state": "requested",
+    "requestId": "delivery-request-0001"
+  },
+  "recordedAt": "2026-07-17T00:00:00Z"
+}

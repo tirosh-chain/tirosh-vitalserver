@@ -4,8 +4,8 @@ import Foundation
 public enum RuntimeUninstallWorkflowState: Equatable, Sendable {
     case notStarted
     case started
-    case redisBackupRequested
-    case redisBackupCompleted
+    case vitalServerBackupRequested
+    case vitalServerBackupCompleted
     case stopServicesRequested
     case serviceStopBlocked
     case stoppedVerified
@@ -20,9 +20,10 @@ public enum RuntimeUninstallWorkflowState: Equatable, Sendable {
 
 public enum RuntimeUninstallWorkflowEvent: Equatable, Sendable {
     case start(clean: Bool)
-    case redisBackupRequested
-    case redisBackupSucceeded
-    case redisBackupFailed(reason: String)
+    case vitalFilesOwnershipUnavailable(reason: String, forceClean: Bool)
+    case vitalServerBackupRequested
+    case vitalServerBackupSucceeded
+    case vitalServerBackupFailed(reason: String)
     case stopServicesRequested
     case stopServicesFailed(input: RuntimeUninstallReadinessInput, commandFailureReason: String)
     case stoppedStateObserved(RuntimeUninstallReadinessInput)
@@ -34,7 +35,7 @@ public enum RuntimeUninstallWorkflowEvent: Equatable, Sendable {
 }
 
 public enum RuntimeUninstallWorkflowCommand: Equatable, Sendable {
-    case createRedisBackup
+    case createVitalServerBackup
     case stopRuntimeServices
     case removeFiles
     case forgetPackageReceipts
@@ -76,31 +77,45 @@ public enum RuntimeUninstallTransitionPolicy {
                 message: "uninstall started"
             )
 
-        case (.started, .redisBackupRequested):
-            return RuntimeUninstallTransitionDecision(
-                state: .redisBackupRequested,
-                persistedState: .redisBackupRequested,
-                commands: [.createRedisBackup],
-                message: "redis backup requested"
-            )
-
-        case (.redisBackupRequested, .redisBackupSucceeded):
-            return RuntimeUninstallTransitionDecision(
-                state: .redisBackupCompleted,
-                persistedState: .redisBackupCompleted,
-                message: "redis backup completed"
-            )
-
-        case (.redisBackupRequested, .redisBackupFailed(reason: let reason)):
+        case (.started, .vitalFilesOwnershipUnavailable(let reason, let forceClean)):
+            if forceClean {
+                return RuntimeUninstallTransitionDecision(
+                    state: .started,
+                    message: "force-clean Vital files ownership override accepted"
+                )
+            }
             return RuntimeUninstallTransitionDecision(
                 state: .failed,
                 persistedState: .failed,
-                blockers: ["redis-backup-failed:reason=\(reason)"],
-                message: "redis backup failed"
+                blockers: ["vital-files-ownership-unavailable:reason=\(reason)"],
+                message: "Vital files ownership unavailable"
+            )
+
+        case (.started, .vitalServerBackupRequested):
+            return RuntimeUninstallTransitionDecision(
+                state: .vitalServerBackupRequested,
+                persistedState: .vitalServerBackupRequested,
+                commands: [.createVitalServerBackup],
+                message: "VitalServer backup requested"
+            )
+
+        case (.vitalServerBackupRequested, .vitalServerBackupSucceeded):
+            return RuntimeUninstallTransitionDecision(
+                state: .vitalServerBackupCompleted,
+                persistedState: .vitalServerBackupCompleted,
+                message: "VitalServer backup completed"
+            )
+
+        case (.vitalServerBackupRequested, .vitalServerBackupFailed(reason: let reason)):
+            return RuntimeUninstallTransitionDecision(
+                state: .failed,
+                persistedState: .failed,
+                blockers: ["vitalserver-backup-failed:reason=\(reason)"],
+                message: "VitalServer backup failed"
             )
 
         case (.started, .stopServicesRequested),
-             (.redisBackupCompleted, .stopServicesRequested):
+             (.vitalServerBackupCompleted, .stopServicesRequested):
             return RuntimeUninstallTransitionDecision(
                 state: .stopServicesRequested,
                 persistedState: .stopServicesRequested,

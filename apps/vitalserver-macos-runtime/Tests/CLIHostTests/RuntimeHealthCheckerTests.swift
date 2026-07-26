@@ -5,141 +5,12 @@ import Contracts
 import Domain
 import OutboundAdapters
 import InboundAdapters
+import RuntimeControl
 @testable import CLIHost
 import XCTest
 import Errors
 
 final class RuntimeHealthCheckerTests: XCTestCase {
-    func testGuestRuntimeStateObservationReaderKeepsFreshLoadedState() {
-        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        let fileStore = RuntimeFileStoreSpy()
-        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            updatedAt: "2026-05-24T00:00:00Z",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
-        )
-        let reader = RuntimeGuestRuntimeStateObservationReader(
-            guestGateway: guestGateway,
-            fileStore: fileStore,
-            runtimeStateURL: installedPaths.runtimeState,
-            staleAfterSeconds: 60,
-            now: { Date(timeIntervalSince1970: 1_800_000_030) }
-        )
-
-        let observation = reader.read()
-
-        XCTAssertEqual(observation.loadedState?.vmIP, "192.168.64.2")
-        XCTAssertEqual(observation.freshState?.vmIP, "192.168.64.2")
-        XCTAssertTrue(observation.isPresent)
-        XCTAssertTrue(observation.isFresh)
-        XCTAssertNil(observation.readIssue)
-    }
-
-    func testGuestRuntimeStateObservationReaderKeepsLoadedButSuppressesStaleState() {
-        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        let fileStore = RuntimeFileStoreSpy()
-        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            updatedAt: "2026-05-24T00:00:00Z",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
-        )
-        let reader = RuntimeGuestRuntimeStateObservationReader(
-            guestGateway: guestGateway,
-            fileStore: fileStore,
-            runtimeStateURL: installedPaths.runtimeState,
-            staleAfterSeconds: 60,
-            now: { Date(timeIntervalSince1970: 1_800_000_061) }
-        )
-
-        let observation = reader.read()
-
-        XCTAssertEqual(observation.loadedState?.vmIP, "192.168.64.2")
-        XCTAssertNil(observation.freshState)
-        XCTAssertTrue(observation.isPresent)
-        XCTAssertFalse(observation.isFresh)
-        XCTAssertNil(observation.readIssue)
-    }
-
-    func testGuestRuntimeStateObservationReaderReportsLoadedStateMTimeFailure() {
-        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        let fileStore = RuntimeFileStoreSpy()
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            updatedAt: "2026-05-24T00:00:00Z",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
-        )
-        let reader = RuntimeGuestRuntimeStateObservationReader(
-            guestGateway: guestGateway,
-            fileStore: fileStore,
-            runtimeStateURL: installedPaths.runtimeState,
-            staleAfterSeconds: 60,
-            now: { Date(timeIntervalSince1970: 1_800_000_030) }
-        )
-
-        let observation = reader.read()
-
-        XCTAssertEqual(observation.loadedState?.vmIP, "192.168.64.2")
-        XCTAssertNil(observation.freshState)
-        XCTAssertTrue(observation.isPresent)
-        XCTAssertFalse(observation.isFresh)
-        guard case .metadataReadFailed(let message) = observation.readIssue else {
-            XCTFail("Expected metadataReadFailed read issue")
-            return
-        }
-        XCTAssertFalse(message.isEmpty)
-    }
-
-    func testGuestRuntimeStateObservationReaderPreservesMissingAsNotFresh() {
-        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        let reader = RuntimeGuestRuntimeStateObservationReader(
-            guestGateway: RuntimeGuestGatewaySpy(),
-            fileStore: RuntimeFileStoreSpy(),
-            runtimeStateURL: installedPaths.runtimeState,
-            staleAfterSeconds: 60,
-            now: { Date(timeIntervalSince1970: 1_800_000_030) }
-        )
-
-        let observation = reader.read()
-
-        XCTAssertNil(observation.loadedState)
-        XCTAssertNil(observation.freshState)
-        XCTAssertFalse(observation.isPresent)
-        XCTAssertFalse(observation.isFresh)
-        XCTAssertNil(observation.readIssue)
-    }
-
-    func testGuestRuntimeStateObservationReaderPreservesReadFailureAsInvalidNotFresh() {
-        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeStateResult = .failed("runtime-state unreadable")
-        let reader = RuntimeGuestRuntimeStateObservationReader(
-            guestGateway: guestGateway,
-            fileStore: RuntimeFileStoreSpy(),
-            runtimeStateURL: installedPaths.runtimeState,
-            staleAfterSeconds: 60,
-            now: { Date(timeIntervalSince1970: 1_800_000_030) }
-        )
-
-        let observation = reader.read()
-
-        XCTAssertNil(observation.loadedState)
-        XCTAssertNil(observation.freshState)
-        XCTAssertFalse(observation.isPresent)
-        XCTAssertFalse(observation.isFresh)
-        XCTAssertEqual(observation.readIssue, .loadFailed("runtime-state unreadable"))
-    }
-
     func testSnapshotReadsRuntimeStateThroughPorts() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
@@ -147,9 +18,9 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
-        fileStore.files[installedPaths.runtimeState] = Data("{}".utf8)
+        fileStore.files[installedPaths.runtimeObservation] = Data("{}".utf8)
         fileStore.files[installedPaths.containerLogs] = Data("container logs".utf8)
-        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+        fileStore.modificationDates[installedPaths.runtimeObservation] = Date(timeIntervalSince1970: 1_800_000_000)
         fileStore.modificationDates[installedPaths.containerLogs] = Date(timeIntervalSince1970: 1_800_000_060)
 
         let commandRunner = RuntimeCommandRunnerSpy()
@@ -160,7 +31,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         )
         commandRunner.results[Constants.Commands.curl] = RuntimeProcessResult(
             exitCode: 0,
-            stdout: #"{"activeWebSockets":1,"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"httpRequests":2,"redisIpWriteFailures":0,"socketIoEventsSeen":3,"socketIoParseFailures":0}"#,
+            stdout: #"{"activeWebSockets":1,"activeRecorderConnections":0,"recorders":[],"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"failureLogWriteFailures":0,"httpRequests":2,"redisIpWriteFailures":0,"redisIpVerifyFailures":0,"redisIpVerifyMismatches":0,"socketIoEventsSeen":3,"socketIoParseFailures":0}"#,
             stderr: ""
         )
         let serviceManager = RuntimeServiceManagerSpy()
@@ -173,42 +44,38 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 8080)] = "200"
         httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 8080)] = "200"
         httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 8080)] = "200"
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            updatedAt: "2026-05-24T00:00:00Z",
-            bootID: "boot-current",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200",
-            containerServices: [
-                RuntimeContainerServiceObservation(
-                    service: "recorder-ingress",
-                    name: "vitalserver-recorder-ingress-1",
-                    state: "running",
-                    health: "healthy",
-                    exitCode: 0
-                ),
-            ],
-            vitalDBObservation: healthyVitalDBObservation()
-        )
-        guestGateway.bootstrapResult = GuestBootstrapResultDocument(
-            schemaVersion: 3,
-            bootID: "boot-old",
-            operation: .unknown("bootstrap"),
-            status: .failed,
-            message: "stale bootstrap failure",
-            reasonCodes: [.guestBootstrapFailed],
-            updatedAt: "2027-01-15T08:00:00Z"
-        )
-
         let checker = RuntimeHealthChecker(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: guestGateway
+            guestAddressProvider: stubGuestAddressProvider(
+                read: .loaded(address: "192.168.64.2", source: .platformAgent)
+            ),
+            guestControlGateway: {
+                RuntimeGuestControlGatewaySpy(
+                    services: ["recorder-ingress"],
+                    statuses: [
+                        "recorder-ingress": RuntimeGuestControlServiceStatus(
+                            service: "recorder-ingress",
+                            state: "running",
+                            health: "healthy",
+                            observedAt: "2026-07-01T00:00:00Z"
+                        ),
+                    ],
+                    vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead(
+                        state: .loaded,
+                        observation: healthyVitalDBObservation()
+                    ),
+                    recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult(
+                        readState: .loaded,
+                        httpStatus: "200",
+                        document: RuntimeRecorderIngressStatusDocument(socketIoEventsSeen: 3),
+                        readError: nil
+                    )
+                )
+            }
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -216,23 +83,136 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertFalse(snapshot.failureReasons.contains(.guestBootstrapFailed))
         XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
-        XCTAssertEqual(snapshot.containerObservation?.recorderIngressHTTP, "200")
-        XCTAssertEqual(snapshot.containerObservation?.recorderIngressStatus?.socketIoEventsSeen, 3)
-        XCTAssertNil(snapshot.containerObservation?.recorderIngressStatusReadError)
-        XCTAssertEqual(snapshot.containerObservation?.runtimeStateUpdatedAt, "2026-05-24T00:00:00Z")
-        XCTAssertEqual(snapshot.containerObservation?.runtimeStateFileUpdatedAt, "2027-01-15T08:00:00Z")
-        XCTAssertNil(snapshot.containerObservation?.runtimeStateFileMetadataError)
-        XCTAssertEqual(snapshot.containerObservation?.containerLogsPresent, true)
-        XCTAssertEqual(snapshot.containerObservation?.containerLogsBytes, 14)
-        XCTAssertEqual(snapshot.containerObservation?.containerLogsUpdatedAt, "2027-01-15T08:01:00Z")
-        XCTAssertEqual(snapshot.containerObservation?.composeServices.map(\.service), ["recorder-ingress"])
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadState, .loaded)
-        XCTAssertNil(snapshot.containerObservation?.composeServicesReadError)
+        XCTAssertEqual(snapshot.guestAddressRead, .loaded(address: "192.168.64.2", source: .platformAgent))
         XCTAssertEqual(snapshot.vmIP, "192.168.64.2")
         XCTAssertEqual(snapshot.proxyPort, 8080)
         XCTAssertEqual(snapshot.hostProxyHTTP, "200")
         XCTAssertEqual(snapshot.rootfsBase, .present)
         XCTAssertEqual(snapshot.vmDisk, .present)
+    }
+
+    func testSnapshotDoesNotReadVMIPFromRuntimeStateWhenVMIPFileIsAbsent() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+        fileStore.files[installedPaths.runtimeObservation] = Data(#"{"vmIP":"192.168.64.203"}"#.utf8)
+
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(
+            exitCode: 0,
+            stdout: "80\n",
+            stderr: ""
+        )
+        let serviceManager = RuntimeServiceManagerSpy()
+        serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
+        let httpProber = RuntimeHTTPProberSpy()
+        httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 80)] = "200"
+        httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "200"
+        httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "200"
+
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: serviceManager,
+            commandRunner: commandRunner,
+            httpProber: httpProber,
+            guestAddressProvider: stubGuestAddressProvider(
+                read: .missing("Guest address resource missing")
+            ),
+            guestControlGateway: {
+                RuntimeGuestControlGatewaySpy(
+                    services: ["app"],
+                    statuses: ["app": RuntimeGuestControlServiceStatus(
+                        service: "app",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00Z"
+                    )],
+                    vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead(
+                        state: .loaded,
+                        observation: healthyVitalDBObservation()
+                    ),
+                    readyStatus: "ready"
+                )
+            }
+        )
+
+        let snapshot = healthSnapshot(from: checker)
+
+        XCTAssertNil(snapshot.vmIP)
+        XCTAssertEqual(snapshot.guestAddressRead.state, .missing)
+        XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("Guest address resource missing") == true)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
+        XCTAssertFalse(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingVMIP)))
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
+    }
+
+    func testSnapshotPreservesInvalidGuestAddressRead() {
+        let fixture = healthyRuntimeFixture(
+            guestHTTP: "200",
+            guestAddressRead: .invalid("Guest address resource invalid")
+        )
+
+        let snapshot = healthSnapshot(from: fixture.checker)
+
+        XCTAssertEqual(snapshot.guestAddressRead.state, .invalid)
+        XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("Guest address resource invalid") == true)
+        XCTAssertNil(snapshot.vmIP)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
+        XCTAssertEqual(fixture.guestControlGateway.readyCount, 0)
+        XCTAssertEqual(fixture.guestControlGateway.stackStatusCount, 0)
+    }
+
+    func testSnapshotPreservesGuestAddressReadFailure() {
+        let fixture = healthyRuntimeFixture(
+            guestHTTP: "200",
+            guestAddressRead: .readFailed("Guest address resource read failed")
+        )
+
+        let snapshot = healthSnapshot(from: fixture.checker)
+
+        XCTAssertEqual(snapshot.guestAddressRead.state, .readFailed)
+        XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("Guest address resource read failed") == true)
+        XCTAssertNil(snapshot.vmIP)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
+        XCTAssertEqual(fixture.guestControlGateway.readyCount, 0)
+        XCTAssertEqual(fixture.guestControlGateway.stackStatusCount, 0)
+    }
+
+    func testSnapshotPreservesMissingVitalDBObservationFromGuestControlReadWithoutRuntimeFailure() {
+        let fixture = healthyRuntimeFixture(guestHTTP: "200")
+        let guestControlGateway = RuntimeGuestControlGatewaySpy(
+            services: ["app"],
+            statuses: [
+                "app": RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ],
+            vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead(
+                state: .unavailable,
+                readError: "VitalDB observation read model is empty."
+            ),
+            recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult(
+                readState: .loaded,
+                httpStatus: "200",
+                document: RuntimeRecorderIngressStatusDocument(),
+                readError: nil
+            )
+        )
+
+        let snapshot = healthSnapshot(from: fixture.checker(guestControlGateway: { guestControlGateway }))
+
+        XCTAssertFalse(snapshot.failureReasons.containsVitalDBObservationFailure)
+        XCTAssertNil(snapshot.vitalDBObservation)
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
     }
 
     func testSnapshotPreservesExecutableInspectionFailures() {
@@ -267,23 +247,14 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.missingVMDisk))
     }
 
-    func testSnapshotReportsMissingVitalDBObservationFromFreshRuntimeState() {
+    func testSnapshotDoesNotReportMissingVitalDBObservationFromFreshRuntimeState() {
         let fixture = healthyRuntimeFixture(guestHTTP: "200")
-        fixture.guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            updatedAt: "2026-05-24T00:00:00Z",
-            bootID: "boot-current",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200",
-            containerServices: []
-        )
 
         let snapshot = healthSnapshot(from: fixture.checker)
 
-        XCTAssertEqual(snapshot.failureReasons, [.vitalDBObservationMissing])
+        XCTAssertFalse(snapshot.failureReasons.containsVitalDBObservationFailure)
         XCTAssertNil(snapshot.vitalDBObservation)
-        XCTAssertFalse(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
     }
 
     func testSnapshotDoesNotProbeGuestWhenRuntimeStateIsMissing() {
@@ -298,7 +269,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: RuntimeCommandRunnerSpy(),
             httpProber: httpProber,
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -306,11 +276,9 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertFalse(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertNil(snapshot.proxyPort)
         XCTAssertEqual(snapshot.vmIP, nil)
-        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingVMIP)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
         XCTAssertFalse(httpProber.requestedURLs.contains("http://192.168.64.3/ready"))
         XCTAssertFalse(httpProber.requestedURLs.contains(Constants.Runtime.proxyHealthURL(port: RuntimeInstallSettings.defaultProxyPort)))
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadState, .missing)
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadError, "guest-runtime-state-missing")
         XCTAssertTrue(snapshot.failureReasons.contains(.missingVMBin))
         XCTAssertTrue(snapshot.failureReasons.contains(.missingRootfsBase))
     }
@@ -322,12 +290,12 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
-        fileStore.files[installedPaths.vmLifecycle] = try JSONEncoder.pretty.encode(RuntimeVMLifecycleDocument(
+        let vmLifecycle = RuntimeVMLifecycleDocument(
             state: .bootstrapping,
             startedAt: "2026-05-31T00:00:00Z",
             updatedAt: "2026-05-31T00:00:01Z",
             deadlineAt: "2026-05-31T00:10:00Z"
-        ))
+        )
 
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
@@ -339,7 +307,10 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy(),
+            guestAddressProvider: stubGuestAddressProvider(
+                read: .missing("Guest address resource missing")
+            ),
+            vmLifecycleResourceReader: StubRuntimeVMLifecycleResourceReader(resource: .loaded(vmLifecycle)),
             now: { ISO8601DateFormatter().date(from: "2026-05-31T00:05:00Z")! }
         )
 
@@ -347,26 +318,29 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         XCTAssertEqual(snapshot.vmLifecycle?.state, .bootstrapping)
         XCTAssertEqual(snapshot.vmState, .starting)
-        XCTAssertTrue(snapshot.vmErrors.contains(.runtimeStateMissing))
+        XCTAssertFalse(snapshot.vmErrors.contains(.unknown("vm-runtime-state-missing")))
         XCTAssertFalse(snapshot.failureReasons.contains(.vmLifecycleDocumentStale))
     }
 
     func testSnapshotReportsExpiredBootLifecycleAsStale() throws {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
-        fileStore.files[installedPaths.vmLifecycle] = try JSONEncoder.pretty.encode(RuntimeVMLifecycleDocument(
+        let vmLifecycle = RuntimeVMLifecycleDocument(
             state: .bootstrapping,
             startedAt: "2026-05-31T00:00:00Z",
             updatedAt: "2026-05-31T00:00:01Z",
             deadlineAt: "2026-05-31T00:10:00Z"
-        ))
+        )
         let checker = RuntimeHealthChecker(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: RuntimeCommandRunnerSpy(),
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy(),
+            guestAddressProvider: stubGuestAddressProvider(
+                read: .missing("Guest address resource missing")
+            ),
+            vmLifecycleResourceReader: StubRuntimeVMLifecycleResourceReader(resource: .loaded(vmLifecycle)),
             now: { ISO8601DateFormatter().date(from: "2026-05-31T00:11:00Z")! }
         )
 
@@ -376,14 +350,14 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.vmLifecycleDocumentStale))
     }
 
-    func testSnapshotReportsRuntimeStateMissingGuestHTTPAsInvalid() {
+    func testSnapshotDoesNotPromoteRuntimeStateMissingGuestHTTPToCurrentHealth() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
-        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+        fileStore.modificationDates[installedPaths.runtimeObservation] = Date(timeIntervalSince1970: 1_800_000_000)
 
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
@@ -393,33 +367,23 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 80)] = "200"
         httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "200"
         httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "200"
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            updatedAt: "2026-05-24T00:00:00Z",
-            guestHTTP: nil,
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
-        )
-
         let checker = RuntimeHealthChecker(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: serviceManager,
             commandRunner: commandRunner,
-            httpProber: httpProber,
-            guestGateway: guestGateway
+            httpProber: httpProber
         )
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingGuestHTTP)
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestRuntimeStateInvalid))
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingGuestHTTP)))
-        XCTAssertEqual(snapshot.vmState, .unreachable)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-invalid")))
+        XCTAssertFalse(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingGuestHTTP)))
+        XCTAssertEqual(snapshot.vmState, .running)
     }
 
-    func testSnapshotReportsGuestRuntimeStateReadFailureAsInvalid() {
+    func testSnapshotKeepsGuestRuntimeStateReadFailureOutOfCurrentHealth() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -431,8 +395,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
         let serviceManager = RuntimeServiceManagerSpy()
         serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeStateResult = .failed("runtime-state unreadable")
 
         let checker = RuntimeHealthChecker(
             installedPaths: installedPaths,
@@ -440,79 +402,85 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: guestGateway
         )
 
         let snapshot = healthSnapshot(from: checker)
 
         XCTAssertNil(snapshot.vmIP)
-        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingVMIP)
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestRuntimeStateInvalid))
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-invalid")))
     }
 
-    func testSnapshotReportsMissingBootstrapResultWhenGuestHTTPFailsOutsideBootstrapLifecycle() {
-        let fixture = healthyRuntimeFixture(guestHTTP: "failed")
+    func testSnapshotUsesGuestControlReadinessInsteadOfRuntimeStateWhenGatewayIsAvailable() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
+        let serviceManager = RuntimeServiceManagerSpy()
+        serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
+        let guestControlGateway = RuntimeGuestControlGatewaySpy(
+            services: ["app"],
+            statuses: [
+                "app": RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ]
+        )
+
         let checker = RuntimeHealthChecker(
-            installedPaths: fixture.installedPaths,
-            fileStore: fixture.fileStore,
-            serviceManager: fixture.serviceManager,
-            commandRunner: fixture.commandRunner,
-            httpProber: fixture.httpProber,
-            guestGateway: fixture.guestGateway
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: serviceManager,
+            commandRunner: commandRunner,
+            httpProber: RuntimeHTTPProberSpy(),
+            guestAddressProvider: stubGuestAddressProvider(
+                read: .loaded(address: "192.168.64.44", source: .platformAgent)
+            ),
+            guestControlGateway: { guestControlGateway }
         )
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertTrue(snapshot.vmErrors.contains(.guestBootstrapResultMissing))
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestBootstrapResultMissing))
-        XCTAssertEqual(snapshot.vmState, .unreachable)
+        XCTAssertEqual(snapshot.vmIP, "192.168.64.44")
+        XCTAssertEqual(snapshot.guestHTTP, "200")
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-invalid")))
+        XCTAssertEqual(guestControlGateway.readyCount, 1)
+        XCTAssertEqual(guestControlGateway.stackStatusCount, 0)
+        XCTAssertEqual(guestControlGateway.resourceRequests, [])
     }
 
-    func testSnapshotReportsUnavailableBootstrapResultWhenGuestHTTPFails() {
-        let fixture = healthyRuntimeFixture(guestHTTP: "failed")
-        fixture.guestGateway.bootstrapResultResult = .failed("permission denied")
-        let checker = RuntimeHealthChecker(
-            installedPaths: fixture.installedPaths,
-            fileStore: fixture.fileStore,
-            serviceManager: fixture.serviceManager,
-            commandRunner: fixture.commandRunner,
-            httpProber: fixture.httpProber,
-            guestGateway: fixture.guestGateway
-        )
-
-        let snapshot = healthSnapshot(from: checker)
-
-        XCTAssertTrue(snapshot.vmErrors.contains(.guestBootstrapResultUnavailable))
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestBootstrapResultUnavailable))
-        XCTAssertEqual(snapshot.vmState, .unreachable)
-    }
-
-    func testSnapshotDoesNotReportMissingBootstrapResultWhileLifecycleIsBootstrapping() throws {
+    func testSnapshotUsesBootstrappingLifecycleWithoutBootstrapResultFileInput() throws {
         let fixture = healthyRuntimeFixture(guestHTTP: RuntimeHTTPStatusText.bootstrapPending)
-        fixture.fileStore.files[fixture.installedPaths.vmLifecycle] = try JSONEncoder.pretty.encode(RuntimeVMLifecycleDocument(
+        let vmLifecycle = RuntimeVMLifecycleDocument(
             state: .bootstrapping,
             startedAt: "2026-05-31T00:00:00Z",
             updatedAt: "2026-05-31T00:00:01Z",
             deadlineAt: "2026-05-31T00:10:00Z"
-        ))
+        )
         let checker = RuntimeHealthChecker(
             installedPaths: fixture.installedPaths,
             fileStore: fixture.fileStore,
             serviceManager: fixture.serviceManager,
             commandRunner: fixture.commandRunner,
             httpProber: fixture.httpProber,
-            guestGateway: fixture.guestGateway,
+            vmLifecycleResourceReader: StubRuntimeVMLifecycleResourceReader(resource: .loaded(vmLifecycle)),
             now: { ISO8601DateFormatter().date(from: "2026-05-31T00:05:00Z")! }
         )
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertFalse(snapshot.vmErrors.contains(.guestBootstrapResultMissing))
-        XCTAssertFalse(snapshot.failureReasons.contains(.guestBootstrapResultMissing))
         XCTAssertEqual(snapshot.vmState, .starting)
     }
 
-    func testSnapshotReportsInvalidHostProxyPortConfig() {
+    func testSnapshotPreservesInvalidHostProxyPortConfigAsReadStateOnly() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(
@@ -527,7 +495,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -536,9 +503,8 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.hostProxyHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(snapshot.redisUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(snapshot.swaggerUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
-        XCTAssertEqual(snapshot.containerObservation?.recorderIngressHTTP, RuntimeHTTPStatusText.missingProxyPort)
-        XCTAssertEqual(snapshot.containerObservation?.recorderIngressStatusReadError, RuntimeHTTPStatusText.missingProxyPort)
-        XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
+        XCTAssertEqual(snapshot.proxyPortReadState, .invalid("not-a-port"))
+        XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
         XCTAssertFalse(httpProber.requestedURLs.contains(Constants.Runtime.proxyHealthURL(port: RuntimeInstallSettings.defaultProxyPort)))
     }
 
@@ -577,12 +543,12 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
             XCTAssertEqual(snapshot.proxyPortReadState, expectedState)
             XCTAssertNil(snapshot.proxyPort)
-            XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
+            XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
             XCTAssertEqual(snapshot.hostProxyHTTP, RuntimeHTTPStatusText.missingProxyPort)
         }
     }
 
-    func testSnapshotReportsMissingHostProxyPortConfigFromPlistPathState() {
+    func testSnapshotPreservesMissingHostProxyPortConfigFromPlistPathStateAsReadStateOnly() {
         let fixture = healthyRuntimeFixture(guestHTTP: "200")
         let plistPath = RuntimeManagedServicePaths.launchDaemonPlist(.proxy)
         fixture.fileStore.files.removeValue(forKey: URL(fileURLWithPath: plistPath))
@@ -599,7 +565,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             snapshot.proxyPortReadState,
             .missing("proxy launchd plist missing path=\(plistPath)")
         )
-        XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
+        XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
     }
 
     func testSnapshotDoesNotInferMissingHostProxyPortConfigFromCommandOutput() {
@@ -619,10 +585,10 @@ final class RuntimeHealthCheckerTests: XCTestCase {
                 reason: "exitCode=1 stderr=Entry, :EnvironmentVariables:VITALSERVER_PROXY_PORT, Does Not Exist"
             )
         )
-        XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
+        XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
     }
 
-    func testSnapshotReportsHostProxyPortConfigPathInspectionFailure() {
+    func testSnapshotPreservesHostProxyPortConfigPathInspectionFailureAsReadStateOnly() {
         let fixture = healthyRuntimeFixture(guestHTTP: "200")
         let plistPath = RuntimeManagedServicePaths.launchDaemonPlist(.proxy)
         fixture.fileStore.pathStates[plistPath] = .inspectFailed("permission denied")
@@ -641,7 +607,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
                 reason: "exitCode=1 stderr=read failed plistPathInspectionFailed path=\(plistPath) reason=permission denied"
             )
         )
-        XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
+        XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
     }
 
     func testSnapshotDoesNotReportHostProxyConfigInvalidForConfiguredPort() {
@@ -654,7 +620,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -684,7 +649,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -714,7 +678,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -732,7 +695,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: RuntimeCommandRunnerSpy(),
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         XCTAssertEqual(checker.readInstalledProxyNginxPID(), .missing)
@@ -772,7 +734,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -792,7 +753,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -820,7 +780,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -846,7 +805,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -871,7 +829,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -899,7 +856,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -928,7 +884,6 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: RuntimeServiceManagerSpy(),
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
@@ -937,51 +892,59 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyListenerMismatch(port: 8080, listeners: "malformed")))
     }
 
-    func testSnapshotReportsRecorderIngressStatusFailure() {
+    func testSnapshotKeepsGuestRecorderIngressStatusFailureAsDiagnosticsEvidence() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
-        fileStore.modificationDates[installedPaths.runtimeState] = Date()
+        fileStore.modificationDates[installedPaths.runtimeObservation] = Date()
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
-        commandRunner.results[Constants.Commands.curl] = RuntimeProcessResult(exitCode: 7, stdout: "", stderr: "failed")
         let serviceManager = RuntimeServiceManagerSpy()
         serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
         let httpProber = RuntimeHTTPProberSpy()
         httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 80)] = "200"
         httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "200"
         httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "200"
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
-        )
         let checker = RuntimeHealthChecker(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: guestGateway
+            guestControlGateway: {
+                RuntimeGuestControlGatewaySpy(
+                    services: ["recorder-ingress"],
+                    statuses: [
+                        "recorder-ingress": RuntimeGuestControlServiceStatus(
+                            service: "recorder-ingress",
+                            state: "running",
+                            health: "healthy",
+                            observedAt: "2026-07-01T00:00:00Z"
+                        ),
+                    ],
+                    vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead(
+                        state: .loaded,
+                        observation: healthyVitalDBObservation()
+                    ),
+                    recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult(
+                        readState: .readFailed,
+                        httpStatus: RuntimeHTTPStatusText.failed,
+                        document: nil,
+                        readError: "guestControl=timeout"
+                    )
+                )
+            }
         )
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.containerObservation?.recorderIngressHTTP, "failed")
-        XCTAssertEqual(snapshot.containerObservation?.recorderIngressStatusReadState, .commandFailed)
-        XCTAssertTrue(snapshot.containerObservation?.recorderIngressStatusReadError?.hasPrefix("command-failed-7 ") == true)
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadState, .missing)
-        XCTAssertEqual(snapshot.containerObservation?.composeServices, [])
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadError, "container-services-missing")
-        XCTAssertTrue(snapshot.failureReasons.contains(.recorderIngressHTTP("failed")))
+        XCTAssertFalse(snapshot.failureReasons.contains(.recorderIngressHTTP("failed")))
     }
 
-    func testSnapshotReportsInvalidRecorderIngressStatusResponse() throws {
+    func testSnapshotKeepsInvalidRecorderIngressStatusResponseAsDiagnosticsEvidence() throws {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -991,90 +954,46 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
-        commandRunner.results[Constants.Commands.curl] = RuntimeProcessResult(exitCode: 0, stdout: "{invalid-json", stderr: "")
         let serviceManager = RuntimeServiceManagerSpy()
         serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
         let httpProber = RuntimeHTTPProberSpy()
         httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 80)] = "200"
         httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "200"
         httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "200"
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
-        )
         let checker = RuntimeHealthChecker(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: guestGateway
+            guestControlGateway: {
+                RuntimeGuestControlGatewaySpy(
+                    services: ["recorder-ingress"],
+                    statuses: [
+                        "recorder-ingress": RuntimeGuestControlServiceStatus(
+                            service: "recorder-ingress",
+                            state: "running",
+                            health: "healthy",
+                            observedAt: "2026-07-01T00:00:00Z"
+                        ),
+                    ],
+                    vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead(
+                        state: .loaded,
+                        observation: healthyVitalDBObservation()
+                    ),
+                    recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult(
+                        readState: .invalidResponse,
+                        httpStatus: RuntimeHTTPStatusText.invalidResponse,
+                        document: nil,
+                        readError: "guestControl=invalidResponse"
+                    )
+                )
+            }
         )
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.containerObservation?.recorderIngressHTTP, RuntimeHTTPStatusText.invalidResponse)
-        XCTAssertEqual(snapshot.containerObservation?.recorderIngressStatusReadState, .invalidResponse)
-        XCTAssertNil(snapshot.containerObservation?.recorderIngressStatus)
-        let readError = try XCTUnwrap(snapshot.containerObservation?.recorderIngressStatusReadError)
-        XCTAssertTrue(readError.hasPrefix("decode-failed reason="))
-        XCTAssertTrue(readError.contains("dataCorrupted"))
-        XCTAssertTrue(snapshot.failureReasons.contains(.recorderIngressHTTP(RuntimeHTTPStatusText.invalidResponse)))
-    }
-
-    func testSnapshotReportsContainerLogMetadataReadFailure() {
-        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        let fileStore = RuntimeFileStoreSpy()
-        fileStore.files[installedPaths.containerLogs] = Data("container logs".utf8)
-        fileStore.fileSizeErrors[installedPaths.containerLogs] = CocoaError(.fileReadNoPermission)
-        fileStore.modificationDateErrors[installedPaths.containerLogs] = CocoaError(.fileReadNoPermission)
-        let commandRunner = RuntimeCommandRunnerSpy()
-        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
-        let checker = RuntimeHealthChecker(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            serviceManager: RuntimeServiceManagerSpy(),
-            commandRunner: commandRunner,
-            httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
-        )
-
-        let snapshot = healthSnapshot(from: checker)
-
-        XCTAssertEqual(snapshot.containerObservation?.containerLogsPresent, true)
-        XCTAssertNil(snapshot.containerObservation?.containerLogsBytes)
-        XCTAssertNil(snapshot.containerObservation?.containerLogsUpdatedAt)
-        XCTAssertTrue(snapshot.containerObservation?.containerLogsMetadataError?.contains("size-read-failed reason=") == true)
-        XCTAssertTrue(snapshot.containerObservation?.containerLogsMetadataError?.contains("mtime-read-failed reason=") == true)
-    }
-
-    func testSnapshotReportsContainerLogPathInspectionFailure() {
-        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
-        let fileStore = RuntimeFileStoreSpy()
-        fileStore.pathStates[installedPaths.containerLogs.path] = .inspectFailed("permission denied")
-        let commandRunner = RuntimeCommandRunnerSpy()
-        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
-        let checker = RuntimeHealthChecker(
-            installedPaths: installedPaths,
-            fileStore: fileStore,
-            serviceManager: RuntimeServiceManagerSpy(),
-            commandRunner: commandRunner,
-            httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: RuntimeGuestGatewaySpy()
-        )
-
-        let snapshot = healthSnapshot(from: checker)
-
-        XCTAssertEqual(snapshot.containerObservation?.containerLogsPresent, false)
-        XCTAssertNil(snapshot.containerObservation?.containerLogsBytes)
-        XCTAssertNil(snapshot.containerObservation?.containerLogsUpdatedAt)
-        XCTAssertEqual(
-            snapshot.containerObservation?.containerLogsMetadataError,
-            "container logs path inspection failed path=\(installedPaths.containerLogs.path) reason=permission denied"
-        )
+        XCTAssertFalse(snapshot.failureReasons.contains(.recorderIngressHTTP(RuntimeHTTPStatusText.invalidResponse)))
     }
 
     func testSnapshotDoesNotUseStaleRuntimeStateForGuestProbes() {
@@ -1084,8 +1003,8 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
-        fileStore.files[installedPaths.runtimeState] = Data("{}".utf8)
-        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+        fileStore.files[installedPaths.runtimeObservation] = Data("{}".utf8)
+        fileStore.modificationDates[installedPaths.runtimeObservation] = Date(timeIntervalSince1970: 1_800_000_000)
 
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
@@ -1097,85 +1016,52 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "failed"
         httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "failed"
         httpProber.statuses["http://192.168.64.8/ready"] = "failed"
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.8",
-            updatedAt: "2026-05-26T14:52:50Z",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200",
-            containerServices: [
-                RuntimeContainerServiceObservation(service: "app", state: "running", health: "healthy"),
-            ]
-        )
         let checker = RuntimeHealthChecker(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: guestGateway,
             now: { Date(timeIntervalSince1970: 1_800_000_120) }
         )
 
         let snapshot = healthSnapshot(from: checker)
 
         XCTAssertEqual(snapshot.vmIP, nil)
-        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingVMIP)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
         XCTAssertFalse(httpProber.requestedURLs.contains("http://192.168.64.8/ready"))
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestRuntimeStateStale))
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-stale")))
         XCTAssertFalse(snapshot.failureReasons.contains(.guestHTTP("failed")))
-        XCTAssertEqual(snapshot.containerObservation?.runtimeStateUpdatedAt, nil)
-        XCTAssertEqual(snapshot.containerObservation?.runtimeStateFileUpdatedAt, "2027-01-15T08:00:00Z")
-        XCTAssertNil(snapshot.containerObservation?.runtimeStateFileMetadataError)
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadState, .stale)
-        XCTAssertEqual(snapshot.containerObservation?.composeServices, [])
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadError, "guest-runtime-state-stale")
     }
 
-    func testSnapshotReportsUnreadableRuntimeStateMetadataAsInvalid() {
+    func testSnapshotKeepsUnreadableRuntimeStateMetadataOutOfCurrentHealth() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
-        fileStore.files[installedPaths.runtimeState] = Data("{}".utf8)
-        fileStore.modificationDateErrors[installedPaths.runtimeState] = CocoaError(.fileReadNoPermission)
+        fileStore.files[installedPaths.runtimeObservation] = Data("{}".utf8)
+        fileStore.modificationDateErrors[installedPaths.runtimeObservation] = CocoaError(.fileReadNoPermission)
 
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(exitCode: 0, stdout: "80\n", stderr: "")
         let serviceManager = RuntimeServiceManagerSpy()
         serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.8",
-            updatedAt: "2026-05-26T14:52:50Z",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200"
-        )
         let checker = RuntimeHealthChecker(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: RuntimeHTTPProberSpy(),
-            guestGateway: guestGateway
         )
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.vmState, .unreachable)
-        XCTAssertFalse(snapshot.failureReasons.contains(.guestRuntimeStateStale))
-        XCTAssertTrue(snapshot.failureReasons.contains(.guestRuntimeStateInvalid))
+        XCTAssertEqual(snapshot.vmState, .running)
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-stale")))
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-invalid")))
         XCTAssertEqual(snapshot.vmIP, nil)
-        XCTAssertTrue(
-            snapshot.containerObservation?.runtimeStateFileMetadataError?
-                .contains("mtime-read-failed path=\(installedPaths.runtimeState.path)") == true
-        )
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadState, .invalid)
-        XCTAssertEqual(snapshot.containerObservation?.composeServicesReadError, "guest-runtime-state-invalid")
     }
 
     func testSnapshotDoesNotInferVMDiagnosticErrorsFromLaunchdLogs() {
@@ -1211,13 +1097,12 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: RuntimeGuestGatewaySpy()
         )
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.vmState, .unreachable)
-        XCTAssertTrue(snapshot.vmErrors.contains(.runtimeStateMissing))
+        XCTAssertEqual(snapshot.vmState, .running)
+        XCTAssertFalse(snapshot.vmErrors.contains(.unknown("vm-runtime-state-missing")))
         XCTAssertFalse(snapshot.vmErrors.contains(.launchFailed("virtualization")))
         XCTAssertFalse(snapshot.vmErrors.contains(.diskAttachmentInvalid))
         XCTAssertFalse(snapshot.vmErrors.contains(.guestFilesystemError))
@@ -1225,49 +1110,23 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertFalse(snapshot.vmErrors.contains(.guestDiskIO))
     }
 
-    func testRuntimeStateFileMetadataReadIsExplicitlyNotReadWhenGuestRuntimeStateIsMissing() {
+    func testSnapshotDoesNotReportGuestDiskHealthFromRuntimeStateContract() {
         let fixture = healthyRuntimeFixture(guestHTTP: "200")
-        fixture.guestGateway.runtimeState = nil
-
-        let reads = fixture.checker.observationReads()
-        let observation = EvaluateRuntimeHealthUseCase().observation(from: reads)
-
-        XCTAssertEqual(reads.runtimeStateFileModifiedAt.readState, .notRead)
-        XCTAssertNil(reads.runtimeStateFileModifiedAt.updatedAt)
-        XCTAssertNil(reads.runtimeStateFileModifiedAt.readError)
-        XCTAssertEqual(observation.containerObservation.observedValue?.runtimeStateFileMetadataReadState, .notRead)
-        XCTAssertNil(observation.containerObservation.observedValue?.runtimeStateFileUpdatedAt)
-        XCTAssertNil(observation.containerObservation.observedValue?.runtimeStateFileMetadataError)
-    }
-
-    func testSnapshotReportsGuestDiskHealthFromRuntimeStateContract() {
-        let fixture = healthyRuntimeFixture(guestHTTP: "200")
-        fixture.guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            updatedAt: "2026-05-24T00:00:00Z",
-            bootID: "boot-current",
-            guestHTTP: "200",
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200",
-            diskHealth: GuestDiskHealthDocument(
-                rootFilesystemReadOnly: true,
-                kernelErrors: [
-                    "EXT4-fs error (device vda1): checksum invalid",
-                    "systemd-journald: Failed to write entry: Input/output error",
-                ]
-            ),
-            vitalDBObservation: healthyVitalDBObservation()
-        )
 
         let snapshot = healthSnapshot(from: fixture.checker)
 
-        XCTAssertEqual(snapshot.vmState, .failed)
-        XCTAssertTrue(snapshot.vmErrors.contains(.guestFilesystemReadOnly))
-        XCTAssertTrue(snapshot.vmErrors.contains(.guestFilesystemError))
-        XCTAssertTrue(snapshot.vmErrors.contains(.guestDiskIO))
+        XCTAssertFalse(snapshot.vmErrors.contains(.guestFilesystemReadOnly))
+        XCTAssertFalse(snapshot.vmErrors.contains(.guestFilesystemError))
+        XCTAssertFalse(snapshot.vmErrors.contains(.guestDiskIO))
     }
 
-    private func healthyRuntimeFixture(guestHTTP: String) -> RuntimeHealthCheckerFixture {
+    private func healthyRuntimeFixture(
+        guestHTTP: String,
+        guestAddressRead: RuntimeGuestAddressReadResult = .loaded(
+            address: "192.168.64.2",
+            source: .platformAgent
+        )
+    ) -> RuntimeHealthCheckerFixture {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -1275,7 +1134,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         fileStore.files[URL(fileURLWithPath: RuntimeManagedServicePaths.launchDaemonPlist(.proxy))] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
         fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
-        fileStore.modificationDates[installedPaths.runtimeState] = Date(timeIntervalSince1970: 1_800_000_000)
+        fileStore.modificationDates[installedPaths.runtimeObservation] = Date(timeIntervalSince1970: 1_800_000_000)
 
         let commandRunner = RuntimeCommandRunnerSpy()
         commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(
@@ -1285,7 +1144,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         )
         commandRunner.results[Constants.Commands.curl] = RuntimeProcessResult(
             exitCode: 0,
-            stdout: #"{"activeWebSockets":0,"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"httpRequests":0,"redisIpWriteFailures":0,"socketIoEventsSeen":0,"socketIoParseFailures":0}"#,
+            stdout: #"{"activeWebSockets":0,"activeRecorderConnections":0,"recorders":[],"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"failureLogWriteFailures":0,"httpRequests":0,"redisIpWriteFailures":0,"redisIpVerifyFailures":0,"redisIpVerifyMismatches":0,"socketIoEventsSeen":0,"socketIoParseFailures":0}"#,
             stderr: ""
         )
 
@@ -1297,24 +1156,25 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "200"
         httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "200"
 
-        let guestGateway = RuntimeGuestGatewaySpy()
-        guestGateway.runtimeState = GuestRuntimeStateDocument(
-            vmIP: "192.168.64.2",
-            updatedAt: "2026-05-24T00:00:00Z",
-            bootID: "boot-current",
-            guestHTTP: guestHTTP,
-            redisUIHTTP: "200",
-            swaggerUIHTTP: "200",
-            vitalDBObservation: healthyVitalDBObservation()
-        )
-
         return RuntimeHealthCheckerFixture(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: guestGateway
+            guestControlGateway: RuntimeGuestControlGatewaySpy(
+                services: ["app"],
+                statuses: [
+                    "app": RuntimeGuestControlServiceStatus(
+                        service: "app",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00Z"
+                    ),
+                ],
+                readyStatus: guestHTTP == "200" ? "ready" : guestHTTP
+            ),
+            guestAddressRead: guestAddressRead
         )
     }
 }
@@ -1332,22 +1192,50 @@ private func healthSnapshot(from checker: RuntimeHealthChecker) -> RuntimeHealth
     return useCase.snapshot(observation: useCase.observation(from: checker.observationReads()))
 }
 
+private func stubGuestAddressProvider(read: RuntimeGuestAddressReadResult) -> any RuntimeGuestAddressProvider {
+    StubRuntimeGuestAddressProvider(read: read)
+}
+
+private struct StubRuntimeGuestAddressProvider: RuntimeGuestAddressProvider {
+    let read: RuntimeGuestAddressReadResult
+
+    func readGuestAddress() -> RuntimeGuestAddressReadResult {
+        read
+    }
+}
+
+private struct StubRuntimeVMLifecycleResourceReader: RuntimeVMLifecycleResourceReading {
+    let resource: RuntimeVMLifecycleResourceState
+
+    func loadVMLifecycleResource() -> RuntimeVMLifecycleResourceState {
+        resource
+    }
+}
+
 private struct RuntimeHealthCheckerFixture {
     let installedPaths: InstalledRuntimePaths
     let fileStore: RuntimeFileStoreSpy
     let serviceManager: RuntimeServiceManagerSpy
     let commandRunner: RuntimeCommandRunnerSpy
     let httpProber: RuntimeHTTPProberSpy
-    let guestGateway: RuntimeGuestGatewaySpy
+    let guestControlGateway: RuntimeGuestControlGatewaySpy
+    let guestAddressRead: RuntimeGuestAddressReadResult
 
     var checker: RuntimeHealthChecker {
+        checker(guestControlGateway: { [guestControlGateway] in guestControlGateway })
+    }
+
+    func checker(
+        guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)?
+    ) -> RuntimeHealthChecker {
         RuntimeHealthChecker(
             installedPaths: installedPaths,
             fileStore: fileStore,
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: guestGateway
+            guestAddressProvider: stubGuestAddressProvider(read: guestAddressRead),
+            guestControlGateway: guestControlGateway
         )
     }
 }
@@ -1398,34 +1286,168 @@ private final class RuntimeServiceManagerSpy: RuntimeServiceManager {
     }
 }
 
-private final class RuntimeGuestGatewaySpy: RuntimeGuestGateway {
-    var runtimeState: GuestRuntimeStateDocument?
-    var runtimeStateResult: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>?
-    var bootstrapResult: GuestBootstrapResultDocument?
-    var bootstrapResultResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>?
+private final class RuntimeGuestControlGatewaySpy: RuntimeGuestControlGateway, @unchecked Sendable {
+    private let services: [String]
+    private let statuses: [String: RuntimeGuestControlServiceStatus]
+    private let resources: [String: RuntimeGuestServiceResource]
+    private let resourceFailures: [String: Error]
+    private let vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead
+    private let recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
+    var readyStatus = "ready"
+    var readyCount = 0
+    var listServicesCount = 0
+    var stackStatusCount = 0
+    var statusRequests: [String] = []
+    var resourceRequests: [String] = []
+    var recorderIngressStatusCount = 0
 
-    func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
-        if let runtimeStateResult {
-            return runtimeStateResult
-        }
-        return runtimeState.map(RuntimeGuestDocumentLoadResult.loaded) ?? .missing
+    init(
+        services: [String],
+        statuses: [String: RuntimeGuestControlServiceStatus],
+        resources: [String: RuntimeGuestServiceResource] = [:],
+        resourceFailures: [String: Error] = [:],
+        vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead = RuntimeGuestControlVitalDBObservationRead(
+            state: .unavailable
+        ),
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
+        readyStatus: String = "ready"
+    ) {
+        self.services = services
+        self.statuses = statuses
+        self.resources = resources
+        self.resourceFailures = resourceFailures
+        self.vitalDBObservationRead = vitalDBObservationRead
+        self.recorderIngressStatusRead = recorderIngressStatusRead
+        self.readyStatus = readyStatus
     }
 
-    func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> {
-        if let bootstrapResultResult {
-            return bootstrapResultResult
-        }
-        return bootstrapResult.map(RuntimeGuestDocumentLoadResult.loaded) ?? .missing
+    func ready() throws -> RuntimeGuestControlReadiness {
+        readyCount += 1
+        return RuntimeGuestControlReadiness(status: readyStatus)
     }
 
-    func removeUpdateActivationResult() throws {}
-    func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
-    func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
-    func removeUpdateShutdownResult() throws {}
-    func clearUpdateShutdownPreparation() throws {}
-    func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
-    func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> { .missing }
-    func removeDatastoreRepairResult() throws {}
-    func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
-    func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
+    func listServices() throws -> RuntimeGuestControlServiceList {
+        listServicesCount += 1
+        return RuntimeGuestControlServiceList(services: services)
+    }
+
+    func stackStatus() throws -> RuntimeGuestControlStackStatus {
+        stackStatusCount += 1
+        return RuntimeGuestControlStackStatus(
+            state: "loaded",
+            observedAt: "2026-07-01T00:00:00Z",
+            services: services.map { service in
+                statuses[service] ?? RuntimeGuestControlServiceStatus(
+                    service: service,
+                    state: "absent",
+                    health: "not_reported",
+                    observedAt: "2026-07-01T00:00:00Z"
+                )
+            }
+        )
+    }
+
+    func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {
+        statusRequests.append(service)
+        guard let status = statuses[service] else {
+            throw RuntimeGuestControlGatewaySpyError.missingStatus(service)
+        }
+        return status
+    }
+
+    func serviceResource(_ service: String) throws -> RuntimeGuestServiceResource {
+        resourceRequests.append(service)
+        if let failure = resourceFailures[service] {
+            throw failure
+        }
+        if let resource = resources[service] {
+            return resource
+        }
+        guard let status = statuses[service] else {
+            throw RuntimeGuestControlGatewaySpyError.missingStatus(service)
+        }
+        return RuntimeGuestServiceResource(
+            service: service,
+            spec: RuntimeGuestServiceSpec(state: "configured", desiredState: "running"),
+            status: RuntimeGuestServiceStatusRead(
+                state: "loaded",
+                observedState: status.state,
+                observedAt: status.observedAt,
+                serviceStatus: status
+            ),
+            conditions: []
+        )
+    }
+
+    func recorderIngressStatus() throws -> RuntimeRecorderIngressStatusReadResult {
+        recorderIngressStatusCount += 1
+        guard let recorderIngressStatusRead else {
+            throw RuntimeGuestControlGatewaySpyError.missingStatus("recorder-ingress-status")
+        }
+        return recorderIngressStatusRead
+    }
+
+    func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        operation(service: service, command: .start)
+    }
+
+    func stopService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        operation(service: service, command: .stop)
+    }
+
+    func restartService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        operation(service: service, command: .restart)
+    }
+
+    func reconcileServices() throws -> RuntimeGuestControlServiceOperation {
+        operation(service: "guest-stack", command: .reconcile)
+    }
+
+    func operation(_ operationId: String) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: operationId,
+            service: "app",
+            command: .restart,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00Z",
+            updatedAt: "2026-07-01T00:00:00Z"
+        )
+    }
+
+    func latestVitalDBObservation() throws -> RuntimeGuestControlVitalDBObservationRead {
+        vitalDBObservationRead
+    }
+
+    private func operation(
+        service: String,
+        command: RuntimeGuestControlServiceCommand
+    ) -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "op-\(service)-\(command.rawValue)",
+            service: service,
+            command: command,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00Z",
+            updatedAt: "2026-07-01T00:00:00Z"
+        )
+    }
+}
+
+private enum RuntimeGuestControlGatewaySpyError: Error, CustomStringConvertible {
+    case missingStatus(String)
+
+    var description: String {
+        switch self {
+        case .missingStatus(let service):
+            return "missing status for service \(service)"
+        }
+    }
+}
+
+private extension [RuntimeFailureReason] {
+    var containsVitalDBObservationFailure: Bool {
+        contains { reason in
+            reason.rawValue.hasPrefix("vitaldb-observation-")
+        }
+    }
 }

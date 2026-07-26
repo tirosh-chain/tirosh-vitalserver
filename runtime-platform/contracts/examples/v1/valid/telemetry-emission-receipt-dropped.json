@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "v1",
+  "id": "telemetry-receipt-1",
+  "requestId": "guest-telemetry-signal-1",
+  "pipelineReference": {
+    "resourceType": "telemetry-pipeline",
+    "resourceId": "guest-telemetry-pipeline"
+  },
+  "signal": {
+    "schemaVersion": "v1",
+    "service": {
+      "name": "guest-runtime",
+      "version": "0.1.0"
+    },
+    "signalKinds": [
+      "logs",
+      "metrics",
+      "traces"
+    ],
+    "signalName": "runtime.operation.observed",
+    "emittedAt": "2026-07-17T00:00:00Z"
+  },
+  "outcome": "dropped",
+  "emittedAt": "2026-07-17T00:00:01Z",
+  "exportedAttributeCount": 1,
+  "redactedAttributeKeys": [
+    "patient.id"
+  ],
+  "droppedAttributeKeys": [],
+  "issue": {
+    "code": "telemetry-redaction-applied",
+    "message": "one or more sensitive attributes were removed before export"
+  }
+}

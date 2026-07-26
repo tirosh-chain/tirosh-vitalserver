@@ -26,6 +26,14 @@ struct VMConfigDocument: Decodable {
         }
         do {
             let data = try fileStore.readData(url)
+            return decodeResult(data)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    static func decodeResult(_ data: Data) -> RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput> {
+        do {
             return try .loaded(JSONDecoder().decode(VMConfigDocument.self, from: data).runtimeSettingsReadInput)
         } catch {
             return .failed(error.localizedDescription)
@@ -147,6 +155,16 @@ struct GuestRuntimeSettings: Decodable {
         }
         do {
             let data = try fileStore.readData(url)
+            return decodeResult(data)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    static func decodeResult(
+        _ data: Data
+    ) -> RuntimeSettingsReadResult<RuntimeGuestRuntimeSettingsReadInput> {
+        do {
             return try .loaded(JSONDecoder().decode(GuestRuntimeSettings.self, from: data).runtimeSettingsReadInput)
         } catch {
             return .failed(error.localizedDescription)
@@ -177,22 +195,22 @@ struct GuestRuntimeSettings: Decodable {
 public struct RuntimeControlSettingsDocument: Codable, Equatable {
     public let logArchiveRetentionDays: Int
     public let logArchiveMaximumGiB: Int
-    public let redisRelay: RuntimeRedisRelaySettings
+    public let runtimeControlPort: Int
 
     enum CodingKeys: String, CodingKey {
         case logArchiveRetentionDays
         case logArchiveMaximumGiB
-        case redisRelay
+        case runtimeControlPort
     }
 
     public init(
         logArchiveRetentionDays: Int = RuntimeSettingsInitialValues.logArchiveRetentionDays,
         logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB,
-        redisRelay: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings()
+        runtimeControlPort: Int = RuntimeSettingsInitialValues.runtimeControlPort
     ) {
         self.logArchiveRetentionDays = logArchiveRetentionDays
         self.logArchiveMaximumGiB = logArchiveMaximumGiB
-        self.redisRelay = redisRelay
+        self.runtimeControlPort = runtimeControlPort
     }
 
     public init(from decoder: Decoder) throws {
@@ -206,14 +224,14 @@ public struct RuntimeControlSettingsDocument: Codable, Equatable {
                 Int.self,
                 forKey: .logArchiveMaximumGiB
             ) ?? RuntimeSettingsInitialValues.logArchiveMaximumGiB,
-            redisRelay: try container.decodeIfPresent(
-                RuntimeRedisRelaySettings.self,
-                forKey: .redisRelay
-            ) ?? RuntimeRedisRelaySettings()
+            runtimeControlPort: try container.decodeIfPresent(
+                Int.self,
+                forKey: .runtimeControlPort
+            ) ?? RuntimeSettingsInitialValues.runtimeControlPort
         )
     }
 
-    static func loadResult(
+    public static func loadResult(
         path: String,
         fileStore: RuntimeFileReading
     ) -> RuntimeSettingsReadResult<RuntimeLogArchiveSettingsReadInput> {
@@ -238,7 +256,7 @@ public struct RuntimeControlSettingsDocument: Codable, Equatable {
         RuntimeLogArchiveSettingsReadInput(
             retentionDays: logArchiveRetentionDays,
             maximumGiB: logArchiveMaximumGiB,
-            redisRelay: redisRelay
+            runtimeControlPort: runtimeControlPort
         )
     }
 }

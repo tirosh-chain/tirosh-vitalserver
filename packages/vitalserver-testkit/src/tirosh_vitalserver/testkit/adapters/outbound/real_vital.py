@@ -2,42 +2,35 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
+from tirosh_vitalserver.core.domain.vital_file import VitalTrackDefinition
 from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
     RealVitalFileHeader,
     RealVitalReaderPort,
     RealVitalTrackHeader,
 )
+from tirosh_vitalserver.vitalfile import VitalDbVitalFileReader
 
 
 class VitalDbRealVitalReader(RealVitalReaderPort):
     """Read `.vital` headers and samples with the vitaldb package."""
 
+    def __init__(self, reader: VitalDbVitalFileReader | None = None) -> None:
+        self.reader = reader or VitalDbVitalFileReader()
+
     def header(self, path: Path) -> RealVitalFileHeader:
         """Return explicit header state from one `.vital` file."""
 
-        if not path.is_file():
-            raise RuntimeError(f"real vital file is unavailable: {path}")
-        try:
-            from vitaldb import VitalFile
-        except ModuleNotFoundError as exc:
-            raise RuntimeError(
-                "vitaldb package is required for real vital samples"
-            ) from exc
-
-        try:
-            vital_file = VitalFile(str(path), header_only=True)
-        except Exception as exc:
-            raise RuntimeError(f"real vital file header read failed: {path}") from exc
-        tracks = list(vital_file.trks.values())
+        manifest = self.reader.inspect(path)
 
         return RealVitalFileHeader(
             path=path,
-            dtstart=float(vital_file.dtstart),
-            dtend=float(vital_file.dtend),
-            tracks=tuple(track_header(track) for track in tracks),
+            format_version=manifest.header.format_version,
+            dtstart=manifest.started_at,
+            dtend=manifest.ended_at,
+            tracks=tuple(track_header(track) for track in manifest.tracks),
         )
 
     def track_samples(
@@ -46,37 +39,24 @@ class VitalDbRealVitalReader(RealVitalReaderPort):
         dtname: str,
         *,
         interval_seconds: float,
-    ) -> Any:
+    ) -> Sequence[object]:
         """Return source samples for one track at an explicit interval."""
 
-        if not path.is_file():
-            raise RuntimeError(f"real vital file is unavailable: {path}")
-        try:
-            from vitaldb import VitalFile
-        except ModuleNotFoundError as exc:
-            raise RuntimeError(
-                "vitaldb package is required for real vital samples"
-            ) from exc
-
-        try:
-            vital_file = VitalFile(str(path))
-            return vital_file.get_track_samples(dtname, interval_seconds)
-        except Exception as exc:
-            raise RuntimeError(
-                f"real vital track read failed: {path} track={dtname}"
-            ) from exc
+        source = self.reader.open(path)
+        return source.track_samples(dtname, interval_seconds=interval_seconds)
 
 
-def track_header(track: Any) -> RealVitalTrackHeader:
-    """Convert a vitaldb Track into the application header contract."""
+def track_header(track: VitalTrackDefinition) -> RealVitalTrackHeader:
+    """Convert one canonical track into the application header contract."""
 
     return RealVitalTrackHeader(
-        dtname=str(getattr(track, "dtname", "")),
-        dname=str(getattr(track, "dname", "")),
-        name=str(getattr(track, "name", "")),
-        unit=str(getattr(track, "unit", "")),
-        montype=int(getattr(track, "montype", 0) or 0),
-        srate=float(getattr(track, "srate", 0) or 0),
-        mindisp=float(getattr(track, "mindisp", 0) or 0),
-        maxdisp=float(getattr(track, "maxdisp", 0) or 0),
+        dtname=track.dtname,
+        kind=track.kind,
+        dname=track.device_name,
+        name=track.name,
+        unit=track.unit,
+        montype=track.monitor_type_id,
+        srate=track.sample_rate,
+        mindisp=track.minimum_display,
+        maxdisp=track.maximum_display,
     )

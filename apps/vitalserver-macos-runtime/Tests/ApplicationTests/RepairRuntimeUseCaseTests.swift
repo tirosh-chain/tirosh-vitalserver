@@ -240,33 +240,33 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         )
     }
 
-    func testVMDiskRedisBackupBestEffortPlansReportDegradedContinuationExplicitly() {
+    func testVMDiskVitalServerBackupBestEffortPlansReportDegradedContinuationExplicitly() {
         let useCase = RuntimeVMDiskRepairUseCase()
 
         XCTAssertEqual(
-            useCase.redisBackupStartedStatusPlan(),
+            useCase.vitalServerBackupStartedStatusPlan(),
             RepairRuntimeStatusPlan(
                 status: .recovering,
                 operation: .repairVMDisk,
-                message: "Creating Redis backup before VM disk repair"
+                message: "Creating VitalServer backup before VM disk repair"
             )
         )
         XCTAssertEqual(
-            useCase.redisBackupCompletedPlan(),
+            useCase.vitalServerBackupCompletedPlan(),
             RepairRuntimeLoggedStatusPlan(
-                logMessage: "redis backup before vm disk repair completed",
+                logMessage: "VitalServer backup before VM disk repair completed",
                 status: .recovering,
                 operation: .repairVMDisk,
-                statusMessage: "Redis backup completed before VM disk repair"
+                statusMessage: "VitalServer backup completed before VM disk repair"
             )
         )
         XCTAssertEqual(
-            useCase.redisBackupFailedPlan(reason: "permission denied"),
+            useCase.vitalServerBackupFailedPlan(reason: "permission denied"),
             RepairRuntimeLoggedStatusPlan(
-                logMessage: "redis backup before vm disk repair failed error=permission denied; continuing with VM disk archive",
+                logMessage: "VitalServer backup before VM disk repair failed error=permission denied; continuing with VM disk archive",
                 status: .recovering,
                 operation: .repairVMDisk,
-                statusMessage: "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
+                statusMessage: "VitalServer backup before VM disk repair failed; current VM disk will be archived before replacement"
             )
         )
     }
@@ -286,129 +286,16 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         )
     }
 
-    func testDatastoreRepairPlanBuildsRequestAndRestartPolicyWithoutWorkflowState() {
+    func testDatastoreRepairPlanBuildsRestartPolicyWithoutWorkflowState() {
         let useCase = RuntimeDatastoreRepairUseCase()
 
         let plan = useCase.plan()
-        let request = useCase.request(
-            requestID: "request-1",
-            requestedAt: "2026-06-06T00:00:00Z"
-        )
 
         XCTAssertEqual(plan.requestedLogMessage, "datastore repair requested")
         XCTAssertEqual(plan.completedStatusMessage, "datastore repair completed")
         XCTAssertEqual(
             plan.restartPolicy,
             RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: true, restartWatchdog: true)
-        )
-        XCTAssertEqual(request.id, "request-1")
-        XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
-    }
-
-    func testDatastoreRepairWaitPlansPreserveProgressFailedAndTimeoutMeanings() {
-        let useCase = RuntimeDatastoreRepairUseCase()
-
-        XCTAssertEqual(
-            useCase.waitStartedLogMessage(timeoutSeconds: 300),
-            "waiting for datastore repair result timeoutSeconds=300.0"
-        )
-        XCTAssertEqual(
-            useCase.waitProgressPlan(message: "waiting for datastore repair guest worker"),
-            RepairRuntimeStatusPlan(
-                status: .recovering,
-                operation: .repairDatastore,
-                message: "waiting for datastore repair guest worker"
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultPlan(.completed(message: "done")),
-            RepairRuntimeWaitResultPlan(
-                logMessage: "datastore repair guest result completed message=done",
-                failureMessage: nil
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultPlan(.failed(message: "repair failed")),
-            RepairRuntimeWaitResultPlan(
-                logMessage: "datastore repair guest result failed message=repair failed",
-                failureMessage: "runtime health check failed"
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultPlan(.timedOut),
-            RepairRuntimeWaitResultPlan(
-                logMessage: nil,
-                failureMessage: "runtime health check failed"
-            )
-        )
-    }
-
-    func testRedisBackupResultDecisionPreservesStaleMissingFailedAndDefaultDisplayMessages() {
-        let useCase = RuntimeRedisBackupUseCase()
-
-        XCTAssertEqual(
-            useCase.resultDecision(
-                loadResult: .loaded(redisResult(status: .completed, requestId: "old", message: "done")),
-                expectedRequestID: "request-1",
-                shouldReportProgress: true
-            ),
-            .ignoreStaleResult(logMessage: "stale redis backup result ignored")
-        )
-        XCTAssertEqual(
-            useCase.resultDecision(
-                loadResult: .loaded(redisResult(status: .completed, requestId: "request-1", message: nil, archive: "redis.tar.gz")),
-                expectedRequestID: "request-1",
-                shouldReportProgress: true
-            ),
-            .completed(message: "Redis backup completed.", archive: "redis.tar.gz")
-        )
-        XCTAssertEqual(
-            useCase.resultDecision(
-                loadResult: .loaded(redisResult(status: .failed, requestId: "request-1", message: nil)),
-                expectedRequestID: "request-1",
-                shouldReportProgress: true
-            ),
-            .failed(message: "Redis backup failed.")
-        )
-        XCTAssertEqual(
-            useCase.resultDecision(
-                loadResult: .missing,
-                expectedRequestID: "request-1",
-                shouldReportProgress: true
-            ),
-            .waiting(logMessage: "waiting for redis backup guest worker")
-        )
-        XCTAssertEqual(
-            useCase.resultDecision(
-                loadResult: .failed("permission denied"),
-                expectedRequestID: "request-1",
-                shouldReportProgress: true
-            ),
-            .readFailed(message: "failed to read redis backup result: permission denied")
-        )
-    }
-
-    func testRedisBackupLifecyclePlansKeepStatusAndFailureMessagesOutOfWorkflow() {
-        let useCase = RuntimeRedisBackupUseCase()
-
-        XCTAssertEqual(
-            useCase.requestedPlan(),
-            RepairRuntimeLoggedStatusPlan(
-                logMessage: "redis backup requested",
-                status: .recovering,
-                operation: .redisBackup,
-                statusMessage: "redis backup requested"
-            )
-        )
-        XCTAssertEqual(useCase.completedLogMessage(), "redis backup completed")
-        XCTAssertEqual(
-            useCase.timedOutPlan(),
-            RepairRuntimeFailureStatusPlan(
-                status: .degraded,
-                operation: .redisBackup,
-                statusMessage: "redis backup timed out",
-                failureMessage: "redis backup timed out"
-            )
         )
     }
 
@@ -432,35 +319,6 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             defaultDiskGiB: defaultDiskGiB,
             bytesPerGiB: bytesPerGiB,
             freeSpaceMarginBytes: freeSpaceMarginBytes
-        )
-    }
-
-    private func redisResult(
-        status: DatastoreRepairStatus,
-        requestId: String?,
-        message: String?,
-        archive: String? = nil
-    ) -> RedisBackupResultDocument {
-        RedisBackupResultDocument(
-            requestId: requestId,
-            status: status,
-            message: message,
-            archive: archive
-        )
-    }
-
-    private func datastoreRepairResult(
-        status: DatastoreRepairStatus,
-        requestId: String,
-        message: String
-    ) -> DatastoreRepairResultDocument {
-        DatastoreRepairResultDocument(
-            schemaVersion: 1,
-            requestId: requestId,
-            operation: .repairDatastore,
-            status: status,
-            message: message,
-            updatedAt: "2026-05-22T00:00:00Z"
         )
     }
 

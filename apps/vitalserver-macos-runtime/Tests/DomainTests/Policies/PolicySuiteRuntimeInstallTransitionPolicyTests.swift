@@ -266,7 +266,7 @@ final class RuntimeInstallTransitionPolicyTests: XCTestCase {
     }
 
     private func freshInstallServiceStates() -> [RuntimeFreshInstallServiceState] {
-        RuntimeManagedService.stopOrder.map { service in
+        RuntimeManagedService.uninstallOrder.map { service in
             RuntimeFreshInstallServiceState(label: service.label, state: .notLoaded)
         }
     }

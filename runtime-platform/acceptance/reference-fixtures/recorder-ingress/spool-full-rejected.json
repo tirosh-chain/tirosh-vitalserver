@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "fixtureKind": "ingress-outcome-observation",
+  "inputShape": {
+    "byteCount": 7,
+    "connectionCorrelationPresent": true,
+    "joinedRecorderCodePresent": true,
+    "requestCorrelationPresent": true
+  },
+  "legacyOutcome": {
+    "accepted": false,
+    "name": "rejected",
+    "reason": "spool_full"
+  },
+  "expectedFact": {
+    "backpressureObserved": true,
+    "durableHandoffWasNotProven": true
+  }
+}

@@ -1,0 +1,628 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-installation-footprint",
+  "title": "HostInstallationFootprint",
+  "description": "C49 Host Installation Manager-owned observation of the package receipt, immutable release slot, activation link, macOS operator application when declared, services, mutable stores, and explicit C50 transaction state. It never treats an unreadable or unknown resource as absent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "installationId",
+    "expectedReleaseId",
+    "platform",
+    "observedAt",
+    "packageReceipt",
+    "releaseCatalog",
+    "immutableRelease",
+    "activation",
+    "requiredServices",
+    "mutableStores",
+    "installationTransaction"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "installationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedReleaseId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "macos",
+        "windows",
+        "linux"
+      ]
+    },
+    "observedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "packageReceipt": {
+      "$ref": "#/$defs/PackageReceiptObservation"
+    },
+    "releaseCatalog": {
+      "$ref": "#/$defs/ReleaseCatalogObservation"
+    },
+    "immutableRelease": {
+      "$ref": "#/$defs/ImmutableReleaseObservation"
+    },
+    "activation": {
+      "$ref": "#/$defs/ActivationObservation"
+    },
+    "operatorApplication": {
+      "$ref": "#/$defs/OperatorApplicationObservation"
+    },
+    "requiredServices": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/RequiredServiceObservation"
+      }
+    },
+    "mutableStores": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/MutableStoreObservation"
+      }
+    },
+    "installationTransaction": {
+      "$ref": "#/$defs/InstallationTransactionObservation"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "platform": {
+            "const": "macos"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "then": {
+        "required": [
+          "operatorApplication"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "operatorApplication"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Issue": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    },
+    "HostAbsolutePath": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 4096,
+      "anyOf": [
+        {
+          "pattern": "^/[^\\\\]*$",
+          "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+        },
+        {
+          "pattern": "^[A-Za-z]:[\\\\/][^\\u0000]*$",
+          "not": { "pattern": "(^|[\\\\/])\\.\\.([\\\\/]|$)" }
+        }
+      ]
+    },
+    "PackageReceiptObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "identifier"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "installed",
+            "unavailable",
+            "failed"
+          ]
+        },
+        "identifier": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 255
+        },
+        "productVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "packageManagerReceiptState": {
+          "description": "Optional exact package-manager state. Linux C49 writers provide this alongside the stable generic receipt state; consumers that require a Linux lifecycle transition must reject a missing value.",
+          "type": "string",
+          "enum": [
+            "unpacked",
+            "configuring",
+            "installed",
+            "removing",
+            "removed",
+            "configuration-retained"
+          ]
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "installed"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "productVersion"
+            ],
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "ImmutableReleaseObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "releaseRootPath"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "matching",
+            "diverged",
+            "unreadable"
+          ]
+        },
+        "releaseRootPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "ReleaseCatalogObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "releaseCatalogPath"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "empty",
+            "only-expected-release",
+            "contains-other-releases",
+            "contains-unexpected-entry",
+            "unreadable"
+          ]
+        },
+        "releaseCatalogPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "releaseIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          },
+          "uniqueItems": true
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "only-expected-release",
+                  "contains-other-releases"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "releaseIds"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "ActivationObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "currentReleaseLinkPath"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "points-to-expected-release",
+            "points-to-other-release",
+            "unreadable"
+          ]
+        },
+        "currentReleaseLinkPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "observedTargetPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "points-to-expected-release",
+                  "points-to-other-release"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "observedTargetPath"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "OperatorApplicationObservation": {
+      "description": "C49 observation of the macOS operator application declared by C48. `matching` means the full bundle tree matches C48; a changed, missing, and unreadable bundle remain distinct.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "applicationBundlePath"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "matching",
+            "diverged",
+            "unreadable"
+          ]
+        },
+        "applicationBundlePath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "RequiredServiceObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "name",
+        "state",
+        "definitionState"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": [
+            "host-agent",
+            "host-edge-proxy",
+            "host-update-handoff-supervisor"
+          ]
+        },
+        "name": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "registered",
+            "unavailable",
+            "failed"
+          ]
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        },
+        "definitionState": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "matching",
+            "diverged",
+            "unreadable"
+          ]
+        },
+        "definitionIssue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "definitionState": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "definitionState"
+            ]
+          },
+          "then": {
+            "required": [
+              "definitionIssue"
+            ]
+          }
+        }
+      ]
+    },
+    "MutableStoreObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "compatible",
+            "migration-required",
+            "incompatible",
+            "present-unknown",
+            "unreadable"
+          ]
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "InstallationTransactionObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "journalPath",
+        "receiptPath"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "absent",
+            "preflight-verified",
+            "services-quiescing",
+            "activation-pending",
+            "activated",
+            "completed",
+            "recovered",
+            "failed",
+            "legacy-blocked-preflight",
+            "receipt-residue",
+            "unreadable"
+          ]
+        },
+        "journalPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "receiptPath": {
+          "$ref": "#/$defs/HostAbsolutePath"
+        },
+        "issue": {
+          "$ref": "#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "unreadable"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

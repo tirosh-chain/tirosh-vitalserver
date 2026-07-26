@@ -8,7 +8,6 @@ protocol RuntimeActionEnvironment: Sendable {
     func executableState(atPath path: String) -> RuntimeFileState
     func writeAdminPasswordFile(_ password: String) throws -> URL
     func writeRecorderIngressSettingsFile(_ settings: RuntimeRecorderIngressSettings) throws -> URL
-    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL
     func removeItem(at url: URL) throws
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult
 }
@@ -18,20 +17,17 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
     private let temporaryDirectory: URL
     private let adminPasswordFileID: @Sendable () -> String
     private let recorderIngressSettingsFileID: @Sendable () -> String
-    private let redisRelaySettingsFileID: @Sendable () -> String
 
     init(
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         temporaryDirectory: URL = URL(fileURLWithPath: "/private/tmp", isDirectory: true),
         adminPasswordFileID: @escaping @Sendable () -> String = { UUID().uuidString },
-        recorderIngressSettingsFileID: @escaping @Sendable () -> String = { UUID().uuidString },
-        redisRelaySettingsFileID: @escaping @Sendable () -> String = { UUID().uuidString }
+        recorderIngressSettingsFileID: @escaping @Sendable () -> String = { UUID().uuidString }
     ) {
         self.fileStore = fileStore
         self.temporaryDirectory = temporaryDirectory
         self.adminPasswordFileID = adminPasswordFileID
         self.recorderIngressSettingsFileID = recorderIngressSettingsFileID
-        self.redisRelaySettingsFileID = redisRelaySettingsFileID
     }
 
     func executableState(atPath path: String) -> RuntimeFileState {
@@ -53,21 +49,6 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
             try fileStore.writeData(data, to: url, options: [], posixPermissions: 0o600)
         } catch {
             throw RuntimeActionEnvironmentError.recorderIngressSettingsFileCreateFailed(
-                path: url.path,
-                reason: error.localizedDescription
-            )
-        }
-        return url
-    }
-
-    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
-        let url = temporaryDirectory
-            .appendingPathComponent("tirosh-vitalserver-redis-relay-settings-\(redisRelaySettingsFileID()).json")
-        do {
-            let data = try JSONEncoder().encode(settings)
-            try fileStore.writeData(data, to: url, options: [], posixPermissions: 0o600)
-        } catch {
-            throw RuntimeActionEnvironmentError.redisRelaySettingsFileCreateFailed(
                 path: url.path,
                 reason: error.localizedDescription
             )

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "v1",
+  "providerKind": "linux-kvm-libvirt-systemd",
+  "providerId": "hospital-vm",
+  "hostPlatform": "linux",
+  "observedAt": "2026-07-17T00:00:00Z",
+  "installation": {
+    "state": "installed",
+    "observedAt": "2026-07-17T00:00:00Z"
+  },
+  "virtualMachine": {
+    "state": "running",
+    "observedAt": "2026-07-17T00:00:00Z"
+  },
+  "service": {
+    "manager": "systemd",
+    "state": "running",
+    "observedAt": "2026-07-17T00:00:00Z"
+  },
+  "capabilities": [
+    {
+      "id": "guest-vm-lifecycle",
+      "state": "available",
+      "observedAt": "2026-07-17T00:00:00Z"
+    },
+    {
+      "id": "host-service-lifecycle",
+      "state": "available",
+      "observedAt": "2026-07-17T00:00:00Z"
+    }
+  ]
+}

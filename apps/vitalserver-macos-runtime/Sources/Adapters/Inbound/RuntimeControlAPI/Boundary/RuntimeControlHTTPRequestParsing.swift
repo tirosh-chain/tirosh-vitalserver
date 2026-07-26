@@ -50,43 +50,41 @@ public extension RuntimeControlHTTPRequest {
         return String(path[afterQuestionMark..<fragmentStart])
     }
 
-    func runtimeEventQuery() throws -> RuntimeEventQuery {
+    /// Parses the public Guest Control operation-ledger query. It must not use
+    /// `RuntimeEventQuery`: that model also admits Host diagnostics event types
+    /// which the Guest ledger does not own.
+    func runtimeOperationEventQuery() throws -> RuntimeOperationEventQuery {
         let limit: Int
         if let rawLimit = try queryValue(named: "limit") {
-            guard let parsedLimit = Int(rawLimit), parsedLimit > 0 else {
+            guard let parsedLimit = Int(rawLimit),
+                  parsedLimit > 0,
+                  parsedLimit <= RuntimeOperationEventQuery.maximumLimit else {
                 throw RuntimeControlHTTPQueryError.invalidLimit(rawLimit)
             }
             limit = parsedLimit
         } else {
-            limit = RuntimeEventQuery.defaultLimit
+            limit = RuntimeOperationEventQuery.defaultLimit
         }
 
-        let before: RuntimeEventCursor?
-        if let rawCursor = try queryValue(named: "cursor") {
-            guard let decodedCursor = RuntimeEventCursorWireCodec.decode(rawCursor) else {
-                throw RuntimeControlHTTPQueryError.invalidCursor(rawCursor)
-            }
-            before = decodedCursor
-        } else {
-            before = nil
-        }
+        // The Guest ledger owns the cursor format. The Host proxy keeps it
+        // opaque and forwards the exact token returned by the prior response.
+        let cursor = try queryValue(named: "cursor")
 
-        let eventType: RuntimeEventType?
+        let eventType: RuntimeOperationEventType?
         if let rawEventType = try queryValue(named: "type") {
-            let parsedEventType = RuntimeEventType(rawValue: rawEventType)
-            guard RuntimeEventType.knownTypes.contains(parsedEventType) else {
+            guard let parsed = RuntimeOperationEventType(rawValue: rawEventType) else {
                 throw RuntimeControlHTTPQueryError.invalidEventType(rawEventType)
             }
-            eventType = parsedEventType
+            eventType = parsed
         } else {
             eventType = nil
         }
 
-        return RuntimeEventQuery(
+        return RuntimeOperationEventQuery(
             limit: limit,
             eventType: eventType,
             since: try queryValue(named: "since"),
-            before: before
+            cursor: cursor
         )
     }
 
@@ -174,10 +172,11 @@ public extension RuntimeControlHTTPRequest {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)
             .split(separator: "/", omittingEmptySubsequences: true)
-        guard components.count == 3,
-              components[0] == "vitaldb",
-              components[1] == "recorders",
-              let decoded = String(components[2]).removingPercentEncoding,
+        guard components.count == 4,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              let decoded = String(components[3]).removingPercentEncoding,
               !decoded.isEmpty
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
@@ -185,16 +184,174 @@ public extension RuntimeControlHTTPRequest {
         return decoded
     }
 
+    func recorderObservabilityExpectationCode() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 6,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              components[4] == "observability",
+              components[5] == "expectation",
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
+    func recorderObservabilityDetailCode() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 5,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              components[4] == "observability",
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
+    func recorderObservabilityTimelineQuery() throws
+        -> RuntimeRecorderObservabilityTimelineQuery {
+        try requireOnlyQueryParameters(["from", "until", "bucketSeconds"])
+        let vrcode = try recorderObservabilityHistoryCode(resource: "timeline")
+        let (from, until) = try recorderObservabilityWindow(
+            maximumSeconds: 24 * 60 * 60
+        )
+        guard let rawBucket = try queryValue(named: "bucketSeconds"),
+              let bucket = Int(rawBucket),
+              [300, 900, 3_600].contains(bucket) else {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter(
+                "bucketSeconds",
+                (try queryValue(named: "bucketSeconds")) ?? "missing"
+            )
+        }
+        return .init(
+            vrcode: vrcode,
+            from: from,
+            until: until,
+            bucketSeconds: bucket
+        )
+    }
+
+    func recorderObservabilityIncidentQuery() throws
+        -> RuntimeRecorderObservabilityIncidentQuery {
+        try requireOnlyQueryParameters(["from", "until", "type", "cursor", "limit"])
+        let vrcode = try recorderObservabilityHistoryCode(resource: "incidents")
+        let (from, until) = try recorderObservabilityWindow(
+            maximumSeconds: 30 * 24 * 60 * 60
+        )
+        let type = try queryValue(named: "type")
+        if let type, !["panic", "oops", "watchdog", "lockup", "unknown"].contains(type) {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter("type", type)
+        }
+        let rawLimit = try queryValue(named: "limit")
+        let limit = rawLimit.flatMap(Int.init) ?? 50
+        guard (1...100).contains(limit) else {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter(
+                "limit",
+                rawLimit ?? "missing"
+            )
+        }
+        return .init(
+            vrcode: vrcode,
+            from: from,
+            until: until,
+            type: type,
+            cursor: try queryValue(named: "cursor"),
+            limit: limit
+        )
+    }
+
+    private func recorderObservabilityHistoryCode(resource: String) throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 6,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              components[4] == "observability",
+              components[5] == Substring(resource),
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
+    private func recorderObservabilityWindow(
+        maximumSeconds: TimeInterval
+    ) throws -> (String, String) {
+        guard let from = try queryValue(named: "from") else {
+            throw RuntimeControlHTTPQueryError.missingQueryParameterValue("from")
+        }
+        guard let until = try queryValue(named: "until") else {
+            throw RuntimeControlHTTPQueryError.missingQueryParameterValue("until")
+        }
+        guard let fromDate = Self.recorderObservabilityDate(from),
+              let untilDate = Self.recorderObservabilityDate(until),
+              untilDate > fromDate,
+              untilDate.timeIntervalSince(fromDate) <= maximumSeconds else {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter(
+                "from/until",
+                "\(from)/\(until)"
+            )
+        }
+        return (from, until)
+    }
+
+    private func requireOnlyQueryParameters(_ allowed: Set<String>) throws {
+        for item in try queryItems() where !allowed.contains(item.name) {
+            throw RuntimeControlHTTPQueryError.invalidQueryParameter(
+                item.name,
+                item.value ?? "missing"
+            )
+        }
+    }
+
+    private static func recorderObservabilityDate(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
     private func vitalDBRecorderActivityCode() throws -> String {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)
             .split(separator: "/", omittingEmptySubsequences: true)
-        guard components.count == 4,
-              components[0] == "vitaldb",
-              components[1] == "recorders",
-              let decoded = String(components[2]).removingPercentEncoding,
+        guard components.count == 5,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              let decoded = String(components[3]).removingPercentEncoding,
               !decoded.isEmpty,
-              components[3] == "activity"
+              components[4] == "activity"
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
+    func vitalDBRecorderVitalFilesCode() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 5,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "recorders",
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty,
+              components[4] == "vital-files"
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
         }
@@ -205,13 +362,64 @@ public extension RuntimeControlHTTPRequest {
         let components = RuntimeControlAPIEndpoint
             .normalizedPathForRequest(path)
             .split(separator: "/", omittingEmptySubsequences: true)
-        guard components.count == 3,
-              components[0] == "vitaldb",
-              components[1] == "beds",
-              let decoded = String(components[2]).removingPercentEncoding,
+        guard components.count == 4,
+              components[0] == "runtime",
+              components[1] == "vitaldb",
+              components[2] == "beds",
+              let decoded = String(components[3]).removingPercentEncoding,
               !decoded.isEmpty
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("bedID")
+        }
+        return decoded
+    }
+
+    func runtimeGuestServiceName() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 4,
+              components[0] == "runtime",
+              components[1] == "services",
+              let decoded = String(components[2]).removingPercentEncoding,
+              !decoded.isEmpty,
+              ["status", "resource", "start", "stop", "restart"].contains(String(components[3]))
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("service")
+        }
+        return decoded
+    }
+
+    func runtimeLabSessionID() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count >= 4,
+              components[0] == "runtime",
+              components[1] == "lab",
+              components[2] == "sessions",
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("sessionId")
+        }
+        return decoded
+    }
+
+    func runtimeLabRecorderID() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 7,
+              components[0] == "runtime",
+              components[1] == "lab",
+              components[2] == "sessions",
+              components[4] == "recorders",
+              let decoded = String(components[5]).removingPercentEncoding,
+              !decoded.isEmpty,
+              ["start", "stop"].contains(String(components[6]))
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("recorderId")
         }
         return decoded
     }

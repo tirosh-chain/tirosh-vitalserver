@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "listenAddress": "127.0.0.1:18321",
+  "apiToken": "replace-during-install",
+  "runtimeExecutable": "/usr/libexec/vitalserver/runtime-provider",
+  "runtimeEndpointDocument": "/var/lib/vitalserver/run/runtime-endpoint.json",
+  "runtimeProviderDocument": "/var/lib/vitalserver/run/runtime-provider.json",
+  "operationLeaseDocument": "/var/lib/vitalserver/run/operation-lease.json",
+  "runtimeControllerPort": 18330,
+  "pwaDirectory": "/usr/share/vitalserver/runtime-control-pwa",
+  "platformServices": {
+    "runtime-provider": "vitalserver-runtime-provider.service",
+    "public-proxy": "vitalserver-public-proxy.service",
+    "log-sync": null,
+    "sleep-prevention": null,
+    "watchdog": "vitalserver-watchdog.service"
+  }
+}

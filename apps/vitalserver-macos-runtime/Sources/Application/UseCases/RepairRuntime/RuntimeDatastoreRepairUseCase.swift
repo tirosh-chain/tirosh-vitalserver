@@ -41,45 +41,4 @@ public struct RuntimeDatastoreRepairUseCase {
             )
         )
     }
-
-    public func request(
-        requestID: String,
-        requestedAt: String
-    ) -> RuntimeDatastoreRepairRequest {
-        RuntimeDatastoreRepairRequest(id: requestID, requestedAt: requestedAt)
-    }
-
-    public func waitStartedLogMessage(timeoutSeconds: Double) -> String {
-        "waiting for datastore repair result timeoutSeconds=\(timeoutSeconds)"
-    }
-
-    public func waitProgressPlan(message: String) -> RepairRuntimeStatusPlan {
-        RepairRuntimeStatusPlan(
-            status: .recovering,
-            operation: .repairDatastore,
-            message: message
-        )
-    }
-
-    public func waitResultPlan(
-        _ result: DatastoreRepairWaitResult
-    ) -> RepairRuntimeWaitResultPlan {
-        switch result {
-        case .completed(let message):
-            return RepairRuntimeWaitResultPlan(
-                logMessage: "datastore repair guest result completed message=\(message)",
-                failureMessage: nil
-            )
-        case .failed(let message):
-            return RepairRuntimeWaitResultPlan(
-                logMessage: "datastore repair guest result failed message=\(message)",
-                failureMessage: "runtime health check failed"
-            )
-        case .timedOut:
-            return RepairRuntimeWaitResultPlan(
-                logMessage: nil,
-                failureMessage: "runtime health check failed"
-            )
-        }
-    }
 }

@@ -17,6 +17,7 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     var childDirectoriesError: Error?
     var createDirectoryError: Error?
     var removeItemError: Error?
+    var removeItemErrors: [URL: Error] = [:]
     var copyItemError: Error?
 
     func fileExists(_ url: URL) -> Bool {
@@ -119,6 +120,9 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func removeItem(at url: URL) throws {
+        if let error = removeItemErrors[url] {
+            throw error
+        }
         if let removeItemError {
             throw removeItemError
         }

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "v1",
+  "updateId": "host-update-20260717",
+  "requestId": "host-update-request-20260717",
+  "bootstrapEnvelopeId": "release-bootstrap-20260717",
+  "updateSpecificationSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "state": "succeeded",
+  "startedAt": "2026-07-17T00:01:00Z",
+  "finishedAt": "2026-07-17T00:02:00Z",
+  "layerEvidence": [
+    { "layer": "guest-runtime", "state": "succeeded", "artifactSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "observedAt": "2026-07-17T00:01:10Z", "evidence": { "kind": "update-layer-proof", "id": "guest-runtime-proof" } },
+    { "layer": "container", "state": "succeeded", "artifactSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "observedAt": "2026-07-17T00:01:20Z", "evidence": { "kind": "update-layer-proof", "id": "container-proof" } },
+    { "layer": "host-platform", "state": "succeeded", "artifactSha256": "2222222222222222222222222222222222222222222222222222222222222222", "observedAt": "2026-07-17T00:01:30Z", "evidence": { "kind": "update-layer-proof", "id": "host-platform-proof" } }
+  ],
+  "rollback": { "state": "not-required", "observedAt": "2026-07-17T00:02:00Z" }
+}

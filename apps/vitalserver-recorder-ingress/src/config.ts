@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("fs");
 const { sendDataIngressModes } = require("./domain/send-data-ingress-contracts");
 
 const MIB = 1024 * 1024;
@@ -20,7 +21,13 @@ const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS = 60 * 1000;
 const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 function loadConfig(env) {
-  const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.SPOOL_AND_REPLAY);
+  const sendDataMode = sendDataIngressModeEnv(
+    env,
+    "RECORDER_INGRESS_SEND_DATA_MODE",
+    sendDataIngressModes.OBSERVE_ONLY
+  );
+  const upstreamHost = env.RECORDER_INGRESS_UPSTREAM_HOST || "app";
+  const upstreamPort = numberEnv(env, "RECORDER_INGRESS_UPSTREAM_PORT", 80);
   const replayMaxBytesPerSecond = numberEnv(
     env,
     "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND",
@@ -28,10 +35,95 @@ function loadConfig(env) {
   );
   return {
     listenPort: numberEnv(env, "RECORDER_INGRESS_PORT", 8080),
+    observability: {
+      enabled: booleanEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_ENABLED",
+        true
+      ),
+      ledgerDirectory: env.RECORDER_INGRESS_OBSERVABILITY_LEDGER_DIRECTORY
+        || "/var/lib/vitalserver-recorder-ingress/observability",
+      maxRequestBytes: numberEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_MAX_REQUEST_BYTES",
+        5 * MIB
+      ),
+      database: {
+        host: env.RECORDER_INGRESS_POSTGRES_HOST || "postgres",
+        port: numberEnv(env, "RECORDER_INGRESS_POSTGRES_PORT", 5432),
+        database: env.RECORDER_INGRESS_POSTGRES_DATABASE || "vitalserver",
+        user: env.RECORDER_INGRESS_POSTGRES_USER || "vitalserver",
+        password: env.RECORDER_INGRESS_POSTGRES_PASSWORD || "vitalserver",
+        maxConnections: numberEnv(
+          env,
+          "RECORDER_INGRESS_POSTGRES_MAX_CONNECTIONS",
+          10
+        ),
+      },
+      projector: {
+        intervalMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_INTERVAL_MS",
+          1000
+        ),
+        batchSize: numberEnv(
+          env,
+          "RECORDER_INGRESS_OBSERVABILITY_PROJECTOR_BATCH_SIZE",
+          100
+        ),
+      },
+      freshnessToleranceMultiplier: numberEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_MULTIPLIER",
+        3
+      ),
+      freshnessAllowanceSeconds: numberEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_FRESHNESS_ALLOWANCE_SECONDS",
+        30
+      ),
+      firstReportGraceSeconds: numberEnv(
+        env,
+        "RECORDER_INGRESS_OBSERVABILITY_FIRST_REPORT_GRACE_SECONDS",
+        300
+      ),
+      expectationControl: expectationControlCredential(env),
+      expectationCommandMaxBytes: numberEnv(
+        env,
+        "RECORDER_INGRESS_EXPECTATION_COMMAND_MAX_BYTES",
+        64 * 1024
+      ),
+    },
     upstream: {
-      host: env.RECORDER_INGRESS_UPSTREAM_HOST || "app",
-      port: numberEnv(env, "RECORDER_INGRESS_UPSTREAM_PORT", 80),
+      host: upstreamHost,
+      port: upstreamPort,
       timeoutMs: numberEnv(env, "RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS", 30000),
+    },
+    nativeVitalUploads: {
+      statePath: env.RECORDER_INGRESS_NATIVE_UPLOAD_STATE_PATH
+        || "/var/lib/vitalserver-recorder-ingress/recovery/native-vital-uploads.json",
+      reconciliation: {
+        intervalMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_INTERVAL_MS",
+          5000
+        ),
+        maxAttempts: numberEnv(
+          env,
+          "RECORDER_INGRESS_NATIVE_UPLOAD_RECONCILE_MAX_ATTEMPTS",
+          12
+        ),
+      },
+      vitalServerIndex: {
+        baseUrl: env.RECORDER_INGRESS_VITALSERVER_URL
+          || `http://${upstreamHost}:${upstreamPort}`,
+        adminPassword: env.VITALSERVER_ADMIN_PASSWORD || "",
+        timeoutMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_NATIVE_UPLOAD_INDEX_TIMEOUT_MS",
+          5000
+        ),
+      },
     },
     redis: {
       host: env.VITALSERVER_REDIS_HOST || env.RECORDER_INGRESS_REDIS_HOST || "redis",
@@ -61,7 +153,8 @@ function loadConfig(env) {
       },
     },
     spool: {
-      enabled: sendDataMode !== sendDataIngressModes.PASSTHROUGH,
+      enabled: sendDataMode !== sendDataIngressModes.PASSTHROUGH
+        && sendDataMode !== sendDataIngressModes.OBSERVE_ONLY,
       mode: sendDataMode,
       storage: "redis_list",
       listKey: env.RECORDER_INGRESS_SEND_DATA_REDIS_LIST || "vitalserver:recorder_ingress:send_data:pending",
@@ -89,7 +182,11 @@ function loadConfig(env) {
         maxBytesPerSecond: replayMaxBytesPerSecond,
         targetTimeoutMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS", 5000),
         adaptive: {
-          enabled: booleanEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_ENABLED", true),
+          enabled: booleanEnv(
+            env,
+            "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_ENABLED",
+            false
+          ),
           minBytesPerSecond: numberEnv(
             env,
             "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_BYTES_PER_SECOND",
@@ -124,8 +221,7 @@ function loadConfig(env) {
       },
     },
     memoryGuard: {
-      runtimeStatePath: env.RECORDER_INGRESS_RUNTIME_STATE_PATH || "/run/tirosh/runtime/runtime-state.json",
-      maxAgeMs: numberEnv(env, "RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS", 15000),
+      enabled: false,
     },
     failureLog: {
       enabled: env.RECORDER_INGRESS_FAILURE_LOG_ENABLED !== "0",
@@ -170,9 +266,7 @@ function loadConfig(env) {
           "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS",
           DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS
         ),
-        recoverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL || "",
-        vitalserverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL || "http://app:80",
-        uploadEndpoint: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT || "/upload",
+        exportUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_EXPORT_URL || "",
         outputDir: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR
           || "/var/lib/vitalserver-recorder-ingress/recovery/vital-export",
         statePath: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH
@@ -223,6 +317,69 @@ function numberListEnv(env, name, fallback) {
     .split(",")
     .map((item) => Number.parseInt(item.trim(), 10));
   return values.every(Number.isFinite) ? values : fallback;
+}
+
+function expectationControlCredential(env) {
+  const tokenConfigured = Object.prototype.hasOwnProperty.call(
+    env,
+    "RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN",
+  );
+  const fileConfigured = Object.prototype.hasOwnProperty.call(
+    env,
+    "RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE",
+  );
+  if (tokenConfigured && fileConfigured) {
+    return {
+      state: "unavailable",
+      token: null,
+      reason: "expectation_control_credential_ambiguous",
+    };
+  }
+  if (fileConfigured) {
+    const path = String(
+      env.RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN_FILE || "",
+    ).trim();
+    if (!path) {
+      return {
+        state: "unavailable",
+        token: null,
+        reason: "expectation_control_credential_file_path_empty",
+      };
+    }
+    try {
+      const token = fs.readFileSync(path, "utf8").trim();
+      return token
+        ? { state: "loaded", token, reason: null }
+        : {
+          state: "unavailable",
+          token: null,
+          reason: "expectation_control_credential_file_empty",
+        };
+    } catch (error) {
+      return {
+        state: "unavailable",
+        token: null,
+        reason: `expectation_control_credential_file_read_failed:${error.message}`,
+      };
+    }
+  }
+  if (tokenConfigured) {
+    const token = String(
+      env.RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN || "",
+    ).trim();
+    return token
+      ? { state: "loaded", token, reason: null }
+      : {
+        state: "unavailable",
+        token: null,
+        reason: "expectation_control_credential_empty",
+      };
+  }
+  return {
+    state: "unavailable",
+    token: null,
+    reason: "expectation_control_credential_missing",
+  };
 }
 
 module.exports = { loadConfig };

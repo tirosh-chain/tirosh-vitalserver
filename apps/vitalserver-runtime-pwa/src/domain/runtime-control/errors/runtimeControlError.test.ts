@@ -28,11 +28,73 @@ describe("runtime control error summaries", () => {
     });
   });
 
+  it("explains an explicit Runtime control lease conflict", () => {
+    expect(
+      summarizeRuntimeControlError(
+        new RuntimeControlAPIError(
+          "operation in progress",
+          409,
+          JSON.stringify({
+            code: "operationInProgress",
+            message: "guest control lease is held by operation op-123"
+          })
+        )
+      )
+    ).toMatchObject({
+      kind: "api",
+      title: "Runtime Control API returned HTTP 409",
+      detail: "operationInProgress: guest control lease is held by operation op-123",
+      recovery: "Another Runtime control operation is in progress. Wait for it to finish, then retry this command."
+    });
+  });
+
+  it("keeps a Guest control dependency failure distinct from a Host handler failure", () => {
+    expect(
+      summarizeRuntimeControlError(
+        new RuntimeControlAPIError(
+          "Guest ledger unavailable",
+          503,
+          JSON.stringify({
+            code: "guestControlUnavailable",
+            message: "Guest operation event ledger is unavailable"
+          })
+        )
+      )
+    ).toMatchObject({
+      kind: "api",
+      detail: "guestControlUnavailable: Guest operation event ledger is unavailable",
+      recovery:
+        "The Guest Runtime Controller cannot read its control ledger. Inspect Guest control storage and retry."
+    });
+  });
+
+  it("explains the 0.2.1 update apply product limitation without suggesting a retry", () => {
+    expect(
+      summarizeRuntimeControlError(
+        new RuntimeControlAPIError(
+          "update apply unavailable",
+          501,
+          JSON.stringify({
+            code: "updateApplyUnavailable",
+            message:
+              "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
+          })
+        )
+      )
+    ).toMatchObject({
+      kind: "api",
+      detail:
+        "updateApplyUnavailable: This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable.",
+      recovery:
+        "This 0.2.1 build does not support update apply. Check bundle integrity only; do not retry the apply request."
+    });
+  });
+
   it("summarizes contract validation failures", () => {
     expect(
       summarizeRuntimeControlError(
         new RuntimeControlContractError(
-          "/runtime/overview",
+          "/runtime/stack",
           new Error("bad schema")
         )
     )
@@ -55,7 +117,7 @@ describe("runtime control error summaries", () => {
 
     expect(
       summarizeRuntimeControlError(
-        new RuntimeControlContractError("/runtime/overview", zodLikeError)
+        new RuntimeControlContractError("/runtime/stack", zodLikeError)
       )
     ).toMatchObject({
       kind: "contract",
@@ -77,7 +139,7 @@ describe("runtime control error summaries", () => {
     expect(
       summarizeRuntimeControlError(
         new RuntimeControlNetworkError(
-          "http://127.0.0.1:18321/runtime/overview",
+          "http://127.0.0.1:18321/runtime/stack",
           new TypeError("Failed to fetch")
         )
       )
@@ -85,7 +147,7 @@ describe("runtime control error summaries", () => {
       kind: "network",
       title: "Runtime Control API is unreachable",
       detail:
-        "The Remote Console tried http://127.0.0.1:18321/runtime/overview, but the Runtime Control API did not respond. Failed to fetch"
+        "The Remote Console tried http://127.0.0.1:18321/runtime/stack, but the Runtime Control API did not respond. Failed to fetch"
     });
   });
 

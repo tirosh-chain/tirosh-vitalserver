@@ -147,6 +147,10 @@ def load_macos_package_outputs(
 
 def load_macos_launchd(config: TomlTable) -> MacOSLaunchdConfig:
     return MacOSLaunchdConfig(
+        platform_agent=load_macos_launchd_template(
+            nested_section(config, "platform_agent", parent_path="macos.launchd"),
+            path="macos.launchd.platform_agent",
+        ),
         vm=load_macos_launchd_template(
             nested_section(config, "vm", parent_path="macos.launchd"),
             path="macos.launchd.vm",

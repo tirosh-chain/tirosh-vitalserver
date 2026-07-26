@@ -1,19 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router-dom";
 
-import { useRuntimeCapabilities } from "@/console/hooks";
 import { cn } from "@/components/cn";
 import { consoleRoutes, type ConsoleRoute } from "./routes";
 
 export function App() {
-  const capabilities = useRuntimeCapabilities();
   const location = useLocation();
   const overflowMenuRef = useRef<HTMLDetailsElement>(null);
   const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
-  const canUseTestTools = capabilities.data?.canUseTestTools === true;
-  const visibleRoutes = consoleRoutes.filter(
-    (route) => !route.requiresTestTools || canUseTestTools
-  );
+  const visibleRoutes = consoleRoutes;
   const primaryRoutes = visibleRoutes.filter((route) => route.group === "primary");
   const utilityRoutes = visibleRoutes.filter((route) => route.group === "utility");
   const overflowRoutes = visibleRoutes.filter((route) => route.group === "overflow");

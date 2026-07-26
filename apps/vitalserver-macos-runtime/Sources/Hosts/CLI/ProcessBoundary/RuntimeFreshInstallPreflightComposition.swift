@@ -52,7 +52,7 @@ public enum RuntimeFreshInstallPreflightComposition {
                 ).map(\.path), fileStore: operations.fileStore)
             },
             serviceStates: {
-                RuntimeManagedService.stopOrder.map { service in
+                RuntimeManagedService.uninstallOrder.map { service in
                     RuntimeFreshInstallServiceState(
                         label: service.label,
                         state: operations.serviceState(service)
@@ -75,7 +75,7 @@ public enum RuntimeFreshInstallPreflightComposition {
             installedPaths.launcher,
             URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
             installedPaths.uninstaller,
-        ] + RuntimeManagedService.stopOrder.map {
+        ] + RuntimeManagedService.uninstallOrder.map {
             URL(fileURLWithPath: RuntimeManagedServicePaths.launchDaemonPlist($0))
         } + [installedPaths.automaticBackupLaunchDaemon]
     }

@@ -5,7 +5,7 @@ public enum RuntimeOperationPlanRunner {
         plan: RuntimeOperationPlan,
         status: RuntimeStatusLevel,
         execute: (RuntimeWorkflowStep) throws -> Void,
-        publish: (RuntimeStepExecutionEvent) -> Void
+        publish: (RuntimeStepExecutionEvent) throws -> Void
     ) throws {
         let invalidSteps = plan.invalidSteps
         guard invalidSteps.isEmpty else {
@@ -16,7 +16,7 @@ public enum RuntimeOperationPlanRunner {
         }
 
         for step in plan.steps {
-            publish(event(
+            try publish(event(
                 plan: plan,
                 status: status,
                 step: step,
@@ -26,7 +26,7 @@ public enum RuntimeOperationPlanRunner {
             ))
             do {
                 try execute(step)
-                publish(event(
+                try publish(event(
                     plan: plan,
                     status: status,
                     step: step,
@@ -35,7 +35,7 @@ public enum RuntimeOperationPlanRunner {
                     message: "step completed: \(step.rawValue)"
                 ))
             } catch {
-                publish(event(
+                try publish(event(
                     plan: plan,
                     status: status,
                     step: step,

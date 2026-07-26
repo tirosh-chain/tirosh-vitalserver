@@ -95,10 +95,9 @@ final class RuntimeEventFactoryTests: XCTestCase {
                 redisUIHTTP: "missing",
                 swaggerUIHTTP: "missing",
                 failureReasons: [
-                    .guestRuntimeStateMissing,
                     .hostProxyHTTP("failed"),
                     .recorderIngressHTTP("failed"),
-                    .containerObservationMissing,
+                    .guestServiceObservationMissing,
                 ]
             ),
             eventType: .statusChanged

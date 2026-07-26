@@ -44,7 +44,7 @@ VM memory increases can buy time, but they must not replace an app container bou
 ## Verification
 
 1. `docker compose config` shows an app memory limit and the `NODE_OPTIONS` preload plus old-space setting.
-2. `runtime-state.json` includes app container `oomKilled`, `restartCount`, `finishedAt`, `error`, and `memoryLimitBytes` when Docker inspect provides them.
+2. `runtime-observation.json` includes app container `oomKilled`, `restartCount`, `finishedAt`, `error`, and `memoryLimitBytes` when Docker inspect provides them.
 3. Docker inspect failures remain visible in `probeErrors`; they are not converted into healthy or empty container state.
 4. `/recorder-ingress/status` reports observed `send_data` count, bytes, and last timestamp globally and per recorder.
 5. A soak test records elapsed time, messages, bytes, app restart/OOM evidence, Redis memory, and guest HTTP status together so the incident chain can be read without inferring state from symptoms.

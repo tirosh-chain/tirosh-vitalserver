@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v1",
+  "node": {
+    "kind": "guest",
+    "id": "guest-runtime-0001"
+  },
+  "state": "synchronized",
+  "source": {
+    "profile": "enterprise-ntp",
+    "sourceId": "ntp-source-primary"
+  },
+  "stratum": 3,
+  "offsetMs": -0.24,
+  "uncertaintyMs": 0.91,
+  "lastSyncAt": "2026-07-17T00:00:00Z",
+  "observedAt": "2026-07-17T00:00:01Z"
+}

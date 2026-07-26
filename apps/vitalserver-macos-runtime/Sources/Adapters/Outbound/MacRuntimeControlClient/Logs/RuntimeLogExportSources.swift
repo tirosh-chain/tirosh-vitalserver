@@ -21,55 +21,62 @@ struct RuntimeLogExportSupplementalSource {
     }
 
     private static func sourceURL(for sourceID: RuntimeLogExportSupplementalSourceID) -> URL {
+        let installed = InstalledRuntimePaths.defaultInstalled
         switch sourceID {
         case .bootstrapLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.bootstrapLogSource)
+            return installed.bootstrapLog
         case .containerLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.containerLogSource)
+            return installed.containerLogs
         case .updateActivationLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateActivationLogSource)
+            return installed.updateActivationLog
         case .updateShutdownLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateShutdownLogSource)
+            return installed.updateShutdownLog
         case .datastoreRepairLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.datastoreRepairLogSource)
+            return installed.datastoreRepairLog
         case .redisBackupLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.redisBackupLogSource)
+            return installed.redisBackupLog
         case .guestObservability:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestObservabilitySource)
+            return installed.guestObservabilityDirectory
         case .commandLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.commandLogFile)
+            return installed.managerCommandLog
         case .helperMessageLog:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.helperMessageLogFile)
+            return installed.managerHelperMessageLog
         case .runtimeStatus:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeStatus)
-        case .runtimeOperationLease:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeOperationLease)
+            return installed.runtimeStatus
+        case .hostRuntimeStateEvents:
+            return installed.hostRuntimeStateEvents
+        case .hostRuntimeStateSnapshot:
+            return installed.hostRuntimeStateSnapshot
+        case .hostRuntimeStateDatabase:
+            return installed.runtimeStateDatabase
+        case .hostRuntimeStateDatabaseWAL:
+            return URL(fileURLWithPath: "\(installed.runtimeStateDatabase.path)-wal")
+        case .hostRuntimeStateDatabaseSHM:
+            return URL(fileURLWithPath: "\(installed.runtimeStateDatabase.path)-shm")
         case .runtimeEvents:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeEvents)
+            return installed.runtimeEvents
         case .runtimeObservabilityDB:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeObservabilityDB)
+            return installed.runtimeObservabilityDB
         case .runtimeObservabilityDBWAL:
-            return URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.runtimeObservabilityDB)-wal")
+            return URL(fileURLWithPath: "\(installed.runtimeObservabilityDB.path)-wal")
         case .runtimeObservabilityDBSHM:
-            return URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.runtimeObservabilityDB)-shm")
-        case .runtimeState:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeState)
-        case .vmLifecycle:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.vmLifecycle)
+            return URL(fileURLWithPath: "\(installed.runtimeObservabilityDB.path)-shm")
+        case .runtimeObservation:
+            return installed.runtimeObservation
         case .vmIP:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.vmIPFile)
+            return installed.vmIPFile
         case .vmConfig:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.vmConfig)
+            return installed.vmConfig
         case .runtimeVersion:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeVersion)
+            return installed.runtimeDirectory.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion)
         case .guestRuntimeConfig:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestRuntimeConfig)
+            return installed.guestRuntimeConfig
         case .proxyLaunchDaemon:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.proxyLaunchDaemon)
+            return installed.proxyLaunchDaemon
         case .proxyNginxConfig:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.proxyNginxConfig)
+            return installed.nginxDirectory.appendingPathComponent("vitalserver.conf")
         case .proxyNginxPid:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.proxyNginxPid)
+            return installed.proxyNginxPID
         }
     }
 }
@@ -115,10 +122,9 @@ struct RuntimeLogExportRotatedSupplementalSet {
     private static func sourceDirectory(for sourceID: RuntimeLogExportRotatedSupplementalSourceID) -> URL {
         switch sourceID {
         case .containerLogs:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestRunDirectory)
+            return InstalledRuntimePaths.defaultInstalled.guestRunDirectory
         case .runtimeEvents:
-            return URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeEvents)
-                .deletingLastPathComponent()
+            return InstalledRuntimePaths.defaultInstalled.runtimeEvents.deletingLastPathComponent()
         }
     }
 }

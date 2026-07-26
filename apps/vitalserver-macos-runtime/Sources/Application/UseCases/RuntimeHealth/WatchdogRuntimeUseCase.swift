@@ -82,7 +82,6 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
     public let startedStatusMessage: String
     public let planLogMessage: String
     public let plannedEventMessage: String
-    public let composeReconcileEventMessage: String?
     public let vmRestartEventMessage: String?
     public let proxyRestartEventMessage: String?
 
@@ -93,7 +92,6 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
         startedStatusMessage: String,
         planLogMessage: String,
         plannedEventMessage: String,
-        composeReconcileEventMessage: String?,
         vmRestartEventMessage: String?,
         proxyRestartEventMessage: String?
     ) {
@@ -103,7 +101,6 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
         self.startedStatusMessage = startedStatusMessage
         self.planLogMessage = planLogMessage
         self.plannedEventMessage = plannedEventMessage
-        self.composeReconcileEventMessage = composeReconcileEventMessage
         self.vmRestartEventMessage = vmRestartEventMessage
         self.proxyRestartEventMessage = proxyRestartEventMessage
     }
@@ -189,13 +186,6 @@ public struct WatchdogRuntimeUseCase {
         )
     }
 
-    public func statusReadFailureGuardPlan(reason: String) -> WatchdogRuntimeManagedOperationGuardPlan {
-        WatchdogRuntimeManagedOperationGuardPlan(
-            activeOperation: nil,
-            logMessage: "watchdog active operation guard ignored status read failure error=\(reason)"
-        )
-    }
-
     public func operationLeaseGuardPlan(
         loadResult: RuntimeOperationLeaseLoadResult,
         now: Date
@@ -239,91 +229,6 @@ public struct WatchdogRuntimeUseCase {
         return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: lease.operation, logMessage: nil)
     }
 
-    public func statusManagedOperationGuardPlan(
-        loadResult: RuntimeStatusDocumentLoadResult,
-        now: Date,
-        graceSeconds: TimeInterval
-    ) -> WatchdogRuntimeManagedOperationGuardPlan {
-        switch loadResult {
-        case .loaded(let document):
-            return statusManagedOperationGuardPlan(
-                status: document,
-                now: now,
-                graceSeconds: graceSeconds
-            )
-        case .missing:
-            return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
-        case .failed(let message):
-            return statusReadFailureGuardPlan(reason: message)
-        }
-    }
-
-    public func statusManagedOperationGuardPlan(
-        status: RuntimeStatusDocument,
-        now: Date,
-        graceSeconds: TimeInterval
-    ) -> WatchdogRuntimeManagedOperationGuardPlan {
-        guard status.status == .installing ||
-            status.status == .updating ||
-            status.status == .recovering else {
-            return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
-        }
-        guard RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(status.operation) else {
-            return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
-        }
-        guard let updatedAt = ISO8601DateFormatter().date(from: status.updatedAt) else {
-            return WatchdogRuntimeManagedOperationGuardPlan(
-                activeOperation: nil,
-                logMessage: "watchdog active operation guard ignored invalid updatedAt operation=\(status.operation.rawValue) updatedAt=\(status.updatedAt)"
-            )
-        }
-        let age = now.timeIntervalSince(updatedAt)
-        if age > graceSeconds {
-            return WatchdogRuntimeManagedOperationGuardPlan(
-                activeOperation: nil,
-                logMessage: "watchdog active operation guard expired operation=\(status.operation.rawValue) ageSeconds=\(formatAgeSeconds(age))"
-            )
-        }
-        return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: status.operation, logMessage: nil)
-    }
-
-    public func guestBootstrapManagedOperationGuardPlan(
-        operation: RuntimeOperation,
-        updatedAt: Date?,
-        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
-        now: Date,
-        graceSeconds: TimeInterval
-    ) -> WatchdogRuntimeManagedOperationGuardPlan {
-        if let vmLifecycle {
-            guard vmLifecycle.state == .starting || vmLifecycle.state == .bootstrapping else {
-                return WatchdogRuntimeManagedOperationGuardPlan(
-                    activeOperation: nil,
-                    logMessage: "watchdog guest bootstrap guard ignored VM lifecycle state operation=\(operation.rawValue) state=\(vmLifecycle.state.rawValue)"
-                )
-            }
-            guard vmLifecycle.isWaitingForGuest(at: now) else {
-                return WatchdogRuntimeManagedOperationGuardPlan(
-                    activeOperation: nil,
-                    logMessage: "watchdog guest bootstrap guard expired by VM lifecycle deadline operation=\(operation.rawValue) state=\(vmLifecycle.state.rawValue) deadlineAt=\(vmLifecycle.deadlineAt ?? "missing")"
-                )
-            }
-        }
-        guard let updatedAt else {
-            return WatchdogRuntimeManagedOperationGuardPlan(
-                activeOperation: operation,
-                logMessage: "watchdog guest bootstrap guard active without updatedAt operation=\(operation.rawValue)"
-            )
-        }
-        let age = now.timeIntervalSince(updatedAt)
-        if age > graceSeconds {
-            return WatchdogRuntimeManagedOperationGuardPlan(
-                activeOperation: nil,
-                logMessage: "watchdog guest bootstrap guard expired operation=\(operation.rawValue) ageSeconds=\(formatAgeSeconds(age))"
-            )
-        }
-        return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: operation, logMessage: nil)
-    }
-
     public func initialSnapshotDecision(_ snapshot: RuntimeHealthSnapshot) -> WatchdogRuntimeInitialSnapshotDecision {
         if RuntimeHealthSnapshotPolicy.isHealthy(snapshot) {
             return .healthy(healthPassPlan())
@@ -364,7 +269,7 @@ public struct WatchdogRuntimeUseCase {
             return .unrecoverable(terminalPlan(
                 reason: reason,
                 finalStatus: .critical,
-                finalStatusMessage: "watchdog cannot recover missing installed artifacts: \(reason)",
+                finalStatusMessage: "watchdog cannot recover runtime automatically: \(reason)",
                 printMessage: "watchdog: critical"
             ))
         case .recover(let reason, let plan):
@@ -403,15 +308,6 @@ public struct WatchdogRuntimeUseCase {
         )
     }
 
-    public func composeReconcileFailurePlan(error: Error) -> WatchdogRuntimeCommandFailurePlan {
-        WatchdogRuntimeCommandFailurePlan(
-            status: .critical,
-            message: "watchdog guest compose reconcile failed: \(error.localizedDescription)",
-            eventType: .runtimeCommandFailed,
-            printMessage: "watchdog: critical"
-        )
-    }
-
     public func recoveryCompletionPlan(_ snapshot: RuntimeHealthSnapshot) -> WatchdogRuntimeRecoveryCompletionPlan {
         guard RuntimeHealthSnapshotPolicy.isHealthy(snapshot) else {
             return WatchdogRuntimeRecoveryCompletionPlan(
@@ -424,27 +320,6 @@ public struct WatchdogRuntimeUseCase {
             status: .healthy,
             message: "watchdog recovery completed",
             printMessage: "watchdog: recovered"
-        )
-    }
-
-    public func observedStatusPlan(
-        _ plan: WatchdogRuntimeObservedStatusPlan,
-        currentStatus: RuntimeStatusDocumentLoadResult
-    ) -> WatchdogRuntimeObservedStatusPlan {
-        guard plan.eventType == .recoveryDeferred else {
-            return plan
-        }
-        guard case .loaded(let status) = currentStatus,
-              status.status == .initializing,
-              status.operation == .install else {
-            return plan
-        }
-        return WatchdogRuntimeObservedStatusPlan(
-            status: .initializing,
-            message: plan.message,
-            eventType: plan.eventType,
-            printMessage: plan.printMessage,
-            logMessage: plan.logMessage
         )
     }
 
@@ -515,9 +390,8 @@ public struct WatchdogRuntimeUseCase {
             recoveryPlan: recoveryPlan,
             detectedLogMessage: "watchdog detected unhealthy runtime reasons=\(reason)",
             startedStatusMessage: "watchdog recovery started: \(reason)",
-            planLogMessage: "watchdog recovery plan compose=\(recoveryPlan.reconcileGuestCompose) vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) actionReasons=\(actionReasons) hostProxyHealth=\(hostProxyLivenessHTTP) hostProxyReady=\(snapshot.hostProxyHTTP) guestReady=\(snapshot.guestHTTP)",
-            plannedEventMessage: "watchdog recovery planned compose=\(recoveryPlan.reconcileGuestCompose) vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) reasons=\(actionReasons)",
-            composeReconcileEventMessage: recoveryPlan.reconcileGuestCompose ? "watchdog compose reconcile dispatched services=guest-compose" : nil,
+            planLogMessage: "watchdog platform recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) actionReasons=\(actionReasons) hostProxyHealth=\(hostProxyLivenessHTTP) hostProxyReady=\(snapshot.hostProxyHTTP) runtimeReady=\(snapshot.guestHTTP)",
+            plannedEventMessage: "watchdog platform recovery planned vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) reasons=\(actionReasons)",
             vmRestartEventMessage: recoveryPlan.restartVM ? "watchdog restart dispatched services=vm,guest-log-sync" : nil,
             proxyRestartEventMessage: recoveryPlan.restartProxy ? "watchdog restart dispatched services=proxy" : nil
         )
@@ -533,6 +407,8 @@ public struct WatchdogRuntimeUseCase {
 
     private func restartServiceName(_ service: RuntimeManagedService) -> String {
         switch service {
+        case .platformAgent:
+            return "Platform Agent"
         case .vm:
             return "VM"
         case .proxy:

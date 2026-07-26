@@ -28,9 +28,6 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
     case missingDisk
     case serviceNotLoaded(String)
     case missingIPAddress
-    case runtimeStateMissing
-    case runtimeStateInvalid
-    case runtimeStateStale
     case launchFailed(String)
     case invalidConfiguration(String)
     case hostResourceUnavailable(String)
@@ -40,8 +37,6 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
     case guestDiskIO
     case guestHTTP(String)
     case guestHTTPProbeFailed(String)
-    case guestBootstrapResultMissing
-    case guestBootstrapResultUnavailable
     case guestBootstrapMissingRuntimePackages
     case guestBootstrapDockerRuntimeFailed
     case guestBootstrapFailed
@@ -57,12 +52,6 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             self = .missingDisk
         case "vm-missing-ip-address":
             self = .missingIPAddress
-        case "vm-runtime-state-missing":
-            self = .runtimeStateMissing
-        case "vm-runtime-state-invalid":
-            self = .runtimeStateInvalid
-        case "vm-runtime-state-stale":
-            self = .runtimeStateStale
         case "vm-disk-attachment-invalid":
             self = .diskAttachmentInvalid
         case "vm-guest-filesystem-error":
@@ -75,10 +64,6 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             self = .guestBootstrapMissingRuntimePackages
         case "vm-guest-bootstrap-docker-runtime-failed":
             self = .guestBootstrapDockerRuntimeFailed
-        case "vm-guest-bootstrap-result-missing":
-            self = .guestBootstrapResultMissing
-        case "vm-guest-bootstrap-result-unavailable":
-            self = .guestBootstrapResultUnavailable
         case "vm-guest-bootstrap-failed":
             self = .guestBootstrapFailed
         default:
@@ -112,12 +97,6 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             "vm-service-state-\(state)"
         case .missingIPAddress:
             "vm-missing-ip-address"
-        case .runtimeStateMissing:
-            "vm-runtime-state-missing"
-        case .runtimeStateInvalid:
-            "vm-runtime-state-invalid"
-        case .runtimeStateStale:
-            "vm-runtime-state-stale"
         case .launchFailed(let reason):
             "vm-launch-failed-\(reason)"
         case .invalidConfiguration(let subject):
@@ -136,10 +115,6 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             "vm-guest-http-\(status)"
         case .guestHTTPProbeFailed(let status):
             "vm-guest-http-probe-failed-\(status)"
-        case .guestBootstrapResultMissing:
-            "vm-guest-bootstrap-result-missing"
-        case .guestBootstrapResultUnavailable:
-            "vm-guest-bootstrap-result-unavailable"
         case .guestBootstrapMissingRuntimePackages:
             "vm-guest-bootstrap-missing-runtime-packages"
         case .guestBootstrapDockerRuntimeFailed:
@@ -171,10 +146,7 @@ public extension RuntimeVMError {
             return .lifecycle
         case .missingIPAddress, .guestHTTP, .guestHTTPProbeFailed:
             return .networking
-        case .runtimeStateMissing, .runtimeStateInvalid, .runtimeStateStale:
-            return .guestAgent
-        case .guestBootstrapResultMissing, .guestBootstrapResultUnavailable,
-             .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
+        case .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .guestBootstrap
         case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
             return .guestStorage
@@ -195,12 +167,6 @@ public extension RuntimeVMError {
             return .restartVMService
         case .missingIPAddress, .guestHTTP, .guestHTTPProbeFailed:
             return .waitForGuest
-        case .runtimeStateMissing, .runtimeStateInvalid, .runtimeStateStale:
-            return .restartGuestAgent
-        case .guestBootstrapResultMissing:
-            return .waitForGuest
-        case .guestBootstrapResultUnavailable:
-            return .inspectLogs
         case .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .repairGuestBootstrap
         case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:

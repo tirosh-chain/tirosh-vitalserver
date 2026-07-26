@@ -32,11 +32,29 @@ VitalServer backup은 하나의 restore unit이지만 artifact마다 schema owne
 | `guest-runtime-settings`         | Host  | Runtime settings contract                   | runtime settings document                        |
 | `proxy-launch-daemon-settings`   | Host  | macOS launchd plist contract                | proxy LaunchDaemon plist                         |
 | `start-on-boot-state`            | Host  | `RuntimeDataBackupStartOnBootStateDocument` | launchctl enabled/disabled state                 |
-| `runtime-status-document`        | Host  | Host runtime status document                | UI continuity용 optional state                   |
-| `runtime-events-document`        | Host  | Host runtime event JSONL contract           | UI continuity용 optional event history           |
-| `runtime-observability-database` | Host  | SQLite observability projection schema      | UI continuity용 optional projection snapshot     |
+| `runtime-status-document`        | Host  | Host diagnostics/status projection document | optional diagnostics/export context              |
+| `runtime-events-document`        | Host  | Host runtime event JSONL contract           | optional diagnostics/export event history        |
+| `runtime-observability-database` | Host  | SQLite observability projection schema      | optional diagnostics/migration projection snapshot |
 
-Required recovery artifact는 Redis data, VM config, guest config, guest settings, proxy LaunchDaemon settings, start-on-boot state입니다. Status, events, observability SQLite는 optional continuity artifact입니다. Backup에 없으면 restore는 대체 상태를 만들지 않고 required artifact만 복원합니다.
+Required recovery artifact는 Redis data, VM config, guest config, guest settings, proxy LaunchDaemon settings, start-on-boot state입니다. Status, events, observability SQLite는 optional diagnostics/export artifact입니다. Backup에 없으면 restore는 대체 current state를 만들지 않고 required artifact만 복원합니다. Restore된 status projection은 Runtime Control current `runtimeState`, `failureReasons`, active operation, workflow progress, service liveness, HTTP probe, VM IP, VM lifecycle, runtime version, latest backup owner가 아닙니다.
+
+### 2-1. 현재 backup 범위에 포함되지 않는 데이터
+
+현재 manifest artifact 목록에 없는 아래 데이터는 VitalServer backup으로 복구된다고 추정하지
+않습니다.
+
+- Guest PostgreSQL의 VitalDB observation/relationship read model
+- Product Lab session, recorder와 bed aggregate
+- Guest Runtime Controller의 `control.sqlite` operation ledger
+- 설정된 Vital Files directory의 `.vital` library
+- Recorder Ingress raw archive, recovery job과 checkpoint
+- manifest가 명시하지 않은 Platform/Runtime secret
+- live process, launchd job, network listener와 package receipt 같은 물리 resource state
+
+이 항목을 backup 범위에 추가하려면 artifact identity, schema owner, consistency boundary,
+checksum, restore order, compatibility version과 migration을 먼저 명시해야 합니다. Directory나
+database가 product root 안에 있다는 이유만으로 backup에 포함하거나 restore success로 간주하지
+않습니다.
 
 ## 3. Compatibility Gate
 

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-expectation-event",
+  "title": "RecorderExpectationEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "requestId", "recorderId", "previousRevision", "revision", "action", "evidence", "decidedAt", "receivedAt", "persistedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "recorderId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "previousRevision": { "type": "integer", "minimum": 0 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "action": { "type": "string", "enum": ["set", "clear"] },
+    "expectationState": { "type": "string", "enum": ["expected", "not-expected"] },
+    "supportState": { "type": "string", "enum": ["supported", "unsupported"] },
+    "source": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string", "minLength": 1 },
+    "evidence": { "type": "object" },
+    "decidedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "receivedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "persistedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  }
+}

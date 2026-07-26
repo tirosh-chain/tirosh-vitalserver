@@ -101,7 +101,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.logMessage, "runtime configuration updated restart=false restartRequirement=none")
     }
 
-    func testRestartPolicyRequiresContainerServicesReconcileForRecorderIngressChange() throws {
+    func testRestartPolicyRequiresGuestStackReconcileForRecorderIngressChange() throws {
         let harness = Harness()
 
         let plan = try harness.useCase.plan(
@@ -119,12 +119,12 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(plan.restart)
-        XCTAssertEqual(plan.restartRequirement, .containerServices)
-        XCTAssertTrue(plan.effects.contains(.reconcileGuestComposeServices))
+        XCTAssertEqual(plan.restartRequirement, .guestStack)
+        XCTAssertTrue(plan.effects.contains(.reconcileGuestStackServices))
         XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
         XCTAssertEqual(
             plan.logMessage,
-            "runtime configuration updated restart=true restartRequirement=containerServices"
+            "runtime configuration updated restart=true restartRequirement=guestStack"
         )
         XCTAssertEqual(plan.guestRuntimeSettings.recorderIngressSendDataReplayMaxMiBPerSecond, 25)
     }
@@ -176,6 +176,58 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.restartRequirement, .none)
     }
 
+    func testExplicitVMRuntimeRestartIsNotDiscardedWhenSavedConfigAlreadyMatches() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [.memoryGiB(harness.vmConfig.configureMemoryMiB / 1024)],
+                activation: .restartVMRuntime
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertTrue(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .vmRuntime)
+        XCTAssertTrue(plan.effects.contains(.restartRuntimeServices))
+        XCTAssertEqual(
+            plan.logMessage,
+            "runtime configuration updated restart=true restartRequirement=vmRuntime"
+        )
+    }
+
+    func testExplicitVMRuntimeRestartSupersedesGuestStackReconcileForSubmittedSavedSettings() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .memoryGiB(harness.vmConfig.configureMemoryMiB / 1024),
+                    .recorderIngressSendDataReplayMaxMiBPerSecond(25),
+                ],
+                activation: .restartVMRuntime
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertTrue(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .vmRuntime)
+        XCTAssertTrue(plan.effects.contains(.restartRuntimeServices))
+        XCTAssertFalse(plan.effects.contains(.reconcileGuestStackServices))
+        XCTAssertEqual(
+            plan.logMessage,
+            "runtime configuration updated restart=true restartRequirement=vmRuntime"
+        )
+    }
+
     func testRestartPolicyRequiresVMRuntimeRestartForDiskIncrease() throws {
         let harness = Harness()
 
@@ -218,33 +270,6 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         XCTAssertFalse(plan.restart)
         XCTAssertEqual(plan.restartRequirement, .none)
         XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
-    }
-
-    func testRestartPolicyRequiresContainerServicesReconcileForRedisRelayChange() throws {
-        let harness = Harness()
-
-        let plan = try harness.useCase.plan(
-            ConfigureRuntimeRequest(
-                changes: [
-                    .redisRelay(ConfigureRuntimeRedisRelaySettings(enabled: true)),
-                ],
-                restart: true
-            ),
-            context: harness.context,
-            currentVMConfig: harness.vmConfig,
-            currentGuestRuntimeConfig: harness.guestConfig,
-            currentGuestRuntimeSettings: harness.guestSettings,
-            currentVMDiskSizeGiB: harness.currentDiskGiB
-        )
-
-        XCTAssertTrue(plan.restart)
-        XCTAssertEqual(plan.restartRequirement, .containerServices)
-        XCTAssertTrue(plan.effects.contains(.writeRedisRelayConfiguration(
-            ConfigureRuntimeRedisRelaySettings(enabled: true)
-        )))
-        XCTAssertTrue(plan.effects.contains(.reconcileGuestComposeServices))
-        XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
-        XCTAssertEqual(plan.logMessage, "runtime configuration updated restart=true restartRequirement=containerServices")
     }
 
     func testRejectsDiskShrinkAgainstExplicitCurrentDiskSize() {
@@ -494,8 +519,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/old",
             redisUiPort: 18081,
-            swaggerUiPort: 18082,
-            testkitEnabled: false
+            swaggerUiPort: 18082
         )
         var guestSettings = GuestRuntimeSettingsDocument(
             vitalServerURL: "",

@@ -153,8 +153,10 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                 encodeVMConfig: { try JSONEncoder().encode($0) },
                 encodeGuestRuntimeConfig: { try JSONEncoder().encode($0) },
                 encodeGuestRuntimeSettings: { try JSONEncoder().encode($0) },
-                writeData: { data, url, _ in
-                    self.writes.append((data: data, url: url))
+                persistAndMaterialize: { vmData, vmURL, guestConfigData, guestConfigURL, guestSettingsData, guestSettingsURL in
+                    self.writes.append((data: vmData, url: vmURL))
+                    self.writes.append((data: guestConfigData, url: guestConfigURL))
+                    self.writes.append((data: guestSettingsData, url: guestSettingsURL))
                 }
             ),
             effects: ConfigureRuntimeEffects(
@@ -190,7 +192,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     return change
                 }
             }
-            return ConfigureRuntimeRequest(changes: changes, restart: request.restart)
+            return ConfigureRuntimeRequest(changes: changes, activation: request.activation)
         }
 
         func executeEffects(_ effects: [ConfigureRuntimeEffect]) throws {
@@ -202,6 +204,8 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     preWriteEffects.append("resize:\(diskGiB)")
                 case .setInstalledProxyPort(let port):
                     preWriteEffects.append("proxy:\(port)")
+                case .setRuntimeControlPort(let port):
+                    postWriteEffects.append("runtime-control-port:\(port)")
                 case .restrictSecretFile(let url):
                     postWriteEffects.append("restrict:\(url.path)")
                 case .setStartOnBoot(let enabled):
@@ -214,10 +218,8 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     postWriteEffects.append("log-archive-retention-days:\(days)")
                 case .setLogArchiveMaximumGiB(let gib):
                     postWriteEffects.append("log-archive-maximum-gib:\(gib)")
-                case .writeRedisRelayConfiguration(let settings):
-                    postWriteEffects.append("redis-relay:\(settings.enabled):\(settings.target.url)")
-                case .reconcileGuestComposeServices:
-                    postWriteEffects.append("reconcile-compose")
+                case .reconcileGuestStackServices:
+                    postWriteEffects.append("guest-stack-reconcile")
                 case .restartRuntimeServices:
                     postWriteEffects.append("restart")
                 }
@@ -238,20 +240,19 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             redisHost: "redis",
             redisPort: 6379,
             trustProxy: true,
-            vitalServerURL: "",
-            remoteConsoleURL: "",
-            publicHost: "",
+            vitalServerURL: "http://127.0.0.1:18080/",
+            remoteConsoleURL: "http://127.0.0.1:18322/",
+            publicHost: "127.0.0.1",
             publicPort: 80,
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/old",
             redisUiPort: 18081,
-            swaggerUiPort: 18082,
-            testkitEnabled: false
+            swaggerUiPort: 18082
         )
         var guestSettings = GuestRuntimeSettingsDocument(
-            vitalServerURL: "",
-            remoteConsoleURL: "",
-            publicHost: "",
+            vitalServerURL: "http://127.0.0.1:18080/",
+            remoteConsoleURL: "http://127.0.0.1:18322/",
+            publicHost: "127.0.0.1",
             publicPort: 80,
             automaticBackupEnabled: true,
             backupScheduleTimes: ["03:15"],

@@ -41,14 +41,18 @@ public enum RuntimeVMHealthPolicy {
         if input.vmService != .loaded {
             errors.append(.serviceNotLoaded(input.vmService.rawValue))
         }
-        errors.append(contentsOf: guestRuntimeStateErrors(input.guestRuntimeState))
-        errors.append(contentsOf: guestBootstrapErrors(input))
-        return uniqueErrors(errors + input.reportedVMErrors + (input.vmLifecycle?.reportedVMErrors ?? []))
+        errors.append(contentsOf: guestReadinessErrors(input.guestReadiness))
+        return uniqueErrors(
+            errors
+                + (input.vmLifecycle?.reportedVMErrors ?? [])
+        )
     }
 
-    private static func guestRuntimeStateErrors(_ state: RuntimeGuestRuntimeStateInput) -> [RuntimeVMError] {
+    private static func guestReadinessErrors(_ state: RuntimeGuestReadinessInput) -> [RuntimeVMError] {
         switch state {
-        case .fresh(let vmIP, let guestHTTP):
+        case .notReported:
+            return []
+        case .reported(let vmIP, let guestHTTP):
             var errors: [RuntimeVMError] = []
             if vmIP == nil {
                 errors.append(.missingIPAddress)
@@ -64,47 +68,6 @@ public enum RuntimeVMHealthPolicy {
                 errors.append(.guestHTTPProbeFailed(status))
             }
             return errors
-        case .missing:
-            return [.runtimeStateMissing]
-        case .invalid:
-            return [.runtimeStateInvalid]
-        case .stale:
-            return [.runtimeStateStale]
-        }
-    }
-
-    private static func guestBootstrapErrors(_ input: RuntimeHealthInput) -> [RuntimeVMError] {
-        if case .failed(let reason) = input.guestBootstrapAssessment {
-            return [vmError(for: reason)]
-        }
-        guard case .fresh(_, let guestHTTP) = input.guestRuntimeState,
-              !guestHTTP.isSuccessful else {
-            return []
-        }
-        switch input.guestBootstrapAssessment {
-        case .missing:
-            return isBootstrapping(input.vmLifecycle) ? [] : [.guestBootstrapResultMissing]
-        case .unavailable:
-            return [.guestBootstrapResultUnavailable]
-        case .notCurrentBoot, .noFailure, .failed:
-            return []
-        }
-    }
-
-    private static func isBootstrapping(_ lifecycle: RuntimeVMLifecycleDocument?) -> Bool {
-        lifecycle?.state == .starting || lifecycle?.state == .bootstrapping
-    }
-
-    private static func vmError(for failureReason: RuntimeFailureReason) -> RuntimeVMError {
-        switch failureReason {
-        case .guestBootstrapMissingRuntimePackages:
-            return .guestBootstrapMissingRuntimePackages
-        case .guestBootstrapDockerRuntimeFailed:
-            return .guestBootstrapDockerRuntimeFailed
-        case .guestBootstrapFailed:
-            return .guestBootstrapFailed
-        default:
-            return .unknown(failureReason.rawValue)
         }
     }
 
@@ -143,22 +106,13 @@ public enum RuntimeVMHealthPolicy {
         if input.vmLifecycle?.state == .starting || input.vmLifecycle?.state == .bootstrapping {
             return .starting
         }
-        if errors.contains(.runtimeStateStale) {
-            return .stale
-        }
-        if errors.contains(.runtimeStateMissing) {
-            return .unreachable
-        }
-        if errors.contains(.runtimeStateInvalid) {
-            return .unreachable
-        }
         if errors.contains(.missingIPAddress) {
             return .starting
         }
         if !errors.contains(where: isGuestHTTPError) {
             return .running
         }
-        let guestHTTP = input.guestRuntimeState.guestHTTPStatusText
+        let guestHTTP = input.guestReadiness.guestHTTPStatusText
         if guestHTTP == RuntimeHTTPStatusText.bootstrapPending
             || guestHTTP == RuntimeHTTPStatusText.missingVMIP {
             return .starting

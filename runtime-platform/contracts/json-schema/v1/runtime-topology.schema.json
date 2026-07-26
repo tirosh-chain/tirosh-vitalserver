@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:runtime-topology",
+  "title": "RuntimeTopology",
+  "description": "A Guest Runtime-owned topology resource. Spec is requested configuration; status is explicit observed provider state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "resourceRevision",
+    "spec",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "id": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "resourceRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "spec": {
+      "$ref": "#/$defs/TopologySpec"
+    },
+    "status": {
+      "$ref": "#/$defs/TopologyStatus"
+    },
+    "createdAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    },
+    "updatedAt": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+    }
+  },
+  "$defs": {
+    "TopologySpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profileKind",
+        "providerKind",
+        "endpointReference"
+      ],
+      "properties": {
+        "profileKind": {
+          "type": "string",
+          "enum": [
+            "bundled-upstream",
+            "external-upstream"
+          ]
+        },
+        "providerKind": {
+          "const": "vitalserver"
+        },
+        "endpointReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "credentialReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SecretReference"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "profileKind": {
+                "const": "external-upstream"
+              }
+            },
+            "required": [
+              "profileKind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "endpointReference": {
+                "allOf": [
+                  {
+                    "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+                  },
+                  {
+                    "properties": {
+                      "resourceType": {
+                        "const": "external-upstream-integration"
+                      }
+                    },
+                    "required": [
+                      "resourceType"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TopologyStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "readState",
+        "connection",
+        "observedAt"
+      ],
+      "properties": {
+        "readState": {
+          "type": "string",
+          "enum": [
+            "available",
+            "invalid",
+            "unavailable",
+            "failed",
+            "stale",
+            "unsupported"
+          ]
+        },
+        "connection": {
+          "$ref": "#/$defs/ConnectionObservation"
+        },
+        "capabilityDocumentReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "capabilityRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lastOperationReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "dependentRequired": {
+        "capabilityDocumentReference": [
+          "capabilityRevision"
+        ],
+        "capabilityRevision": [
+          "capabilityDocumentReference"
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "readState": {
+                "enum": [
+                  "invalid",
+                  "unavailable",
+                  "failed",
+                  "stale",
+                  "unsupported"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        }
+      ]
+    },
+    "ConnectionObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "observedAt"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "connected",
+            "unavailable",
+            "failed",
+            "unsupported",
+            "not-checked"
+          ]
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "issue": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unavailable",
+                  "failed",
+                  "unsupported"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "issue"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "connected"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "issue"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

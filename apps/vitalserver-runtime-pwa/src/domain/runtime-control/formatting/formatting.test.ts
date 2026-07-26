@@ -9,7 +9,7 @@ import {
 import { formatRuntimeState } from "./runtimeState";
 import { formatRecorderIngressStatusReadState } from "./recorderIngress";
 import { formatPatientStatus } from "./status";
-import { formatUptimeSince } from "./time";
+import { formatRelativeAge, formatUptimeSince } from "./time";
 
 describe("runtime presentation formatting", () => {
   it("formats byte values with binary units", () => {
@@ -47,6 +47,15 @@ describe("runtime presentation formatting", () => {
     const now = Date.now();
     const startedAt = new Date(now - 3661 * 1000).toISOString();
     expect(formatUptimeSince(startedAt)).toMatch(/^01:01:0[0-2]$/);
+  });
+
+  it("formats a recorder column timestamp as relative age only", () => {
+    const now = Date.now();
+    const observedAt = new Date(now - 60 * 60 * 1000).toISOString();
+
+    expect(formatRelativeAge(observedAt)).toBe("1h ago");
+    expect(formatRelativeAge(undefined)).toBe("Unknown");
+    expect(formatRelativeAge("not-a-date")).toBe("not-a-date");
   });
 
   it("formats HTTP probe text without deriving reachability state", () => {

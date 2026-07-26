@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "v1",
+  "artifact": {
+    "schemaVersion": "v1",
+    "artifactId": "artifact-1",
+    "sourceKind": "recorder-upload",
+    "sourceReceiptType": "recorder-upload-receipt",
+    "sourceReceiptId": "upload-receipt-1",
+    "manifest": {
+      "schemaVersion": "v1",
+      "id": "artifact-manifest-1",
+      "source": {
+        "kind": "recorder-upload",
+        "receiptType": "recorder-upload-receipt",
+        "receiptId": "upload-receipt-1",
+        "finalizedAt": "2026-07-24T09:00:00Z",
+        "evidenceReference": {
+          "kind": "recorder-upload-receipt",
+          "id": "upload-receipt-1"
+        }
+      },
+      "artifact": {
+        "artifactId": "artifact-1",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "byteSize": 20480,
+        "mediaType": "application/x-vital",
+        "storageReference": {
+          "resourceType": "guest-archive-object",
+          "resourceId": "artifact-1"
+        }
+      },
+      "createdAt": "2026-07-24T09:00:00Z"
+    },
+    "originalFileName": "OR-01-20260724.vital",
+    "mediaType": "application/x-vital",
+    "byteSize": 20480,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "finalizationState": "finalized",
+    "createdAt": "2026-07-24T09:00:00Z",
+    "finalizedAt": "2026-07-24T09:00:00Z"
+  },
+  "attribution": {
+    "schemaVersion": "v1",
+    "artifactId": "artifact-1",
+    "reportedBedName": "OR-01",
+    "evidenceObservedAt": "2026-07-24T09:00:00Z",
+    "assignmentEvidenceReference": {
+      "kind": "bed-assignment-observation",
+      "id": "assignment-evidence-1"
+    },
+    "candidateRecorderIds": [
+      "recorder-1"
+    ],
+    "outcome": "matched",
+    "matchedRecorderId": "recorder-1",
+    "policyVersion": "bed-assignment-v1",
+    "resolvedAt": "2026-07-24T09:00:01Z"
+  },
+  "uploadAttempts": [
+    {
+      "schemaVersion": "v1",
+      "attemptId": "upload-attempt-1",
+      "requestId": "upload-request-1",
+      "artifactId": "artifact-1",
+      "provider": {
+        "kind": "vitalserver-indexed-library",
+        "id": "archive-provider-1",
+        "capabilityRevision": 1
+      },
+      "state": "succeeded",
+      "startedAt": "2026-07-24T09:00:02Z",
+      "finishedAt": "2026-07-24T09:00:03Z"
+    }
+  ],
+  "indexingReceipts": [
+    {
+      "schemaVersion": "v1",
+      "receiptId": "indexing-receipt-1",
+      "artifactId": "artifact-1",
+      "uploadAttemptId": "upload-attempt-1",
+      "outcome": "not-indexed",
+      "issue": {
+        "code": "provider-index-missing",
+        "message": "provider did not report an indexed library entry"
+      },
+      "observedAt": "2026-07-24T09:00:04Z",
+      "persistedAt": "2026-07-24T09:00:04Z"
+    }
+  ]
+}

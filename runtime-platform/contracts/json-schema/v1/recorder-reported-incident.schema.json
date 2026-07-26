@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:recorder-reported-incident",
+  "title": "RecorderReportedIncident",
+  "description": "A typed issue explicitly reported by the Recorder. Packet gaps, logs, missing reports, and UI refresh failures do not create this resource.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "recorderId", "observationReference", "occurredAt", "receivedAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "recorderId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "observationReference": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference" },
+    "occurredAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "receivedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+    "timeIssue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" },
+    "runtimeIssue": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" }
+  },
+  "anyOf": [
+    { "required": ["timeIssue"] },
+    { "required": ["runtimeIssue"] }
+  ]
+}

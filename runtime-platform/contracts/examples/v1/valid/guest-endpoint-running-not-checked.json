@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "v1",
+  "id": "guest-control",
+  "resourceRevision": 2,
+  "address": {
+    "scheme": "http",
+    "host": "127.0.0.1",
+    "port": 18443
+  },
+  "provider": {
+    "kind": "macos-virtualization",
+    "id": "guest-vm",
+    "state": "running",
+    "observedAt": "2026-07-17T00:01:00Z"
+  },
+  "transport": {
+    "state": "not-checked",
+    "observedAt": "2026-07-17T00:01:00Z"
+  },
+  "createdAt": "2026-07-17T00:00:00Z",
+  "updatedAt": "2026-07-17T00:01:00Z"
+}

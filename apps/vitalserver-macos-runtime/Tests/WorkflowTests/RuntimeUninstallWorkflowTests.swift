@@ -12,8 +12,9 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         try harness.run(RuntimeUninstallCommand(clean: true))
 
         XCTAssertEqual(harness.events, [
-            "log:uninstall started clean=true",
+            "log:uninstall started clean=true forceClean=false",
             "state:started:uninstall started:",
+            "log:configured Vital files ownership loaded revision=1 appliedRevision=none paths=/external-vital-files[desired:revision=1]",
             "log:step=stop-launchd-services status=started",
             "state:stop-services-requested:service stop requested:",
             "stop",
@@ -29,9 +30,12 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.sleep-prevention.plist",
             "log:step=remove-plists status=completed",
             "log:step=remove-installed-files status=started",
+            "move:/product->/.product.uninstall-test-preserve",
+            "state-store-relocated:/product->/.product.uninstall-test-preserve",
+            "log:relocated product root source=/product destination=/.product.uninstall-test-preserve",
             "remove:/Applications/VitalServer Helper.app",
-            "remove:/product",
-            "remove:/external-vital-files",
+            "remove:/default-vital-files",
+            "log:preserved configured external vital files directory path=/external-vital-files reason=no-product-owned-removal-contract",
             "log:step=remove-installed-files status=completed",
             "log:step=remove-runtime-tools status=started",
             "remove:/usr/local/bin/vitalserver-vm",
@@ -47,7 +51,23 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "log:step=forget-package-receipt status=completed",
             "log:uninstall completed",
             "state:completed:uninstall completed:",
+            "log:step=dispose-uninstall-state-store status=started",
+            "remove:/.product.uninstall-test-preserve",
+            "log:step=dispose-uninstall-state-store status=completed",
         ])
+        XCTAssertTrue(harness.existing.contains("/external-vital-files"))
+    }
+
+    func testCleanUninstallRemovesProductOwnedRetainedArchivesButPreservesExternalVitalFiles() throws {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.existing.insert("/retained-uninstall-data")
+
+        try harness.run(RuntimeUninstallCommand(clean: true))
+
+        XCTAssertFalse(harness.existing.contains("/retained-uninstall-data"))
+        XCTAssertTrue(harness.events.contains("remove:/retained-uninstall-data"))
+        XCTAssertTrue(harness.existing.contains("/external-vital-files"))
+        XCTAssertFalse(harness.events.contains("remove:/external-vital-files"))
     }
 
     func testStandardUninstallCreatesBackupAndPreservesUserData() throws {
@@ -59,11 +79,51 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         XCTAssertTrue(harness.events.contains { $0.hasPrefix("move:/product/logs->") && $0.hasSuffix("/logs") })
         XCTAssertTrue(harness.events.contains { $0.hasPrefix("move:/product/backups->") && $0.hasSuffix("/backups") })
         XCTAssertTrue(harness.events.contains { $0.hasPrefix("move:/product/vm/data/backups/redis->") && $0.hasSuffix("/redis-backups") })
-        XCTAssertTrue(harness.events.contains { $0.hasPrefix("move:/product/vm/data/vital-files->") && $0.hasSuffix("/vital-files") })
-        XCTAssertTrue(harness.events.contains {
-            $0.hasPrefix("move:/") && $0.hasSuffix("/vital-files->/product/vm/data/vital-files")
+        XCTAssertFalse(harness.events.contains {
+            $0.hasPrefix("move:/default-vital-files->")
         })
+        XCTAssertFalse(harness.existing.contains("/product"))
+        XCTAssertTrue(harness.existing.contains("/default-vital-files"))
+        XCTAssertTrue(harness.existing.contains(
+            "/retained-uninstall-data/tirosh-vitalserver-uninstall-test-preserve"
+        ))
         XCTAssertFalse(harness.events.contains("remove:/product/vm/data/vital-files"))
+    }
+
+    func testStandardUninstallRetainsConfiguredLegacyManagedDefaultVitalFiles() throws {
+        let legacyDefault = "/product/vm/data/vital-files"
+        let harness = RuntimeUninstallWorkflowHarness(
+            externalVitalFilesDirectory: legacyDefault
+        )
+
+        try harness.run(RuntimeUninstallCommand(clean: false))
+
+        XCTAssertTrue(harness.events.contains {
+            $0.hasPrefix("move:\(legacyDefault)->")
+                && $0.hasSuffix("/legacy-vital-files")
+        })
+        XCTAssertTrue(harness.existing.contains(
+            "/retained-uninstall-data/tirosh-vitalserver-uninstall-test-preserve/legacy-vital-files"
+        ))
+        XCTAssertFalse(harness.existing.contains(legacyDefault))
+    }
+
+    func testStandardUninstallRetainsKnownLegacyManagedDefaultWhenConfiguredPathIsExternal() throws {
+        let legacyDefault = "/product/vm/data/vital-files"
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.existing.insert(legacyDefault)
+
+        try harness.run(RuntimeUninstallCommand(clean: false))
+
+        XCTAssertTrue(harness.events.contains {
+            $0.hasPrefix("move:\(legacyDefault)->")
+                && $0.hasSuffix("/legacy-vital-files")
+        })
+        XCTAssertTrue(harness.existing.contains(
+            "/retained-uninstall-data/tirosh-vitalserver-uninstall-test-preserve/legacy-vital-files"
+        ))
+        XCTAssertFalse(harness.existing.contains(legacyDefault))
+        XCTAssertTrue(harness.existing.contains("/external-vital-files"))
     }
 
     func testStandardUninstallStopsWhenBackupFails() {
@@ -72,24 +132,104 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
 
         XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: false)))
 
-        XCTAssertEqual(Array(harness.events.prefix(5)), [
-            "log:uninstall started clean=false",
+        XCTAssertEqual(Array(harness.events.prefix(6)), [
+            "log:uninstall started clean=false forceClean=false",
             "state:started:uninstall started:",
-            "log:step=create-redis-backup status=started",
-            "state:redis-backup-requested:redis backup requested:",
+            "log:configured Vital files ownership loaded revision=1 appliedRevision=none paths=/external-vital-files[desired:revision=1]",
+            "log:step=create-vitalserver-backup status=started",
+            "state:vitalserver-backup-requested:VitalServer backup requested:",
             "backup",
         ])
         XCTAssertTrue(harness.events.contains {
-            $0.hasPrefix("log:standard uninstall aborted because Redis backup did not complete error=")
+            $0.hasPrefix("log:standard uninstall aborted because VitalServer backup did not complete error=")
         })
         XCTAssertTrue(harness.events.contains {
-            $0.hasPrefix("state:failed:redis backup failed:redis-backup-failed:reason=")
+            $0.hasPrefix("state:failed:VitalServer backup failed:vitalserver-backup-failed:reason=")
         })
+    }
+
+    func testUninstallModesBlockBeforeBackupStopOrRemovalWhenConfiguredVitalFilesPathCannotBeRead() {
+        for clean in [false, true] {
+            let harness = RuntimeUninstallWorkflowHarness(
+                externalVitalFilesDirectory: nil,
+                configuredVitalFilesDirectoryReadFailure: "permission denied"
+            )
+
+            XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: clean)))
+
+            XCTAssertTrue(harness.events.contains {
+                $0.contains("state:failed:Vital files ownership unavailable")
+                    && $0.contains(
+                        "vital-files-ownership-unavailable:reason=host-settings-read-failed:reason=permission denied"
+                    )
+            })
+            XCTAssertFalse(harness.events.contains("backup"))
+            XCTAssertFalse(harness.events.contains("stop"))
+            XCTAssertFalse(harness.events.contains("log:step=remove-installed-files status=started"))
+            XCTAssertTrue(harness.existing.contains("/product"))
+            XCTAssertTrue(harness.existing.contains("/default-vital-files"))
+        }
+    }
+
+    func testForceCleanExplicitlyContinuesWhenConfiguredVitalFilesOwnershipIsUnavailable() throws {
+        let harness = RuntimeUninstallWorkflowHarness(
+            externalVitalFilesDirectory: nil,
+            configuredVitalFilesDirectoryReadFailure: "database unavailable"
+        )
+        harness.existing.insert("/product/vm/data/vital-files")
+
+        try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true))
+
+        XCTAssertTrue(harness.events.contains {
+            $0.contains("force-clean destructive recovery override accepted")
+                && $0.contains("host-settings-read-failed:reason=database unavailable")
+                && $0.contains("preservationLimit=")
+        })
+        XCTAssertTrue(harness.events.contains {
+            $0.contains("force-clean removed only known product-owned Vital files paths")
+                && $0.contains("host-settings-read-failed:reason=database unavailable")
+        })
+        XCTAssertTrue(harness.events.contains("remove:/product/vm/data/vital-files"))
+        XCTAssertTrue(harness.events.contains("remove:/default-vital-files"))
+        XCTAssertFalse(harness.events.contains("backup"))
+    }
+
+    func testStandardUninstallRefusesToReplaceAnExistingRetainedDataDirectory() {
+        let harness = RuntimeUninstallWorkflowHarness(externalVitalFilesDirectory: nil)
+        harness.existing.insert(
+            "/retained-uninstall-data/tirosh-vitalserver-uninstall-test-preserve"
+        )
+
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: false))) { error in
+            XCTAssertTrue(error.localizedDescription.contains(
+                "refusing to replace existing retained uninstall data"
+            ))
+        }
+
+        XCTAssertTrue(harness.existing.contains("/product"))
+        XCTAssertTrue(harness.existing.contains("/product/logs"))
+        XCTAssertFalse(harness.events.contains("log:step=forget-package-receipt status=started"))
+    }
+
+    func testStandardUninstallRestoresAlreadyMovedDataWhenRetentionMoveFails() {
+        let harness = RuntimeUninstallWorkflowHarness(externalVitalFilesDirectory: nil)
+        harness.moveErrorDestination =
+            "/retained-uninstall-data/tirosh-vitalserver-uninstall-test-preserve/backups"
+
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: false)))
+
+        XCTAssertTrue(harness.existing.contains("/product/logs"))
+        XCTAssertTrue(harness.existing.contains("/product/backups"))
+        XCTAssertFalse(harness.existing.contains(
+            "/retained-uninstall-data/tirosh-vitalserver-uninstall-test-preserve"
+        ))
+        XCTAssertTrue(harness.events.contains("log:restoring preserved user data after uninstall failure"))
+        XCTAssertTrue(harness.events.contains { $0.contains("state:files-removal-blocked") })
     }
 
     func testStandardUninstallRestoresPreservedDataWhenRemovalFails() {
         let harness = RuntimeUninstallWorkflowHarness(externalVitalFilesDirectory: nil)
-        harness.removeErrorPath = "/product"
+        harness.moveErrorDestination = "/.product.uninstall-test-preserve"
 
         XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: false)))
 
@@ -98,7 +238,11 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             $0.hasPrefix("move:/") && $0.hasSuffix("/logs->/product/logs")
         })
         XCTAssertTrue(harness.events.contains {
-            $0.hasPrefix("move:/") && $0.hasSuffix("/vital-files->/product/vm/data/vital-files")
+            $0.hasPrefix("move:/") && $0.hasSuffix("/backups->/product/backups")
+        })
+        XCTAssertTrue(harness.events.contains {
+            $0.hasPrefix("move:/")
+                && $0.hasSuffix("/redis-backups->/product/vm/data/backups/redis")
         })
         XCTAssertTrue(harness.events.contains {
             $0.hasPrefix("state:files-removal-blocked:file removal blocked:file-removal-failed:reason=")
@@ -107,8 +251,8 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
 
     func testStandardUninstallReportsPreservedDataRestoreFailure() {
         let harness = RuntimeUninstallWorkflowHarness(externalVitalFilesDirectory: nil)
-        harness.removeErrorPath = "/product"
-        harness.moveErrorDestination = "/product/vm/data/vital-files"
+        harness.moveErrorDestination = "/.product.uninstall-test-preserve"
+        harness.restoreMoveErrorDestination = "/product/logs"
 
         XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: false)))
 
@@ -124,7 +268,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
 
     func testRemovalDiagnosticsLogsDirectoryReadFailure() {
         let harness = RuntimeUninstallWorkflowHarness()
-        harness.removeErrorPath = "/product"
+        harness.moveErrorDestination = "/.product.uninstall-test-preserve"
         harness.contentsOfDirectoryError = RuntimeUninstallTestError.diagnosticRead
 
         XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true)))
@@ -270,8 +414,22 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         try harness.run(RuntimeUninstallCommand(clean: true))
 
         XCTAssertTrue(harness.events.contains("log:step=remove-installed-files status=started"))
-        XCTAssertTrue(harness.events.contains("remove:/product"))
+        XCTAssertTrue(harness.events.contains("move:/product->/.product.uninstall-test-preserve"))
         XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
+    }
+
+    func testCompletedStateRemainsWhenTombstoneDisposalFails() {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.removeErrorPath = "/.product.uninstall-test-preserve"
+
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true))) { error in
+            XCTAssertTrue(error.localizedDescription.contains(
+                "uninstall completed but state-store tombstone disposal failed"
+            ))
+        }
+
+        XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
+        XCTAssertTrue(harness.events.contains("log:step=dispose-uninstall-state-store status=started"))
     }
 
     func testCleanUninstallDoesNotCompleteWhenCleanupArtifactRemains() {
@@ -285,6 +443,24 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         XCTAssertTrue(harness.events.contains {
             $0.contains("state:files-removal-blocked")
                 && $0.contains("runtime-artifact-present:path=/usr/local/bin/vitalserver-vm")
+        })
+        XCTAssertFalse(harness.events.contains("log:step=forget-package-receipt status=started"))
+        XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
+    }
+
+    func testStandardUninstallDoesNotCompleteWhenSelfRemovingUninstallerRemains() {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.cleanupArtifactStates = [
+            .present(path: "/usr/local/bin/tirosh-vitalserver-uninstall"),
+        ]
+
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: false)))
+
+        XCTAssertTrue(harness.events.contains {
+            $0.contains("state:files-removal-blocked")
+                && $0.contains(
+                    "runtime-artifact-present:path=/usr/local/bin/tirosh-vitalserver-uninstall"
+                )
         })
         XCTAssertFalse(harness.events.contains("log:step=forget-package-receipt status=started"))
         XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
@@ -309,7 +485,10 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
     func testReceiptForgetFailureWritesBlockedState() {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.receiptStates = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
         ]
         harness.receiptForgetResults["ai.tirosh.vitalserver.helper"] = RuntimeProcessResult(
             exitCode: 1,
@@ -330,7 +509,10 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
     func testPresentReceiptIsForgottenBeforeCompletion() throws {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.receiptStates = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
         ]
 
         try harness.run(RuntimeUninstallCommand(clean: true))
@@ -344,7 +526,10 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.updateReceiptsOnForget = false
         harness.receiptStates = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
         ]
 
         XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true)))
@@ -360,7 +545,10 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.updateReceiptsOnForget = false
         harness.receiptStates = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
         ]
 
         XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true)))
@@ -393,6 +581,7 @@ private final class RuntimeUninstallWorkflowHarness {
     var removeErrorPath: String?
     var removeAlreadyAbsentPaths: Set<String> = []
     var moveErrorDestination: String?
+    var restoreMoveErrorDestination: String?
     var contentsOfDirectoryError: Error?
     var pathStates: [String: RuntimePathState] = [:]
     var serviceStates: [RuntimeManagedService: RuntimeServiceState]
@@ -412,7 +601,7 @@ private final class RuntimeUninstallWorkflowHarness {
     ) {
         self.externalVitalFilesDirectory = externalVitalFilesDirectory
         self.configuredVitalFilesDirectoryReadFailure = configuredVitalFilesDirectoryReadFailure
-        self.serviceStates = Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map {
+        self.serviceStates = Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map {
             ($0, RuntimeServiceState.notLoaded)
         })
         self.existing = [
@@ -420,7 +609,7 @@ private final class RuntimeUninstallWorkflowHarness {
             "/product/logs",
             "/product/backups",
             "/product/vm/data/backups/redis",
-            "/product/vm/data/vital-files",
+            "/default-vital-files",
             "/Applications/VitalServer Helper.app",
             "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist",
             "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.guest-log-sync.plist",
@@ -441,11 +630,28 @@ private final class RuntimeUninstallWorkflowHarness {
             command,
             paths: RuntimeUninstallPaths(
                 productRoot: URL(fileURLWithPath: "/product"),
+                runtimeStateDatabase: URL(fileURLWithPath: "/product/vm/runtime/runtime-state.sqlite"),
                 managerApp: URL(fileURLWithPath: "/Applications/VitalServer Helper.app"),
-                defaultVitalFilesDirectory: URL(fileURLWithPath: "/product/vm/data/vital-files"),
-                externalVitalFilesDirectory: externalVitalFilesDirectory.map(URL.init(fileURLWithPath:)),
-                configuredVitalFilesDirectoryReadFailure: configuredVitalFilesDirectoryReadFailure,
-                launchDaemonPlists: RuntimeManagedService.stopOrder.map {
+                legacyManagedDefaultVitalFilesDirectory: URL(
+                    fileURLWithPath: "/product/vm/data/vital-files"
+                ),
+                sharedManagedDefaultVitalFilesDirectory: URL(
+                    fileURLWithPath: "/default-vital-files"
+                ),
+                retainedDataRoot: URL(fileURLWithPath: "/retained-uninstall-data"),
+                configuredVitalFilesDirectoriesRead: configuredVitalFilesDirectoryReadFailure.map {
+                    .unavailable(.hostSettingsReadFailed(reason: $0))
+                } ?? .loaded(RuntimeConfiguredVitalFilesDirectoriesSnapshot(
+                    revision: 1,
+                    appliedRevision: nil,
+                    directories: [
+                        RuntimeConfiguredVitalFilesDirectory(
+                            source: .desired(revision: 1),
+                            directory: URL(fileURLWithPath: externalVitalFilesDirectory ?? "/default-vital-files")
+                        ),
+                    ]
+                )),
+                launchDaemonPlists: RuntimeManagedService.uninstallOrder.map {
                     URL(fileURLWithPath: "/Library/LaunchDaemons/\($0.label).plist")
                 },
                 runtimeTools: [
@@ -474,7 +680,7 @@ private final class RuntimeUninstallWorkflowHarness {
                 }
             ),
             effects: RuntimeUninstallEffects(
-                createRedisBackup: {
+                createVitalServerBackup: {
                     self.events.append("backup")
                     if let backupError = self.backupError {
                         throw backupError
@@ -496,9 +702,6 @@ private final class RuntimeUninstallWorkflowHarness {
                 },
                 describeError: { error in
                     error.localizedDescription
-                },
-                temporaryDirectory: {
-                    URL(fileURLWithPath: NSTemporaryDirectory())
                 },
                 uniqueID: {
                     "test-preserve"
@@ -529,8 +732,13 @@ private final class RuntimeUninstallWorkflowHarness {
                 }
             ),
             writer: RuntimeUninstallStateWriter(
+                acquireOperationLease: {},
+                releaseOperationLease: {},
                 writeState: { state, _, message, blockers in
                     self.events.append("state:\(state.rawValue):\(message ?? ""):\(blockers.joined(separator: "|"))")
+                },
+                relocateProductRoot: { source, destination in
+                    self.events.append("state-store-relocated:\(source.path)->\(destination.path)")
                 }
             ),
             diagnostics: RuntimeUninstallDiagnostics(log: { message in
@@ -540,122 +748,6 @@ private final class RuntimeUninstallWorkflowHarness {
                 "ai.tirosh.vitalserver.helper",
             ]
         )
-    }
-
-    private func executeFileRemoval(
-        paths: RuntimeUninstallPaths,
-        clean: Bool
-    ) throws {
-        let useCase = UninstallRuntimeUseCase()
-        var preserved: RuntimeUninstallPreservedPaths?
-        do {
-            events.append("log:\(useCase.stepLogMessage(step: .removePlists, status: .started))")
-            for plist in paths.launchDaemonPlists {
-                try removeIfPresent(plist, useCase: useCase)
-            }
-            events.append("log:\(useCase.stepLogMessage(step: .removePlists, status: .completed))")
-
-            if !clean {
-                preserved = try preserveUserData(paths: paths, useCase: useCase)
-            }
-
-            events.append("log:\(useCase.stepLogMessage(step: .removeInstalledFiles, status: .started))")
-            let removalPlan = useCase.removalPlan(
-                clean: clean,
-                managerApp: paths.managerApp,
-                productRoot: paths.productRoot,
-                externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
-                configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
-            )
-            for target in removalPlan.targets {
-                try safeRemove(target, useCase: useCase)
-            }
-            if let skippedExternalDirectoryLogMessage = removalPlan.skippedExternalDirectoryLogMessage {
-                events.append("log:\(skippedExternalDirectoryLogMessage)")
-            }
-            events.append("log:\(useCase.stepLogMessage(step: .removeInstalledFiles, status: .completed))")
-
-            events.append("log:\(useCase.stepLogMessage(step: .removeRuntimeTools, status: .started))")
-            for tool in paths.runtimeTools {
-                try removeIfPresent(tool, useCase: useCase)
-            }
-            events.append("log:\(useCase.stepLogMessage(step: .removeRuntimeTools, status: .completed))")
-
-            if let preserved {
-                events.append("log:\(useCase.stepLogMessage(step: .restorePreservedUserData, status: .started))")
-                try restorePreservedPaths(preserved, useCase: useCase)
-                events.append("log:\(useCase.stepLogMessage(step: .restorePreservedUserData, status: .completed))")
-            }
-        } catch {
-            var preservedRestoreFailureReason: String?
-            if let preserved {
-                events.append("log:\(useCase.restoringPreservedUserDataAfterFailureLogMessage())")
-                do {
-                    try restorePreservedPaths(preserved, useCase: useCase)
-                } catch {
-                    events.append("log:\(useCase.preservedUserDataRestoreFailedLogMessage(reason: error.localizedDescription))")
-                    preservedRestoreFailureReason = error.localizedDescription
-                }
-            }
-            throw RuntimeUninstallFileRemovalExecutionError(
-                underlyingError: error,
-                blockers: useCase.fileRemovalBlockers(
-                    removalFailureReason: error.localizedDescription,
-                    preservedRestoreFailureReason: preservedRestoreFailureReason
-                )
-            )
-        }
-    }
-
-    private func preserveUserData(
-        paths: RuntimeUninstallPaths,
-        useCase: UninstallRuntimeUseCase
-    ) throws -> RuntimeUninstallPreservedPaths {
-        events.append("log:\(useCase.stepLogMessage(step: .preserveUserData, status: .started))")
-        let preserveRoot = useCase.preserveRootDirectory(
-            temporaryDirectory: URL(fileURLWithPath: NSTemporaryDirectory()),
-            uniqueID: UUID().uuidString
-        )
-        createDirectory(preserveRoot)
-
-        var items: [RuntimeUninstallPreservedPath] = []
-        let plan = useCase.preservePlan(
-            productRoot: paths.productRoot,
-            defaultVitalFilesDirectory: paths.defaultVitalFilesDirectory,
-            externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
-            configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
-        )
-        for candidate in plan.candidates {
-            guard existing.contains(candidate.source.path) else {
-                continue
-            }
-            let destination = preserveRoot.appendingPathComponent(candidate.token)
-            try removeIfPresent(destination, useCase: useCase)
-            try moveItem(from: candidate.source, to: destination)
-            items.append(RuntimeUninstallPreservedPath(source: candidate.source, destination: destination))
-            events.append("log:\(useCase.preservedSourceLogMessage(path: candidate.source.path))")
-        }
-        if let externalDirectoryLogMessage = plan.externalDirectoryLogMessage {
-            events.append("log:\(externalDirectoryLogMessage)")
-        }
-        if let configuredDirectoryReadFailureLogMessage = plan.configuredDirectoryReadFailureLogMessage {
-            events.append("log:\(configuredDirectoryReadFailureLogMessage)")
-        }
-        events.append("log:\(useCase.stepLogMessage(step: .preserveUserData, status: .completed))")
-        return RuntimeUninstallPreservedPaths(root: preserveRoot, items: items)
-    }
-
-    private func restorePreservedPaths(
-        _ preserved: RuntimeUninstallPreservedPaths,
-        useCase: UninstallRuntimeUseCase
-    ) throws {
-        for item in preserved.items {
-            createDirectory(item.source.deletingLastPathComponent())
-            try removeIfPresent(item.source, useCase: useCase)
-            try moveItem(from: item.destination, to: item.source)
-            events.append("log:\(useCase.restoredPreservedLogMessage(path: item.source.path))")
-        }
-        try removeIfPresent(preserved.root, useCase: useCase)
     }
 
     private func safeRemove(_ target: URL, useCase: UninstallRuntimeUseCase) throws {
@@ -719,7 +811,7 @@ private final class RuntimeUninstallWorkflowHarness {
 
     private func moveItem(from source: URL, to destination: URL) throws {
         events.append("move:\(source.path)->\(destination.path)")
-        if destination.path == moveErrorDestination {
+        if destination.path == moveErrorDestination || destination.path == restoreMoveErrorDestination {
             throw RuntimeUninstallTestError.restore
         }
         existing.remove(source.path)
@@ -732,7 +824,7 @@ private final class RuntimeUninstallWorkflowHarness {
         if result.exitCode == 0 && updateReceiptsOnForget {
             receiptStates = receiptStates.map { state in
                 switch state {
-                case .present(let existingIdentifier) where existingIdentifier == identifier:
+                case .present(let existingIdentifier, _) where existingIdentifier == identifier:
                     return .absent(identifier: identifier)
                 default:
                     return state
@@ -760,7 +852,7 @@ private final class RuntimeUninstallWorkflowHarness {
             if result.exitCode == 0 && updateReceiptsOnForget {
                 receiptStates = receiptStates.map { state in
                     switch state {
-                    case .present(let existingIdentifier) where existingIdentifier == identifier:
+                    case .present(let existingIdentifier, _) where existingIdentifier == identifier:
                         return .absent(identifier: identifier)
                     default:
                         return state
@@ -788,11 +880,10 @@ private final class RuntimeUninstallWorkflowHarness {
             "/usr/local/bin/vitalserver-proxy-run",
             "/usr/local/bin/tirosh-vitalserver-uninstall",
         ]
+        paths.append("/product")
         if clean {
-            paths.append("/product")
-            if let externalVitalFilesDirectory {
-                paths.append(externalVitalFilesDirectory)
-            }
+            paths.append("/default-vital-files")
+            paths.append("/retained-uninstall-data")
         }
         return paths
     }

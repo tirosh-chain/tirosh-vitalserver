@@ -1,7 +1,7 @@
 import Foundation
 
 public enum RuntimePackageReceiptState: Codable, Equatable, Sendable {
-    case present(identifier: String)
+    case present(identifier: String, version: RuntimePackageVersion)
     case absent(identifier: String)
     case readFailed(identifier: String, reason: String)
     case forgetFailed(identifier: String, reason: String)
@@ -9,7 +9,9 @@ public enum RuntimePackageReceiptState: Codable, Equatable, Sendable {
 
     public init(rawValue: String) {
         if rawValue.hasPrefix("present: identifier=") {
-            self = .present(identifier: String(rawValue.dropFirst("present: identifier=".count)))
+            self = Self.parsePresentState(rawValue)
+                .map { .present(identifier: $0.identifier, version: $0.version) }
+                ?? .unknown(rawValue)
         } else if rawValue.hasPrefix("absent: identifier=") {
             self = .absent(identifier: String(rawValue.dropFirst("absent: identifier=".count)))
         } else if rawValue.hasPrefix("read-failed: identifier=") {
@@ -27,8 +29,8 @@ public enum RuntimePackageReceiptState: Codable, Equatable, Sendable {
 
     public var rawValue: String {
         switch self {
-        case .present(let identifier):
-            return "present: identifier=\(identifier)"
+        case .present(let identifier, let version):
+            return "present: identifier=\(identifier) version=\(version.rawValue)"
         case .absent(let identifier):
             return "absent: identifier=\(identifier)"
         case .readFailed(let identifier, let reason):
@@ -73,5 +75,23 @@ public enum RuntimePackageReceiptState: Codable, Equatable, Sendable {
             return nil
         }
         return (identifier, reason)
+    }
+
+    private static func parsePresentState(
+        _ rawValue: String
+    ) -> (identifier: String, version: RuntimePackageVersion)? {
+        let prefix = "present: identifier="
+        let body = String(rawValue.dropFirst(prefix.count))
+        guard let separator = body.range(of: " version=") else {
+            return nil
+        }
+        let identifier = String(body[..<separator.lowerBound])
+        let versionValue = String(body[separator.upperBound...])
+        guard !identifier.isEmpty,
+              let version = RuntimePackageVersion(rawValue: versionValue)
+        else {
+            return nil
+        }
+        return (identifier, version)
     }
 }

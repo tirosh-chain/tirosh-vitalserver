@@ -3,13 +3,17 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from collections.abc import Callable
 from typing import Any
 
 from tirosh_guest_tools.adapters.outbound.observability.collectors import (
     OBSERVABILITY_DIR,
 )
 from tirosh_guest_tools.application.compose import run_compose_action
-from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
+from tirosh_guest_tools.application.contexts import (
+    PostgresBackupOutcome,
+    PrepareUpdateShutdownContext,
+)
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
 )
@@ -18,30 +22,18 @@ from tirosh_guest_tools.contracts import RuntimeFileName, RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import (
     ComposeAction,
-    GuestOperationResult,
     ObservationPhase,
-    OperationName,
-    OperationStatus,
-    ReasonCode,
-    ShutdownPhase,
 )
 from tirosh_guest_tools.infrastructure.common import (
     RUNTIME_DIR,
     mount_runtime_share,
-    request_id_from,
-    request_version_from,
     run,
     systemctl,
-    utc_now,
-    write_json,
 )
 
-REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value
-RESULT_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_LOG.value
 SIDECAR_STOP_TIMEOUT_SECONDS = 30.0
 SIDECAR_STOP_POLL_SECONDS = 0.5
-REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS = 300.0
 FINAL_SYNC_TIMEOUT_SECONDS = 60.0
 POWEROFF_REQUEST_TIMEOUT_SECONDS = 15.0
 logger = logging.getLogger(__name__)
@@ -51,117 +43,60 @@ class GuestPoweroffRequestError(GuestDependencyError):
     pass
 
 
-def run_prepare_update_shutdown() -> None:
+def run_prepare_update_shutdown_for_request(
+    *,
+    request_id: str,
+    version: str,
+    create_postgres_backup: Callable[[], PostgresBackupOutcome],
+) -> None:
     mount_runtime_share()
-    context: PrepareUpdateShutdownContext | None = None
+    context = PrepareUpdateShutdownContext(request_id=request_id, version=version)
     try:
-        context = prepare_context()
-        if context is None:
-            return
-        run_prepare(context)
-    except Exception as error:
+        run_prepare(
+            context,
+            create_postgres_backup=create_postgres_backup,
+        )
+    except Exception:
         logger.exception("guest update shutdown preparation failed")
-        snapshot_path = collect_guest_observability(ObservationPhase.SHUTDOWN_FAILURE)
-        if context is not None:
-            details = failure_details(error)
-            if snapshot_path is not None:
-                details["failureSnapshotPath"] = snapshot_path
-            write_result(
-                context,
-                OperationStatus.FAILED,
-                shutdown_failure_message(error),
-                step=OperationStatus.FAILED.value,
-                reason_codes=(ReasonCode.GUEST_UPDATE_SHUTDOWN_FAILED.value,),
-                shutdown_phase=(
-                    ShutdownPhase.POWEROFF_FAILED
-                    if isinstance(error, GuestPoweroffRequestError)
-                    else None
-                ),
-                details=details,
-            )
-        REQUEST_FILE.unlink(missing_ok=True)
+        collect_guest_observability(ObservationPhase.SHUTDOWN_FAILURE)
         raise
 
 
-def write_dispatch_failure_result(
+def run_prepare(
+    context: PrepareUpdateShutdownContext,
     *,
-    message: str,
-    reason_code: ReasonCode,
+    create_postgres_backup: Callable[[], PostgresBackupOutcome],
+    on_poweroff_ready: Callable[[PrepareUpdateShutdownContext], None] | None = None,
 ) -> None:
-    request_id = request_id_from(REQUEST_FILE)
-    context = PrepareUpdateShutdownContext(
-        request_id=request_id,
-        version=request_version_from(REQUEST_FILE),
-    )
-    write_result(
+    run_prepare_until_poweroff_ready(
         context,
-        OperationStatus.FAILED,
-        message,
-        step="dispatch",
-        reason_codes=(reason_code.value,),
+        create_postgres_backup=create_postgres_backup,
+        on_poweroff_ready=on_poweroff_ready,
     )
+    request_guest_poweroff()
+    collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
 
 
-def prepare_context() -> PrepareUpdateShutdownContext | None:
-    logger.info("guest update shutdown preparation started")
-    if not REQUEST_FILE.is_file():
-        logger.info("request file is missing; exiting")
-        return None
-    request_id = request_id_from(REQUEST_FILE)
-    version = request_version_from(REQUEST_FILE)
-    logger.info(
-        "guest update shutdown request loaded",
-        extra={"fields": {"requestId": request_id, "version": version or None}},
-    )
-    context = PrepareUpdateShutdownContext(request_id=request_id, version=version)
-    write_result(
-        context,
-        OperationStatus.RUNNING,
-        "Guest update shutdown preparation started.",
-        step="starting",
-    )
-    REQUEST_FILE.unlink(missing_ok=True)
-    return context
-
-
-def run_prepare(context: PrepareUpdateShutdownContext) -> None:
+def run_prepare_until_poweroff_ready(
+    context: PrepareUpdateShutdownContext,
+    *,
+    create_postgres_backup: Callable[[], PostgresBackupOutcome],
+    on_poweroff_ready: Callable[[PrepareUpdateShutdownContext], None] | None = None,
+) -> None:
     collect_guest_observability(ObservationPhase.SHUTDOWN_PRE_STOP)
     quiesce_shutdown_sidecars()
     backup_redis(context)
-    write_result(
+    backup_postgres(
         context,
-        OperationStatus.RUNNING,
-        "Redis backup completed. Stopping guest services.",
-        step=OperationName.REDIS_BACKUP.value,
-    )
-    write_result(
-        context,
-        OperationStatus.RUNNING,
-        "Stopping guest services.",
-        step="guest-services-stop",
+        create_backup=create_postgres_backup,
     )
     stop_runtime_services()
     collect_guest_observability(ObservationPhase.SHUTDOWN_POST_SYNC)
-    write_result(
-        context,
-        OperationStatus.RUNNING,
-        "Guest services are stopped. Preparing final filesystem sync.",
-        step=ShutdownPhase.PREPARED.value,
-        shutdown_phase=ShutdownPhase.PREPARED,
-    )
     logger.info("final sync started before guest poweroff")
     run(["sync"], timeout_seconds=FINAL_SYNC_TIMEOUT_SECONDS)
-    write_result(
-        context,
-        OperationStatus.READY,
-        "Guest services are stopped and filesystems synced. Guest poweroff request is being issued.",
-        step=ShutdownPhase.POWEROFF_READY.value,
-        shutdown_phase=ShutdownPhase.POWEROFF_READY,
-    )
+    if on_poweroff_ready is not None:
+        on_poweroff_ready(context)
     logger.info("guest poweroff ready result recorded")
-    request_guest_poweroff()
-    collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
-    REQUEST_FILE.unlink(missing_ok=True)
 
 
 def collect_guest_observability(phase: ObservationPhase) -> str | None:
@@ -218,6 +153,35 @@ def backup_redis(
     )
 
 
+def backup_postgres(
+    context: PrepareUpdateShutdownContext,
+    *,
+    create_backup: Callable[[], PostgresBackupOutcome],
+) -> None:
+    logger.info(
+        "postgres backup started",
+        extra={"fields": {"step": "postgres-backup"}},
+    )
+    outcome = create_backup()
+    postgres_backup_path = str(outcome.archive)
+    if not postgres_backup_path:
+        raise GuestDependencyError(
+            "PostgreSQL backup archive was not created",
+            code="postgres-backup-archive-missing",
+        )
+    context.postgres_backup_path = postgres_backup_path
+    logger.info(
+        "postgres backup completed",
+        extra={
+            "fields": {
+                "step": "postgres-backup",
+                "archive": postgres_backup_path,
+                "alembicRevision": outcome.alembic_revision,
+            }
+        },
+    )
+
+
 def stop_runtime_services() -> None:
     logger.info(
         "guest services stop started",
@@ -235,13 +199,8 @@ def quiesce_shutdown_sidecars() -> None:
         "guest shutdown sidecar quiesce started",
         extra={"fields": {"step": "guest-sidecar-quiesce"}},
     )
-    stop_sidecar_service(RuntimeService.COMMAND_POLLER)
-    stop_sidecar_service(RuntimeService.RUNTIME_STATE)
+    stop_sidecar_service(RuntimeService.RUNTIME_OBSERVATION)
     stop_sidecar_service(RuntimeService.CONTAINER_LOGS)
-    wait_for_unit_inactive(
-        RuntimeService.REDIS_BACKUP,
-        timeout_seconds=REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS,
-    )
     logger.info(
         "guest shutdown sidecar quiesce completed",
         extra={"fields": {"step": "guest-sidecar-quiesce"}},
@@ -319,32 +278,4 @@ def request_guest_poweroff() -> None:
     raise GuestPoweroffRequestError(
         f"systemctl poweroff failed: {stderr or result.returncode}",
         code="guest-poweroff-request-failed",
-    )
-
-
-def write_result(
-    context: PrepareUpdateShutdownContext,
-    status: OperationStatus,
-    message: str,
-    *,
-    step: str = "",
-    reason_codes: tuple[str, ...] = (),
-    shutdown_phase: ShutdownPhase | None = None,
-    details: dict[str, Any] | None = None,
-) -> None:
-    write_json(
-        RESULT_FILE,
-        GuestOperationResult(
-            operation=OperationName.PREPARE_UPDATE_SHUTDOWN,
-            request_id=context.request_id,
-            schema_version=2,
-            message=message,
-            status=status,
-            updated_at=utc_now(),
-            step=step,
-            reason_codes=reason_codes,
-            redis_backup_path=context.redis_backup_path,
-            shutdown_phase=shutdown_phase,
-            details=details,
-        ).as_json(),
     )

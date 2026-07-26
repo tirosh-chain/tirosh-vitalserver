@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "v1",
+  "initialState": "requested",
+  "states": {
+    "requested": {
+      "terminal": false,
+      "allowedTargets": [
+        "accepted",
+        "cancelled"
+      ]
+    },
+    "accepted": {
+      "terminal": false,
+      "allowedTargets": [
+        "running",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "running": {
+      "terminal": false,
+      "allowedTargets": [
+        "succeeded",
+        "failed",
+        "cancelled",
+        "interrupted"
+      ]
+    },
+    "succeeded": {
+      "terminal": true,
+      "allowedTargets": []
+    },
+    "failed": {
+      "terminal": true,
+      "allowedTargets": []
+    },
+    "cancelled": {
+      "terminal": true,
+      "allowedTargets": []
+    },
+    "interrupted": {
+      "terminal": true,
+      "allowedTargets": []
+    }
+  }
+}

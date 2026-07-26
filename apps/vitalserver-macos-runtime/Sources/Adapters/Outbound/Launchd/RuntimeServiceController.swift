@@ -52,16 +52,23 @@ public struct RuntimeServiceController {
         }
     }
 
+    public func stopRuntimeServicesForUninstall() throws {
+        log("stopping runtime services for uninstall")
+        for service in RuntimeManagedService.uninstallOrder {
+            try stopAndWaitIfLoaded(service)
+        }
+    }
+
     public func disableRuntimeServicesForUninstall() throws {
         log("disabling runtime services before uninstall")
-        for service in RuntimeManagedService.stopOrder {
+        for service in RuntimeManagedService.uninstallOrder {
             try serviceOperator.setEnabledOrThrow(service, enabled: false)
         }
     }
 
     public func clearDisabledOverridesAfterUninstall() throws {
         log("clearing launchd disabled overrides after uninstall")
-        for service in RuntimeManagedService.stopOrder {
+        for service in RuntimeManagedService.uninstallOrder {
             try serviceOperator.setEnabledOrThrow(service, enabled: true)
         }
     }
@@ -72,10 +79,8 @@ public struct RuntimeServiceController {
             try stopAndWaitIfLoaded(service)
         }
 
-        if try unloadAndWaitIfLoaded(.vm) {
-        } else {
-            try waitForVMProcessExitAfterGuestPoweroff(expectedVMProcessID)
-        }
+        _ = try unloadAndWaitIfLoaded(.vm)
+        try waitForVMProcessExitAfterGuestPoweroff(expectedVMProcessID)
         try stopAndWaitIfLoaded(.guestLogSync)
         try stopAndWaitIfLoaded(.sleepPrevention)
     }
@@ -139,6 +144,16 @@ public struct RuntimeServiceController {
         }
     }
 
+    public func unloadRuntimeServicesForUninstallAfterForcedVMStop() {
+        for service in RuntimeManagedService.uninstallOrder {
+            do {
+                try unloadAfterForcedVMStopIfLoaded(service)
+            } catch {
+                log("failed to unload \(service.runtimeServiceDisplayName) service for uninstall after forced VM stop label=\(service.label) error=\(error)")
+            }
+        }
+    }
+
     public func setStartOnBoot(_ enabled: Bool) throws {
         for service in RuntimeManagedService.startOrder {
             try serviceOperator.setEnabledOrThrow(service, enabled: enabled)
@@ -146,7 +161,15 @@ public struct RuntimeServiceController {
     }
 
     private func stopAndWaitIfLoaded(_ service: RuntimeManagedService) throws {
-        if try serviceOperator.stopIfLoaded(service) {
+        let stopped: Bool
+        if service == .vm {
+            // Boot out the KeepAlive job before its process receives SIGTERM. Signalling the
+            // process first allows launchd to replace it and rewrites the pid file mid-stop.
+            stopped = try serviceOperator.unloadIfLoaded(service)
+        } else {
+            stopped = try serviceOperator.stopIfLoaded(service)
+        }
+        if stopped {
             try waitForStoppedService(service)
         }
     }

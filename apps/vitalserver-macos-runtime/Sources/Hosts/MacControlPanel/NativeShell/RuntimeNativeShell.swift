@@ -72,6 +72,35 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         return panel.urls
     }
 
+    func readVitalFileUploadSources(
+        _ sources: [URL]
+    ) throws -> [RuntimeLabVitalFileUploadSource] {
+        guard !sources.isEmpty else {
+            throw vitalFileImportError("Select at least one .vital file.")
+        }
+        let normalizedSources = sources.map(\.standardizedFileURL)
+        return try normalizedSources.map { source in
+            let accessed = source.startAccessingSecurityScopedResource()
+            defer {
+                if accessed { source.stopAccessingSecurityScopedResource() }
+            }
+            let values = try source.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .fileSizeKey,
+            ])
+            guard values.isRegularFile == true, let sizeBytes = values.fileSize,
+                  sizeBytes >= 0 else {
+                throw vitalFileImportError("Upload source is not a regular file: \(source.path)")
+            }
+            return RuntimeLabVitalFileUploadSource(
+                fileName: source.lastPathComponent,
+                fileURL: source,
+                sizeBytes: Int64(sizeBytes),
+                accessMode: .securityScoped
+            )
+        }
+    }
+
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         let panel = NSSavePanel()
         let delegate = LogExportSavePanelDelegate()
@@ -222,6 +251,14 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         }
         return nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
     }
+}
+
+private func vitalFileImportError(_ message: String) -> NSError {
+    NSError(
+        domain: "VitalFileLibraryImport",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: message]
+    )
 }
 
 private final class VitalFilesDirectoryOpenPanelDelegate: NSObject, NSOpenSavePanelDelegate {

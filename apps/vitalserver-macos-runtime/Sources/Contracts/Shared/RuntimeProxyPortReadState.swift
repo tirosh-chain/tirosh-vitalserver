@@ -6,6 +6,7 @@ public enum RuntimeProxyPortReadState: Codable, Equatable, Sendable {
     case empty
     case invalid(String)
     case outOfRange(Int)
+    case readFailed(String)
     case commandFailed(exitCode: Int32, reason: String)
     case unknown(String)
 
@@ -22,6 +23,8 @@ public enum RuntimeProxyPortReadState: Codable, Equatable, Sendable {
         } else if rawValue.hasPrefix("out-of-range: value="),
                   let value = Int(String(rawValue.dropFirst("out-of-range: value=".count))) {
             self = .outOfRange(value)
+        } else if rawValue.hasPrefix("read-failed: reason=") {
+            self = .readFailed(String(rawValue.dropFirst("read-failed: reason=".count)))
         } else if rawValue.hasPrefix("command-failed: ") {
             self = Self.parseCommandFailure(rawValue) ?? .unknown(rawValue)
         } else {
@@ -41,6 +44,8 @@ public enum RuntimeProxyPortReadState: Codable, Equatable, Sendable {
             return "invalid: value=\(value)"
         case .outOfRange(let value):
             return "out-of-range: value=\(value)"
+        case .readFailed(let reason):
+            return "read-failed: reason=\(reason)"
         case .commandFailed(let exitCode, let reason):
             return "command-failed: exit-code=\(exitCode) reason=\(reason)"
         case .unknown(let value):
@@ -52,13 +57,9 @@ public enum RuntimeProxyPortReadState: Codable, Equatable, Sendable {
         switch self {
         case .loaded(let port):
             return port
-        case .missing, .empty, .invalid, .outOfRange, .commandFailed, .unknown:
+        case .missing, .empty, .invalid, .outOfRange, .readFailed, .commandFailed, .unknown:
             return nil
         }
-    }
-
-    public var failureReasons: [RuntimeFailureReason] {
-        port == nil ? [.hostProxyConfigInvalid] : []
     }
 
     public static func observed(_ port: Int) -> RuntimeProxyPortReadState {

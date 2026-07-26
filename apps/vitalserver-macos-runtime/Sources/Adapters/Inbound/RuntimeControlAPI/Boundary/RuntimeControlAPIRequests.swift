@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import RuntimeControl
 
 public enum RuntimeControlFileReferenceKind: String, Codable, Equatable, Sendable {
@@ -22,14 +23,6 @@ public struct RuntimeControlCommandResponse: Codable, Equatable, Sendable {
 
     public init(result: RuntimeCommandResult) {
         self.result = result
-    }
-}
-
-public struct RuntimeApplySettingsRequest: Codable, Equatable, Sendable {
-    public let settings: RuntimeSettings
-
-    public init(settings: RuntimeSettings) {
-        self.settings = settings
     }
 }
 
@@ -88,5 +81,49 @@ public struct RuntimeExportLogsRequest: Codable, Equatable, Sendable {
 
     public init(destination: RuntimeControlFileReference) {
         self.destination = destination
+    }
+}
+
+public struct RuntimeOperationLeaseAcquireRequest: Codable, Equatable, Sendable {
+    public let document: RuntimeOperationLeaseDocument
+
+    public init(document: RuntimeOperationLeaseDocument) {
+        self.document = document
+    }
+}
+
+public struct RuntimeOperationLeaseHeartbeatRequest: Codable, Equatable, Sendable {
+    public let operationId: String
+    public let heartbeatAt: String
+    public let expiresAt: String?
+
+    public init(operationId: String, heartbeatAt: String, expiresAt: String?) {
+        self.operationId = operationId
+        self.heartbeatAt = heartbeatAt
+        self.expiresAt = expiresAt
+    }
+}
+
+public struct RuntimeOperationLeaseReleaseRequest: Codable, Equatable, Sendable {
+    public let operationId: String
+
+    public init(operationId: String) {
+        self.operationId = operationId
+    }
+}
+
+public struct RuntimeGuestAddressPutRequest: Codable, Equatable, Sendable {
+    public let address: String
+
+    public init(address: String) {
+        self.address = address
+    }
+}
+
+public struct RuntimeVMLifecyclePutRequest: Codable, Equatable, Sendable {
+    public let document: RuntimeVMLifecycleDocument
+
+    public init(document: RuntimeVMLifecycleDocument) {
+        self.document = document
     }
 }

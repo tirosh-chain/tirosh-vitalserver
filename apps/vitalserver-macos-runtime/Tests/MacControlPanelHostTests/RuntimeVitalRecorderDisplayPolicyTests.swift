@@ -8,6 +8,11 @@ import Errors
 final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
     private let policy = RuntimeVitalRecorderDisplayPolicy()
 
+    func testRecorderTableLayoutReservesHeaderAndTwoLineIPCellHeight() {
+        XCTAssertGreaterThanOrEqual(RuntimeRecorderTableLayout.headerMinimumHeight, 20)
+        XCTAssertGreaterThanOrEqual(RuntimeRecorderTableLayout.rowMinimumHeight, 40)
+    }
+
     func testRecorderAndBedStatusTextPreservesExplicitStates() {
         XCTAssertEqual(policy.statusText(RuntimeVitalRecorderStatus.online), "Online")
         XCTAssertEqual(policy.statusText(RuntimeVitalRecorderStatus.stale), "Stale")
@@ -44,6 +49,16 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(policy.reportedText("  ", missing: "IP not reported"), "IP not reported")
         XCTAssertEqual(policy.reportedText(nil, missing: "IP not reported"), "IP not reported")
         XCTAssertEqual(policy.reportedText("10.0.0.2", missing: "IP not reported"), "10.0.0.2")
+    }
+
+    func testRecorderSourceUsesExplicitReportedVersion() {
+        XCTAssertEqual(policy.recorderSourceText("vitalserver-lab"), "Lab")
+        XCTAssertEqual(policy.recorderSourceText("1.2.3"), "Vital Recorder")
+        XCTAssertEqual(policy.recorderSourceText(nil), "Not reported")
+        XCTAssertEqual(policy.recorderSourceText("   "), "Not reported")
+        XCTAssertTrue(policy.isProductLabRecorder(version: "vitalserver-lab"))
+        XCTAssertFalse(policy.isProductLabRecorder(version: "LAB-ABC123"))
+        XCTAssertFalse(policy.isProductLabRecorder(version: nil))
     }
 
     func testRecorderAnomalyTextDistinguishesHistoryFromCurrentZero() {

@@ -22,7 +22,7 @@ make pwa/verify-contract
 make e2e/smoke
 ```
 
-`make e2e/smoke`는 Runtime Control local HTTP server를 실제로 띄운 뒤 `/runtime/capabilities`, `/runtime/status`, `/runtime/settings`, `/runtime/events`, `/runtime/overview`와 missing-token failure를 검증합니다. 설치, update 적용, rollback 같은 destructive 작업은 수행하지 않습니다.
+`make e2e/smoke`는 Runtime Control local HTTP server를 실제로 띄운 뒤 `/platform`, `/runtime/capabilities`, `/runtime/stack`, `/runtime/settings`, `/runtime/events`와 missing-token failure를 검증합니다. 설치, update 적용, rollback 같은 destructive 작업은 수행하지 않습니다.
 
 Runtime Control host file 권한은 로컬 audit으로 확인합니다.
 
@@ -109,11 +109,13 @@ npm --prefix apps/vitalserver-runtime-pwa run dev
 - `/logs` toolbar remains sticky while scrolling
 - `/recorders` switches to card layout on mobile width
 - `/settings` validation prevents invalid resource values
-- `/test` is hidden when `canUseTestTools=false`
+- `/lab` remains visible as a product route and uses `/runtime/lab/*`
+- `/test` is not a product route; test/diagnostics-only surfaces live under More/Advanced
 
 ## Regression Notes
 
 - PWA는 native-only host affordance를 직접 수행하지 않습니다.
-- TestKit 기능은 dev/test capability가 없으면 route에서 사라져야 합니다.
+- Product Lab은 `/dev/testkit/*`가 아니라 `/runtime/lab/*` Runtime Control 계약을 사용해야 합니다.
+- TestKit 기능은 product route가 아니며 dev/load 검증 도구로만 남아야 합니다.
 - Runtime API가 unavailable일 때 page는 crash 대신 `ErrorState`를 보여야 합니다.
 - Service worker는 runtime API stale cache를 보여주면 안 됩니다.

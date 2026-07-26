@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "v1",
+  "fixtureKind": "socketio-frame-observation",
+  "protocol": {
+    "family": "socket.io",
+    "eventName": "send_data",
+    "framePrefix": "451-",
+    "packetKind": "binary-event",
+    "attachmentCount": 1
+  },
+  "sanitizedFrame": {
+    "shape": "451-[\"send_data\",{\"_placeholder\":true,\"num\":0}] + <one-binary-attachment>",
+    "rawFrameRetained": false
+  },
+  "expectedFact": {
+    "ingressCandidate": true,
+    "attachmentCorrelationRequired": true
+  }
+}

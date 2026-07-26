@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "v1",
+  "updateId": "guest-release-update-020",
+  "expectedActiveReleaseId": "vitalserver-guest-product-0.2.0-dev",
+  "targetRelease": {
+    "releaseId": "vitalserver-guest-product-0.2.1",
+    "releaseDirectory": "/opt/vitalserver/releases/vitalserver-guest-product-0.2.1",
+    "artifact": {
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "sizeBytes": 1048576,
+      "mediaType": "application/vnd.tirosh.vitalserver.guest-product-release+tar+gzip"
+    }
+  },
+  "requestedAt": "2026-07-20T00:00:00Z"
+}

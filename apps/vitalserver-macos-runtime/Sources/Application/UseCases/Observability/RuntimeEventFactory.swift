@@ -45,34 +45,7 @@ public struct RuntimeEventFactory {
                 status: status,
                 snapshot: healthSnapshot
             ),
-            containerObservation: healthSnapshot.containerObservation,
             vitalDBObservation: healthSnapshot.vitalDBObservation,
-            progress: progress
-        )
-    }
-
-    public func statusDocumentEvent(
-        _ statusDocument: RuntimeStatusDocument,
-        operation: RuntimeOperation,
-        message: String,
-        eventType: RuntimeEventType,
-        progress: RuntimeProgressDocument? = nil
-    ) -> RuntimeEventDocument {
-        RuntimeEventDocument(
-            id: id(),
-            eventType: eventType,
-            timestamp: timestamp(),
-            product: product,
-            status: statusDocument.status,
-            previousStatus: statusDocument.status,
-            operation: operation,
-            message: message,
-            runtimeVersion: runtimeVersion(),
-            vmState: statusDocument.vmState,
-            vmErrors: statusDocument.vmErrors,
-            failureReasons: statusDocument.failureReasons,
-            containerObservation: statusDocument.containerObservation,
-            vitalDBObservation: statusDocument.vitalDBObservation,
             progress: progress
         )
     }

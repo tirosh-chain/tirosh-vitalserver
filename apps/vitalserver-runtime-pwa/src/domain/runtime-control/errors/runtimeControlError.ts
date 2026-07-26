@@ -257,6 +257,10 @@ function parseAPIErrorBody(
 }
 
 function recoveryForStatus(status: number, code: string | undefined): string {
+  if (status === 409 || code === "operationInProgress") {
+    return "Another Runtime control operation is in progress. Wait for it to finish, then retry this command.";
+  }
+
   if (status === 401 || code === "unauthorized") {
     return "Verify the Runtime Control token configured for the Remote Console.";
   }
@@ -271,6 +275,14 @@ function recoveryForStatus(status: number, code: string | undefined): string {
 
   if (code === "endpointNotImplemented") {
     return "This feature is not implemented by the current Helper build.";
+  }
+
+  if (code === "updateApplyUnavailable") {
+    return "This 0.2.1 build does not support update apply. Check bundle integrity only; do not retry the apply request.";
+  }
+
+  if (status === 503 && code === "guestControlUnavailable") {
+    return "The Guest Runtime Controller cannot read its control ledger. Inspect Guest control storage and retry.";
   }
 
   if (status >= 500 || code === "handlerFailed") {

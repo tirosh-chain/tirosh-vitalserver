@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:product-update-specification",
+  "title": "ProductUpdateSpecification",
+  "description": "C26 evolving, next-updater-only layer specification. It is authenticated by the C25 digest but is intentionally not interpreted by the previously installed Host updater.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "bootstrapEnvelopeId", "layerPlan"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "bootstrapEnvelopeId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "layerPlan": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/LayerPlan" }
+    }
+  },
+  "$defs": {
+    "LayerPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer", "dependsOn", "artifact", "effectExecutor", "rollback"],
+      "properties": {
+        "layer": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/UpdateLayer" },
+        "dependsOn": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/UpdateLayer" }
+        },
+        "artifact": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/Artifact" },
+        "effectExecutor": { "$ref": "#/$defs/LayerEffectExecutor" },
+        "rollback": { "$ref": "#/$defs/RollbackPlan" }
+      }
+    },
+    "LayerEffectExecutor": {
+      "description": "One immutable, C26-declared executable and separately declared immutable configuration that the staged next updater invokes through its fixed layer-effect protocol. Neither field is an arbitrary Host command path, shell expression, or inferred sibling file.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "relativePath", "sha256", "sizeBytes", "mediaType", "configurationArtifact"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "relativePath": { "type": "string", "minLength": 9, "maxLength": 1024, "pattern": "^payload/[^\\\\]*$" },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "mediaType": { "const": "application/vnd.tirosh.vitalserver.update-layer-effect-executor" },
+        "configurationArtifact": { "$ref": "#/$defs/LayerEffectExecutorConfigurationArtifact" }
+      },
+      "allOf": [
+        { "not": { "properties": { "relativePath": { "pattern": "\\.\\." } }, "required": ["relativePath"] } }
+      ]
+    },
+    "LayerEffectExecutorConfigurationArtifact": {
+      "description": "Immutable release-owned desired input supplied to exactly one effect executor by the fixed C26 protocol. The Host updater verifies the bytes but does not decode a layer-specific configuration.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "relativePath", "sha256", "sizeBytes", "mediaType"],
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "relativePath": { "type": "string", "minLength": 9, "maxLength": 1024, "pattern": "^payload/[^\\\\]*$" },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "mediaType": { "const": "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json" }
+      },
+      "allOf": [
+        { "not": { "properties": { "relativePath": { "pattern": "\\.\\." } }, "required": ["relativePath"] } }
+      ]
+    },
+    "RollbackPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "type": "string", "enum": ["available", "unsupported"] },
+        "artifact": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:update-bootstrap-envelope#/$defs/Artifact" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "available" } }, "required": ["state"] },
+          "then": { "required": ["artifact"], "not": { "required": ["reason"] } },
+          "else": { "required": ["reason"], "not": { "required": ["artifact"] } }
+        }
+      ]
+    }
+  }
+}

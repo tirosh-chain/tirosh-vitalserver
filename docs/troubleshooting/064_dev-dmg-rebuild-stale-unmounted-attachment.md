@@ -7,7 +7,7 @@
 
 ## Symptoms
 
-`make dist/dmg/dev` fails after the existing DMG was unmounted:
+`make dist/dmg/dev/cached` 또는 현장 전달 gate의 DMG artifact 생성 단계가 기존 DMG를 unmount한 뒤 실패합니다.
 
 ```text
 RuntimeError: DMG output is currently attached; detach it before rebuilding:
@@ -60,5 +60,5 @@ The artifact verifier detaches generated DMGs through the `dev-entry` reported b
 
 ## Follow-up
 
-- 2026-06-10: `make dist/dmg/dev` failed with `(not mounted)` even after unmount. The builder now detaches unmounted matching attachments and the dev DMG build completed.
+- 2026-06-10: cache-preferred dev DMG packaging failed with `(not mounted)` even after unmount. The builder now detaches unmounted matching attachments and the dev DMG build completed.
 - 2026-06-15: `make dist/dmg/dev/verify` failed during artifact inspection because `hdiutil detach` by mount path returned `Resource busy`. The verifier now uses the device entry and force-retries cleanup before reporting a final detach failure.

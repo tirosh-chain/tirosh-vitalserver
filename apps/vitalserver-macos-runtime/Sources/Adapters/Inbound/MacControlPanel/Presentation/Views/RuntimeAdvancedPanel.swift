@@ -1,6 +1,13 @@
 import SwiftUI
+import Contracts
 import RuntimeControl
 import Errors
+
+private struct RuntimeAPICatalogItem: Identifiable {
+    var id: String { label }
+    let label: String
+    let url: String
+}
 
 struct RuntimeAdvancedPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
@@ -12,12 +19,11 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingRepairDatastoreConfirmation: Bool
     @Binding var showingRepairVMDiskConfirmation: Bool
     @Binding var showingRepairRuntimeServicesConfirmation: Bool
-    @Binding var showingStartServicesConfirmation: Bool
-    @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
     @State private var uptimeNow = Date()
     @State private var showingVMHealth = true
     @State private var showingServiceHealth = true
+    @State private var showingAPICatalog = true
     @State private var showingRecoveryOperations = false
     @State private var showingAdvancedRepairTools = false
     @State private var showingNetworkOverrides = false
@@ -36,11 +42,10 @@ struct RuntimeAdvancedPanel: View {
         showingRepairDatastoreConfirmation: Binding<Bool>,
         showingRepairVMDiskConfirmation: Binding<Bool>,
         showingRepairRuntimeServicesConfirmation: Binding<Bool>,
-        showingStartServicesConfirmation: Binding<Bool>,
-        showingStopServicesConfirmation: Binding<Bool>,
         hoveredServiceLink: Binding<String?>,
         showingVMHealth: Bool = true,
         showingServiceHealth: Bool = true,
+        showingAPICatalog: Bool = true,
         showingRecoveryOperations: Bool = false,
         showingAdvancedRepairTools: Bool = false,
         showingNetworkOverrides: Bool = false,
@@ -56,11 +61,10 @@ struct RuntimeAdvancedPanel: View {
         self._showingRepairDatastoreConfirmation = showingRepairDatastoreConfirmation
         self._showingRepairVMDiskConfirmation = showingRepairVMDiskConfirmation
         self._showingRepairRuntimeServicesConfirmation = showingRepairRuntimeServicesConfirmation
-        self._showingStartServicesConfirmation = showingStartServicesConfirmation
-        self._showingStopServicesConfirmation = showingStopServicesConfirmation
         self._hoveredServiceLink = hoveredServiceLink
         self._showingVMHealth = State(initialValue: showingVMHealth)
         self._showingServiceHealth = State(initialValue: showingServiceHealth)
+        self._showingAPICatalog = State(initialValue: showingAPICatalog)
         self._showingRecoveryOperations = State(initialValue: showingRecoveryOperations)
         self._showingAdvancedRepairTools = State(initialValue: showingAdvancedRepairTools)
         self._showingNetworkOverrides = State(initialValue: showingNetworkOverrides)
@@ -81,6 +85,7 @@ struct RuntimeAdvancedPanel: View {
                 diagnosticsCard
                 vmHealthCard
                 serviceHealthCard
+                apiCatalogCard
                 recoveryOperationsCard
                 networkOverridesCard
                 redisRelayCard
@@ -104,10 +109,9 @@ struct RuntimeAdvancedPanel: View {
         advancedCard(AppConstants.Labels.sectionDiagnostics) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.runtimeState) { statusBadge }
-                statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.activeOperationText(viewModel.status))
-                statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
-                statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(viewModel.status.updatedAt))
-                if !viewModel.status.failureReasons.isEmpty {
+                statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.activeOperationText(viewModel.operationState))
+                statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.installedVersion ?? AppConstants.StatusText.unknown)
+                if !viewModel.status.healthIssues.isEmpty {
                     statusRow(AppConstants.Labels.failureReasons) {
                         Text(viewModel.presentationFormatter.failureReasonText(viewModel.status))
                             .fontWeight(.medium)
@@ -129,13 +133,39 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var vmHealthItems: [RuntimeStatusDisplayPolicy.HealthItem] {
-        displayPolicy.advancedVMHealth(status: viewModel.status)
+        displayPolicy.advancedVMHealth(status: viewModel.status, operationState: viewModel.operationState)
     }
 
     private var serviceHealthCard: some View {
         advancedDisclosureCard(AppConstants.Labels.sectionServiceHealth, isExpanded: $showingServiceHealth) {
+            VStack(alignment: .leading, spacing: 14) {
+                serviceHealthSection(
+                    AppConstants.Labels.sectionPlatformServices,
+                    section: .platform
+                )
+                Divider()
+                serviceHealthSection(
+                    AppConstants.Labels.sectionRuntimeProductServices,
+                    section: .runtime
+                )
+                Divider()
+                serviceHealthSection(
+                    AppConstants.Labels.sectionAccessEndpoints,
+                    section: .access
+                )
+            }
+        }
+    }
+
+    private func serviceHealthSection(
+        _ title: String,
+        section: RuntimeStatusAdvancedServiceHealthSection
+    ) -> some View {
+        let items = serviceHealthItems.filter { $0.section == section }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
-                ForEach(serviceHealthItems) { item in
+                ForEach(items) { item in
                     serviceHealthRow(item)
                 }
             }
@@ -145,10 +175,61 @@ struct RuntimeAdvancedPanel: View {
     private var serviceHealthItems: [RuntimeStatusDisplayPolicy.ServiceHealthItem] {
         displayPolicy.advancedServiceHealth(
             status: viewModel.status,
-            observation: viewModel.containerObservation,
+            operationState: viewModel.operationState,
+            runtimeStackStatus: viewModel.runtimeStackStatus,
+            runtimeStackReadError: viewModel.runtimeStackReadError,
+            runtimeServiceResources: viewModel.runtimeServiceResources,
+            runtimeServiceResourceReadIssues: viewModel.runtimeServiceResourceReadIssues,
             redisRelaySettings: viewModel.runtimeSettings.redisRelay,
+            redisRelayStatusRead: viewModel.redisRelayStatusRead,
             now: uptimeNow
         )
+    }
+
+    private var apiCatalogCard: some View {
+        advancedDisclosureCard(AppConstants.Labels.sectionAPICatalog, isExpanded: $showingAPICatalog) {
+            if let proxyPort = viewModel.status.publicProxyPort {
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                    ForEach(apiCatalogItems(proxyPort: proxyPort)) { item in
+                        statusRow(item.label) {
+                            Button(item.url) {
+                                viewModel.openExternalURL(item.url)
+                            }
+                            .buttonStyle(.link)
+                            .textSelection(.enabled)
+                        }
+                    }
+                }
+            } else {
+                Text(RuntimeHTTPStatusText.missingProxyPort)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func apiCatalogItems(proxyPort: Int) -> [RuntimeAPICatalogItem] {
+        [
+            RuntimeAPICatalogItem(
+                label: "Swagger UI",
+                url: AppConstants.Product.swaggerURL(proxyPort: proxyPort)
+            ),
+            RuntimeAPICatalogItem(
+                label: "VitalServer API",
+                url: AppConstants.Product.vitalServerOpenAPIURL(proxyPort: proxyPort)
+            ),
+            RuntimeAPICatalogItem(
+                label: "Runtime Control API",
+                url: AppConstants.Product.runtimeControlOpenAPIURL(proxyPort: proxyPort)
+            ),
+            RuntimeAPICatalogItem(
+                label: "Recorder Ingress API",
+                url: AppConstants.Product.recorderIngressOpenAPIURL(proxyPort: proxyPort)
+            ),
+            RuntimeAPICatalogItem(
+                label: "VitalDB Observer API",
+                url: AppConstants.Product.vitalDBObserverOpenAPIURL(proxyPort: proxyPort)
+            )
+        ]
     }
 
     private var recoveryOperationsCard: some View {
@@ -158,6 +239,19 @@ struct RuntimeAdvancedPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                recoverySubsection(AppConstants.Labels.sectionRuntimeControlRecovery) {
+                    Text(AppConstants.Labels.runtimeControlRecoveryHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(AppConstants.Actions.reconnectRuntimeControl) {
+                        viewModel.reconnectRuntimeControl()
+                    }
+                    .disabled(viewModel.isBusy)
+                }
+
+                Divider()
 
                 recoverySubsection(AppConstants.Labels.sectionUpdateRecovery) {
                     Text(AppConstants.Labels.updateRecoveryHelp)
@@ -478,36 +572,6 @@ struct RuntimeAdvancedPanel: View {
                     }
                 }
                 applyActionRow
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(AppConstants.Labels.runtimeServiceControlHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        Button(AppConstants.Actions.startRuntimeServices) {
-                            showingStartServicesConfirmation = true
-                        }
-                        .disabled(
-                            !actionAvailabilityPolicy.canControlRuntimeServices(
-                                status: viewModel.status,
-                                capabilities: viewModel.capabilities,
-                                isBusy: viewModel.isBusy
-                            )
-                        )
-
-                        Button(AppConstants.Actions.stopRuntimeServices) {
-                            showingStopServicesConfirmation = true
-                        }
-                        .disabled(
-                            !actionAvailabilityPolicy.canControlRuntimeServices(
-                                status: viewModel.status,
-                                capabilities: viewModel.capabilities,
-                                isBusy: viewModel.isBusy
-                            )
-                        )
-                    }
-                }
             }
         }
     }
@@ -575,12 +639,23 @@ struct RuntimeAdvancedPanel: View {
                 redisRelayStatusSummary
                 applyActionRow
             }
+            .disabled(!viewModel.canEditRuntimeRedisRelaySettings)
+
+            if !viewModel.canEditRuntimeRedisRelaySettings {
+                Text(
+                    viewModel.runtimeRedisRelaySettingsRead.readError
+                        ?? "Runtime Redis Relay settings owner is unavailable."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
     @ViewBuilder
     private var redisRelayStatusSummary: some View {
-        if let status = viewModel.status.redisRelayStatus {
+        if let status = viewModel.redisRelayStatusRead.document {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 8) {
                 statusRow(AppConstants.Labels.redisRelayStatus, status.state)
                 statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(status.observedAt))
@@ -620,6 +695,17 @@ struct RuntimeAdvancedPanel: View {
                 }
             }
             .padding(.top, 4)
+        } else {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 8) {
+                statusRow(
+                    AppConstants.Labels.redisRelayStatus,
+                    viewModel.redisRelayStatusRead.readState.rawValue
+                )
+                if let readError = viewModel.redisRelayStatusRead.readError,
+                   !readError.isEmpty {
+                    statusRow(AppConstants.Labels.redisRelayLastError, readError)
+                }
+            }
         }
     }
 
@@ -664,7 +750,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var canApplySettingsForCurrentConnection: Bool {
-        viewModel.capabilities.canEditVMResources
+        viewModel.capabilities.canEditRuntimeProviderResources
             || viewModel.capabilities.canEditNetworkExposure
             || viewModel.capabilities.canOpenLocalFiles
             || viewModel.capabilities.canResetAdminPassword
@@ -704,7 +790,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var statusBadge: some View {
-        Text(viewModel.presentationFormatter.runtimeStateText(viewModel.status.runtimeState))
+        Text(viewModel.presentationFormatter.runtimeStateText(viewModel.status.platformHealth))
             .font(.headline)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -714,7 +800,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var statusColor: Color {
-        switch viewModel.status.runtimeState {
+        switch viewModel.status.platformHealth {
         case .some(.healthy):
             return .green
         case .some(.installing), .some(.initializing), .some(.updating), .some(.recovering):

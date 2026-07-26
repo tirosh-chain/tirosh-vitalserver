@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "v1",
+  "control": {
+    "localAdministration": {
+      "transport": "unix-domain-socket",
+      "endpointAddress": "/Library/Application Support/VitalServerRuntimePlatform/control/host-agent.sock",
+      "descriptorPath": "/Library/Application Support/VitalServerRuntimePlatform/control/host-agent-administration.json",
+      "authorizedUserId": 501
+    },
+    "loopbackHTTP": {
+      "mode": "development-loopback",
+      "listenAddress": "127.0.0.1:18280"
+    },
+    "stateDatabasePath": "/Library/Application Support/VitalServerRuntimePlatform/state/host-agent.sqlite",
+    "guestTimeoutMilliseconds": 5000
+  },
+  "installation": {
+    "installationId": "vitalserver-runtime-platform-macos",
+    "productVersion": "0.1.0-dev",
+    "runtimeVersion": "0.1.0-dev",
+    "dataDirectory": "/Library/Application Support/VitalServerRuntimePlatform/data"
+  },
+  "guestRuntimeControlEndpoint": {
+    "id": "vitalserver-guest-runtime-control-endpoint",
+    "scheme": "http",
+    "host": "127.0.0.1",
+    "port": 18443
+  },
+  "operationalStateBackup": {
+    "scheduleId": "daily-primary",
+    "intervalSeconds": 86400,
+    "retryIntervalSeconds": 60,
+    "destinationReference": {
+      "resourceType": "guest-backup-destination",
+      "resourceId": "guest-local-operational-state"
+    },
+    "retentionPolicy": "retain-all"
+  },
+  "provider": {
+    "kind": "macos-virtualization",
+    "id": "vitalserver-macos-provider",
+    "macOSVirtualMachineSupervisorExecutablePath": "/Library/Application Support/VitalServerRuntimePlatform/bin/macos-virtual-machine-supervisor",
+    "macOSVirtualMachineConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/config/macos-virtual-machine.json"
+  },
+  "time": {
+    "hostNodeId": "vitalserver-macos-host",
+    "timeAuthorityId": "vitalserver-host-time",
+    "kind": "time-authority-outcome-profile",
+    "providerMode": "unsupported"
+  },
+  "telemetry": {
+    "kind": "telemetry-export-outcome-profile",
+    "pipelineMode": "unsupported",
+    "exportMode": "unavailable"
+  },
+  "updateBootstrap": {
+    "mode": "unavailable"
+  }
+}

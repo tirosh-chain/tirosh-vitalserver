@@ -1,61 +1,5 @@
 import Foundation
 
-public struct RuntimeGuestRuntimeStateObservation {
-    public let loadedState: GuestRuntimeStateDocument?
-    public let freshState: GuestRuntimeStateDocument?
-    public let isFresh: Bool
-    public let readIssue: RuntimeGuestRuntimeStateReadIssue?
-
-    public var isPresent: Bool {
-        loadedState != nil
-    }
-
-    public init(
-        loadedState: GuestRuntimeStateDocument?,
-        freshState: GuestRuntimeStateDocument?,
-        isFresh: Bool,
-        readIssue: RuntimeGuestRuntimeStateReadIssue? = nil
-    ) {
-        self.loadedState = loadedState
-        self.freshState = freshState
-        self.isFresh = isFresh
-        self.readIssue = readIssue
-    }
-}
-
-public enum RuntimeGuestRuntimeStateReadIssue: Equatable, Sendable {
-    case loadFailed(String)
-    case metadataReadFailed(String)
-}
-
-public extension RuntimeGuestRuntimeStateReadIssue {
-    var failureReason: RuntimeFailureReason {
-        switch self {
-        case .loadFailed(let message):
-            return .guestRuntimeStateLoadFailed(Self.failureToken(message))
-        case .metadataReadFailed(let message):
-            return .guestRuntimeStateMetadataReadFailed(Self.failureToken(message))
-        }
-    }
-
-    private static func failureToken(_ value: String) -> String {
-        value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .unicodeScalars
-            .map { scalar in
-                CharacterSet.alphanumerics.contains(scalar)
-                    || scalar == "-"
-                    || scalar == "_"
-                    || scalar == "."
-                    ? Character(scalar)
-                    : "_"
-            }
-            .prefix(80)
-            .map(String.init)
-            .joined()
-    }
-}
-
 public struct RuntimeContainerLogsMetadata {
     public let present: Bool
     public let bytes: UInt64?
@@ -70,52 +14,15 @@ public struct RuntimeContainerLogsMetadata {
     }
 }
 
-public enum RuntimeFileMetadataReadState: String, Codable, Equatable, Sendable {
-    case notRead
-    case loaded
-    case readFailed
-}
-
-public struct RuntimeFileModifiedAtReadResult {
-    public let readState: RuntimeFileMetadataReadState
-    public let updatedAt: String?
-    public let readError: String?
-
-    public init(
-        readState: RuntimeFileMetadataReadState? = nil,
-        updatedAt: String?,
-        readError: String?
-    ) {
-        self.readState = readState ?? RuntimeFileModifiedAtReadResult.readState(
-            updatedAt: updatedAt,
-            readError: readError
-        )
-        self.updatedAt = updatedAt
-        self.readError = readError
-    }
-
-    public static func notRead() -> RuntimeFileModifiedAtReadResult {
-        RuntimeFileModifiedAtReadResult(readState: .notRead, updatedAt: nil, readError: nil)
-    }
-
-    private static func readState(
-        updatedAt: String?,
-        readError: String?
-    ) -> RuntimeFileMetadataReadState {
-        if readError != nil {
-            return .readFailed
-        }
-        if updatedAt != nil {
-            return .loaded
-        }
-        return .notRead
-    }
+public enum RuntimeGuestControlReadinessRead: Equatable, Sendable {
+    case notReported
+    case loaded(vmIP: String?, readiness: RuntimeGuestControlReadiness)
+    case failed(vmIP: String?, message: String)
 }
 
 public enum RuntimeRecorderIngressStatusReadState: String, Codable, Equatable, Sendable {
     case notRead
     case loaded
-    case skippedMissingProxyPort
     case commandFailed
     case emptyResponse
     case outputInvalid
@@ -123,7 +30,7 @@ public enum RuntimeRecorderIngressStatusReadState: String, Codable, Equatable, S
     case readFailed
 }
 
-public struct RuntimeRecorderIngressStatusReadResult {
+public struct RuntimeRecorderIngressStatusReadResult: Codable, Equatable, Sendable {
     public let readState: RuntimeRecorderIngressStatusReadState
     public let httpStatus: String
     public let document: RuntimeRecorderIngressStatusDocument?
@@ -156,9 +63,6 @@ public struct RuntimeRecorderIngressStatusReadResult {
         guard let readError, !readError.isEmpty else {
             return .notRead
         }
-        if readError == RuntimeHTTPStatusText.missingProxyPort {
-            return .skippedMissingProxyPort
-        }
         if readError.hasPrefix("command-failed") {
             return .commandFailed
         }
@@ -172,6 +76,193 @@ public struct RuntimeRecorderIngressStatusReadResult {
             return .invalidResponse
         }
         return .readFailed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case readState
+        case httpStatus
+        case document
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let readState = try container.decode(RuntimeRecorderIngressStatusReadState.self, forKey: .readState)
+        let httpStatus = try container.decode(String.self, forKey: .httpStatus)
+        let document = try container.decodeRequiredNullable(
+            RuntimeRecorderIngressStatusDocument.self,
+            forKey: .document
+        )
+        let readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        try Self.validateDecoded(readState: readState, document: document, readError: readError)
+        self.readState = readState
+        self.httpStatus = httpStatus
+        self.document = document
+        self.readError = readError
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(readState, forKey: .readState)
+        try container.encode(httpStatus, forKey: .httpStatus)
+        if let document {
+            try container.encode(document, forKey: .document)
+        } else {
+            try container.encodeNil(forKey: .document)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+
+    private static func validateDecoded(
+        readState: RuntimeRecorderIngressStatusReadState,
+        document: RuntimeRecorderIngressStatusDocument?,
+        readError: String?
+    ) throws {
+        switch readState {
+        case .loaded:
+            if document == nil {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.document],
+                        debugDescription: "loaded recorder ingress status reads must include document"
+                    )
+                )
+            }
+            if !readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "loaded recorder ingress status reads must not include readError"
+                    )
+                )
+            }
+        case .commandFailed, .emptyResponse, .outputInvalid, .invalidResponse, .readFailed:
+            if readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "\(readState.rawValue) recorder ingress status reads must include readError"
+                    )
+                )
+            }
+        case .notRead:
+            break
+        }
+    }
+}
+
+public enum RuntimeRedisRelayStatusReadState: String, Codable, Equatable, Sendable {
+    case notRead
+    case loaded
+    case invalidResponse
+    case readFailed
+}
+
+public struct RuntimeRedisRelayStatusReadResult: Codable, Equatable, Sendable {
+    public let readState: RuntimeRedisRelayStatusReadState
+    public let document: RuntimeRedisRelayStatus?
+    public let readError: String?
+
+    public init(
+        readState: RuntimeRedisRelayStatusReadState? = nil,
+        document: RuntimeRedisRelayStatus?,
+        readError: String?
+    ) {
+        self.readState = readState ?? RuntimeRedisRelayStatusReadResult.readState(
+            document: document,
+            readError: readError
+        )
+        self.document = document
+        self.readError = readError
+    }
+
+    private static func readState(
+        document: RuntimeRedisRelayStatus?,
+        readError: String?
+    ) -> RuntimeRedisRelayStatusReadState {
+        if document != nil, readError == nil {
+            return .loaded
+        }
+        guard let readError, !readError.isEmpty else {
+            return .notRead
+        }
+        if readError.hasPrefix("decode-failed") {
+            return .invalidResponse
+        }
+        return .readFailed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case readState
+        case document
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let readState = try container.decode(RuntimeRedisRelayStatusReadState.self, forKey: .readState)
+        let document = try container.decodeRequiredNullable(RuntimeRedisRelayStatus.self, forKey: .document)
+        let readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        try Self.validateDecoded(readState: readState, document: document, readError: readError)
+        self.readState = readState
+        self.document = document
+        self.readError = readError
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(readState, forKey: .readState)
+        if let document {
+            try container.encode(document, forKey: .document)
+        } else {
+            try container.encodeNil(forKey: .document)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+
+    private static func validateDecoded(
+        readState: RuntimeRedisRelayStatusReadState,
+        document: RuntimeRedisRelayStatus?,
+        readError: String?
+    ) throws {
+        switch readState {
+        case .loaded:
+            if document == nil {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.document],
+                        debugDescription: "loaded Redis Relay status reads must include document"
+                    )
+                )
+            }
+            if !readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "loaded Redis Relay status reads must not include readError"
+                    )
+                )
+            }
+        case .invalidResponse, .readFailed:
+            if readError.isBlankOrMissing {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: [CodingKeys.readError],
+                        debugDescription: "\(readState.rawValue) Redis Relay status reads must include readError"
+                    )
+                )
+            }
+        case .notRead:
+            break
+        }
     }
 }
 
@@ -200,18 +291,17 @@ public struct RuntimeHealthObservationReads {
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
     public let vmLifecycleLoadResult: RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument>
-    public let guestRuntimeState: RuntimeGuestRuntimeStateObservation
+    public let guestAddressRead: RuntimeGuestAddressReadResult
+    public let guestControlReadiness: RuntimeGuestControlReadinessRead
     public let proxyPortReadState: RuntimeProxyPortReadState
     public let hostProxyHTTP: RuntimeHTTPProbeResult?
     public let redisUIHTTP: RuntimeHTTPProbeResult?
     public let swaggerUIHTTP: RuntimeHTTPProbeResult?
     public let recorderIngressStatus: RuntimeRecorderIngressStatusReadResult?
-    public let runtimeStateFileModifiedAt: RuntimeFileModifiedAtReadResult
+    public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     public let containerLogsMetadata: RuntimeContainerLogsMetadata
     public let proxyListenerObservation: RuntimeHostProxyListenerObservation?
-    public let guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>
     public let observedAt: Date
-    public let guestBootstrapFreshnessGraceSeconds: TimeInterval
 
     public init(
         vmExecutable: RuntimeFileState,
@@ -222,18 +312,17 @@ public struct RuntimeHealthObservationReads {
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
         vmLifecycleLoadResult: RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument>,
-        guestRuntimeState: RuntimeGuestRuntimeStateObservation,
+        guestAddressRead: RuntimeGuestAddressReadResult = .notReported,
+        guestControlReadiness: RuntimeGuestControlReadinessRead = .notReported,
         proxyPortReadState: RuntimeProxyPortReadState,
         hostProxyHTTP: RuntimeHTTPProbeResult?,
         redisUIHTTP: RuntimeHTTPProbeResult?,
         swaggerUIHTTP: RuntimeHTTPProbeResult?,
         recorderIngressStatus: RuntimeRecorderIngressStatusReadResult?,
-        runtimeStateFileModifiedAt: RuntimeFileModifiedAtReadResult,
+        vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument> = .notReported,
         containerLogsMetadata: RuntimeContainerLogsMetadata,
         proxyListenerObservation: RuntimeHostProxyListenerObservation?,
-        guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>,
-        observedAt: Date,
-        guestBootstrapFreshnessGraceSeconds: TimeInterval
+        observedAt: Date
     ) {
         self.vmExecutable = vmExecutable
         self.proxyExecutable = proxyExecutable
@@ -243,17 +332,45 @@ public struct RuntimeHealthObservationReads {
         self.proxyService = proxyService
         self.watchdogService = watchdogService
         self.vmLifecycleLoadResult = vmLifecycleLoadResult
-        self.guestRuntimeState = guestRuntimeState
+        self.guestAddressRead = guestAddressRead
+        self.guestControlReadiness = guestControlReadiness
         self.proxyPortReadState = proxyPortReadState
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
         self.recorderIngressStatus = recorderIngressStatus
-        self.runtimeStateFileModifiedAt = runtimeStateFileModifiedAt
+        self.vitalDBObservation = vitalDBObservation
         self.containerLogsMetadata = containerLogsMetadata
         self.proxyListenerObservation = proxyListenerObservation
-        self.guestBootstrapResult = guestBootstrapResult
         self.observedAt = observedAt
-        self.guestBootstrapFreshnessGraceSeconds = guestBootstrapFreshnessGraceSeconds
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeRequiredNullable<T: Decodable>(
+        _ type: T.Type,
+        forKey key: Key
+    ) throws -> T? {
+        guard contains(key) else {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: codingPath + [key],
+                    debugDescription: "Missing required nullable field '\(key.stringValue)'"
+                )
+            )
+        }
+        return try decodeIfPresent(type, forKey: key)
+    }
+}
+
+private extension Optional where Wrapped == String {
+    var isBlankOrMissing: Bool {
+        switch self {
+        case .none:
+            return true
+        case let .some(value):
+            return value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 }

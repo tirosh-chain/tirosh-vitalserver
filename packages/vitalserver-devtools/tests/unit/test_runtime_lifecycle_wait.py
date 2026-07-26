@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import subprocess
 from types import SimpleNamespace
 
@@ -7,23 +8,54 @@ import pytest
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
     begin_runtime_boot_smoke_run,
     force_stop_runtime,
+    print_runtime_guest_address_proxy_upstream,
     require_no_running_runtime,
     running_vm_processes_for_home,
     wait_for_rootfs_ready,
     wait_for_runtime_boot_smoke,
+    wait_for_runtime_http,
+    wait_for_runtime_ip,
     wait_for_runtime_stopped,
 )
 from tirosh_vitalserver.devtools.application.inputs import (
     RuntimeBootSmokeRunInput,
+    RuntimeGuestAddressOwnerInput,
     RuntimeVmHomeInput,
     RuntimeWaitInput,
 )
 
 
+def write_vm_lifecycle_owner(
+    vm_home,
+    *,
+    state,
+    terminal_reason=None,
+    message=None,
+):
+    database = vm_home / "runtime/runtime-state.sqlite"
+    database.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE vm_lifecycle (
+              singleton_id INTEGER PRIMARY KEY,
+              state TEXT NOT NULL,
+              terminal_reason TEXT,
+              message TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO vm_lifecycle(singleton_id, state, terminal_reason, message)
+            VALUES (1, ?, ?, ?)
+            """,
+            (state, terminal_reason, message),
+        )
+
+
 def test_wait_for_runtime_stopped_accepts_stopped_lifecycle(tmp_path):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopped")
 
     result = wait_for_runtime_stopped(
         RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
@@ -32,20 +64,149 @@ def test_wait_for_runtime_stopped_accepts_stopped_lifecycle(tmp_path):
     assert result == 0
 
 
+def test_wait_for_runtime_ip_reads_vm_ip_bootstrap_file_not_runtime_observation(
+    capsys,
+    tmp_path,
+):
+    run_dir = tmp_path / "data/run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
+    (run_dir / "runtime-observation.json").write_text(
+        json.dumps({"vmIP": "192.168.64.99"}),
+        encoding="utf-8",
+    )
+
+    result = wait_for_runtime_ip(
+        RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "Waiting for VM IP bootstrap file:" in output
+    assert "VM IP: 192.168.64.8" in output
+    assert "runtime-observation" not in output
+
+
+def test_wait_for_runtime_http_uses_direct_probe_not_runtime_observation_guest_http(
+    capsys,
+    monkeypatch,
+    tmp_path,
+):
+    run_dir = tmp_path / "data/run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
+    (run_dir / "runtime-observation.json").write_text(
+        json.dumps({"guestHTTP": "503"}),
+        encoding="utf-8",
+    )
+    observed_addresses: list[str] = []
+
+    def probe(address: str) -> tuple[bool, str]:
+        observed_addresses.append(address)
+        return True, "root=200 recorder-ingress=200"
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".probe_guest_runtime_http",
+        probe,
+    )
+
+    result = wait_for_runtime_http(
+        RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert observed_addresses == ["192.168.64.8"]
+    assert "VM HTTP ready: upstream=http://192.168.64.8:80" in output
+    assert "guestHTTP" not in output
+    assert "runtime-observation" not in output
+
+
+def test_runtime_proxy_upstream_publishes_bootstrap_and_prints_owner_address(
+    capsys,
+    monkeypatch,
+    tmp_path,
+):
+    run_dir = tmp_path / "data/run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
+    calls: list[tuple[str, str, dict[str, str] | None]] = []
+
+    def request(
+        input: RuntimeGuestAddressOwnerInput,
+        *,
+        method: str,
+        path: str,
+        body: dict[str, str] | None,
+    ) -> dict[str, object]:
+        calls.append((method, path, body))
+        if method == "PUT":
+            return loaded_guest_address_state("192.168.64.8")
+        return loaded_guest_address_state("192.168.64.10")
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".runtime_control_guest_address_request",
+        request,
+    )
+
+    result = print_runtime_guest_address_proxy_upstream(
+        guest_address_owner_input(tmp_path)
+    )
+
+    assert result == 0
+    assert capsys.readouterr().out == "192.168.64.10:80\n"
+    assert calls == [
+        ("PUT", "/platform/runtime-endpoint", {"address": "192.168.64.8"}),
+        ("GET", "/platform/runtime-endpoint", None),
+    ]
+
+
+def test_runtime_proxy_upstream_does_not_fallback_to_vm_ip_when_owner_missing(
+    monkeypatch,
+    tmp_path,
+):
+    run_dir = tmp_path / "data/run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "vm-ip").write_text("192.168.64.8\n", encoding="utf-8")
+
+    def request(
+        input: RuntimeGuestAddressOwnerInput,
+        *,
+        method: str,
+        path: str,
+        body: dict[str, str] | None,
+    ) -> dict[str, object]:
+        if method == "PUT":
+            return loaded_guest_address_state("192.168.64.8")
+        return {"state": "missing", "readError": "Guest address resource missing"}
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".runtime_control_guest_address_request",
+        request,
+    )
+
+    with pytest.raises(SystemExit, match="Guest address owner is not loaded"):
+        print_runtime_guest_address_proxy_upstream(guest_address_owner_input(tmp_path))
+
+
 def test_wait_for_runtime_stopped_rejects_stopping_lifecycle_with_running_process(
     monkeypatch,
     tmp_path,
 ):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(json.dumps({"state": "stopping"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopping")
     monkeypatch.setattr(
         "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
         ".running_vm_processes_for_home",
         lambda vm_home: [1234],
     )
 
-    with pytest.raises(SystemExit, match="timed out waiting for VM lifecycle stopped"):
+    with pytest.raises(
+        SystemExit,
+        match="timed out waiting for VM lifecycle and launcher process stopped",
+    ):
         wait_for_runtime_stopped(
             RuntimeWaitInput(
                 config=tmp_path / "config.toml",
@@ -55,17 +216,55 @@ def test_wait_for_runtime_stopped_rejects_stopping_lifecycle_with_running_proces
         )
 
 
-def test_wait_for_runtime_stopped_accepts_stopping_lifecycle_without_process(
+def test_wait_for_runtime_stopped_rejects_stopping_lifecycle_without_process(
     monkeypatch,
     tmp_path,
 ):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(json.dumps({"state": "stopping"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopping")
     monkeypatch.setattr(
         "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
         ".running_vm_processes_for_home",
         lambda vm_home: [],
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            r"launcher process exited before VM lifecycle reached "
+            r"stopped.*state=stopping"
+        ),
+    ):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_waits_for_process_after_stopped_lifecycle(
+    monkeypatch,
+    tmp_path,
+):
+    write_vm_lifecycle_owner(tmp_path, state="stopped")
+    process_reads = iter(([1234], []))
+    observed_process_states: list[list[int]] = []
+
+    def running_processes(_vm_home):
+        state = next(process_reads)
+        observed_process_states.append(state)
+        return state
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        running_processes,
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.sleep",
+        lambda _seconds: None,
     )
 
     result = wait_for_runtime_stopped(
@@ -73,20 +272,15 @@ def test_wait_for_runtime_stopped_accepts_stopping_lifecycle_without_process(
     )
 
     assert result == 0
+    assert observed_process_states == [[1234], []]
 
 
 def test_wait_for_runtime_stopped_rejects_failed_lifecycle(tmp_path):
-    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
-    lifecycle.parent.mkdir(parents=True)
-    lifecycle.write_text(
-        json.dumps(
-            {
-                "state": "failed",
-                "terminalReason": "guest-kernel-panic",
-                "message": "guest kernel panic detected",
-            }
-        ),
-        encoding="utf-8",
+    write_vm_lifecycle_owner(
+        tmp_path,
+        state="failed",
+        terminal_reason="guest-kernel-panic",
+        message="guest kernel panic detected",
     )
 
     with pytest.raises(SystemExit, match="VM lifecycle failed while waiting"):
@@ -95,6 +289,70 @@ def test_wait_for_runtime_stopped_rejects_failed_lifecycle(tmp_path):
                 config=tmp_path / "config.toml",
                 vm_home=tmp_path,
                 timeout=1,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_ignores_stale_json_diagnostic(
+    monkeypatch,
+    tmp_path,
+):
+    diagnostic = tmp_path / "run/vm-lifecycle.json"
+    diagnostic.parent.mkdir(parents=True)
+    diagnostic.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_vm_lifecycle_owner(tmp_path, state="stopping")
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        lambda _: [28454],
+    )
+
+    with pytest.raises(SystemExit, match=r"state=stopping.*pids=28454"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_rejects_missing_sqlite_owner(tmp_path):
+    with pytest.raises(SystemExit, match="VM lifecycle SQLite owner is missing"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_rejects_invalid_sqlite_owner(tmp_path):
+    database = tmp_path / "runtime/runtime-state.sqlite"
+    database.parent.mkdir(parents=True)
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE unrelated(value TEXT)")
+
+    with pytest.raises(SystemExit, match="VM lifecycle SQLite owner read failed"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_rejects_invalid_sqlite_state(tmp_path):
+    write_vm_lifecycle_owner(tmp_path, state="unknown")
+
+    with pytest.raises(SystemExit, match="VM lifecycle SQLite state is invalid"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
             )
         )
 
@@ -113,6 +371,21 @@ def test_wait_for_rootfs_ready_accepts_matching_marker_and_manifest(tmp_path):
     )
 
     assert result == 0
+
+
+def test_wait_for_rootfs_ready_rejects_missing_guest_tools_dependency_proof(tmp_path):
+    write_rootfs_manifest(tmp_path, run_id="run-test")
+    write_rootfs_marker(tmp_path, run_id="run-test", python_dependencies=None)
+
+    with pytest.raises(SystemExit, match="Guest Tools dependency proof"):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
+            )
+        )
 
 
 def test_wait_for_rootfs_ready_rejects_failed_manifest_even_with_marker(tmp_path):
@@ -148,6 +421,219 @@ def test_wait_for_rootfs_ready_rejects_manifest_without_run_id(tmp_path):
                 config=tmp_path / "config.toml",
                 vm_home=tmp_path,
                 timeout=1,
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_extends_inactivity_deadline_on_manifest_progress(
+    monkeypatch,
+    tmp_path,
+):
+    write_rootfs_manifest(
+        tmp_path,
+        run_id="run-test",
+        cleanup_status="running",
+        updated_at="2026-07-15T06:26:09Z",
+    )
+    clock = [0.0]
+    sleep_count = [0]
+
+    def sleep(_seconds):
+        sleep_count[0] += 1
+        clock[0] += 0.75
+        if sleep_count[0] == 1:
+            write_rootfs_manifest(
+                tmp_path,
+                run_id="run-test",
+                cleanup_status="running",
+                updated_at="2026-07-15T06:26:10Z",
+            )
+        elif sleep_count[0] == 2:
+            write_rootfs_manifest(
+                tmp_path,
+                run_id="run-test",
+                cleanup_status="passed",
+                updated_at="2026-07-15T06:26:11Z",
+            )
+            write_rootfs_marker(tmp_path, run_id="run-test")
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.monotonic",
+        lambda: clock[0],
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.sleep",
+        sleep,
+    )
+
+    result = wait_for_rootfs_ready(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="run-test",
+        )
+    )
+
+    assert result == 0
+    assert clock[0] == 1.5
+
+
+def test_wait_for_rootfs_ready_extends_inactivity_deadline_on_apt_plan_progress(
+    monkeypatch,
+    tmp_path,
+):
+    clock = [0.0]
+    sleep_count = [0]
+
+    def sleep(_seconds):
+        sleep_count[0] += 1
+        clock[0] += 0.75
+        if sleep_count[0] == 1:
+            write_rootfs_apt_plan(
+                tmp_path,
+                run_id="run-test",
+                status="allowed",
+                blocked=[],
+            )
+        elif sleep_count[0] == 2:
+            write_rootfs_manifest(tmp_path, run_id="run-test")
+            write_rootfs_marker(tmp_path, run_id="run-test")
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.monotonic",
+        lambda: clock[0],
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.sleep",
+        sleep,
+    )
+
+    result = wait_for_rootfs_ready(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="run-test",
+        )
+    )
+
+    assert result == 0
+    assert clock[0] == 1.5
+
+
+def test_wait_for_rootfs_ready_extends_deadline_during_apt_commands(
+    monkeypatch,
+    tmp_path,
+):
+    write_rootfs_apt_progress(
+        tmp_path,
+        run_id="run-test",
+        status="running",
+        updated_at="2026-07-24T06:01:20Z",
+    )
+    clock = [0.0]
+    sleep_count = [0]
+
+    def sleep(_seconds):
+        sleep_count[0] += 1
+        clock[0] += 0.75
+        if sleep_count[0] == 1:
+            write_rootfs_apt_progress(
+                tmp_path,
+                run_id="run-test",
+                stage="apt-install",
+                status="running",
+                updated_at="2026-07-24T06:01:50Z",
+            )
+        elif sleep_count[0] == 2:
+            write_rootfs_manifest(tmp_path, run_id="run-test")
+            write_rootfs_marker(tmp_path, run_id="run-test")
+
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.monotonic",
+        lambda: clock[0],
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".time.sleep",
+        sleep,
+    )
+
+    result = wait_for_rootfs_ready(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="run-test",
+        )
+    )
+
+    assert result == 0
+    assert clock[0] == 1.5
+
+
+def test_wait_for_rootfs_ready_rejects_failed_apt_progress(tmp_path):
+    write_rootfs_apt_progress(
+        tmp_path,
+        run_id="run-test",
+        status="failed",
+        updated_at="2026-07-24T06:11:20Z",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=r"rootfs apt command failed.*stage=apt-index-update",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_reports_cleanup_command_failure(tmp_path):
+    write_rootfs_manifest(
+        tmp_path,
+        run_id="run-test",
+        cleanup_status="cleanup-failed",
+        updated_at="2026-07-15T06:26:46Z",
+    )
+    manifest = tmp_path / "data/run/rootfs-runtime-manifest.json"
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    document["cleanup"]["commands"] = [
+        {
+            "name": "docker-system-prune",
+            "status": "failed",
+            "exitCode": 1,
+            "message": "Deleted Images\nconnection reset by peer",
+            "stdout": "Deleted Images",
+            "stderr": "connection reset by peer",
+        }
+    ]
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            r"rootfs cleanup failed.*command=docker-system-prune.*"
+            r"exitCode=1.*reason=connection reset by peer.*manifest="
+        ),
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
             )
         )
 
@@ -273,11 +759,37 @@ def test_wait_for_runtime_boot_smoke_accepts_passed_manifest(tmp_path, capsys):
     assert "runId=runtime-run-test" in captured.out
 
 
+def test_wait_for_runtime_boot_smoke_accepts_passed_manifest_without_retired_stage(
+    tmp_path,
+    capsys,
+):
+    write_runtime_boot_smoke_manifest(
+        tmp_path,
+        run_id="runtime-run-test",
+        stage_statuses={"command-dispatch": ("missing", "")},
+    )
+
+    result = wait_for_runtime_boot_smoke(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="runtime-run-test",
+        )
+    )
+
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "SUCCESS: runtime boot smoke passed" in captured.out
+
+
 def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
     write_runtime_boot_smoke_manifest(
         tmp_path,
         run_id="runtime-run-test",
-        stage_statuses={"runtime-state": ("failed", "runtime state is invalid")},
+        stage_statuses={
+            "runtime-observation": ("failed", "runtime observation is invalid")
+        },
     )
 
     with pytest.raises(SystemExit) as error:
@@ -294,6 +806,67 @@ def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
     assert "runId=runtime-run-test" in message
     assert "runtime-boot-smoke-manifest.json" in message
     assert "Check VM launcher log" in message
+
+
+def test_wait_for_runtime_boot_smoke_rejects_failed_bootstrap_result(tmp_path):
+    bootstrap_result = tmp_path / "data/run/bootstrap-result.json"
+    bootstrap_result.parent.mkdir(parents=True)
+    bootstrap_result.write_text(
+        json.dumps(
+            {
+                "status": "failed",
+                "message": "Guest bootstrap failed before completion.",
+                "reasonCodes": ["guest-bootstrap-failed"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit) as error:
+        wait_for_runtime_boot_smoke(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="runtime-run-test",
+            )
+        )
+
+    message = str(error.value)
+    assert "runtime boot smoke bootstrap failed" in message
+    assert "runId=runtime-run-test" in message
+    assert "stage=bootstrap-result" in message
+    assert "guest-bootstrap-failed" in message
+    assert str(bootstrap_result) in message
+    assert "Check VM launcher log" in message
+
+
+def test_wait_for_runtime_boot_smoke_rejects_failed_guest_control_stage(tmp_path):
+    write_runtime_boot_smoke_manifest(
+        tmp_path,
+        run_id="runtime-run-test",
+        stage_statuses={
+            "guest-control-api": (
+                "failed",
+                "runtime HTTP JSON request failed: timed out",
+            ),
+            "disk-health": ("missing", ""),
+        },
+    )
+
+    with pytest.raises(SystemExit) as error:
+        wait_for_runtime_boot_smoke(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="runtime-run-test",
+            )
+        )
+    message = str(error.value)
+    assert "runtime boot smoke stage failed" in message
+    assert "name=guest-control-api" in message
+    assert "timed out" in message
 
 
 def test_wait_for_runtime_boot_smoke_rejects_stale_run_id(tmp_path):
@@ -333,6 +906,11 @@ def test_begin_runtime_boot_smoke_run_invalidates_stale_proof(monkeypatch, tmp_p
         lambda: tmp_path,
     )
     write_runtime_boot_smoke_manifest(tmp_path / "vm", run_id="stale-run")
+    bootstrap_result = tmp_path / "vm/data/run/bootstrap-result.json"
+    bootstrap_result.write_text(
+        json.dumps({"status": "failed"}),
+        encoding="utf-8",
+    )
     lifecycle = tmp_path / "vm/run/vm-lifecycle.json"
     lifecycle.parent.mkdir(parents=True, exist_ok=True)
     lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
@@ -347,15 +925,15 @@ def test_begin_runtime_boot_smoke_run_invalidates_stale_proof(monkeypatch, tmp_p
 
     assert result == 0
     assert not (tmp_path / "vm/data/run/runtime-boot-smoke-manifest.json").exists()
+    assert not bootstrap_result.exists()
     assert not lifecycle.exists()
     context = json.loads(
-        (tmp_path / "vm/run/runtime-boot-smoke-run.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / "vm/run/runtime-boot-smoke-run.json").read_text(encoding="utf-8")
     )
     assert context["runId"] == "runtime-run-test"
     assert context["removedStaleProof"] == [
         str(tmp_path / "vm/data/run/runtime-boot-smoke-manifest.json"),
+        str(bootstrap_result),
         str(tmp_path / "vm/run/vm-lifecycle.json"),
     ]
 
@@ -669,8 +1247,7 @@ def test_force_stop_runtime_sends_sigkill_when_sigterm_leaves_process(
         lambda vm_home: next(calls),
     )
     monkeypatch.setattr(
-        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
-        ".os.kill",
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle.os.kill",
         lambda pid, signal: signals.append((pid, signal)),
     )
 
@@ -699,8 +1276,7 @@ def test_force_stop_runtime_accepts_no_process(monkeypatch, tmp_path):
         lambda vm_home: [],
     )
     monkeypatch.setattr(
-        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
-        ".os.kill",
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle.os.kill",
         lambda pid, signal: signals.append((pid, signal)),
     )
 
@@ -721,9 +1297,11 @@ def write_rootfs_manifest(
     *,
     run_id: str,
     stage_statuses: dict[str, tuple[str, str]] | None = None,
+    cleanup_status: str = "passed",
+    updated_at: str | None = None,
 ) -> None:
     manifest = vm_home / "data/run/rootfs-runtime-manifest.json"
-    manifest.parent.mkdir(parents=True)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
     stage_statuses = stage_statuses or {}
     stages = []
     for name in (
@@ -754,15 +1332,24 @@ def write_rootfs_manifest(
             {
                 "schemaVersion": 2,
                 "runId": run_id,
+                **({"updatedAt": updated_at} if updated_at is not None else {}),
                 "stages": stages,
-                "cleanup": {"status": "passed", "message": "cleanup passed"},
+                "cleanup": {
+                    "status": cleanup_status,
+                    "message": f"cleanup {cleanup_status}",
+                },
             }
         ),
         encoding="utf-8",
     )
 
 
-def write_rootfs_marker(vm_home, *, run_id: str) -> None:
+def write_rootfs_marker(
+    vm_home,
+    *,
+    run_id: str,
+    python_dependencies: dict[str, object] | None | bool = True,
+) -> None:
     marker = vm_home / "data/run/rootfs-ready"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(
@@ -771,6 +1358,23 @@ def write_rootfs_marker(vm_home, *, run_id: str) -> None:
                 "schemaVersion": 1,
                 "runId": run_id,
                 "readyAt": "2026-06-11T00:00:02Z",
+                **(
+                    {
+                        "pythonDependencies": {
+                            "status": "passed",
+                            "proof": "/opt/tirosh/guest-tools/install-proof.json",
+                            "target": "linux-aarch64",
+                            "dependencies": {
+                                "alembic": "1.16.5",
+                                "sqlalchemy": "2.0.51",
+                            },
+                        }
+                    }
+                    if python_dependencies is True
+                    else {"pythonDependencies": python_dependencies}
+                    if isinstance(python_dependencies, dict)
+                    else {}
+                ),
             }
         ),
         encoding="utf-8",
@@ -794,6 +1398,7 @@ def write_rootfs_failure(
                 "stage": stage,
                 "exitCode": exit_code,
                 "reason": "guest-rootfs-prepare-failed",
+                "aptProgressPath": "/mnt/tirosh/run/rootfs-apt-progress.json",
                 "aptPlanPath": "/mnt/tirosh/run/rootfs-apt-plan.json",
             }
         ),
@@ -805,6 +1410,7 @@ def write_rootfs_apt_plan(
     vm_home,
     *,
     run_id: str,
+    stage: str = "apt-index-update",
     status: str,
     blocked: list[str],
 ) -> None:
@@ -815,6 +1421,7 @@ def write_rootfs_apt_plan(
             {
                 "schemaVersion": 1,
                 "runId": run_id,
+                "generatedAt": "2026-07-21T07:19:04Z",
                 "status": status,
                 "snapshot": "20250313T000000Z",
                 "blockedUpgrades": blocked,
@@ -822,6 +1429,53 @@ def write_rootfs_apt_plan(
         ),
         encoding="utf-8",
     )
+
+
+def write_rootfs_apt_progress(
+    vm_home,
+    *,
+    run_id: str,
+    stage: str = "apt-index-update",
+    status: str,
+    updated_at: str,
+) -> None:
+    apt_progress = vm_home / "data/run/rootfs-apt-progress.json"
+    apt_progress.parent.mkdir(parents=True, exist_ok=True)
+    apt_progress.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": run_id,
+                "stage": stage,
+                "status": status,
+                "updatedAt": updated_at,
+                "activeCommand": "apt-get update",
+                "activeCommandTimeoutSeconds": 1800,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def guest_address_owner_input(vm_home) -> RuntimeGuestAddressOwnerInput:
+    return RuntimeGuestAddressOwnerInput(
+        config=vm_home / "config.toml",
+        vm_home=vm_home,
+        runtime_control_api_base_url="http://127.0.0.1:18321",
+        runtime_control_api_token="token",
+        runtime_control_api_token_header="X-Runtime-Control-Token",
+        runtime_control_api_timeout=2.0,
+    )
+
+
+def loaded_guest_address_state(address: str) -> dict[str, object]:
+    return {
+        "state": "loaded",
+        "read": {
+            "state": "loaded",
+            "address": address,
+        },
+    }
 
 
 def write_runtime_boot_smoke_manifest(
@@ -836,15 +1490,19 @@ def write_runtime_boot_smoke_manifest(
     stages = []
     for name in (
         "bootstrap-result",
-        "runtime-state",
+        "runtime-observation",
         "systemd-units",
+        "runtime-data",
         "http",
         "compose-services",
+        "guest-control-api",
         "disk-health",
         "capabilities",
         "command-dispatch",
         "feature-readiness",
     ):
+        if stage_statuses.get(name, ("", ""))[0] == "missing":
+            continue
         status, message = stage_statuses.get(name, ("passed", f"{name} passed"))
         stages.append(
             {
@@ -861,7 +1519,12 @@ def write_runtime_boot_smoke_manifest(
             {
                 "schemaVersion": 1,
                 "runId": run_id,
-                "status": "failed" if stage_statuses else "passed",
+                "status": "failed"
+                if any(
+                    status in {"failed", "timeout", "cleanup-failed"}
+                    for status, _ in stage_statuses.values()
+                )
+                else "passed",
                 "stages": stages,
             }
         ),

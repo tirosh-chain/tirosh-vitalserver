@@ -3,12 +3,20 @@ import RuntimeControl
 import Contracts
 import Errors
 
+enum RuntimePlatformSettingsPresentationState: Equatable {
+    case notRead
+    case loaded
+    case failed([RuntimeSettingsReadIssue])
+}
+
 @MainActor
 public final class RuntimeViewModel: ObservableObject {
-    @Published var status: RuntimeStatus
+    @Published var status: PlatformState
+    @Published var operationState: PlatformOperationState
     @Published private(set) var runtimeSettings = RuntimeSettings()
     @Published private(set) var savedSettings = RuntimeSettings()
     @Published var settings = RuntimeSettings()
+    @Published private(set) var platformSettingsReadState: RuntimePlatformSettingsPresentationState = .notRead
     @Published var selectedBundleURL: URL?
     @Published var selectedBundleSummary = ""
     @Published var selectedBundleVerification = ""
@@ -57,41 +65,67 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var runtimeEventFilter = ""
     @Published var vitalDBObservationSnapshot = RuntimeVitalDBObservationSnapshot.unavailable()
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
+    @Published var vitalBeds = RuntimeVitalBedHistory()
     @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
-    @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
-    @Published var containerObservation: RuntimeContainerObservation?
+    @Published var recorderVitalFileHistories: [String: RuntimeVitalRecorderVitalFileHistory] = [:]
+    @Published var recorderObservabilityDetails: [String: RuntimeRecorderObservabilityDetail] = [:]
+    @Published var recorderObservabilityIncidents: [String: RuntimeRecorderObservabilityIncidents] = [:]
+    @Published var vitalRelationships = RuntimeVitalRelationshipHistory() {
+        didSet {
+            vitalRelationshipPresentationIndex = RuntimeVitalRelationshipPresentationIndex(
+                history: vitalRelationships
+            )
+        }
+    }
+    private var vitalRelationshipPresentationIndex = RuntimeVitalRelationshipPresentationIndex()
+    @Published var redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
+        readState: .notRead,
+        document: nil,
+        readError: nil
+    )
+    @Published private(set) var runtimeRedisRelaySettingsRead = RuntimeRedisRelaySettingsRead(
+        state: .unavailable,
+        settings: nil,
+        readError: "Runtime Redis Relay settings have not been read."
+    )
+    @Published var runtimeStackStatus: RuntimeGuestControlStackStatus?
+    @Published var runtimeStackReadError: String?
+    @Published var runtimeServiceResources: [RuntimeGuestServiceResource] = []
+    @Published var runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = []
+    @Published var isRunningVitalDBVisibilityAction = false
+    @Published var vitalDBVisibilityActionMessage = ""
     @Published var remoteConsoleHTTP: String?
     @Published var remoteConsoleStartedAt: String?
-    @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
-    @Published var selectedTestKitSessionID = ""
-    @Published var selectedTestKitBedRoomNames: Set<String> = []
-    @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
-    @Published var testKitOrphanVrcode = ""
-    @Published var testKitScenario = RuntimeTestKitScenario.normalMonitoring
-    @Published var testKitSignalQuality = RuntimeTestKitSignalQuality.clean
-    @Published var testKitRecorderCondition = RuntimeTestKitRecorderCondition.normal
-    @Published var testKitRecorderSourceMode = RuntimeTestKitRecorderSourceMode.generated
-    @Published var testKitVitalFilePath = ""
-    @Published var testKitVitalFileScenario = RuntimeTestKitVitalFileScenario.basicMonitor
-    @Published var testKitVitalFileStartOffsetSeconds = 0.0
-    @Published var testKitVitalFileDurationSeconds = 120.0
-    @Published var testKitRecorderCount = 1
-    @Published var testKitBedCount = 1
-    @Published var testKitBedPrefix = "testbed"
-    @Published var testKitAppendRandomBedSuffix = true
-    @Published var testKitIntervalSeconds = 1.0
-    @Published var testKitDurationSeconds = 0.0
-    @Published var testKitMaxMessages = 0
-    @Published var testKitShiftTime = true
-    @Published var testKitGenerateFrames = true
-    @Published var isRunningTestKitAction = false
-    @Published var testKitActionMessage = ""
-    @Published var testKitActionMessageTone = RuntimeTestKitActionMessageTone.neutral
+    @Published var labScenarios = RuntimeLabScenarioList.unavailable(readError: "Product Lab scenarios have not been loaded.")
+    @Published var labVitalFiles = RuntimeLabVitalFileList.unavailable(readError: "Product Lab .vital files have not been loaded.")
+    @Published var labBeds = RuntimeLabBedList.unavailable(readError: "Product Lab beds have not been loaded.")
+    @Published var labRecorders = RuntimeLabRecorderList.unavailable(readError: "Product Lab recorders have not been loaded.")
+    @Published var labSessions = RuntimeLabSessionList.unavailable(readError: "Product Lab sessions have not been loaded.")
+    @Published var selectedLabScenarioID = ""
+    @Published var selectedLabVitalFileRelativePath = ""
+    @Published var labVitalFileQuery = ""
+    @Published var selectedLabBedID = ""
+    @Published var selectedLabRecorderID = ""
+    @Published var labSessionName = ""
+    @Published var labSessionBedIDs = ""
+    @Published var labRecorderCount = 1
+    @Published var labBedCount = 1
+    @Published var labBedPrefix = "Lab bed"
+    @Published var labTargetURL = "http://edge/"
+    @Published var selectedLabSessionID = ""
+    @Published var labSessionResponse = RuntimeLabSessionResponse.unavailable(readError: "No Product Lab session has been selected.")
+    @Published var labVitalFileUploadSources: [URL] = []
+    @Published var labVitalFileImportMessage = ""
+    @Published var labVitalFileImportFailed = false
+    @Published var labVitalFileReplayResourceMode = RuntimeLabVitalFileReplayResourceMode.quickCreate
+    @Published var labVitalFileReplayRepeatMode = RuntimeLabVitalFileReplayRepeatMode.once
+    @Published var labVitalFileReplayCount = 2
+    @Published var isRunningLabAction = false
+    @Published var labActionMessage = ""
+    @Published var labActionMessageTone = RuntimeLabActionMessageTone.neutral
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
-    let testKitController: (any RuntimeTestKitControlling)?
-    private let localAPISettings: (any RuntimeControlLocalAPISettingsApplying)?
     private let snapshots: RuntimePresentationSnapshotLoader
     private let statusRefresher: RuntimeStatusRefresher
     private let observabilityRefresher: RuntimeObservabilityRefresher
@@ -102,7 +136,6 @@ public final class RuntimeViewModel: ObservableObject {
     let backupSelectionPolicy = RuntimeBackupSelectionPolicy()
     let presentationFormatter = RuntimePresentationFormatter()
     let updateBundleVerifier = RuntimeUpdateBundleVerifier()
-    let testKitPresentationPolicy = RuntimeTestKitPresentationPolicy()
     let navigationCoordinator = RuntimeNavigationCoordinator()
     private let settingsValidator = RuntimeSettingsValidator()
     private let vitalFilesDirectoryPolicy = RuntimeVitalFilesDirectoryPolicy()
@@ -110,41 +143,37 @@ public final class RuntimeViewModel: ObservableObject {
     public init(
         controlClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
-        testKitController: (any RuntimeTestKitControlling)? = nil,
         snapshotReader: (any RuntimeViewModelSnapshotReading)? = nil,
         initialSettings: RuntimeSettings? = nil,
-        initialStatus: RuntimeStatus? = nil,
-        localAPISettings: (any RuntimeControlLocalAPISettingsApplying)? = nil,
+        initialStatus: PlatformState? = nil,
         healthNotifications: any HealthNotifying = NoopHealthNotifier(),
         nativeShell: any RuntimeNativeShell = NoopRuntimeNativeShell(),
         helperMessageLog: any RuntimeHelperMessageLogging = NoopRuntimeHelperMessageLog()
     ) {
         self.controlClient = controlClient
         self.hostClient = hostClient
-        self.testKitController = testKitController
-        self.localAPISettings = localAPISettings
         self.helperMessageLog = helperMessageLog
         let loadedSettings = initialSettings ?? controlClient.loadSettings()
-        let resolvedSettings = localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
         let displaySettings = Self.settingsWithAdvertisedServiceURLPresets(
-            resolvedSettings,
+            loadedSettings,
             fillMissing: initialSettings == nil
         )
         let displayRuntimeSettings = Self.settingsWithAdvertisedServiceURLPresets(
             displaySettings.runtimeAppliedSettings,
             fillMissing: initialSettings == nil
         )
-        let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: displayRuntimeSettings)
+        let resolvedStatus = initialStatus ?? controlClient.loadPlatformState(settings: displayRuntimeSettings)
+        let resolvedOperationState = controlClient.loadOperationState()
         self.runtimeSettings = displayRuntimeSettings
         self.savedSettings = displaySettings
         self.settings = displaySettings
+        self.platformSettingsReadState = Self.platformSettingsPresentationState(for: loadedSettings)
         self.status = resolvedStatus
-        self.containerObservation = resolvedStatus.containerObservation
+        self.operationState = resolvedOperationState
         let snapshots = RuntimePresentationSnapshotLoader(
             controlClient: controlClient,
             hostClient: hostClient,
-            snapshotReader: snapshotReader,
-            localAPISettings: localAPISettings
+            snapshotReader: snapshotReader
         )
         self.snapshots = snapshots
         self.statusRefresher = RuntimeStatusRefresher(snapshots: snapshots)
@@ -159,6 +188,21 @@ public final class RuntimeViewModel: ObservableObject {
 
     var capabilities: RuntimeControlCapabilities {
         controlClient.capabilities
+    }
+
+    var canDisplayPlatformSettings: Bool {
+        platformSettingsReadState == .loaded
+    }
+
+    var platformSettingsReadIssues: [RuntimeSettingsReadIssue] {
+        switch platformSettingsReadState {
+        case .notRead:
+            []
+        case .loaded:
+            settings.readIssues
+        case .failed(let issues):
+            issues
+        }
     }
 
     var selectedBundleConfirmation: String {
@@ -190,14 +234,14 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     var shouldShowUpdateProgress: Bool {
-        isApplyingUpdateBundle || presentationFormatter.updateOperationInProgress(status)
+        isApplyingUpdateBundle || presentationFormatter.updateOperationInProgress(operationState)
     }
 
     var updateProgressMessage: String {
         if isApplyingUpdateBundle {
             return operationDetail.isEmpty ? message : operationDetail
         }
-        return presentationFormatter.updateOperationDisplayMessage(status) ?? message
+        return presentationFormatter.updateOperationDisplayMessage(status, operationState: operationState) ?? message
     }
 
     var backupOperationProgressMessage: String {
@@ -219,6 +263,8 @@ public final class RuntimeViewModel: ObservableObject {
     func refresh() async {
         await loadRuntimeSettings()
         applyStatusRefreshResult(await statusRefresher.refreshStatus(settings: runtimeSettings, isBusy: isBusy))
+        await refreshRuntimeStack()
+        await refreshRedisRelayStatus()
         await refreshReleaseInfo()
         await refreshBackupList()
         await refreshRuntimeEvents()
@@ -240,6 +286,48 @@ public final class RuntimeViewModel: ObservableObject {
         healthNotificationCoordinator.handleTransition(to: status)
     }
 
+    func refreshRedisRelayStatus() async {
+        do {
+            redisRelayStatusRead = try await controlClient.loadRedisRelayStatus()
+        } catch {
+            redisRelayStatusRead = RuntimeRedisRelayStatusReadResult(
+                readState: .readFailed,
+                document: nil,
+                readError: error.localizedDescription
+            )
+        }
+    }
+
+    func refreshRuntimeStack() async {
+        do {
+            let stackStatus = try await controlClient.guestStackStatus()
+            var resources: [RuntimeGuestServiceResource] = []
+            var resourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = []
+            let services = Array(Set(stackStatus.services.map(\.service))).sorted()
+            for service in services {
+                do {
+                    resources.append(try await controlClient.guestServiceResource(service))
+                } catch {
+                    resourceReadIssues.append(
+                        RuntimeGuestServiceResourceReadIssue(
+                            service: service,
+                            message: error.localizedDescription
+                        )
+                    )
+                }
+            }
+            runtimeStackStatus = stackStatus
+            runtimeStackReadError = nil
+            runtimeServiceResources = resources
+            runtimeServiceResourceReadIssues = resourceReadIssues
+        } catch {
+            runtimeStackStatus = nil
+            runtimeStackReadError = error.localizedDescription
+            runtimeServiceResources = []
+            runtimeServiceResourceReadIssues = []
+        }
+    }
+
     func healthCheck() async {
         isBusy = true
         defer { isBusy = false }
@@ -257,19 +345,33 @@ public final class RuntimeViewModel: ObservableObject {
         let refreshed = await observabilityRefresher.refreshRuntimeEvents(
             limit: runtimeEventLimit,
             periodRawValue: runtimeEventPeriod,
-            filterRawValue: runtimeEventFilter,
-            statusContainerObservation: status.containerObservation
+            filterRawValue: runtimeEventFilter
         )
         runtimeEvents = refreshed.events
         runtimeEventsLast24HoursCount = refreshed.last24HoursCount
-        containerObservation = refreshed.containerObservation
     }
 
     func refreshVitalRecorders() async {
         let refreshed = await observabilityRefresher.refreshVitalObservability()
+        guard !Task.isCancelled else {
+            return
+        }
         vitalDBObservationSnapshot = refreshed.observationSnapshot
         vitalRecorders = refreshed.recorders
+        vitalBeds = refreshed.beds
         vitalRelationships = refreshed.relationships
+    }
+
+    func relationshipPresentationHistory(
+        bedID: String
+    ) -> RuntimeVitalRelationshipPresentationHistory {
+        vitalRelationshipPresentationIndex.history(bedID: bedID)
+    }
+
+    func relationshipPresentationHistory(
+        vrcode: String
+    ) -> RuntimeVitalRelationshipPresentationHistory {
+        vitalRelationshipPresentationIndex.history(vrcode: vrcode)
     }
 
     func refreshVitalRecorderActivityWindow(
@@ -279,10 +381,140 @@ public final class RuntimeViewModel: ObservableObject {
         recorderActivityWindows[recorderActivityWindowKey(query)] = window
     }
 
+    func pollVitalRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery,
+        intervalNanoseconds: UInt64 = 5_000_000_000
+    ) async {
+        while !Task.isCancelled {
+            await refreshVitalRecorderActivityWindow(query: query)
+            guard !Task.isCancelled else {
+                return
+            }
+            do {
+                try await Task.sleep(nanoseconds: intervalNanoseconds)
+            } catch {
+                return
+            }
+        }
+    }
+
     func recorderActivityWindow(
         query: RuntimeVitalRecorderActivityWindowQuery
     ) -> RuntimeVitalRecorderActivityWindow? {
         recorderActivityWindows[recorderActivityWindowKey(query)]
+    }
+
+    func refreshVitalRecorderVitalFiles(vrcode: String) async {
+        let history = await snapshots.loadVitalRecorderVitalFiles(vrcode: vrcode)
+        guard !Task.isCancelled else {
+            return
+        }
+        recorderVitalFileHistories[vrcode] = history
+    }
+
+    func refreshRecorderObservabilityDetail(vrcode: String) async {
+        let detail = await snapshots.loadRecorderObservabilityDetail(vrcode: vrcode)
+        guard !Task.isCancelled else {
+            return
+        }
+        recorderObservabilityDetails[vrcode] = detail
+    }
+
+    func refreshRecorderObservabilityIncidents(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) async {
+        let incidents = await snapshots.loadRecorderObservabilityIncidents(query: query)
+        guard !Task.isCancelled else {
+            return
+        }
+        recorderObservabilityIncidents[recorderObservabilityIncidentKey(query)] = incidents
+    }
+
+    func recorderObservabilityIncidentPage(
+        query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> RuntimeRecorderObservabilityIncidents? {
+        recorderObservabilityIncidents[recorderObservabilityIncidentKey(query)]
+    }
+
+    private func recorderObservabilityIncidentKey(
+        _ query: RuntimeRecorderObservabilityIncidentQuery
+    ) -> String {
+        // The panel maintains one fixed recent-history window per Recorder.
+        // Keeping this key on the Recorder identity avoids treating a fresh UI
+        // render's wall-clock `until` value as a different cached result.
+        query.vrcode
+    }
+
+    @discardableResult
+    func hideVitalDBRecorder(vrcode: String) async -> Bool {
+        await runVitalDBVisibilityAction(successMessage: "\(vrcode) hidden from recorder list.") {
+            try await controlClient.hideVitalDBRecorders(.init(vrcodes: [vrcode]))
+        }
+    }
+
+    @discardableResult
+    func unhideVitalDBRecorder(vrcode: String) async -> Bool {
+        await runVitalDBVisibilityAction(successMessage: "\(vrcode) shown in recorder list.") {
+            try await controlClient.unhideVitalDBRecorders(.init(vrcodes: [vrcode]))
+        }
+    }
+
+    @discardableResult
+    func deleteVitalDBRecorder(vrcode: String) async -> Bool {
+        await runVitalDBVisibilityAction(successMessage: "\(vrcode) deleted from recorder history.") {
+            try await controlClient.deleteVitalDBRecorders(.init(vrcodes: [vrcode]))
+        }
+    }
+
+    func hideVitalDBBed(bedID: String) async {
+        await runVitalDBBedVisibilityAction(successMessage: "Bed hidden.") {
+            try await controlClient.hideVitalDBBeds(.init(bedIDs: [bedID]))
+        }
+    }
+
+    func unhideVitalDBBed(bedID: String) async {
+        await runVitalDBBedVisibilityAction(successMessage: "Bed visible.") {
+            try await controlClient.unhideVitalDBBeds(.init(bedIDs: [bedID]))
+        }
+    }
+
+    func deleteVitalDBBed(bedID: String) async {
+        await runVitalDBBedVisibilityAction(successMessage: "Hidden bed deleted.") {
+            try await controlClient.deleteVitalDBBeds(.init(bedIDs: [bedID]))
+        }
+    }
+
+    private func runVitalDBVisibilityAction(
+        successMessage: String,
+        action: () async throws -> RuntimeVitalRecorderHistory
+    ) async -> Bool {
+        isRunningVitalDBVisibilityAction = true
+        vitalDBVisibilityActionMessage = "Updating VitalDB visibility..."
+        defer { isRunningVitalDBVisibilityAction = false }
+        do {
+            vitalRecorders = try await action()
+            vitalDBVisibilityActionMessage = successMessage
+            return true
+        } catch {
+            vitalDBVisibilityActionMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func runVitalDBBedVisibilityAction(
+        successMessage: String,
+        action: () async throws -> RuntimeVitalBedHistory
+    ) async {
+        isRunningVitalDBVisibilityAction = true
+        vitalDBVisibilityActionMessage = "Updating VitalDB visibility..."
+        defer { isRunningVitalDBVisibilityAction = false }
+        do {
+            let bedHistory = try await action()
+            vitalBeds = bedHistory
+            vitalDBVisibilityActionMessage = successMessage
+        } catch {
+            vitalDBVisibilityActionMessage = error.localizedDescription
+        }
     }
 
     private func recorderActivityWindowKey(_ query: RuntimeVitalRecorderActivityWindowQuery) -> String {
@@ -333,6 +565,8 @@ public final class RuntimeViewModel: ObservableObject {
         }
         var settingsToApply = settings
         settingsToApply.appliedVMSettings = nil
+        let redisRelaySettingsToApply = settingsToApply.redisRelay
+        let redisRelayChanged = redisRelaySettingsToApply != savedSettings.redisRelay
         let applySettingsResult = await runClientAction(
             preparingMessage: AppConstants.StatusText.settingsApplyPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -341,7 +575,12 @@ public final class RuntimeViewModel: ObservableObject {
             action: { try await self.controlClient.applySettings(settingsToApply) }
         )
         if applySettingsResult.isSuccess {
-            localAPISettings?.apply(settings: settingsToApply)
+            if redisRelayChanged {
+                guard await applyRuntimeRedisRelaySettings(redisRelaySettingsToApply) else {
+                    await refreshHealthStatus()
+                    return
+                }
+            }
             settings.adminPassword = ""
             settings.changeAdminPassword = false
             await waitForAppliedSettings()
@@ -384,7 +623,7 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.proxyRepairRunning,
             successMessage: AppConstants.StatusText.proxyRepairCompleted,
-            action: { try await self.controlClient.repairProxy() }
+            action: { try await self.hostClient.repairProxy() }
         )
         await refreshHealthStatus()
     }
@@ -399,7 +638,7 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.datastoreRepairRunning,
             successMessage: AppConstants.StatusText.datastoreRepairCompleted,
-            action: { try await self.controlClient.repairDatastore() }
+            action: { try await self.hostClient.repairDatastore() }
         )
         await refreshHealthStatus()
     }
@@ -414,7 +653,7 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.vmDiskRepairRunning,
             successMessage: AppConstants.StatusText.vmDiskRepairCompleted,
-            action: { try await self.controlClient.repairVMDisk() }
+            action: { try await self.hostClient.repairVMDisk() }
         )
         await refreshHealthStatus()
     }
@@ -429,57 +668,35 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.runtimeServicesRepairRunning,
             successMessage: AppConstants.StatusText.runtimeServicesRepaired,
-            action: { try await self.controlClient.repairRuntimeServices() }
+            action: { try await self.hostClient.repairRuntimeServices() }
         )
         await refreshHealthStatus()
     }
 
     func restartVMRuntimeFromSettings() async {
-        guard controlClient.capabilities.canControlRuntimeServices else {
+        guard canApplySettingsForCurrentConnection else {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
+        var settingsToActivate = savedSettings
+        settingsToActivate.appliedVMSettings = nil
+        settingsToActivate.restartAfterSave = false
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.restartVMRuntimePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.restartVMRuntimeRunning,
             successMessage: AppConstants.StatusText.restartVMRuntimeCompleted,
-            action: { try await self.controlClient.repairRuntimeServices() }
-        )
-        await refresh()
-    }
-
-    func startRuntimeServices() async {
-        guard controlClient.capabilities.canControlRuntimeServices else {
-            message = AppConstants.StatusText.actionUnavailable
-            return
-        }
-        _ = await runClientAction(
-            preparingMessage: AppConstants.StatusText.runtimeServicesStartPreparing,
-            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
-            runningMessage: AppConstants.StatusText.runtimeServicesStartRunning,
-            successMessage: AppConstants.StatusText.runtimeServicesStarted,
-            action: { try await self.controlClient.startRuntimeServices() }
-        )
-        await refreshHealthStatus()
-    }
-
-    func stopRuntimeServices() async {
-        guard controlClient.capabilities.canControlRuntimeServices else {
-            message = AppConstants.StatusText.actionUnavailable
-            return
-        }
-        _ = await runClientAction(
-            preparingMessage: AppConstants.StatusText.runtimeServicesStopPreparing,
-            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
-            runningMessage: AppConstants.StatusText.runtimeServicesStopRunning,
-            successMessage: AppConstants.StatusText.runtimeServicesStopped,
-            action: { try await self.controlClient.stopRuntimeServices() }
+            action: { try await self.controlClient.restartVMRuntime(applying: settingsToActivate) }
         )
         await refresh()
     }
 
     public func relaunchHelper() {
+        nativeShell.relaunchHelper()
+    }
+
+    public func reconnectRuntimeControl() {
+        message = AppConstants.StatusText.runtimeControlReconnecting
         nativeShell.relaunchHelper()
     }
 
@@ -505,10 +722,109 @@ public final class RuntimeViewModel: ObservableObject {
 
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
-        let loadedSettings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
+        let nextReadState = Self.platformSettingsPresentationState(for: nextSettings)
+        platformSettingsReadState = nextReadState
+        guard nextReadState == .loaded else {
+            return
+        }
+        var loadedSettings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
+        do {
+            let read = try await controlClient.loadRuntimeRedisRelaySettings()
+            runtimeRedisRelaySettingsRead = read
+            if read.state == .loaded, let document = read.settings {
+                loadedSettings.redisRelay = Self.redisRelaySettings(from: document)
+            } else {
+                loadedSettings.redisRelay = RuntimeRedisRelaySettings()
+            }
+        } catch {
+            runtimeRedisRelaySettingsRead = RuntimeRedisRelaySettingsRead(
+                state: .failed,
+                settings: nil,
+                readError: error.localizedDescription
+            )
+            loadedSettings.redisRelay = RuntimeRedisRelaySettings()
+        }
         runtimeSettings = Self.settingsWithAdvertisedServiceURLPresets(loadedSettings.runtimeAppliedSettings, fillMissing: true)
         savedSettings = loadedSettings
         settings = loadedSettings
+    }
+
+    private static func platformSettingsPresentationState(
+        for settings: RuntimeSettings
+    ) -> RuntimePlatformSettingsPresentationState {
+        let ownerIssues = settings.readIssues.filter { $0.source == "platformSettings" }
+        guard ownerIssues.isEmpty else {
+            return .failed(ownerIssues)
+        }
+        return .loaded
+    }
+
+    var canEditRuntimeRedisRelaySettings: Bool {
+        runtimeRedisRelaySettingsRead.state == .loaded
+    }
+
+    private func applyRuntimeRedisRelaySettings(_ settings: RuntimeRedisRelaySettings) async -> Bool {
+        guard canEditRuntimeRedisRelaySettings else {
+            message = runtimeRedisRelaySettingsRead.readError
+                ?? "Runtime Redis Relay settings owner is unavailable."
+            return false
+        }
+        do {
+            let operation = try await controlClient.applyRuntimeRedisRelaySettings(
+                Self.redisRelayApplyRequest(from: settings)
+            )
+            switch operation.state {
+            case .accepted, .running, .completed:
+                message = "Redis Relay settings operation \(operation.operationId) is \(operation.state.rawValue)."
+                return true
+            case .failed, .cancelled, .interrupted:
+                message = operation.failure?.message
+                    ?? "Redis Relay settings operation \(operation.operationId) \(operation.state.rawValue)."
+                return false
+            }
+        } catch {
+            message = "Redis Relay settings apply failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private static func redisRelaySettings(
+        from document: RuntimeRedisRelaySettingsReadDocument
+    ) -> RuntimeRedisRelaySettings {
+        RuntimeRedisRelaySettings(
+            enabled: document.enabled,
+            target: RuntimeRedisRelayTarget(
+                url: document.target.url,
+                username: document.target.username,
+                password: "",
+                clearPassword: false,
+                passwordConfigured: document.target.passwordConfigured,
+                tls: document.target.tls
+            ),
+            scope: document.scope == .waveformTrendOnly ? .waveformTrendOnly : .vitalReconstruction,
+            includeRecorderNetworkContext: document.includeRecorderNetworkContext,
+            intervalSeconds: document.intervalSeconds,
+            scanCount: document.scanCount
+        )
+    }
+
+    private static func redisRelayApplyRequest(
+        from settings: RuntimeRedisRelaySettings
+    ) -> RuntimeRedisRelaySettingsApplyRequest {
+        RuntimeRedisRelaySettingsApplyRequest(
+            enabled: settings.enabled,
+            target: RuntimeRedisRelayTargetApply(
+                url: settings.target.url,
+                username: settings.target.username,
+                password: settings.target.password.isEmpty ? nil : settings.target.password,
+                clearPassword: settings.target.clearPassword,
+                tls: settings.target.tls
+            ),
+            scope: settings.scope == .waveformTrendOnly ? .waveformTrendOnly : .vitalReconstruction,
+            includeRecorderNetworkContext: settings.includeRecorderNetworkContext,
+            intervalSeconds: settings.intervalSeconds,
+            scanCount: settings.scanCount
+        )
     }
 
     private func normalizeAdvertisedURLSettings() {
@@ -596,7 +912,7 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     private var canApplySettingsForCurrentConnection: Bool {
-        controlClient.capabilities.canEditVMResources
+        controlClient.capabilities.canEditRuntimeProviderResources
             || controlClient.capabilities.canEditNetworkExposure
             || controlClient.capabilities.canOpenLocalFiles
             || controlClient.capabilities.canResetAdminPassword
@@ -656,7 +972,7 @@ public final class RuntimeViewModel: ObservableObject {
 private extension RuntimeViewModel {
     func applyStatusRefreshResult(_ result: RuntimeStatusRefreshResult) {
         status = result.status
-        containerObservation = result.status.containerObservation
+        operationState = result.operationState
         if let selectedLogSource = result.selectedLogSource {
             self.selectedLogSource = selectedLogSource
         }

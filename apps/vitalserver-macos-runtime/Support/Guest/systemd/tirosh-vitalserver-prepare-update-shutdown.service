@@ -1,8 +1,0 @@
-[Unit]
-Description=Prepare Tirosh VitalServer guest for update shutdown
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/tirosh-vitalserver-prepare-update-shutdown

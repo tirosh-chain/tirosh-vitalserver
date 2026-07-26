@@ -38,11 +38,10 @@ public enum Constants {
     }
 
     public enum Artifacts {
-        public static let rootfsBase = RuntimeFileNames.rootfsBase
-        public static let runtimeVersion = RuntimeFileNames.runtimeVersion
-        public static let backupManifest = RuntimeFileNames.backupManifest
+        public static let rootfsBase = RuntimePackageArtifactFileNames.rootfsBase
+        public static let runtimeVersion = RuntimePackageArtifactFileNames.runtimeVersion
+        public static let backupManifest = RuntimePackageArtifactFileNames.backupManifest
         public static let runtimeConfig = "runtime-config.json"
-        public static let runtimeStatus = RuntimeFileNames.runtimeStatus
     }
 
     public enum BootAssets {
@@ -128,25 +127,10 @@ public enum Constants {
     }
 
     public enum Runtime {
-        public static let vmIPFile = RuntimeFileNames.vmIP
-        public static let runtimeStateFile = RuntimeFileNames.runtimeState
-        public static let bootstrapLogFile = RuntimeFileNames.bootstrapLog
-        public static let bootstrapResultFile = RuntimeFileNames.bootstrapResult
-        public static let datastoreRepairRequestFile = RuntimeFileNames.datastoreRepairRequest
-        public static let datastoreRepairResultFile = RuntimeFileNames.datastoreRepairResult
-        public static let datastoreRepairLogFile = RuntimeFileNames.datastoreRepairLog
-        public static let redisBackupRequestFile = RuntimeFileNames.redisBackupRequest
-        public static let redisBackupResultFile = RuntimeFileNames.redisBackupResult
-        public static let redisRestoreRequestFile = RuntimeFileNames.redisRestoreRequest
-        public static let redisRestoreResultFile = RuntimeFileNames.redisRestoreResult
-        public static let guestComposeReconcileRequestFile = RuntimeFileNames.guestComposeReconcileRequest
-        public static let guestComposeReconcileResultFile = RuntimeFileNames.guestComposeReconcileResult
-        public static let updateActivationRequestFile = RuntimeFileNames.updateActivationRequest
-        public static let updateActivationResultFile = RuntimeFileNames.updateActivationResult
-        public static let updateActivationLogFile = RuntimeFileNames.updateActivationLog
-        public static let updateShutdownRequestFile = RuntimeFileNames.updateShutdownRequest
-        public static let updateShutdownResultFile = RuntimeFileNames.updateShutdownResult
-        public static let updateShutdownLogFile = RuntimeFileNames.updateShutdownLog
+        public static let bootstrapLogFile = RuntimeLogArtifactFileNames.bootstrapLog
+        public static let datastoreRepairLogFile = RuntimeLogArtifactFileNames.datastoreRepairLog
+        public static let updateActivationLogFile = RuntimeLogArtifactFileNames.updateActivationLog
+        public static let updateShutdownLogFile = RuntimeLogArtifactFileNames.updateShutdownLog
         public static let waitTimeoutSeconds = 600.0
         public static let serviceStopWaitTimeoutSeconds = 30.0
         public static let vmStopWaitTimeoutSeconds = 900.0
@@ -160,7 +144,6 @@ public enum Constants {
         public static let updateActivationWaitTimeoutSeconds = 900.0
         public static let updateShutdownWaitTimeoutSeconds = 900.0
         public static let vmBootLifecycleDeadlineSeconds = 600.0
-        public static let runtimeStateStaleAfterSeconds = 30.0
         public static let watchdogRecoveryWaitSeconds = 20.0
         public static let watchdogManagedOperationGraceSeconds = 1_800.0
         public static let runtimeOperationLeaseDurationSeconds = 3_600.0
@@ -190,13 +173,10 @@ public enum Constants {
             "http://127.0.0.1:\(port)/swagger/"
         }
 
-        public static func recorderIngressStatusURL(port: Int) -> String {
-            "http://127.0.0.1:\(port)/recorder-ingress/status"
-        }
     }
 
     public enum Bundle {
-        public static let manifest = RuntimeFileNames.updateBundleManifest
+        public static let manifest = RuntimePackageArtifactFileNames.updateBundleManifest
         public static let checksums = "checksums.txt"
         public static let signature = "signature"
     }

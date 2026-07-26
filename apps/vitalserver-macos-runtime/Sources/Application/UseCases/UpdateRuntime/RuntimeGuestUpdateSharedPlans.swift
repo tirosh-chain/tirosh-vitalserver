@@ -1,15 +1,9 @@
-public struct RuntimeGuestWaitResultPlan: Equatable, Sendable {
-    public let logMessage: String?
-    public let failureMessage: String?
+public struct RuntimeGuestOperationWaitConfiguration: Equatable, Sendable {
+    public let maxAttempts: Int
+    public let progressEveryAttempts: Int
 
-    public init(logMessage: String?, failureMessage: String?) {
-        self.logMessage = logMessage
-        self.failureMessage = failureMessage
+    public init(maxAttempts: Int, progressEveryAttempts: Int) {
+        self.maxAttempts = maxAttempts
+        self.progressEveryAttempts = progressEveryAttempts
     }
-}
-
-public enum RuntimeGuestWaitResultExecutionPlan: Equatable, Sendable {
-    case completed(logMessage: String)
-    case failed(logMessage: String, failureMessage: String)
-    case failedWithoutLog(failureMessage: String)
 }

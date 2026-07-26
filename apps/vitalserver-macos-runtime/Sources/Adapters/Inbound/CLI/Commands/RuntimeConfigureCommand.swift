@@ -1,14 +1,27 @@
+import Application
 import Contracts
 import Foundation
 import Errors
 
 public struct RuntimeConfigureCommand: Equatable, Sendable {
     public let changes: [RuntimeConfigureChange]
-    public let restart: Bool
+    public let activation: ConfigureRuntimeActivationIntent
+
+    public var restart: Bool {
+        activation != .saveOnly
+    }
 
     public init(changes: [RuntimeConfigureChange] = [], restart: Bool = false) {
         self.changes = changes
-        self.restart = restart
+        self.activation = restart ? .activateChangedComponents : .saveOnly
+    }
+
+    public init(
+        changes: [RuntimeConfigureChange] = [],
+        activation: ConfigureRuntimeActivationIntent
+    ) {
+        self.changes = changes
+        self.activation = activation
     }
 }
 
@@ -19,6 +32,7 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case network(RuntimeNetworkMode)
     case bridgedInterface(String)
     case proxyPort(Int)
+    case runtimeControlPort(Int)
     case vitalFilesDirectory(URL)
     case vitalServerURL(String)
     case remoteConsoleURL(String)
@@ -42,5 +56,4 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case backupRetention(Int)
     case logArchiveRetentionDays(Int)
     case logArchiveMaximumGiB(Int)
-    case redisRelaySettingsFile(URL)
 }

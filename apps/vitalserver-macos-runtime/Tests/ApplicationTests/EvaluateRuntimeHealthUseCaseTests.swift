@@ -15,11 +15,6 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
 
     func testObservationMapsSkippedProxyHTTPReadsFromMissingProxyPortInUseCase() {
         let observation = EvaluateRuntimeHealthUseCase().observation(from: healthReads(
-            guestRuntimeState: RuntimeGuestRuntimeStateObservation(
-                loadedState: nil,
-                freshState: nil,
-                isFresh: false
-            ),
             proxyPortReadState: .missing("proxy port not configured"),
             hostProxyHTTP: nil,
             redisUIHTTP: nil,
@@ -31,240 +26,140 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
         XCTAssertEqual(observation.hostProxyHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(observation.redisUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(observation.swaggerUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
-        XCTAssertEqual(
-            observation.containerObservation.observedValue?.recorderIngressHTTP,
-            RuntimeHTTPStatusText.missingProxyPort
-        )
-        XCTAssertEqual(
-            observation.containerObservation.observedValue?.recorderIngressStatusReadError,
-            RuntimeHTTPStatusText.missingProxyPort
-        )
-        XCTAssertEqual(
-            observation.containerObservation.observedValue?.recorderIngressStatusReadState,
-            .skippedMissingProxyPort
-        )
     }
 
-    func testBootstrapResultFromDifferentBootDoesNotCreateVMFailure() {
-        let snapshot = EvaluateRuntimeHealthUseCase().snapshot(observation: observation(
-            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-            loadedGuestRuntimeState: GuestRuntimeStateDocument(
-                vmIP: "192.168.64.2",
-                updatedAt: "2026-05-21T12:35:00Z",
-                bootID: "current-boot",
-                guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-                redisUIHTTP: "200",
-                swaggerUIHTTP: "200"
-            ),
-            guestBootstrapResult: .loaded(bootstrapResult(
-                status: .failed,
-                bootID: "old-boot",
-                reasonCodes: [.guestBootstrapMissingRuntimePackages]
-            ))
-        ))
-
-        XCTAssertFalse(snapshot.failureReasons.contains(RuntimeFailureReason.guestBootstrapMissingRuntimePackages))
-        XCTAssertTrue(snapshot.failureReasons.contains(RuntimeFailureReason.guestHTTP(RuntimeHTTPStatusText.bootstrapPending)))
-    }
-
-    func testFreshBootstrapFailureIsEvaluatedByUseCaseNotAdapter() {
-        let snapshot = EvaluateRuntimeHealthUseCase().snapshot(observation: observation(
-            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-            loadedGuestRuntimeState: GuestRuntimeStateDocument(
-                vmIP: "192.168.64.2",
-                updatedAt: "2026-05-21T12:35:00Z",
-                bootID: "current-boot",
-                guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-                redisUIHTTP: "200",
-                swaggerUIHTTP: "200"
-            ),
-            guestBootstrapResult: .loaded(bootstrapResult(
-                status: .failed,
-                bootID: "current-boot",
-                reasonCodes: [.guestBootstrapMissingRuntimePackages]
-            ))
-        ))
-
-        XCTAssertTrue(snapshot.failureReasons.contains(RuntimeFailureReason.guestBootstrapMissingRuntimePackages))
-        XCTAssertTrue(snapshot.vmErrors.contains(RuntimeVMError.guestBootstrapMissingRuntimePackages))
-    }
-
-    func testFreshBootstrapDockerRuntimeFailureIsEvaluatedByUseCaseNotAdapter() {
-        let snapshot = EvaluateRuntimeHealthUseCase().snapshot(observation: observation(
-            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-            loadedGuestRuntimeState: GuestRuntimeStateDocument(
-                vmIP: "192.168.64.2",
-                updatedAt: "2026-05-21T12:35:00Z",
-                bootID: "current-boot",
-                guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
-                redisUIHTTP: "failed",
-                swaggerUIHTTP: "failed"
-            ),
-            guestBootstrapResult: .loaded(bootstrapResult(
-                status: .failed,
-                bootID: "current-boot",
-                reasonCodes: [.guestBootstrapDockerRuntimeFailed]
-            ))
-        ))
-
-        XCTAssertTrue(snapshot.failureReasons.contains(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed))
-        XCTAssertTrue(snapshot.vmErrors.contains(RuntimeVMError.guestBootstrapDockerRuntimeFailed))
-    }
-
-    func testComposeServicesReadResultLoadsFreshReportedServices() {
-        let services = [
-            RuntimeContainerServiceObservation(service: "app", state: "running", health: "healthy"),
-        ]
-
-        let result = EvaluateRuntimeHealthUseCase().composeServicesReadResult(
-            freshState: guestState(containerServices: services),
-            loadedState: nil,
-            readFailureReasons: []
-        )
-
-        XCTAssertEqual(result.state, .loaded)
-        XCTAssertEqual(result.services, services)
-        XCTAssertNil(result.readError)
-    }
-
-    func testComposeServicesReadResultKeepsFreshMissingServicesDistinct() {
-        let result = EvaluateRuntimeHealthUseCase().composeServicesReadResult(
-            freshState: guestState(containerServices: nil),
-            loadedState: nil,
-            readFailureReasons: []
-        )
-
-        XCTAssertEqual(result.state, .missing)
-        XCTAssertEqual(result.services, [])
-        XCTAssertEqual(result.readError, "container-services-missing")
-    }
-
-    func testComposeServicesReadResultPreservesGuestComposeProbeFailure() {
-        let result = EvaluateRuntimeHealthUseCase().composeServicesReadResult(
-            freshState: guestState(
-                containerServices: nil,
-                probeErrors: [
-                    GuestRuntimeProbeError(
-                        source: "docker compose ps",
-                        message: "no service documents reported"
-                    ),
-                ]
-            ),
-            loadedState: nil,
-            readFailureReasons: []
-        )
-
-        XCTAssertEqual(result.state, .readFailed)
-        XCTAssertEqual(result.services, [])
-        XCTAssertEqual(result.readError, "docker compose ps: no service documents reported")
-    }
-
-    func testComposeServicesReadResultKeepsInvalidStaleAndMissingRuntimeStateDistinct() {
-        let useCase = EvaluateRuntimeHealthUseCase()
-
-        XCTAssertEqual(
-            useCase.composeServicesReadResult(
-                freshState: nil,
-                loadedState: nil,
-                readFailureReasons: [.guestRuntimeStateInvalid]
-            ),
-            RuntimeComposeServicesReadResult(
-                state: .invalid,
-                services: [],
-                readError: "guest-runtime-state-invalid"
-            )
-        )
-        XCTAssertEqual(
-            useCase.composeServicesReadResult(
-                freshState: nil,
-                loadedState: guestState(containerServices: []),
-                readFailureReasons: []
-            ),
-            RuntimeComposeServicesReadResult(
-                state: .stale,
-                services: [],
-                readError: "guest-runtime-state-stale"
-            )
-        )
-        XCTAssertEqual(
-            useCase.composeServicesReadResult(
-                freshState: nil,
-                loadedState: nil,
-                readFailureReasons: []
-            ),
-            RuntimeComposeServicesReadResult(
-                state: .missing,
-                services: [],
-                readError: "guest-runtime-state-missing"
-            )
-        )
-    }
-
-    func testObservationMapsGuestRuntimeReadIssueToExplicitFailureReasonInUseCase() {
+    func testObservationKeepsProxyPortReadFailureOutOfCurrentHealthReasons() {
         let useCase = EvaluateRuntimeHealthUseCase()
         let observation = useCase.observation(from: healthReads(
-            guestRuntimeState: RuntimeGuestRuntimeStateObservation(
-                loadedState: nil,
-                freshState: nil,
-                isFresh: false,
-                readIssue: .loadFailed("runtime-state unreadable")
+            proxyPortReadState: .commandFailed(exitCode: 2, reason: "proxy launch daemon plist read denied"),
+            hostProxyHTTP: nil,
+            redisUIHTTP: nil,
+            swaggerUIHTTP: nil
+        ))
+
+        let snapshot = useCase.snapshot(observation: observation)
+
+        XCTAssertNil(observation.proxyPort)
+        XCTAssertEqual(
+            observation.proxyPortReadState,
+            .commandFailed(exitCode: 2, reason: "proxy launch daemon plist read denied")
+        )
+        XCTAssertFalse(
+            observation.configurationFailureReasons.contains(RuntimeFailureReason.hostProxyConfigInvalid)
+        )
+        XCTAssertFalse(snapshot.failureReasons.contains(RuntimeFailureReason.hostProxyConfigInvalid))
+    }
+
+    func testObservationPrefersGuestControlReadinessOverRuntimeStateReadFailure() {
+        let observation = EvaluateRuntimeHealthUseCase().observation(from: healthReads(
+            guestControlReadiness: .loaded(
+                vmIP: "192.168.64.44",
+                readiness: RuntimeGuestControlReadiness(status: "ready")
             )
         ))
 
-        XCTAssertEqual(observation.guestRuntimeState, RuntimeGuestRuntimeStateInput.invalid)
-        XCTAssertTrue(observation.configurationFailureReasons.contains(
-            RuntimeFailureReason.guestRuntimeStateLoadFailed("runtime-state_unreadable")
-        ))
-        XCTAssertEqual(observation.containerObservation.observedValue?.composeServicesReadState, .invalid)
-        XCTAssertEqual(observation.containerObservation.observedValue?.composeServicesReadError, "guest-runtime-state-invalid")
+        XCTAssertEqual(
+            observation.guestReadiness,
+            .reported(vmIP: "192.168.64.44", guestHTTP: .reportedStatus("200"))
+        )
+        XCTAssertFalse(observation.configurationFailureReasons.contains(.unknown("guest-runtime-state-load-failed-runtime-state_unreadable")))
+        XCTAssertEqual(RuntimeHealthEvaluator.evaluate(RuntimeHealthInput(
+            vmExecutable: observation.vmExecutable,
+            proxyExecutable: observation.proxyExecutable,
+            rootfsBase: observation.rootfsBase,
+            vmDisk: observation.vmDisk,
+            vmService: observation.vmService,
+            proxyService: observation.proxyService,
+            watchdogService: observation.watchdogService,
+            vmLifecycle: observation.vmLifecycle,
+            guestReadiness: observation.guestReadiness,
+            proxyPort: observation.proxyPort,
+            proxyPortReadState: observation.proxyPortReadState,
+            hostProxyHTTP: observation.hostProxyHTTP,
+            redisUIHTTP: observation.redisUIHTTP,
+            swaggerUIHTTP: observation.swaggerUIHTTP,
+            vitalDBObservation: observation.vitalDBObservation,
+            configurationFailureReasons: [],
+            proxyPortFailureReasons: []
+        )).guestHTTP, "200")
     }
 
-    func testObservationKeepsRuntimeStateMetadataReadFailureDistinct() {
+    func testObservationPreservesGuestControlReadinessDependencyFailure() {
+        let observation = EvaluateRuntimeHealthUseCase().observation(from: healthReads(
+            guestControlReadiness: .loaded(
+                vmIP: "192.168.64.44",
+                readiness: RuntimeGuestControlReadiness(
+                    status: "unavailable",
+                    dependencies: [
+                        RuntimeGuestControlReadinessDependency(
+                            name: "operationRepository",
+                            role: "required",
+                            state: "failed",
+                            kind: "postgresCommandFailed",
+                            message: "postgres command failed during readiness"
+                        )
+                    ]
+                )
+            )
+        ))
+
+        XCTAssertEqual(
+            observation.guestReadiness,
+            .reported(
+                vmIP: "192.168.64.44",
+                guestHTTP: .probeFailed(
+                    "unavailable:operationRepository:failed:postgresCommandFailed:"
+                    + "postgres command failed during readiness"
+                )
+            )
+        )
+    }
+
+    func testObservationKeepsRuntimeStateLoadFailureOutOfCurrentHealthWhenGuestControlIsNotReported() {
+        let useCase = EvaluateRuntimeHealthUseCase()
+        let observation = useCase.observation(from: healthReads())
+
+        XCTAssertEqual(observation.guestReadiness, RuntimeGuestReadinessInput.notReported)
+        XCTAssertFalse(observation.configurationFailureReasons.contains(
+            RuntimeFailureReason.unknown("guest-runtime-state-load-failed-runtime-state_unreadable")
+        ))
+    }
+
+    func testObservationKeepsRuntimeStateMetadataReadFailureOutOfCurrentHealth() {
+        let useCase = EvaluateRuntimeHealthUseCase()
+        let observation = useCase.observation(from: healthReads())
+
+        XCTAssertEqual(observation.guestReadiness, RuntimeGuestReadinessInput.notReported)
+        XCTAssertFalse(observation.configurationFailureReasons.contains(
+            .unknown("guest-runtime-state-metadata-read-failed-stat_permission_denied")
+        ))
+    }
+
+    func testObservationDoesNotCreateCurrentHealthStateFromRuntimeStatePayload() {
         let useCase = EvaluateRuntimeHealthUseCase()
         let observation = useCase.observation(from: healthReads(
-            guestRuntimeState: RuntimeGuestRuntimeStateObservation(
-                loadedState: nil,
-                freshState: nil,
-                isFresh: false,
-                readIssue: .metadataReadFailed("stat permission denied")
-            )
+            vitalDBObservation: .notReported
         ))
 
-        XCTAssertEqual(observation.guestRuntimeState, RuntimeGuestRuntimeStateInput.invalid)
-        XCTAssertEqual(observation.configurationFailureReasons, [
-            .guestRuntimeStateMetadataReadFailed("stat_permission_denied"),
-        ])
-        XCTAssertEqual(observation.containerObservation.observedValue?.composeServicesReadState, .invalid)
-    }
-}
+        let snapshot = useCase.snapshot(observation: observation)
 
-private func guestState(
-    containerServices: [RuntimeContainerServiceObservation]?,
-    probeErrors: [GuestRuntimeProbeError]? = nil
-) -> GuestRuntimeStateDocument {
-    GuestRuntimeStateDocument(
-        vmIP: "192.168.64.2",
-        updatedAt: "2026-05-21T12:35:00Z",
-        bootID: "current-boot",
-        guestHTTP: "200",
-        redisUIHTTP: "200",
-        swaggerUIHTTP: "200",
-        containerServices: containerServices,
-        probeErrors: probeErrors
-    )
+        XCTAssertEqual(observation.guestReadiness, .notReported)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("vm-runtime-state-missing")))
+        XCTAssertFalse(snapshot.failureReasons.contains(.unknown("guest-runtime-state-stale")))
+        XCTAssertEqual(observation.vitalDBObservation, .notReported)
+        XCTAssertFalse(snapshot.failureReasons.contains {
+            if case .vitalDBAnomaly = $0 {
+                return true
+            }
+            return false
+        })
+    }
 }
 
 private func observation(
     guestHTTP: String = "200",
-    loadedGuestRuntimeState: GuestRuntimeStateDocument? = GuestRuntimeStateDocument(
-        vmIP: "192.168.64.2",
-        updatedAt: "2026-05-21T12:35:00Z",
-        bootID: "current-boot",
-        guestHTTP: "200",
-        redisUIHTTP: "200",
-        swaggerUIHTTP: "200"
-    ),
-    guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> = .missing
+    vmLifecycle: RuntimeVMLifecycleDocument? = runtimeLifecycle(bootID: "current-boot")
 ) -> RuntimeHealthObservation {
     RuntimeHealthObservation(
         vmExecutable: .executable,
@@ -274,35 +169,31 @@ private func observation(
         vmService: .loaded,
         proxyService: .loaded,
         watchdogService: .loaded,
-        vmLifecycle: nil,
-        guestRuntimeState: .fresh(
+        vmLifecycle: vmLifecycle,
+        guestReadiness: .reported(
             vmIP: "192.168.64.2",
             guestHTTP: guestHTTPInput(guestHTTP)
         ),
-        loadedGuestRuntimeState: loadedGuestRuntimeState,
         proxyPort: 80,
         proxyPortReadState: .loaded(80),
         hostProxyHTTP: "200",
         redisUIHTTP: "200",
         swaggerUIHTTP: "200",
-        containerObservation: .notReported,
         vitalDBObservation: .notReported,
-        reportedVMErrors: [],
         configurationFailureReasons: [],
         proxyPortFailureReasons: [],
-        guestBootstrapResult: guestBootstrapResult,
-        observedAt: date("2026-05-21T12:35:00Z"),
-        guestBootstrapFreshnessGraceSeconds: 60
+        observedAt: date("2026-05-21T12:35:00Z")
     )
 }
 
 private func healthReads(
-    guestRuntimeState: RuntimeGuestRuntimeStateObservation,
+    guestControlReadiness: RuntimeGuestControlReadinessRead = .notReported,
     proxyPortReadState: RuntimeProxyPortReadState = .loaded(80),
     hostProxyHTTP: String? = "200",
     redisUIHTTP: String? = "200",
     swaggerUIHTTP: String? = "200",
-    recorderIngressStatus: RuntimeRecorderIngressStatusReadResult? = nil
+    recorderIngressStatus: RuntimeRecorderIngressStatusReadResult? = nil,
+    vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument> = .notReported
 ) -> RuntimeHealthObservationReads {
     RuntimeHealthObservationReads(
         vmExecutable: .executable,
@@ -313,34 +204,16 @@ private func healthReads(
         proxyService: .loaded,
         watchdogService: .loaded,
         vmLifecycleLoadResult: .missing,
-        guestRuntimeState: guestRuntimeState,
+        guestControlReadiness: guestControlReadiness,
         proxyPortReadState: proxyPortReadState,
         hostProxyHTTP: hostProxyHTTP.map(RuntimeHTTPProbeResult.reportedStatus),
         redisUIHTTP: redisUIHTTP.map(RuntimeHTTPProbeResult.reportedStatus),
         swaggerUIHTTP: swaggerUIHTTP.map(RuntimeHTTPProbeResult.reportedStatus),
         recorderIngressStatus: recorderIngressStatus,
-        runtimeStateFileModifiedAt: RuntimeFileModifiedAtReadResult(updatedAt: nil, readError: nil),
+        vitalDBObservation: vitalDBObservation,
         containerLogsMetadata: RuntimeContainerLogsMetadata(present: false, bytes: nil, updatedAt: nil, error: nil),
         proxyListenerObservation: nil,
-        guestBootstrapResult: .missing,
-        observedAt: date("2026-05-21T12:35:00Z"),
-        guestBootstrapFreshnessGraceSeconds: 60
-    )
-}
-
-private func bootstrapResult(
-    status: GuestBootstrapStatus,
-    bootID: String?,
-    reasonCodes: [RuntimeFailureReason]?
-) -> GuestBootstrapResultDocument {
-    GuestBootstrapResultDocument(
-        schemaVersion: 2,
-        bootID: bootID,
-        operation: .unknown("bootstrap"),
-        status: status,
-        message: nil,
-        reasonCodes: reasonCodes,
-        updatedAt: "2026-05-21T12:34:57Z"
+        observedAt: date("2026-05-21T12:35:00Z")
     )
 }
 
@@ -351,6 +224,15 @@ private func guestHTTPInput(_ value: String) -> RuntimeGuestHTTPStatusInput {
         return .reportedStatus(value)
     }
     return .probeFailed(value)
+}
+
+private func runtimeLifecycle(bootID: String?) -> RuntimeVMLifecycleDocument {
+    RuntimeVMLifecycleDocument(
+        state: .running,
+        bootID: bootID,
+        startedAt: "2026-05-21T12:34:00Z",
+        updatedAt: "2026-05-21T12:35:00Z"
+    )
 }
 
 private func date(_ value: String) -> Date {

@@ -57,59 +57,246 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         }
     }
 
-    func testPlansStartBackupPreserveAndRemovalFromExplicitCommandState() {
+    func testPlansStartBackupPreserveAndRemovalFromExplicitOwnedPaths() {
         let useCase = UninstallRuntimeUseCase()
         let productRoot = URL(fileURLWithPath: "/runtime")
-        let defaultVitalFiles = URL(fileURLWithPath: "/Users/user/VitalFiles")
+        let legacyDefault = productRoot.appendingPathComponent("vm/data/vital-files")
+        let sharedDefault = URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files")
+        let vitalFilesDirectories = UninstallRuntimeVitalFilesDirectories(
+            revision: 8,
+            appliedRevision: 7,
+            directories: [
+                UninstallRuntimeVitalFilesDirectory(
+                    directory: legacyDefault,
+                    ownership: .legacyManagedDefault,
+                    sources: [.applied(revision: 7)]
+                ),
+                UninstallRuntimeVitalFilesDirectory(
+                    directory: sharedDefault,
+                    ownership: .sharedManagedDefault,
+                    sources: [.desired(revision: 8)]
+                ),
+            ]
+        )
 
-        let start = useCase.startPlan(clean: true, configuredDirectoryReadFailure: "permission denied")
+        let start = useCase.startPlan(clean: true, forceClean: false)
         let preserve = useCase.preservePlan(
             productRoot: productRoot,
-            defaultVitalFilesDirectory: defaultVitalFiles,
-            externalVitalFilesDirectory: nil,
-            configuredVitalFilesDirectoryReadFailure: "permission denied"
+            legacyManagedDefaultVitalFilesDirectory: legacyDefault,
+            vitalFilesOwnership: .resolved(vitalFilesDirectories)
         )
         let removal = useCase.removalPlan(
             clean: true,
             managerApp: URL(fileURLWithPath: "/Applications/VitalServer.app"),
-            productRoot: productRoot,
-            externalVitalFilesDirectory: nil,
-            configuredVitalFilesDirectoryReadFailure: "permission denied"
+            legacyManagedDefaultVitalFilesDirectory: legacyDefault,
+            sharedManagedDefaultVitalFilesDirectory: sharedDefault,
+            retainedDataRoot: URL(fileURLWithPath: "/runtime-retained-uninstall-data"),
+            vitalFilesOwnership: .resolved(vitalFilesDirectories)
         )
 
-        XCTAssertEqual(start.startedLogMessage, "uninstall started clean=true")
-        XCTAssertEqual(start.configuredDirectoryReadFailureLogMessage, "configured vital files directory unavailable reason=permission denied")
-        XCTAssertFalse(useCase.shouldCreateRedisBackup(clean: true))
-        XCTAssertTrue(useCase.shouldCreateRedisBackup(clean: false))
-        XCTAssertEqual(preserve.candidates.map(\.token), ["logs", "backups", "redis-backups", "vital-files"])
+        XCTAssertEqual(start.startedLogMessage, "uninstall started clean=true forceClean=false")
+        XCTAssertFalse(useCase.shouldCreateVitalServerBackup(clean: true))
+        XCTAssertTrue(useCase.shouldCreateVitalServerBackup(clean: false))
         XCTAssertEqual(
-            preserve.configuredDirectoryReadFailureLogMessage,
-            "preserving default vital files directory because configured external directory is unavailable reason=permission denied"
+            preserve.candidates.map(\.token),
+            ["logs", "backups", "redis-backups", "legacy-vital-files"]
+        )
+        XCTAssertEqual(
+            preserve.vitalFilesDirectoryLogMessages,
+            ["preserved shared managed default vital files directory in place path=/Users/Shared/VitalServerHelper/vital-files"]
         )
         XCTAssertEqual(removal.targets, [
             URL(fileURLWithPath: "/Applications/VitalServer.app"),
-            productRoot,
+            legacyDefault,
+            sharedDefault,
+            URL(fileURLWithPath: "/runtime-retained-uninstall-data"),
         ])
+        XCTAssertEqual(removal.preservedExternalDirectoryLogMessages, [])
+    }
+
+    func testRelocatedProductRootUsesSiblingTombstone() {
+        let useCase = UninstallRuntimeUseCase()
+
         XCTAssertEqual(
-            removal.skippedExternalDirectoryLogMessage,
-            "skipping external vital files directory cleanup because configured path is unavailable reason=permission denied"
+            useCase.relocatedProductRoot(
+                productRoot: URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper"),
+                uniqueID: "operation-1"
+            ).path,
+            "/Library/Application Support/.VitalServerHelper.uninstall-operation-1"
         )
     }
 
     func testPreservePlanKeepsExternalVitalFilesDirectoryOwnedExternally() {
         let useCase = UninstallRuntimeUseCase()
         let externalVitalFiles = URL(fileURLWithPath: "/Volumes/Data/VitalFiles")
+        let directories = UninstallRuntimeVitalFilesDirectories(
+            revision: 4,
+            appliedRevision: nil,
+            directories: [
+                UninstallRuntimeVitalFilesDirectory(
+                    directory: externalVitalFiles,
+                    ownership: .external,
+                    sources: [.desired(revision: 4)]
+                ),
+            ]
+        )
 
         let plan = useCase.preservePlan(
             productRoot: URL(fileURLWithPath: "/runtime"),
-            defaultVitalFilesDirectory: URL(fileURLWithPath: "/Users/user/VitalFiles"),
-            externalVitalFilesDirectory: externalVitalFiles,
-            configuredVitalFilesDirectoryReadFailure: nil
+            legacyManagedDefaultVitalFilesDirectory: URL(
+                fileURLWithPath: "/runtime/vm/data/vital-files"
+            ),
+            vitalFilesOwnership: .resolved(directories)
         )
 
-        XCTAssertEqual(plan.candidates.map(\.token), ["logs", "backups", "redis-backups"])
-        XCTAssertEqual(plan.externalDirectoryLogMessage, "preserved external vital files directory=/Volumes/Data/VitalFiles")
-        XCTAssertNil(plan.configuredDirectoryReadFailureLogMessage)
+        XCTAssertEqual(
+            plan.candidates.map(\.token),
+            ["logs", "backups", "redis-backups", "legacy-vital-files"]
+        )
+        XCTAssertEqual(
+            plan.vitalFilesDirectoryLogMessages,
+            ["preserved external vital files directory in place path=/Volumes/Data/VitalFiles"]
+        )
+    }
+
+    func testCleanRemovalPlanNeverOwnsConfiguredExternalVitalFilesDirectory() {
+        let useCase = UninstallRuntimeUseCase()
+        let managerApp = URL(fileURLWithPath: "/Applications/VitalServer.app")
+        let externalVitalFiles = URL(fileURLWithPath: "/Volumes/Data/VitalFiles")
+        let legacyDefault = URL(fileURLWithPath: "/runtime/vm/data/vital-files")
+        let sharedDefault = URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files")
+        let directories = UninstallRuntimeVitalFilesDirectories(
+            revision: 4,
+            appliedRevision: nil,
+            directories: [
+                UninstallRuntimeVitalFilesDirectory(
+                    directory: externalVitalFiles,
+                    ownership: .external,
+                    sources: [.desired(revision: 4)]
+                ),
+            ]
+        )
+
+        let plan = useCase.removalPlan(
+            clean: true,
+            managerApp: managerApp,
+            legacyManagedDefaultVitalFilesDirectory: legacyDefault,
+            sharedManagedDefaultVitalFilesDirectory: sharedDefault,
+            retainedDataRoot: URL(fileURLWithPath: "/runtime-retained-uninstall-data"),
+            vitalFilesOwnership: .resolved(directories)
+        )
+
+        XCTAssertEqual(plan.targets, [
+            managerApp,
+            legacyDefault,
+            sharedDefault,
+            URL(fileURLWithPath: "/runtime-retained-uninstall-data"),
+        ])
+        XCTAssertEqual(
+            plan.preservedExternalDirectoryLogMessages,
+            ["preserved configured external vital files directory path=/Volumes/Data/VitalFiles reason=no-product-owned-removal-contract"]
+        )
+    }
+
+    func testResolvesDesiredAndAppliedPathsAndDeduplicatesStandardizedPath() {
+        let useCase = UninstallRuntimeUseCase()
+        let resolution = useCase.resolveVitalFilesDirectories(
+            read: .loaded(RuntimeConfiguredVitalFilesDirectoriesSnapshot(
+                revision: 9,
+                appliedRevision: 8,
+                directories: [
+                    RuntimeConfiguredVitalFilesDirectory(
+                        source: .desired(revision: 9),
+                        directory: URL(fileURLWithPath: "/Volumes/Data/./VitalFiles")
+                    ),
+                    RuntimeConfiguredVitalFilesDirectory(
+                        source: .applied(revision: 8),
+                        directory: URL(fileURLWithPath: "/Volumes/Data/VitalFiles")
+                    ),
+                ]
+            )),
+            productRoot: URL(fileURLWithPath: "/product"),
+            legacyManagedDefault: URL(fileURLWithPath: "/product/vm/data/vital-files"),
+            sharedManagedDefault: URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files"),
+            retainedDataRoot: URL(fileURLWithPath: "/retained")
+        )
+
+        XCTAssertEqual(
+            resolution,
+            .available(UninstallRuntimeVitalFilesDirectories(
+                revision: 9,
+                appliedRevision: 8,
+                directories: [
+                    UninstallRuntimeVitalFilesDirectory(
+                        directory: URL(fileURLWithPath: "/Volumes/Data/VitalFiles"),
+                        ownership: .external,
+                        sources: [.desired(revision: 9), .applied(revision: 8)]
+                    ),
+                ]
+            ))
+        )
+    }
+
+    func testRejectsConfiguredPathThatOverlapsManagedBoundary() {
+        let useCase = UninstallRuntimeUseCase()
+        let resolution = useCase.resolveVitalFilesDirectories(
+            read: .loaded(RuntimeConfiguredVitalFilesDirectoriesSnapshot(
+                revision: 9,
+                appliedRevision: nil,
+                directories: [
+                    RuntimeConfiguredVitalFilesDirectory(
+                        source: .desired(revision: 9),
+                        directory: URL(fileURLWithPath: "/product/vm/data")
+                    ),
+                ]
+            )),
+            productRoot: URL(fileURLWithPath: "/product"),
+            legacyManagedDefault: URL(fileURLWithPath: "/product/vm/data/vital-files"),
+            sharedManagedDefault: URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files"),
+            retainedDataRoot: URL(fileURLWithPath: "/retained")
+        )
+
+        XCTAssertEqual(
+            resolution,
+            .unavailable(.ambiguousOverlap(
+                path: "/product/vm/data",
+                boundary: "/product",
+                sources: [.desired(revision: 9)]
+            ))
+        )
+    }
+
+    func testRejectsManagedBoundaryPathThatDiffersOnlyByCase() {
+        let useCase = UninstallRuntimeUseCase()
+        let resolution = useCase.resolveVitalFilesDirectories(
+            read: .loaded(RuntimeConfiguredVitalFilesDirectoriesSnapshot(
+                revision: 9,
+                appliedRevision: nil,
+                directories: [
+                    RuntimeConfiguredVitalFilesDirectory(
+                        source: .desired(revision: 9),
+                        directory: URL(
+                            fileURLWithPath: "/users/shared/vitalserverhelper/VITAL-FILES"
+                        )
+                    ),
+                ]
+            )),
+            productRoot: URL(fileURLWithPath: "/product"),
+            legacyManagedDefault: URL(fileURLWithPath: "/product/vm/data/vital-files"),
+            sharedManagedDefault: URL(
+                fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            retainedDataRoot: URL(fileURLWithPath: "/retained")
+        )
+
+        XCTAssertEqual(
+            resolution,
+            .unavailable(.ambiguousOverlap(
+                path: "/users/shared/vitalserverhelper/VITAL-FILES",
+                boundary: "/Users/Shared/VitalServerHelper/vital-files",
+                sources: [.desired(revision: 9)]
+            ))
+        )
     }
 
     func testFileRemovalBlockersPreservePrimaryAndRestoreFailures() {
@@ -131,7 +318,10 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         let useCase = UninstallRuntimeUseCase()
         let observed = useCase.packageReceiptStateMap([
             .absent(identifier: "ai.tirosh.absent"),
-            .present(identifier: "ai.tirosh.present"),
+            .present(
+                identifier: "ai.tirosh.present",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
             .unknown("mystery"),
         ])
 
@@ -162,17 +352,39 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         let useCase = UninstallRuntimeUseCase()
 
         XCTAssertEqual(useCase.stepLogMessage(step: .removePlists, status: .started), "step=remove-plists status=started")
-        XCTAssertEqual(useCase.stepLogMessage(step: .createRedisBackup, status: .completed), "step=create-redis-backup status=completed")
+        XCTAssertEqual(useCase.stepLogMessage(step: .createVitalServerBackup, status: .completed), "step=create-vitalserver-backup status=completed")
         XCTAssertEqual(
             useCase.preserveRootDirectory(
-                temporaryDirectory: URL(fileURLWithPath: "/tmp"),
+                retainedDataRoot: URL(fileURLWithPath: "/retained-uninstall-data"),
                 uniqueID: "id-1"
             ),
-            URL(fileURLWithPath: "/tmp/tirosh-vitalserver-uninstall-id-1")
+            URL(fileURLWithPath: "/retained-uninstall-data/tirosh-vitalserver-uninstall-id-1")
+        )
+        XCTAssertNotEqual(
+            useCase.preserveRootDirectory(
+                retainedDataRoot: URL(fileURLWithPath: "/retained-uninstall-data"),
+                uniqueID: "id-1"
+            ),
+            useCase.preserveRootDirectory(
+                retainedDataRoot: URL(fileURLWithPath: "/retained-uninstall-data"),
+                uniqueID: "id-2"
+            )
         )
         XCTAssertEqual(
-            useCase.redisBackupAbortLogMessage(reason: "backup failed"),
-            "standard uninstall aborted because Redis backup did not complete error=backup failed"
+            useCase.retainedDataDirectoryAlreadyPresentMessage(
+                path: "/retained-uninstall-data/tirosh-vitalserver-uninstall-id-1"
+            ),
+            "refusing to replace existing retained uninstall data path=/retained-uninstall-data/tirosh-vitalserver-uninstall-id-1"
+        )
+        XCTAssertEqual(
+            useCase.retainedUserDataLogMessage(
+                path: "/retained-uninstall-data/tirosh-vitalserver-uninstall-id-1"
+            ),
+            "retained standard uninstall data path=/retained-uninstall-data/tirosh-vitalserver-uninstall-id-1 owner=uninstall-retained-data"
+        )
+        XCTAssertEqual(
+            useCase.vitalServerBackupAbortLogMessage(reason: "backup failed"),
+            "standard uninstall aborted because VitalServer backup did not complete error=backup failed"
         )
         XCTAssertEqual(useCase.restoringPreservedUserDataAfterFailureLogMessage(), "restoring preserved user data after uninstall failure")
         XCTAssertEqual(

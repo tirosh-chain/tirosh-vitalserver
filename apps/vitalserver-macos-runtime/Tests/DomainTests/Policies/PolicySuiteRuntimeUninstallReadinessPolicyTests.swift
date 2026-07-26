@@ -56,7 +56,10 @@ final class RuntimeUninstallReadinessPolicyTests: XCTestCase {
             serviceStates: serviceStates(),
             vmProcessState: .stopped,
             packageReceiptStates: [
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
                 .readFailed(identifier: "ai.tirosh.vitalserver.helper.tools", reason: "exitCode=1 stderr=denied"),
             ]
         ))
@@ -83,7 +86,7 @@ final class RuntimeUninstallReadinessPolicyTests: XCTestCase {
     private func serviceStates(
         overrides: [RuntimeManagedService: RuntimeServiceState] = [:]
     ) -> [RuntimeManagedService: RuntimeServiceState] {
-        var states = Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map {
+        var states = Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map {
             ($0, RuntimeServiceState.notLoaded)
         })
         for (service, state) in overrides {

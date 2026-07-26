@@ -3,29 +3,32 @@ import Errors
 
 @MainActor
 public protocol RuntimeStatusSnapshotLoading {
-    func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus
-    func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
+    func loadPlatformState(settings: RuntimeSettings) async -> PlatformState
+    func loadOperationState() async -> PlatformOperationState
+    func loadHealthStatus(settings: RuntimeSettings) async -> PlatformState
 }
 
 public protocol RuntimeStatusPresentationFormatting {
-    func statusDisplayMessage(_ status: RuntimeStatus) -> String?
-    func updateOperationDisplayMessage(_ status: RuntimeStatus) -> String?
-    func progressDisplayMessage(_ status: RuntimeStatus) -> String?
+    func statusDisplayMessage(_ status: PlatformState) -> String?
+    func updateOperationDisplayMessage(_ status: PlatformState, operationState: PlatformOperationState) -> String?
 }
 
 public struct RuntimeStatusRefreshResult {
-    public let status: RuntimeStatus
+    public let status: PlatformState
+    public let operationState: PlatformOperationState
     public let message: String?
     public let operationDetail: String?
     public let selectedLogSource: RuntimeLogSource?
 
     public init(
-        status: RuntimeStatus,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         message: String?,
         operationDetail: String?,
         selectedLogSource: RuntimeLogSource?
     ) {
         self.status = status
+        self.operationState = operationState
         self.message = message
         self.operationDetail = operationDetail
         self.selectedLogSource = selectedLogSource
@@ -49,11 +52,13 @@ public struct RuntimeStatusRefresher {
         settings: RuntimeSettings,
         isBusy: Bool
     ) async -> RuntimeStatusRefreshResult {
-        let status = await snapshots.loadStatus(settings: settings)
+        let status = await snapshots.loadPlatformState(settings: settings)
+        let operationState = await snapshots.loadOperationState()
         return presentation(
             status: status,
+            operationState: operationState,
             isBusy: isBusy,
-            synchronizeFileBackedOperation: true
+            includeOperationStatePresentation: true
         )
     }
 
@@ -62,10 +67,12 @@ public struct RuntimeStatusRefresher {
         isBusy: Bool
     ) async -> RuntimeStatusRefreshResult {
         let status = await snapshots.loadHealthStatus(settings: settings)
+        let operationState = await snapshots.loadOperationState()
         return presentation(
             status: status,
+            operationState: operationState,
             isBusy: isBusy,
-            synchronizeFileBackedOperation: true
+            includeOperationStatePresentation: true
         )
     }
 
@@ -74,10 +81,12 @@ public struct RuntimeStatusRefresher {
         completedMessage: String
     ) async -> RuntimeStatusRefreshResult {
         let status = await snapshots.loadHealthStatus(settings: settings)
+        let operationState = await snapshots.loadOperationState()
         return presentation(
             status: status,
+            operationState: operationState,
             isBusy: true,
-            synchronizeFileBackedOperation: false,
+            includeOperationStatePresentation: false,
             messagePrefix: completedMessage
         )
     }
@@ -86,19 +95,22 @@ public struct RuntimeStatusRefresher {
         settings: RuntimeSettings,
         pendingDetail: String
     ) async -> RuntimeStatusRefreshResult {
-        let status = await snapshots.loadStatus(settings: settings)
+        let status = await snapshots.loadPlatformState(settings: settings)
+        let operationState = await snapshots.loadOperationState()
         return RuntimeStatusRefreshResult(
             status: status,
+            operationState: operationState,
             message: nil,
-            operationDetail: formatter.progressDisplayMessage(status) ?? pendingDetail,
+            operationDetail: formatter.updateOperationDisplayMessage(status, operationState: operationState) ?? pendingDetail,
             selectedLogSource: nil
         )
     }
 
     private func presentation(
-        status: RuntimeStatus,
+        status: PlatformState,
+        operationState: PlatformOperationState,
         isBusy: Bool,
-        synchronizeFileBackedOperation: Bool,
+        includeOperationStatePresentation: Bool,
         messagePrefix: String? = nil
     ) -> RuntimeStatusRefreshResult {
         let displayMessage = formatter.statusDisplayMessage(status)
@@ -106,9 +118,9 @@ public struct RuntimeStatusRefresher {
         var operationDetail: String?
         var selectedLogSource: RuntimeLogSource?
 
-        if synchronizeFileBackedOperation,
+        if includeOperationStatePresentation,
            !isBusy,
-           let updateMessage = formatter.updateOperationDisplayMessage(status) {
+           let updateMessage = formatter.updateOperationDisplayMessage(status, operationState: operationState) {
             selectedLogSource = .command
             message = updateMessage
             operationDetail = updateMessage
@@ -116,6 +128,7 @@ public struct RuntimeStatusRefresher {
 
         return RuntimeStatusRefreshResult(
             status: status,
+            operationState: operationState,
             message: message,
             operationDetail: operationDetail,
             selectedLogSource: selectedLogSource

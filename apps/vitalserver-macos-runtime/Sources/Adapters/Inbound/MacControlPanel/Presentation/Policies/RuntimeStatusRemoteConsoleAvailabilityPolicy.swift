@@ -33,12 +33,12 @@ public struct RuntimeStatusRemoteConsoleAvailabilityPolicy {
     }
 
     public func availability(
-        status: RuntimeStatus,
+        status: PlatformState,
         now: Date
     ) -> RuntimeStatusRemoteConsoleAvailabilityValue {
         availability(
-            http: status.runtimeControlHTTP,
-            startedAt: status.runtimeControlStartedAt,
+            http: status.platformAPIHTTP,
+            startedAt: status.platformAPIStartedAt,
             now: now
         )
     }

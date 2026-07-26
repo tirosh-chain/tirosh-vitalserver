@@ -7,7 +7,62 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     public var canUninstallRuntime: Bool
     public var canApplyBundle: Bool
     public var canRollback: Bool
-    public var canEditVMResources: Bool
+    public var canRollbackRelease: Bool
+    public var canEditRuntimeProviderResources: Bool
+    public var canEditNetworkExposure: Bool
+    public var canResetAdminPassword: Bool
+    public var canOpenLocalFiles: Bool
+    public var canStreamLogs: Bool
+    public var canControlRuntimeServices: Bool
+    public var canControlGuestServices: Bool
+    public var canExportLogs: Bool
+    public var canViewReleaseMetadata: Bool
+    public var canUseLab: Bool
+
+    public init(
+        canInstallRuntime: Bool = true,
+        canUninstallRuntime: Bool = true,
+        canApplyBundle: Bool = false,
+        canRollback: Bool = true,
+        canRollbackRelease: Bool = false,
+        canEditRuntimeProviderResources: Bool = true,
+        canEditNetworkExposure: Bool = true,
+        canResetAdminPassword: Bool = true,
+        canOpenLocalFiles: Bool = true,
+        canStreamLogs: Bool = true,
+        canControlRuntimeServices: Bool = true,
+        canControlGuestServices: Bool = true,
+        canExportLogs: Bool = true,
+        canViewReleaseMetadata: Bool = true,
+        canUseLab: Bool = true
+    ) {
+        self.canInstallRuntime = canInstallRuntime
+        self.canUninstallRuntime = canUninstallRuntime
+        self.canApplyBundle = canApplyBundle
+        self.canRollback = canRollback
+        self.canRollbackRelease = canRollbackRelease
+        self.canEditRuntimeProviderResources = canEditRuntimeProviderResources
+        self.canEditNetworkExposure = canEditNetworkExposure
+        self.canResetAdminPassword = canResetAdminPassword
+        self.canOpenLocalFiles = canOpenLocalFiles
+        self.canStreamLogs = canStreamLogs
+        self.canControlRuntimeServices = canControlRuntimeServices
+        self.canControlGuestServices = canControlGuestServices
+        self.canExportLogs = canExportLogs
+        self.canViewReleaseMetadata = canViewReleaseMetadata
+        self.canUseLab = canUseLab
+    }
+}
+
+/// Capabilities owned by the Platform Agent. This contract deliberately omits
+/// Runtime Controller product capabilities such as service control and Lab.
+public struct PlatformCapabilities: Codable, Equatable, Sendable {
+    public var canInstallRuntime: Bool
+    public var canUninstallRuntime: Bool
+    public var canApplyBundle: Bool
+    public var canRollback: Bool
+    public var canRollbackRelease: Bool
+    public var canEditRuntimeProviderResources: Bool
     public var canEditNetworkExposure: Bool
     public var canResetAdminPassword: Bool
     public var canOpenLocalFiles: Bool
@@ -15,53 +70,40 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     public var canControlRuntimeServices: Bool
     public var canExportLogs: Bool
     public var canViewReleaseMetadata: Bool
-    public var canUseTestTools: Bool
 
-    public init(
-        canInstallRuntime: Bool = true,
-        canUninstallRuntime: Bool = true,
-        canApplyBundle: Bool = true,
-        canRollback: Bool = true,
-        canEditVMResources: Bool = true,
-        canEditNetworkExposure: Bool = true,
-        canResetAdminPassword: Bool = true,
-        canOpenLocalFiles: Bool = true,
-        canStreamLogs: Bool = true,
-        canControlRuntimeServices: Bool = true,
-        canExportLogs: Bool = true,
-        canViewReleaseMetadata: Bool = true,
-        canUseTestTools: Bool = false
-    ) {
-        self.canInstallRuntime = canInstallRuntime
-        self.canUninstallRuntime = canUninstallRuntime
-        self.canApplyBundle = canApplyBundle
-        self.canRollback = canRollback
-        self.canEditVMResources = canEditVMResources
-        self.canEditNetworkExposure = canEditNetworkExposure
-        self.canResetAdminPassword = canResetAdminPassword
-        self.canOpenLocalFiles = canOpenLocalFiles
-        self.canStreamLogs = canStreamLogs
-        self.canControlRuntimeServices = canControlRuntimeServices
-        self.canExportLogs = canExportLogs
-        self.canViewReleaseMetadata = canViewReleaseMetadata
-        self.canUseTestTools = canUseTestTools
+    public init(_ capabilities: RuntimeControlCapabilities = RuntimeControlCapabilities()) {
+        self.canInstallRuntime = capabilities.canInstallRuntime
+        self.canUninstallRuntime = capabilities.canUninstallRuntime
+        self.canApplyBundle = capabilities.canApplyBundle
+        self.canRollback = capabilities.canRollback
+        self.canRollbackRelease = capabilities.canRollbackRelease
+        self.canEditRuntimeProviderResources = capabilities.canEditRuntimeProviderResources
+        self.canEditNetworkExposure = capabilities.canEditNetworkExposure
+        self.canResetAdminPassword = capabilities.canResetAdminPassword
+        self.canOpenLocalFiles = capabilities.canOpenLocalFiles
+        self.canStreamLogs = capabilities.canStreamLogs
+        self.canControlRuntimeServices = capabilities.canControlRuntimeServices
+        self.canExportLogs = capabilities.canExportLogs
+        self.canViewReleaseMetadata = capabilities.canViewReleaseMetadata
     }
 }
 
-public struct RuntimeContainerMemoryUsage: Codable, Equatable, Sendable {
-    public var usedBytes: Int64
-    public var limitBytes: Int64?
+/// Runtime Controller-owned capability document. Values are passed through
+/// from the Runtime Controller and are not reconstructed from Platform state.
+public struct RuntimeCapabilities: Codable, Equatable, Sendable {
+    public let schemaVersion: Int
+    public let capabilities: [String]
 
-    public init(usedBytes: Int64, limitBytes: Int64? = nil) {
-        self.usedBytes = usedBytes
-        self.limitBytes = limitBytes
+    public init(schemaVersion: Int, capabilities: [String]) {
+        self.schemaVersion = schemaVersion
+        self.capabilities = capabilities
     }
 
-    public var percent: Double? {
-        guard let limitBytes, limitBytes > 0 else {
-            return nil
-        }
-        return min(max((Double(usedBytes) / Double(limitBytes)) * 100.0, 0), 100)
+    public init(_ document: RuntimeGuestControlCapabilities) {
+        self.init(
+            schemaVersion: document.schemaVersion,
+            capabilities: document.capabilities
+        )
     }
 }
 
@@ -497,153 +539,6 @@ public struct RuntimeRedisRelaySettings: Codable, Equatable, Sendable {
     }
 }
 
-public struct RuntimeRedisRelayBatch: Codable, Equatable, Sendable {
-    public var scanned: Int
-    public var copied: Int
-    public var unchanged: Int
-    public var skipped: Int
-    public var denied: Int
-    public var missing: Int
-    public var errors: Int
-
-    public init(
-        scanned: Int = 0,
-        copied: Int = 0,
-        unchanged: Int = 0,
-        skipped: Int = 0,
-        denied: Int = 0,
-        missing: Int = 0,
-        errors: Int = 0
-    ) {
-        self.scanned = scanned
-        self.copied = copied
-        self.unchanged = unchanged
-        self.skipped = skipped
-        self.denied = denied
-        self.missing = missing
-        self.errors = errors
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case scanned
-        case copied
-        case unchanged
-        case skipped
-        case denied
-        case missing
-        case errors
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            scanned: try container.decodeIfPresent(Int.self, forKey: .scanned) ?? 0,
-            copied: try container.decodeIfPresent(Int.self, forKey: .copied) ?? 0,
-            unchanged: try container.decodeIfPresent(Int.self, forKey: .unchanged) ?? 0,
-            skipped: try container.decodeIfPresent(Int.self, forKey: .skipped) ?? 0,
-            denied: try container.decodeIfPresent(Int.self, forKey: .denied) ?? 0,
-            missing: try container.decodeIfPresent(Int.self, forKey: .missing) ?? 0,
-            errors: try container.decodeIfPresent(Int.self, forKey: .errors) ?? 0
-        )
-    }
-}
-
-public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
-    public var observedAt: String
-    public var enabled: Bool
-    public var state: String
-    public var scope: String
-    public var targetUrl: String?
-    public var targetUsernameConfigured: Bool
-    public var targetPasswordConfigured: Bool
-    public var settingsFingerprint: String?
-    public var batches: Int
-    public var totals: RuntimeRedisRelayBatch
-    public var lastBatch: RuntimeRedisRelayBatch?
-    public var lastSuccessAt: String?
-    public var lastErrorAt: String?
-    public var lastError: String?
-
-    public init(
-        observedAt: String,
-        enabled: Bool,
-        state: String,
-        scope: String,
-        targetUrl: String? = nil,
-        targetUsernameConfigured: Bool = false,
-        targetPasswordConfigured: Bool = false,
-        settingsFingerprint: String? = nil,
-        batches: Int = 0,
-        totals: RuntimeRedisRelayBatch = RuntimeRedisRelayBatch(),
-        lastBatch: RuntimeRedisRelayBatch? = nil,
-        lastSuccessAt: String? = nil,
-        lastErrorAt: String? = nil,
-        lastError: String? = nil
-    ) {
-        self.observedAt = observedAt
-        self.enabled = enabled
-        self.state = state
-        self.scope = scope
-        self.targetUrl = targetUrl
-        self.targetUsernameConfigured = targetUsernameConfigured
-        self.targetPasswordConfigured = targetPasswordConfigured
-        self.settingsFingerprint = settingsFingerprint
-        self.batches = batches
-        self.totals = totals
-        self.lastBatch = lastBatch
-        self.lastSuccessAt = lastSuccessAt
-        self.lastErrorAt = lastErrorAt
-        self.lastError = lastError
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case observedAt
-        case enabled
-        case state
-        case scope
-        case targetUrl
-        case targetUsernameConfigured
-        case targetPasswordConfigured
-        case settingsFingerprint
-        case batches
-        case totals
-        case lastBatch
-        case lastSuccessAt
-        case lastErrorAt
-        case lastError
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            observedAt: try container.decodeIfPresent(String.self, forKey: .observedAt) ?? "",
-            enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false,
-            state: try container.decodeIfPresent(String.self, forKey: .state) ?? "unknown",
-            scope: try container.decodeIfPresent(String.self, forKey: .scope) ?? "unknown",
-            targetUrl: try container.decodeIfPresent(String.self, forKey: .targetUrl),
-            targetUsernameConfigured: try container.decodeIfPresent(
-                Bool.self,
-                forKey: .targetUsernameConfigured
-            ) ?? false,
-            targetPasswordConfigured: try container.decodeIfPresent(
-                Bool.self,
-                forKey: .targetPasswordConfigured
-            ) ?? false,
-            settingsFingerprint: try container.decodeIfPresent(
-                String.self,
-                forKey: .settingsFingerprint
-            ),
-            batches: try container.decodeIfPresent(Int.self, forKey: .batches) ?? 0,
-            totals: try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .totals)
-                ?? RuntimeRedisRelayBatch(),
-            lastBatch: try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .lastBatch),
-            lastSuccessAt: try container.decodeIfPresent(String.self, forKey: .lastSuccessAt),
-            lastErrorAt: try container.decodeIfPresent(String.self, forKey: .lastErrorAt),
-            lastError: try container.decodeIfPresent(String.self, forKey: .lastError)
-        )
-    }
-}
-
 public struct RuntimeAppliedVMSettings: Codable, Equatable, Sendable {
     public let cpuCount: Int
     public let memoryGiB: Int
@@ -734,6 +629,16 @@ public enum RuntimeSettingsInitialValues {
     }
 }
 
+public enum RuntimeControlLocalAPIConnectionDefaults {
+    public static let headerName = "X-Runtime-Control-Token"
+
+    public static func baseURL(
+        runtimeControlPort: Int = RuntimeSettingsInitialValues.runtimeControlPort
+    ) -> String {
+        RuntimeSettingsInitialValues.remoteConsoleURL(runtimeControlPort: runtimeControlPort)
+    }
+}
+
 public struct RuntimeSettingsReadIssue: Codable, Equatable, Sendable {
     public var source: String
     public var message: String
@@ -754,7 +659,7 @@ public struct RuntimeDataDirectoryStats: Codable, Equatable, Sendable {
     }
 }
 
-public struct RuntimeStatusReadIssue: Codable, Equatable, Sendable {
+public struct PlatformStateReadIssue: Codable, Equatable, Sendable {
     public var source: String
     public var message: String
 
@@ -764,184 +669,237 @@ public struct RuntimeStatusReadIssue: Codable, Equatable, Sendable {
     }
 }
 
-public enum RuntimeServiceStateSource: String, Codable, Equatable, Sendable {
-    case statusDocument = "status-document"
-    case liveLaunchd = "live-launchd"
+public enum PlatformServiceRole: String, Codable, Equatable, Sendable {
+    case runtimeProvider = "runtime-provider"
+    case publicProxy = "public-proxy"
+    case logSync = "log-sync"
+    case sleepPrevention = "sleep-prevention"
+    case watchdog
 }
 
-public struct RuntimeStatus: Codable, Equatable, Sendable {
-    public var runtimeInstalled: Bool
-    public var runtimeInstallationState: RuntimeFileState?
-    public var vmServiceLoaded: Bool
-    public var proxyServiceLoaded: Bool
-    public var guestLogSyncServiceLoaded: Bool
-    public var sleepPreventionServiceLoaded: Bool?
-    public var watchdogServiceLoaded: Bool
-    public var vmServiceState: RuntimeServiceState?
-    public var proxyServiceState: RuntimeServiceState?
-    public var guestLogSyncServiceState: RuntimeServiceState?
-    public var sleepPreventionServiceState: RuntimeServiceState?
-    public var watchdogServiceState: RuntimeServiceState?
-    public var vmServiceStateSource: RuntimeServiceStateSource?
-    public var proxyServiceStateSource: RuntimeServiceStateSource?
-    public var guestLogSyncServiceStateSource: RuntimeServiceStateSource?
-    public var sleepPreventionServiceStateSource: RuntimeServiceStateSource?
-    public var watchdogServiceStateSource: RuntimeServiceStateSource?
-    public var runtimeState: RuntimeState?
-    public var operation: RuntimeOperation?
-    public var statusMessage: String?
-    public var statusDocumentError: String?
-    public var installStateDocument: RuntimeInstallStateDocument?
-    public var installStateDocumentError: String?
-    public var readIssues: [RuntimeStatusReadIssue]
-    public var updatedAt: String?
-    public var startedAt: String?
-    public var runtimeVersion: String?
-    public var latestBackup: String?
-    public var vmState: RuntimeVMState?
-    public var vmErrors: [RuntimeVMError]?
-    public var vmIP: String?
-    public var guestHTTP: String?
-    public var hostProxyHTTP: String?
-    public var runtimeControlHTTP: String?
-    public var runtimeControlStartedAt: String?
-    public var redisUIHTTP: String?
-    public var swaggerUIHTTP: String?
-    public var cpuUsagePercent: Double?
-    public var memory: ResourceUsage?
-    public var vitalServerMemory: RuntimeContainerMemoryUsage?
-    public var recorderIngressMemory: RuntimeContainerMemoryUsage?
-    public var redisMemory: RuntimeContainerMemoryUsage?
-    public var systemDisk: ResourceUsage?
-    public var dataStorage: ResourceUsage?
-    public var dataStorageError: String?
-    public var guestRuntimeStateError: String?
-    public var dataDirectoryStats: RuntimeDataDirectoryStats?
-    public var dataDirectoryStatsError: String?
-    public var proxyPort: Int?
-    public var proxyPortReadState: RuntimeProxyPortReadState?
-    public var failureReasons: [RuntimeFailureReason]
-    public var progress: RuntimeProgressDocument?
-    public var containerObservation: RuntimeContainerObservation?
-    public var vitalDBObservation: VitalDBObservationDocument?
-    public var redisRelayStatus: RuntimeRedisRelayStatus?
+public enum PlatformServiceState: String, Codable, Equatable, Sendable {
+    case running
+    case stopped
+    case notInstalled = "not-installed"
+    case unavailable
+    case readFailed = "read-failed"
+    case permissionDenied = "permission-denied"
+    case failed
+}
+
+public struct PlatformServiceStatus: Codable, Equatable, Sendable {
+    public let role: PlatformServiceRole
+    public let state: PlatformServiceState
+    public let readError: String?
 
     public init(
-        runtimeInstalled: Bool = false,
-        runtimeInstallationState: RuntimeFileState? = nil,
-        vmServiceLoaded: Bool = false,
-        proxyServiceLoaded: Bool = false,
-        guestLogSyncServiceLoaded: Bool = false,
-        sleepPreventionServiceLoaded: Bool? = nil,
-        watchdogServiceLoaded: Bool = false,
-        vmServiceState: RuntimeServiceState? = nil,
-        proxyServiceState: RuntimeServiceState? = nil,
-        guestLogSyncServiceState: RuntimeServiceState? = nil,
-        sleepPreventionServiceState: RuntimeServiceState? = nil,
-        watchdogServiceState: RuntimeServiceState? = nil,
-        vmServiceStateSource: RuntimeServiceStateSource? = nil,
-        proxyServiceStateSource: RuntimeServiceStateSource? = nil,
-        guestLogSyncServiceStateSource: RuntimeServiceStateSource? = nil,
-        sleepPreventionServiceStateSource: RuntimeServiceStateSource? = nil,
-        watchdogServiceStateSource: RuntimeServiceStateSource? = nil,
-        runtimeState: RuntimeState? = nil,
-        operation: RuntimeOperation? = nil,
-        statusMessage: String? = nil,
-        statusDocumentError: String? = nil,
-        installStateDocument: RuntimeInstallStateDocument? = nil,
-        installStateDocumentError: String? = nil,
-        readIssues: [RuntimeStatusReadIssue] = [],
-        updatedAt: String? = nil,
-        startedAt: String? = nil,
-        runtimeVersion: String? = nil,
-        latestBackup: String? = nil,
-        vmState: RuntimeVMState? = nil,
-        vmErrors: [RuntimeVMError]? = nil,
-        vmIP: String? = nil,
-        guestHTTP: String? = nil,
-        hostProxyHTTP: String? = nil,
-        runtimeControlHTTP: String? = nil,
-        runtimeControlStartedAt: String? = nil,
-        redisUIHTTP: String? = nil,
-        swaggerUIHTTP: String? = nil,
-        cpuUsagePercent: Double? = nil,
-        memory: ResourceUsage? = nil,
-        vitalServerMemory: RuntimeContainerMemoryUsage? = nil,
-        recorderIngressMemory: RuntimeContainerMemoryUsage? = nil,
-        redisMemory: RuntimeContainerMemoryUsage? = nil,
-        systemDisk: ResourceUsage? = nil,
-        dataStorage: ResourceUsage? = nil,
-        dataStorageError: String? = nil,
-        guestRuntimeStateError: String? = nil,
-        dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
-        dataDirectoryStatsError: String? = nil,
-        proxyPort: Int? = nil,
-        proxyPortReadState: RuntimeProxyPortReadState? = nil,
-        failureReasons: [RuntimeFailureReason] = [],
-        progress: RuntimeProgressDocument? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
-        vitalDBObservation: VitalDBObservationDocument? = nil,
-        redisRelayStatus: RuntimeRedisRelayStatus? = nil
+        role: PlatformServiceRole,
+        state: PlatformServiceState,
+        readError: String? = nil
     ) {
-        self.runtimeInstalled = runtimeInstalled
-        self.runtimeInstallationState = runtimeInstallationState
-        self.vmServiceLoaded = vmServiceLoaded
-        self.proxyServiceLoaded = proxyServiceLoaded
-        self.guestLogSyncServiceLoaded = guestLogSyncServiceLoaded
-        self.sleepPreventionServiceLoaded = sleepPreventionServiceLoaded
-        self.watchdogServiceLoaded = watchdogServiceLoaded
-        self.vmServiceState = vmServiceState
-        self.proxyServiceState = proxyServiceState
-        self.guestLogSyncServiceState = guestLogSyncServiceState
-        self.sleepPreventionServiceState = sleepPreventionServiceState
-        self.watchdogServiceState = watchdogServiceState
-        self.vmServiceStateSource = vmServiceStateSource
-        self.proxyServiceStateSource = proxyServiceStateSource
-        self.guestLogSyncServiceStateSource = guestLogSyncServiceStateSource
-        self.sleepPreventionServiceStateSource = sleepPreventionServiceStateSource
-        self.watchdogServiceStateSource = watchdogServiceStateSource
-        self.runtimeState = runtimeState
-        self.operation = operation
-        self.statusMessage = statusMessage
-        self.statusDocumentError = statusDocumentError
-        self.installStateDocument = installStateDocument
-        self.installStateDocumentError = installStateDocumentError
-        self.readIssues = readIssues
-        self.updatedAt = updatedAt
-        self.startedAt = startedAt
-        self.runtimeVersion = runtimeVersion
-        self.latestBackup = latestBackup
-        self.vmState = vmState
-        self.vmErrors = vmErrors
-        self.vmIP = vmIP
-        self.guestHTTP = guestHTTP
-        self.hostProxyHTTP = hostProxyHTTP
-        self.runtimeControlHTTP = runtimeControlHTTP
-        self.runtimeControlStartedAt = runtimeControlStartedAt
-        self.redisUIHTTP = redisUIHTTP
-        self.swaggerUIHTTP = swaggerUIHTTP
-        self.cpuUsagePercent = cpuUsagePercent
-        self.memory = memory
-        self.vitalServerMemory = vitalServerMemory
-        self.recorderIngressMemory = recorderIngressMemory
-        self.redisMemory = redisMemory
-        self.systemDisk = systemDisk
-        self.dataStorage = dataStorage
-        self.dataStorageError = dataStorageError
-        self.guestRuntimeStateError = guestRuntimeStateError
-        self.dataDirectoryStats = dataDirectoryStats
-        self.dataDirectoryStatsError = dataDirectoryStatsError
-        self.proxyPort = proxyPort
-        self.proxyPortReadState = proxyPortReadState
-        self.failureReasons = failureReasons
-        self.progress = progress
-        self.containerObservation = containerObservation
-        self.vitalDBObservation = vitalDBObservation
-        self.redisRelayStatus = redisRelayStatus
+        self.role = role
+        self.state = state
+        self.readError = readError
     }
 
-    public var effectiveRuntimeInstallationState: RuntimeFileState {
-        runtimeInstallationState ?? (runtimeInstalled ? .executable : .missing)
+    public init(role: PlatformServiceRole, state: RuntimeServiceState) {
+        self.role = role
+        switch state {
+        case .loaded:
+            self.state = .running
+            self.readError = nil
+        case .notLoaded:
+            self.state = .stopped
+            self.readError = nil
+        case .readFailed(let reason):
+            self.state = .readFailed
+            self.readError = reason.isEmpty ? "platform service state read failed" : reason
+        case .permissionDenied(let reason):
+            self.state = .permissionDenied
+            self.readError = reason.isEmpty ? "platform service state permission denied" : reason
+        case .unknown(let reason):
+            self.state = .unavailable
+            self.readError = reason.isEmpty ? "platform service state unavailable" : reason
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case role
+        case state
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let role = try container.decode(PlatformServiceRole.self, forKey: .role)
+        let state = try container.decode(PlatformServiceState.self, forKey: .state)
+        guard container.contains(.readError) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.readError,
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Platform service readError must be explicit null or string"
+                )
+            )
+        }
+        let readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        let readErrorIsBlank = readError?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+        if [.unavailable, .readFailed, .permissionDenied, .failed].contains(state) && readErrorIsBlank {
+            throw DecodingError.dataCorruptedError(
+                forKey: .readError,
+                in: container,
+                debugDescription: "failed Platform service state must include readError"
+            )
+        }
+        self.init(role: role, state: state, readError: readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(role, forKey: .role)
+        try container.encode(state, forKey: .state)
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+
+    public var runtimeServiceState: RuntimeServiceState {
+        switch state {
+        case .running:
+            .loaded
+        case .stopped, .notInstalled:
+            .notLoaded
+        case .unavailable:
+            .unknown(readError ?? "platform service state unavailable")
+        case .readFailed:
+            .readFailed(readError ?? "platform service state read failed")
+        case .permissionDenied:
+            .permissionDenied(readError ?? "platform service state permission denied")
+        case .failed:
+            .readFailed(readError ?? "platform service state read failed")
+        }
+    }
+}
+
+public struct PlatformState: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case runtimeInstallationState
+        case services
+        case platformHealth
+        case readIssues
+        case installedVersion
+        case latestBackup
+        case runtimeProviderState
+        case runtimeProviderErrors
+        case runtimeEndpoint
+        case runtimeControllerHTTP
+        case publicProxyHTTP
+        case platformAPIHTTP
+        case platformAPIStartedAt
+        case dataStorage
+        case dataStorageError
+        case dataDirectoryStats
+        case dataDirectoryStatsError
+        case publicProxyPort
+        case publicProxyPortReadState
+        case healthIssues
+    }
+
+    public var runtimeInstallationState: RuntimeFileState
+    public var services: [PlatformServiceStatus]
+    public var platformHealth: RuntimeState?
+    public var readIssues: [PlatformStateReadIssue]
+    public var installedVersion: String?
+    public var latestBackup: String?
+    public var runtimeProviderState: RuntimeVMState?
+    public var runtimeProviderErrors: [RuntimeVMError]?
+    public var runtimeEndpoint: String?
+    public var runtimeControllerHTTP: String?
+    public var publicProxyHTTP: String?
+    public var platformAPIHTTP: String?
+    public var platformAPIStartedAt: String?
+    public var dataStorage: ResourceUsage?
+    public var dataStorageError: String?
+    public var dataDirectoryStats: RuntimeDataDirectoryStats?
+    public var dataDirectoryStatsError: String?
+    public var publicProxyPort: Int?
+    public var publicProxyPortReadState: RuntimeProxyPortReadState?
+    public var healthIssues: [RuntimeFailureReason]
+
+    public init(
+        runtimeInstallationState: RuntimeFileState,
+        services: [PlatformServiceStatus] = [],
+        platformHealth: RuntimeState? = nil,
+        readIssues: [PlatformStateReadIssue] = [],
+        installedVersion: String? = nil,
+        latestBackup: String? = nil,
+        runtimeProviderState: RuntimeVMState? = nil,
+        runtimeProviderErrors: [RuntimeVMError]? = nil,
+        runtimeEndpoint: String? = nil,
+        runtimeControllerHTTP: String? = nil,
+        publicProxyHTTP: String? = nil,
+        platformAPIHTTP: String? = nil,
+        platformAPIStartedAt: String? = nil,
+        dataStorage: ResourceUsage? = nil,
+        dataStorageError: String? = nil,
+        dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
+        dataDirectoryStatsError: String? = nil,
+        publicProxyPort: Int? = nil,
+        publicProxyPortReadState: RuntimeProxyPortReadState? = nil,
+        healthIssues: [RuntimeFailureReason] = []
+    ) {
+        self.runtimeInstallationState = runtimeInstallationState
+        self.services = services
+        self.platformHealth = platformHealth
+        self.readIssues = readIssues
+        self.installedVersion = installedVersion
+        self.latestBackup = latestBackup
+        self.runtimeProviderState = runtimeProviderState
+        self.runtimeProviderErrors = runtimeProviderErrors
+        self.runtimeEndpoint = runtimeEndpoint
+        self.runtimeControllerHTTP = runtimeControllerHTTP
+        self.publicProxyHTTP = publicProxyHTTP
+        self.platformAPIHTTP = platformAPIHTTP
+        self.platformAPIStartedAt = platformAPIStartedAt
+        self.dataStorage = dataStorage
+        self.dataStorageError = dataStorageError
+        self.dataDirectoryStats = dataDirectoryStats
+        self.dataDirectoryStatsError = dataDirectoryStatsError
+        self.publicProxyPort = publicProxyPort
+        self.publicProxyPortReadState = publicProxyPortReadState
+        self.healthIssues = healthIssues
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            runtimeInstallationState: try container.decode(RuntimeFileState.self, forKey: .runtimeInstallationState),
+            services: try container.decode([PlatformServiceStatus].self, forKey: .services),
+            platformHealth: try container.decodeIfPresent(RuntimeState.self, forKey: .platformHealth),
+            readIssues: try container.decodeIfPresent([PlatformStateReadIssue].self, forKey: .readIssues) ?? [],
+            installedVersion: try container.decodeIfPresent(String.self, forKey: .installedVersion),
+            latestBackup: try container.decodeIfPresent(String.self, forKey: .latestBackup),
+            runtimeProviderState: try container.decodeIfPresent(RuntimeVMState.self, forKey: .runtimeProviderState),
+            runtimeProviderErrors: try container.decodeIfPresent([RuntimeVMError].self, forKey: .runtimeProviderErrors),
+            runtimeEndpoint: try container.decodeIfPresent(String.self, forKey: .runtimeEndpoint),
+            runtimeControllerHTTP: try container.decodeIfPresent(String.self, forKey: .runtimeControllerHTTP),
+            publicProxyHTTP: try container.decodeIfPresent(String.self, forKey: .publicProxyHTTP),
+            platformAPIHTTP: try container.decodeIfPresent(String.self, forKey: .platformAPIHTTP),
+            platformAPIStartedAt: try container.decodeIfPresent(String.self, forKey: .platformAPIStartedAt),
+            dataStorage: try container.decodeIfPresent(ResourceUsage.self, forKey: .dataStorage),
+            dataStorageError: try container.decodeIfPresent(String.self, forKey: .dataStorageError),
+            dataDirectoryStats: try container.decodeIfPresent(RuntimeDataDirectoryStats.self, forKey: .dataDirectoryStats),
+            dataDirectoryStatsError: try container.decodeIfPresent(String.self, forKey: .dataDirectoryStatsError),
+            publicProxyPort: try container.decodeIfPresent(Int.self, forKey: .publicProxyPort),
+            publicProxyPortReadState: try container.decodeIfPresent(RuntimeProxyPortReadState.self, forKey: .publicProxyPortReadState),
+            healthIssues: try container.decodeIfPresent([RuntimeFailureReason].self, forKey: .healthIssues) ?? []
+        )
+    }
+
+    public func serviceState(_ role: PlatformServiceRole) -> RuntimeServiceState? {
+        services.first(where: { $0.role == role })?.runtimeServiceState
     }
 
 }

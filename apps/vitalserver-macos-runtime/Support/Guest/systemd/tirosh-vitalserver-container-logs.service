@@ -1,6 +1,6 @@
 [Unit]
 Description=Write Tirosh VitalServer container logs to shared runtime directory
-After=docker.service tirosh-vitalserver-compose.service tirosh-runtime-state.service
+After=docker.service tirosh-vitalserver-compose.service tirosh-runtime-observation.service
 Requires=docker.service
 
 [Service]

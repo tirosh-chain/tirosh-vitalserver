@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:outbound-relay-command",
+  "title": "OutboundRelayTargetApplyCommand",
+  "description": "A revisioned command to persist and explicitly observe an OutboundRelayTarget. It does not deliver business data or infer consumer processing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "targetId",
+    "expectedResourceRevision",
+    "spec"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "targetId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedResourceRevision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "spec": {
+      "$ref": "#/$defs/RelayTargetSpec"
+    }
+  },
+  "$defs": {
+    "RelayProviderReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "capabilityRevision"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "id": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "capabilityRevision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "RelayTargetSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "endpointReference"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/RelayProviderReference"
+        },
+        "endpointReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/ResourceReference"
+        },
+        "credentialReference": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SecretReference"
+        }
+      }
+    }
+  }
+}

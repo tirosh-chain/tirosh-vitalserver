@@ -19,6 +19,7 @@ const {
 test("send_data ingress contract keeps mode, outcome, and state names explicit", () => {
   assert.deepStrictEqual(Object.values(sendDataIngressModes), [
     "passthrough",
+    "observe_only",
     "mirror_spool",
     "spool_only",
     "spool_and_replay",

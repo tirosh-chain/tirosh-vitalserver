@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:macos-guest-artifact-manifest",
+  "title": "MacOSGuestArtifactManifest",
+  "description": "C34 immutable Guest-image compiler output consumed by the macOS Host package composer. It identifies arm64 Linux boot and storage artifacts by logical role, byte size, and SHA-256; source paths are build-adapter inputs and are intentionally not part of the manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "artifactSetId", "architecture", "kernel", "storageDevices"],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "artifactSetId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "architecture": { "const": "arm64" },
+    "kernel": { "$ref": "#/$defs/ArtifactDigest" },
+    "initialRamdisk": { "$ref": "#/$defs/ArtifactDigest" },
+    "storageDevices": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/StorageArtifactDigest" }
+    }
+  },
+  "$defs": {
+    "ArtifactDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sizeBytes", "sha256"],
+      "properties": {
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      }
+    },
+    "StorageArtifactDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "role": { "enum": ["guest-root-storage", "guest-product-bootstrap-volume"] },
+        "storageImageFormat": { "const": "raw" },
+        "guestVolumeFileSystem": { "enum": ["iso9660"] },
+        "sizeBytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" }
+      },
+      "required": ["id", "role", "storageImageFormat", "sizeBytes", "sha256"],
+      "oneOf": [
+        {
+          "properties": {
+            "id": { "const": "guest-root" },
+            "role": { "const": "guest-root-storage" },
+            "storageImageFormat": { "const": "raw" }
+          },
+          "not": { "required": ["guestVolumeFileSystem"] }
+        },
+        {
+          "properties": {
+            "id": { "const": "guest-product-bootstrap" },
+            "role": { "const": "guest-product-bootstrap-volume" },
+            "storageImageFormat": { "const": "raw" },
+            "guestVolumeFileSystem": { "const": "iso9660" }
+          },
+          "required": ["guestVolumeFileSystem"]
+        }
+      ]
+    }
+  }
+}

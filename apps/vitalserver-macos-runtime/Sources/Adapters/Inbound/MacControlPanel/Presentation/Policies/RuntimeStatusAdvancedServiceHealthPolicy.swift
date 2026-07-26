@@ -9,10 +9,17 @@ public enum RuntimeStatusServiceActionID: Equatable, Sendable {
     case openSwagger
 }
 
+public enum RuntimeStatusAdvancedServiceHealthSection: Equatable, Sendable {
+    case platform
+    case runtime
+    case access
+}
+
 public protocol RuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusHTTPValueVocabulary,
     RuntimeStatusServiceValueVocabulary,
-    RuntimeStatusComposeServiceValueVocabulary {
+    RuntimeStatusContainerStateVocabulary {
     var proxyServiceLabel: String { get }
+    var runtimeProviderServiceLabel: String { get }
     var guestLogSyncServiceLabel: String { get }
     var sleepPreventionServiceLabel: String { get }
     var watchdogServiceLabel: String { get }
@@ -22,6 +29,7 @@ public protocol RuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusHTTPV
     var hostProxyName: String { get }
     var vitalDBObserverLabel: String { get }
     var redisRelayLabel: String { get }
+    var guestProductServicesLabel: String { get }
     var redisUIName: String { get }
     var swaggerUIName: String { get }
     var disabledText: String { get }
@@ -46,17 +54,20 @@ public struct RuntimeStatusAdvancedServiceHealthValue: Equatable, Sendable {
 }
 
 public struct RuntimeStatusAdvancedServiceHealthItem: Equatable, Sendable {
+    public let section: RuntimeStatusAdvancedServiceHealthSection
     public let label: String
     public let value: RuntimeStatusAdvancedServiceHealthValue
     public let httpStatus: String?
     public let action: RuntimeStatusServiceActionID?
 
     public init(
+        section: RuntimeStatusAdvancedServiceHealthSection = .runtime,
         label: String,
         value: RuntimeStatusAdvancedServiceHealthValue,
         httpStatus: String?,
         action: RuntimeStatusServiceActionID?
     ) {
+        self.section = section
         self.label = label
         self.value = value
         self.httpStatus = httpStatus
@@ -66,19 +77,18 @@ public struct RuntimeStatusAdvancedServiceHealthItem: Equatable, Sendable {
 
 public struct RuntimeStatusAdvancedServiceHealthPolicy {
     private enum ComposeService: String {
-        case vitalServer = "app"
-        case networkAccess = "edge"
-        case recorderRecovery = "recorder-recovery"
-        case recorderIngress = "recorder-ingress"
-        case vitalDBObserver = "vitaldb-observer"
         case redisRelay = "redis-relay"
-        case redisUI = "redis-ui"
-        case swaggerUI = "swagger-ui"
+    }
+
+    private struct OperationPresentationState {
+        let installInProgress: Bool
+        let initializationInProgress: Bool
+        let recoveryInProgress: Bool
+        let updateInProgress: Bool
     }
 
     private let serviceValuePolicy: RuntimeStatusServiceValuePolicy
     private let httpValuePolicy: RuntimeStatusHTTPValuePolicy
-    private let composeServiceValuePolicy: RuntimeStatusComposeServiceValuePolicy
     private let guestReadinessPolicy = RuntimeStatusGuestReadinessPresentationPolicy()
     private let vocabulary: any RuntimeStatusAdvancedServiceHealthVocabulary
 
@@ -86,133 +96,135 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         self.vocabulary = vocabulary
         self.serviceValuePolicy = RuntimeStatusServiceValuePolicy(vocabulary: vocabulary)
         self.httpValuePolicy = RuntimeStatusHTTPValuePolicy(vocabulary: vocabulary)
-        self.composeServiceValuePolicy = RuntimeStatusComposeServiceValuePolicy(vocabulary: vocabulary)
     }
 
     public func serviceHealth(
-        status: RuntimeStatus,
-        observation: RuntimeContainerObservation?,
+        status: PlatformState,
+        operationState: PlatformOperationState,
+        runtimeStackStatus: RuntimeGuestControlStackStatus?,
+        runtimeStackReadError: String?,
+        runtimeServiceResources: [RuntimeGuestServiceResource],
+        runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
         redisRelaySettings: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
+        redisRelayStatusRead: RuntimeRedisRelayStatusReadResult,
         now: Date
     ) -> [RuntimeStatusAdvancedServiceHealthItem] {
-        let installInProgress = RuntimeActiveOperationPolicy.isInstallInProgress(status)
-        let initializationInProgress = RuntimeActiveOperationPolicy.isInitializationInProgress(status)
-        let recoveryInProgress = RuntimeActiveOperationPolicy.isRecoveryInProgress(status)
-        let updateInProgress = RuntimeActiveOperationPolicy.isUpdateInProgress(status)
-        return [
+        let operation = operationState.operationForPresentation
+        return serviceHealth(
+            status: status,
+            runtimeStackStatus: runtimeStackStatus,
+            runtimeStackReadError: runtimeStackReadError,
+            runtimeServiceResources: runtimeServiceResources,
+            runtimeServiceResourceReadIssues: runtimeServiceResourceReadIssues,
+            redisRelaySettings: redisRelaySettings,
+            redisRelayStatusRead: redisRelayStatusRead,
+            operationState: OperationPresentationState(
+                installInProgress: RuntimeActiveOperationPolicy.isInstallOperation(operation),
+                initializationInProgress: RuntimeActiveOperationPolicy.isInitializationInProgress(status),
+                recoveryInProgress: RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation),
+                updateInProgress: RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation)
+            ),
+            platformOperationState: operationState,
+            now: now
+        )
+    }
+
+    private func serviceHealth(
+        status: PlatformState,
+        runtimeStackStatus: RuntimeGuestControlStackStatus?,
+        runtimeStackReadError: String?,
+        runtimeServiceResources: [RuntimeGuestServiceResource],
+        runtimeServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
+        redisRelaySettings: RuntimeRedisRelaySettings,
+        redisRelayStatusRead: RuntimeRedisRelayStatusReadResult,
+        operationState: OperationPresentationState,
+        platformOperationState: PlatformOperationState,
+        now _: Date
+    ) -> [RuntimeStatusAdvancedServiceHealthItem] {
+        var items = [
+            serviceStateItem(
+                vocabulary.runtimeProviderServiceLabel,
+                state: status.serviceState(.runtimeProvider),
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
+            ),
             serviceStateItem(
                 vocabulary.proxyServiceLabel,
-                state: status.proxyServiceState,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                state: status.serviceState(.publicProxy),
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             serviceStateItem(
                 vocabulary.guestLogSyncServiceLabel,
-                state: status.guestLogSyncServiceState,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                state: status.serviceState(.logSync),
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             serviceStateItem(
                 vocabulary.sleepPreventionServiceLabel,
-                state: status.sleepPreventionServiceState,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                state: status.serviceState(.sleepPrevention),
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             serviceStateItem(
                 vocabulary.watchdogServiceLabel,
-                state: status.watchdogServiceState,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            composeServiceItem(
-                vocabulary.vitalDBObserverLabel,
-                service: .vitalDBObserver,
-                observation: observation,
-                now: now,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            composeServiceItem(
-                vocabulary.recorderIngressName,
-                service: .recorderIngress,
-                observation: observation,
-                now: now,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            composeServiceItem(
-                vocabulary.recorderRecoveryName,
-                service: .recorderRecovery,
-                observation: observation,
-                now: now,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            redisRelayItem(
-                status: status,
-                settings: redisRelaySettings,
-                observation: observation,
-                now: now,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            vitalServerItem(
-                status: status,
-                vocabulary.vitalServerName,
-                uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now),
-                action: .openVitalServer,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            httpServiceItem(
-                vocabulary.hostProxyName,
-                httpStatus: status.hostProxyHTTP,
-                uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now),
-                action: .openVitalServer,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            httpServiceItem(
-                vocabulary.redisUIName,
-                httpStatus: status.redisUIHTTP,
-                uptimeText: uptimeText(for: .redisUI, observation: observation, now: now),
-                action: .openRedisUI,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            httpServiceItem(
-                vocabulary.swaggerUIName,
-                httpStatus: status.swaggerUIHTTP,
-                uptimeText: uptimeText(for: .swaggerUI, observation: observation, now: now),
-                action: .openSwagger,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                state: status.serviceState(.watchdog),
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
         ]
+        items.append(contentsOf: guestServiceItems(
+            stackStatus: runtimeStackStatus,
+            stackReadError: runtimeStackReadError,
+            resources: runtimeServiceResources,
+            resourceReadIssues: runtimeServiceResourceReadIssues,
+            installInProgress: operationState.installInProgress,
+            initializationInProgress: operationState.initializationInProgress
+                || guestReadinessPolicy.isWaitingForInitialGuestState(status),
+            recoveryInProgress: operationState.recoveryInProgress,
+            updateInProgress: operationState.updateInProgress
+        ))
+        items.append(redisRelayItem(
+            status: status,
+            settings: redisRelaySettings,
+            statusRead: redisRelayStatusRead,
+            installInProgress: operationState.installInProgress,
+            initializationInProgress: operationState.initializationInProgress,
+            recoveryInProgress: operationState.recoveryInProgress,
+            updateInProgress: operationState.updateInProgress
+        ))
+        items.append(vitalServerItem(
+            status: status,
+            platformOperationState: platformOperationState,
+            vocabulary.vitalServerName,
+            uptimeText: nil,
+            action: .openVitalServer,
+            installInProgress: operationState.installInProgress,
+            initializationInProgress: operationState.initializationInProgress,
+            recoveryInProgress: operationState.recoveryInProgress,
+            updateInProgress: operationState.updateInProgress
+        ))
+        items.append(httpServiceItem(
+            vocabulary.hostProxyName,
+            httpStatus: status.publicProxyHTTP,
+            uptimeText: nil,
+            action: .openVitalServer,
+            installInProgress: operationState.installInProgress,
+            initializationInProgress: operationState.initializationInProgress,
+            recoveryInProgress: operationState.recoveryInProgress,
+            updateInProgress: operationState.updateInProgress
+        ))
+        return items
     }
 
     private func serviceStateItem(
@@ -227,6 +239,218 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         )
     }
 
+    private func guestServiceItems(
+        stackStatus: RuntimeGuestControlStackStatus?,
+        stackReadError: String?,
+        resources: [RuntimeGuestServiceResource],
+        resourceReadIssues: [RuntimeGuestServiceResourceReadIssue],
+        installInProgress: Bool,
+        initializationInProgress: Bool,
+        recoveryInProgress: Bool,
+        updateInProgress: Bool
+    ) -> [RuntimeStatusAdvancedServiceHealthItem] {
+        if let stackReadError {
+            return [
+                serviceStateItem(
+                    vocabulary.guestProductServicesLabel,
+                    value: operationValue(
+                        installInProgress: installInProgress,
+                        initializationInProgress: initializationInProgress,
+                        recoveryInProgress: recoveryInProgress,
+                        updateInProgress: updateInProgress
+                    ) ?? RuntimeStatusAdvancedServiceHealthValue(
+                        text: stackReadError,
+                        severity: .warning,
+                        uptimeText: nil
+                    )
+                ),
+            ]
+        }
+        guard let stackStatus else {
+            return [
+                serviceStateItem(
+                    vocabulary.guestProductServicesLabel,
+                    value: operationValue(
+                        installInProgress: installInProgress,
+                        initializationInProgress: initializationInProgress,
+                        recoveryInProgress: recoveryInProgress,
+                        updateInProgress: updateInProgress
+                    ) ?? RuntimeStatusAdvancedServiceHealthValue(
+                        text: vocabulary.unavailableText,
+                        severity: .warning,
+                        uptimeText: nil
+                    )
+                ),
+            ]
+        }
+        guard stackStatus.state == "loaded" else {
+            return [
+                serviceStateItem(
+                    vocabulary.guestProductServicesLabel,
+                    value: operationValue(
+                        installInProgress: installInProgress,
+                        initializationInProgress: initializationInProgress,
+                        recoveryInProgress: recoveryInProgress,
+                        updateInProgress: updateInProgress
+                    ) ?? RuntimeStatusAdvancedServiceHealthValue(
+                        text: "Runtime stack status is \(stackStatus.state)",
+                        severity: .warning,
+                        uptimeText: nil
+                    )
+                ),
+            ]
+        }
+        var items: [RuntimeStatusAdvancedServiceHealthItem] = orderedGuestServiceStatuses(stackStatus).compactMap { serviceStatus in
+                guard serviceStatus.service != ComposeService.redisRelay.rawValue else {
+                    return nil
+                }
+                return RuntimeStatusAdvancedServiceHealthItem(
+                    section: .runtime,
+                    label: guestServiceLabel(serviceStatus.service),
+                    value: guestServiceValue(
+                        serviceStatus,
+                        resources: resources,
+                        resourceReadIssues: resourceReadIssues
+                    ),
+                    httpStatus: nil,
+                    action: nil
+                )
+            }
+        if let probeItem = guestStackProbeErrorItem(stackStatus) {
+            items.append(probeItem)
+        }
+        return items
+    }
+
+    private func guestStackProbeErrorItem(_ stackStatus: RuntimeGuestControlStackStatus) -> RuntimeStatusAdvancedServiceHealthItem? {
+        guard !stackStatus.probeErrors.isEmpty else {
+            return nil
+        }
+        return RuntimeStatusAdvancedServiceHealthItem(
+            section: .runtime,
+            label: "\(vocabulary.guestProductServicesLabel) probes",
+            value: RuntimeStatusAdvancedServiceHealthValue(
+                text: stackStatus.probeErrors
+                    .map { "\($0.source): \($0.message)" }
+                    .joined(separator: ", "),
+                severity: .warning,
+                uptimeText: nil
+            ),
+            httpStatus: nil,
+            action: nil
+        )
+    }
+
+    private func orderedGuestServiceStatuses(
+        _ stackStatus: RuntimeGuestControlStackStatus
+    ) -> [RuntimeGuestControlServiceStatus] {
+        var statusesByService: [String: RuntimeGuestControlServiceStatus] = [:]
+        for serviceStatus in stackStatus.services where statusesByService[serviceStatus.service] == nil {
+            statusesByService[serviceStatus.service] = serviceStatus
+        }
+        let orderedServices = stackStatus.services.map(\.service)
+        var orderedStatuses = orderedServices.compactMap { statusesByService[$0] }
+        let orderedServiceSet = Set(orderedServices)
+        orderedStatuses.append(contentsOf: stackStatus.services
+            .filter { !orderedServiceSet.contains($0.service) }
+            .sorted { $0.service < $1.service })
+        return orderedStatuses
+    }
+
+    private func guestServiceLabel(_ service: String) -> String {
+        "\(vocabulary.guestProductServicesLabel): \(service)"
+    }
+
+    private func guestServiceValue(
+        _ serviceStatus: RuntimeGuestControlServiceStatus,
+        resources: [RuntimeGuestServiceResource],
+        resourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
+    ) -> RuntimeStatusAdvancedServiceHealthValue {
+        let resource = resources.first { $0.service == serviceStatus.service }
+        let readIssue = resourceReadIssues.first { $0.service == serviceStatus.service }
+        return RuntimeStatusAdvancedServiceHealthValue(
+            text: guestServiceText(serviceStatus, resource: resource, readIssue: readIssue),
+            severity: guestServiceSeverity(serviceStatus, resource: resource, readIssue: readIssue),
+            uptimeText: nil
+        )
+    }
+
+    private func guestServiceText(
+        _ serviceStatus: RuntimeGuestControlServiceStatus,
+        resource: RuntimeGuestServiceResource?,
+        readIssue: RuntimeGuestServiceResourceReadIssue?
+    ) -> String {
+        if let readIssue {
+            return "Resource read failed: \(readIssue.message)"
+        }
+        var parts: [String] = []
+        if !serviceStatus.health.isEmpty, serviceStatus.health != "unknown" {
+            parts.append(vocabulary.containerHealthText(serviceStatus.health))
+        } else if !serviceStatus.state.isEmpty {
+            parts.append(vocabulary.containerStateText(serviceStatus.state))
+        } else {
+            parts.append(vocabulary.notReportedText)
+        }
+        if let resource {
+            parts.append("spec \(resource.spec.state)")
+            if let desiredState = resource.spec.desiredState {
+                parts.append("desired \(desiredState)")
+            }
+            parts.append("status \(resource.status.state)")
+            if let observedState = resource.status.observedState {
+                parts.append("observed \(observedState)")
+            }
+            if let readError = resource.status.readError {
+                parts.append("status read failed \(readError.kind): \(readError.message)")
+            }
+            let conditionText = resource.conditions
+                .map { "\($0.type)=\($0.status) \($0.reason): \($0.message)" }
+                .joined(separator: "; ")
+            if !conditionText.isEmpty {
+                parts.append("conditions \(conditionText)")
+            }
+            if let lastOperationId = resource.lastOperationId {
+                parts.append("last operation \(lastOperationId)")
+            }
+        }
+        return parts.joined(separator: " | ")
+    }
+
+    private func guestServiceSeverity(
+        _ serviceStatus: RuntimeGuestControlServiceStatus,
+        resource: RuntimeGuestServiceResource?,
+        readIssue: RuntimeGuestServiceResourceReadIssue?
+    ) -> RuntimeStatusReachabilityPolicy.Severity {
+        if readIssue != nil {
+            return .warning
+        }
+        if let resource,
+           resource.spec.state != "configured"
+            || resource.status.state != "loaded"
+            || resource.status.readError != nil
+            || resource.conditions.contains(where: {
+                $0.status.lowercased() == "true" && $0.type.lowercased().contains("blocked")
+            })
+        {
+            return .warning
+        }
+        switch serviceStatus.health.lowercased() {
+        case "healthy":
+            return .healthy
+        case "unhealthy":
+            return .warning
+        default:
+            switch serviceStatus.state.lowercased() {
+            case "running":
+                return .healthy
+            case "exited", "dead", "failed":
+                return .warning
+            default:
+                return .neutral
+            }
+        }
+    }
+
     private func serviceStateItem(
         _ label: String,
         state: RuntimeServiceState?,
@@ -236,6 +460,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         RuntimeStatusAdvancedServiceHealthItem(
+            section: .platform,
             label: label,
             value: value(serviceValuePolicy.serviceValue(
                 state: state,
@@ -260,6 +485,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         RuntimeStatusAdvancedServiceHealthItem(
+            section: .access,
             label: label,
             value: value(httpValuePolicy.serviceValue(
                 httpStatus: httpStatus,
@@ -275,7 +501,8 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     }
 
     private func vitalServerItem(
-        status: RuntimeStatus,
+        status: PlatformState,
+        platformOperationState: PlatformOperationState,
         _ label: String,
         uptimeText: String?,
         action: RuntimeStatusServiceActionID,
@@ -285,31 +512,33 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         let computedValue = httpValuePolicy.serviceValue(
-            httpStatus: status.guestHTTP,
+            httpStatus: status.runtimeControllerHTTP,
             uptimeText: uptimeText,
             installInProgress: installInProgress,
             initializationInProgress: initializationInProgress,
             recoveryInProgress: recoveryInProgress,
             updateInProgress: updateInProgress
         )
+        let guestHTTPValue = guestReadinessPolicy.guestHTTPValue(
+            status: status,
+            operationState: platformOperationState,
+            computedValue: computedValue,
+            waitingText: vocabulary.waitingText,
+            staleText: vocabulary.guestStateStaleText
+        )
         return RuntimeStatusAdvancedServiceHealthItem(
+            section: .access,
             label: label,
-            value: value(guestReadinessPolicy.guestHTTPValue(
-                status: status,
-                computedValue: computedValue,
-                waitingText: vocabulary.waitingText,
-                staleText: vocabulary.guestStateStaleText
-            )),
-            httpStatus: status.guestHTTP,
+            value: value(guestHTTPValue),
+            httpStatus: status.runtimeControllerHTTP,
             action: action
         )
     }
 
     private func redisRelayItem(
-        status: RuntimeStatus,
+        status: PlatformState,
         settings: RuntimeRedisRelaySettings,
-        observation: RuntimeContainerObservation?,
-        now: Date,
+        statusRead: RuntimeRedisRelayStatusReadResult,
         installInProgress: Bool,
         initializationInProgress: Bool,
         recoveryInProgress: Bool,
@@ -317,6 +546,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         guard settings.enabled else {
             return RuntimeStatusAdvancedServiceHealthItem(
+                section: .runtime,
                 label: vocabulary.redisRelayLabel,
                 value: RuntimeStatusAdvancedServiceHealthValue(
                     text: vocabulary.disabledText,
@@ -333,88 +563,51 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             initializationInProgress: initializationInProgress,
             recoveryInProgress: recoveryInProgress,
             updateInProgress: updateInProgress
-        ) ?? redisRelayValue(status: status, observation: observation, now: now)
+        ) ?? redisRelayValue(statusRead: statusRead)
 
         return RuntimeStatusAdvancedServiceHealthItem(
+            section: .runtime,
             label: vocabulary.redisRelayLabel,
             value: serviceValue,
-            httpStatus: status.redisRelayStatus?.lastError,
+            httpStatus: statusRead.document?.lastError ?? statusRead.readError,
             action: nil
         )
     }
 
     private func redisRelayValue(
-        status: RuntimeStatus,
-        observation: RuntimeContainerObservation?,
-        now: Date
+        statusRead: RuntimeRedisRelayStatusReadResult
     ) -> RuntimeStatusAdvancedServiceHealthValue {
-        if let relayStatus = status.redisRelayStatus,
+        if let relayStatus = statusRead.document,
            isRedisRelayFailureState(relayStatus.state) || relayStatus.lastError != nil {
             return RuntimeStatusAdvancedServiceHealthValue(
                 text: vocabulary.failedText,
                 severity: .warning,
-                uptimeText: uptimeText(for: .redisRelay, observation: observation, now: now)
+                uptimeText: nil
             )
         }
 
-        let composeValue = composeServiceValuePolicy.serviceValue(
-            service: ComposeService.redisRelay.rawValue,
-            observation: observation,
-            now: now
-        )
-        if composeValue.text != vocabulary.notReportedText {
-            return value(composeValue)
-        }
-
-        if let relayStatus = status.redisRelayStatus, !relayStatus.state.isEmpty {
+        if let relayStatus = statusRead.document, !relayStatus.state.isEmpty {
             return RuntimeStatusAdvancedServiceHealthValue(
                 text: vocabulary.containerStateText(relayStatus.state),
                 severity: redisRelaySeverity(state: relayStatus.state),
-                uptimeText: uptimeText(for: .redisRelay, observation: observation, now: now)
+                uptimeText: nil
             )
         }
 
-        return RuntimeStatusAdvancedServiceHealthValue(
-            text: vocabulary.notReportedText,
-            severity: .warning,
-            uptimeText: nil
-        )
-    }
-
-    private func composeServiceItem(
-        _ label: String,
-        service: ComposeService,
-        observation: RuntimeContainerObservation?,
-        now: Date,
-        installInProgress: Bool,
-        initializationInProgress: Bool,
-        recoveryInProgress: Bool,
-        updateInProgress: Bool
-    ) -> RuntimeStatusAdvancedServiceHealthItem {
-        let serviceValue = operationValue(
-            installInProgress: installInProgress,
-            initializationInProgress: initializationInProgress,
-            recoveryInProgress: recoveryInProgress,
-            updateInProgress: updateInProgress
-        ) ?? value(composeServiceValuePolicy.serviceValue(
-            service: service.rawValue,
-            observation: observation,
-            now: now
-        ))
-        return RuntimeStatusAdvancedServiceHealthItem(
-            label: label,
-            value: serviceValue,
-            httpStatus: nil,
-            action: nil
-        )
-    }
-
-    private func uptimeText(
-        for service: ComposeService,
-        observation: RuntimeContainerObservation?,
-        now: Date
-    ) -> String? {
-        composeServiceValuePolicy.uptimeText(service: service.rawValue, observation: observation, now: now)
+        switch statusRead.readState {
+        case .invalidResponse, .readFailed:
+            return RuntimeStatusAdvancedServiceHealthValue(
+                text: vocabulary.failedText,
+                severity: .warning,
+                uptimeText: nil
+            )
+        case .notRead, .loaded:
+            return RuntimeStatusAdvancedServiceHealthValue(
+                text: vocabulary.notReportedText,
+                severity: .warning,
+                uptimeText: nil
+            )
+        }
     }
 
     private func value(_ value: RuntimeStatusServiceValue) -> RuntimeStatusAdvancedServiceHealthValue {
@@ -426,14 +619,6 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     }
 
     private func value(_ value: RuntimeStatusHTTPValue) -> RuntimeStatusAdvancedServiceHealthValue {
-        RuntimeStatusAdvancedServiceHealthValue(
-            text: value.text,
-            severity: value.severity,
-            uptimeText: value.uptimeText
-        )
-    }
-
-    private func value(_ value: RuntimeStatusComposeServiceValue) -> RuntimeStatusAdvancedServiceHealthValue {
         RuntimeStatusAdvancedServiceHealthValue(
             text: value.text,
             severity: value.severity,
@@ -477,4 +662,5 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             return .warning
         }
     }
+
 }

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tirosh_guest_tools.domain.runtime_state import ProbeError
+from tirosh_guest_tools.domain.runtime_observation import ProbeError
 
 
 def append_probe_error(

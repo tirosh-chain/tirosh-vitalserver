@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "v1",
+  "id": "delivery-receipt-0001",
+  "deliveryRequestId": "delivery-request-0001",
+  "ingressReceiptReference": {
+    "resourceType": "ingress-receipt",
+    "resourceId": "ingress-receipt-0001"
+  },
+  "provider": {
+    "kind": "vitalserver",
+    "id": "bundled-upstream-main",
+    "capabilityRevision": 1
+  },
+  "attempt": 1,
+  "outcome": {
+    "state": "succeeded"
+  },
+  "retry": {
+    "state": "not-scheduled"
+  },
+  "completedAt": "2026-07-17T00:00:01Z"
+}

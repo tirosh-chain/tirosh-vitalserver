@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "v1",
+  "installationId": "vitalserver-runtime-platform",
+  "expectedReleaseId": "runtime-platform-0.2.0-dev-build-001",
+  "platform": "macos",
+  "observedAt": "2026-07-18T03:00:00Z",
+  "packageReceipt": {
+    "state": "absent",
+    "identifier": "com.tirosh.vitalserver.runtime-platform"
+  },
+  "releaseCatalog": {
+    "state": "absent",
+    "releaseCatalogPath": "/Library/Application Support/VitalServerRuntimePlatform/releases"
+  },
+  "immutableRelease": {
+    "state": "absent",
+    "releaseRootPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-0.2.0-dev-build-001"
+  },
+  "activation": {
+    "state": "absent",
+    "currentReleaseLinkPath": "/Library/Application Support/VitalServerRuntimePlatform/current"
+  },
+  "operatorApplication": {
+    "state": "absent",
+    "applicationBundlePath": "/Applications/VitalServer Runtime Platform.app"
+  },
+  "requiredServices": [
+    {
+      "role": "host-agent",
+      "name": "com.tirosh.vitalserver.host-agent",
+      "state": "absent",
+      "definitionState": "absent"
+    },
+    {
+      "role": "host-edge-proxy",
+      "name": "com.tirosh.vitalserver.host-edge-proxy",
+      "state": "absent",
+      "definitionState": "absent"
+    },
+    {
+      "role": "host-update-handoff-supervisor",
+      "name": "com.tirosh.vitalserver.host-update-handoff-supervisor",
+      "state": "absent",
+      "definitionState": "absent"
+    }
+  ],
+  "mutableStores": [
+    {
+      "id": "installation-data-root",
+      "state": "absent"
+    },
+    {
+      "id": "host-agent-state",
+      "state": "absent"
+    },
+    {
+      "id": "virtual-machine-runtime",
+      "state": "absent"
+    },
+    {
+      "id": "installation-manager-journal",
+      "state": "absent"
+    }
+  ],
+  "installationTransaction": {
+    "state": "absent",
+    "journalPath": "/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/current-transaction.json",
+    "receiptPath": "/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/latest-installation-receipt.json"
+  }
+}
