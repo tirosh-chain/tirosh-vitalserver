@@ -180,6 +180,25 @@ def test_distribution_review_runs_the_complete_swift_suite_and_guest_repair() ->
     assert "packages/vitalserver-guest-tools/tests/test_redis_repair.py" in review
 
 
+def test_distribution_review_runs_current_macos_stabilization_contracts() -> None:
+    review = target_recipe(
+        PACKAGE_MAKEFILE.read_text(encoding="utf-8"),
+        "internal/vm/distribution/review",
+    )
+
+    for current_product_test in (
+        "packages/vitalserver-devtools/tests/unit/"
+        "test_macos_package_install_policy.py",
+        "packages/vitalserver-devtools/tests/unit/test_macos_package_receipts.py",
+        "packages/vitalserver-devtools/tests/unit/test_macos_installed_runtime.py",
+        "packages/vitalserver-devtools/tests/unit/"
+        "test_macos_update_bundle_usecases.py",
+    ):
+        assert current_product_test in review
+
+    assert "packages/vitalserver-devtools/tests/unit" not in review.splitlines()
+
+
 def test_vm_image_update_does_not_infer_updater_bridge_from_rootfs() -> None:
     makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
     image_update_contract = makefile.split(

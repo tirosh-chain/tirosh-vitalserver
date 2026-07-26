@@ -478,7 +478,11 @@ internal/vm/distribution/review: repo/verify-submodule product/scenarios/check p
 		packages/vitalserver-devtools/tests/unit/test_delivery_makefile_contract.py \
 		packages/vitalserver-devtools/tests/unit/test_docker_image_bundle.py \
 		packages/vitalserver-devtools/tests/unit/test_guest_deploy_bundle.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_installed_runtime.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_package_install_policy.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_package_receipts.py \
 		packages/vitalserver-devtools/tests/unit/test_macos_release_plans.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_update_bundle_usecases.py \
 		packages/vitalserver-devtools/tests/unit/test_packaging_templates.py \
 		packages/vitalserver-devtools/tests/unit/test_release_sync_contract.py \
 		packages/vitalserver-devtools/tests/unit/test_upstream_vitalserver_contract.py
