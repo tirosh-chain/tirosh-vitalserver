@@ -42,7 +42,24 @@ Keep these meanings separate in Make targets and devtools usecases:
 - artifact verify: inspect generated artifact layout and checksums
 - static smoke: verify bundle/application contracts without applying them
 - apply smoke: explicitly guarded runtime mutation
-- installed smoke: inspect installed files, launchd state, and HTTP health
+- installed status: require the Helper app and its main executable, installed
+  runtime executables, VM address, Platform Agent, VM, proxy, guest log sync,
+  and watchdog launchd jobs; sleep prevention and automatic backup remain
+  explicitly optional when `launchctl` reports them absent, while command
+  execution/read failures remain failures
+- installed health: require installed status plus Guest HTTP and Host proxy HTTP
+- installed smoke: require installed health plus the explicit exit/result of the
+  installed `/usr/local/bin/vitalserver-vm runtime health` contract
 - material receipt: rootfs, package payload, runtime-smoke deploy가 같은 compile material을 사용했는지 확인
 
-Do not let a build target imply a later phase passed. If a phase is not implemented, the target must fail explicitly instead of returning success.
+Installed status, health, and smoke do not infer package receipt/version or the
+recorder ingress → Redis → VitalServer data path. Those proofs belong to a separate
+privileged installed acceptance fixture. Do not let a build target imply a later
+phase passed. If a phase is not implemented, the target must fail explicitly
+instead of returning success.
+
+The installed smoke adapter does not elevate privileges. It runs the installed
+CLI with the caller identity and the explicit installed `VITALSERVER_VM_HOME`.
+The current health command reads root-owned Host state and publishes a status
+artifact, so an unauthorized read/write or CLI exit is an explicit smoke failure,
+not an optional or healthy result.

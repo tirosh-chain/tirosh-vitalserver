@@ -24,6 +24,7 @@ macos-package-clean
 macos-package-install
 macos-installed-status
 macos-installed-health
+macos-installed-smoke
 macos-runtime-build
 macos-runtime-sync-release
 macos-runtime-sign
