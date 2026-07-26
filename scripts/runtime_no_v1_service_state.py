@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Exact cross-language contract strings are intentionally embedded by this scanner.
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import json
@@ -6506,7 +6509,7 @@ def check_testkit_package_is_dev_tooling_only() -> CheckResult:
         "Test 탭은 Runtime Control browser console과 Testkit API 상태를 확인",
         "Testkit API를 product-facing",
     ]
-    matches = []
+    matches: list[str] = []
     documents = {
         "packages/vitalserver-testkit/README.md": testkit_readme,
         "docs/testkit/usage.md": testkit_usage,

@@ -4,10 +4,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path, PurePosixPath
 import struct
 import zipfile
-
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGING = ROOT / "apps/vitalserver-platform-agent/packaging/windows"
@@ -62,7 +61,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--acceptance-candidate",
         action="store_true",
-        help="Build the explicitly unsealed candidate used only to produce installed acceptance evidence.",
+        help=(
+            "Build the explicitly unsealed candidate used only to produce "
+            "installed acceptance evidence."
+        ),
     )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
@@ -126,25 +128,31 @@ def main() -> int:
             ).hexdigest(),
         )
 
-    release = acceptance_candidate_release if acceptance is None else {
-        "schemaVersion": 1,
-        "state": "releaseCandidate",
-        "platformVersion": args.platform_version,
-        "runtimeBundleVersion": args.runtime_bundle_version,
-        "target": {"os": "windows", "architecture": "amd64", "provider": "hyperv"},
-        "imageCompileRunId": image_manifest["runId"],
-        "installedAcceptanceRunId": acceptance["runId"],
-        "inputs": {
-            **release_inputs,
-            "acceptanceManifestSHA256": _sha256(args.acceptance_manifest),
-        },
-    }
+    release = (
+        acceptance_candidate_release
+        if acceptance is None
+        else {
+            "schemaVersion": 1,
+            "state": "releaseCandidate",
+            "platformVersion": args.platform_version,
+            "runtimeBundleVersion": args.runtime_bundle_version,
+            "target": {"os": "windows", "architecture": "amd64", "provider": "hyperv"},
+            "imageCompileRunId": image_manifest["runId"],
+            "installedAcceptanceRunId": acceptance["runId"],
+            "inputs": {
+                **release_inputs,
+                "acceptanceManifestSHA256": _sha256(args.acceptance_manifest),
+            },
+        }
+    )
     files: dict[str, bytes] = {
         "VERSION": (args.platform_version + "\n").encode(),
         "RUNTIME_BUNDLE_VERSION": (args.runtime_bundle_version + "\n").encode(),
         "release.json": _release_bytes(release),
         "bin/vitalserver-platform-agent.exe": args.agent_binary.read_bytes(),
-        "bin/vitalserver-hyperv-runtime-provider.exe": args.provider_binary.read_bytes(),
+        "bin/vitalserver-hyperv-runtime-provider.exe": (
+            args.provider_binary.read_bytes()
+        ),
     }
     if acceptance is None:
         files["proof/acceptance-pending.json"] = (
@@ -152,18 +160,30 @@ def main() -> int:
                 {
                     "schemaVersion": 1,
                     "state": "pending",
-                    "reason": "This acceptanceCandidate is not a distributable release; run installed Hyper-V acceptance and seal a releaseCandidate.",
+                    "reason": (
+                        "This acceptanceCandidate is not a distributable release; "
+                        "run installed Hyper-V acceptance and seal a releaseCandidate."
+                    ),
                 },
                 indent=2,
                 sort_keys=True,
-            ) + "\n"
+            )
+            + "\n"
         ).encode()
     else:
-        files["proof/windows-hyperv-acceptance.json"] = args.acceptance_manifest.read_bytes()
-    for path in sorted(item for item in args.pwa_directory.rglob("*") if item.is_file()):
-        files["pwa/" + path.relative_to(args.pwa_directory).as_posix()] = path.read_bytes()
-    for path in sorted(item for item in args.hyperv_image_directory.rglob("*") if item.is_file()):
-        files["hyperv-image/" + path.relative_to(args.hyperv_image_directory).as_posix()] = path.read_bytes()
+        files["proof/windows-hyperv-acceptance.json"] = (
+            args.acceptance_manifest.read_bytes()
+        )
+    for path in sorted(
+        item for item in args.pwa_directory.rglob("*") if item.is_file()
+    ):
+        relative = path.relative_to(args.pwa_directory).as_posix()
+        files["pwa/" + relative] = path.read_bytes()
+    for path in sorted(
+        item for item in args.hyperv_image_directory.rglob("*") if item.is_file()
+    ):
+        relative = path.relative_to(args.hyperv_image_directory).as_posix()
+        files["hyperv-image/" + relative] = path.read_bytes()
     files.update(support_files)
     checksum_text = "".join(
         f"{hashlib.sha256(data).hexdigest()}  {name}\n"
@@ -171,14 +191,17 @@ def main() -> int:
     )
     files["checksums.sha256"] = checksum_text.encode()
     _write_deterministic_zip(args.output, files)
-    print(
-        f"Windows Runtime v2 {'acceptance candidate' if acceptance is None else 'sealed release candidate'}: {args.output}"
+    candidate_kind = (
+        "acceptance candidate" if acceptance is None else "sealed release candidate"
     )
+    print(f"Windows Runtime v2 {candidate_kind}: {args.output}")
     return 0
 
 
 def _validate_version(value: str, label: str) -> None:
-    if not value or any(not (character.isalnum() or character in "._+-") for character in value):
+    if not value or any(
+        not (character.isalnum() or character in "._+-") for character in value
+    ):
         raise SystemExit(f"{label} is invalid: {value!r}")
 
 
@@ -193,7 +216,8 @@ def _require_windows_amd64_pe(path: Path, label: str) -> None:
     machine = struct.unpack_from("<H", data, offset + 4)[0]
     if machine != 0x8664:
         raise SystemExit(
-            f"{label} must target windows/amd64 machine=0x8664 actual=0x{machine:04x}: {path}"
+            f"{label} must target windows/amd64 machine=0x8664 "
+            f"actual=0x{machine:04x}: {path}"
         )
 
 
@@ -215,20 +239,30 @@ def _validate_image_manifest(document: dict[str, object], root: Path) -> None:
         if not isinstance(relative, str) or not isinstance(expected, str):
             raise SystemExit(f"Hyper-V image manifest artifact is invalid: {field}")
         relative_path = PurePosixPath(relative)
-        if relative_path.is_absolute() or len(relative_path.parts) != 1 or relative_path.name != relative:
-            raise SystemExit(f"Hyper-V image manifest artifact path is unsafe: {field}={relative!r}")
+        if (
+            relative_path.is_absolute()
+            or len(relative_path.parts) != 1
+            or relative_path.name != relative
+        ):
+            raise SystemExit(
+                f"Hyper-V image manifest artifact path is unsafe: {field}={relative!r}"
+            )
         path = root / relative
         _require_file(path, f"Hyper-V {field}")
         actual = _sha256(path)
         if actual != expected:
             raise SystemExit(
-                f"Hyper-V image artifact checksum mismatch field={field} expected={expected} actual={actual}"
+                f"Hyper-V image artifact checksum mismatch field={field} "
+                f"expected={expected} actual={actual}"
             )
 
 
 def _validate_acceptance(
-    document: dict[str, object], *, expected_image_manifest_sha256: str,
-    expected_platform_version: str, expected_runtime_bundle_version: str,
+    document: dict[str, object],
+    *,
+    expected_image_manifest_sha256: str,
+    expected_platform_version: str,
+    expected_runtime_bundle_version: str,
     expected_release_inputs: dict[str, str],
     expected_release_manifest_sha256: str,
 ) -> None:
@@ -246,23 +280,41 @@ def _validate_acceptance(
     ):
         raise SystemExit("Windows Hyper-V acceptance manifest is not passed")
     if document.get("hyperVImageManifestSHA256") != expected_image_manifest_sha256:
-        raise SystemExit("Windows acceptance manifest does not prove this Hyper-V image")
+        raise SystemExit(
+            "Windows acceptance manifest does not prove this Hyper-V image"
+        )
     if document.get("releaseInputs") != expected_release_inputs:
-        raise SystemExit("Windows acceptance manifest does not prove these release component inputs")
+        raise SystemExit(
+            "Windows acceptance manifest does not prove these release component inputs"
+        )
     if document.get("releaseManifestSHA256") != expected_release_manifest_sha256:
-        raise SystemExit("Windows acceptance manifest does not prove the acceptanceCandidate release manifest")
+        raise SystemExit(
+            "Windows acceptance manifest does not prove the acceptanceCandidate "
+            "release manifest"
+        )
     if document.get("supportExportMode") != "execute":
-        raise SystemExit("Windows sealing acceptance manifest must execute support export")
+        raise SystemExit(
+            "Windows sealing acceptance manifest must execute support export"
+        )
+    support_export_operation_id = document.get("supportExportOperationId")
+    support_artifact_sha256 = document.get("supportArtifactSHA256")
+    support_artifact_size_bytes = document.get("supportArtifactSizeBytes")
     if (
-        not isinstance(document.get("supportExportOperationId"), str)
-        or not document.get("supportExportOperationId")
-        or not isinstance(document.get("supportArtifactSHA256"), str)
-        or len(document["supportArtifactSHA256"]) != 64
-        or any(character not in "0123456789abcdef" for character in document["supportArtifactSHA256"])
-        or not isinstance(document.get("supportArtifactSizeBytes"), int)
-        or document["supportArtifactSizeBytes"] <= 0
+        not isinstance(support_export_operation_id, str)
+        or not support_export_operation_id
+        or not isinstance(support_artifact_sha256, str)
+        or len(support_artifact_sha256) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in support_artifact_sha256
+        )
+        or not isinstance(support_artifact_size_bytes, int)
+        or isinstance(support_artifact_size_bytes, bool)
+        or support_artifact_size_bytes <= 0
     ):
-        raise SystemExit("Windows acceptance manifest has no valid support artifact evidence")
+        raise SystemExit(
+            "Windows acceptance manifest has no valid support artifact evidence"
+        )
     stages = document.get("stages")
     if not isinstance(stages, list):
         raise SystemExit("Windows acceptance manifest stages are missing")

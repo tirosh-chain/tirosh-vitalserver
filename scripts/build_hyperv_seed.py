@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,7 +32,8 @@ def main() -> int:
     network = ipaddress.ip_network(f"{guest}/{args.prefix_length}", strict=False)
     if host not in network or host == guest:
         raise SystemExit(
-            f"Hyper-V host and guest addresses are incompatible host={host} guest={guest} network={network}"
+            "Hyper-V host and guest addresses are incompatible "
+            f"host={host} guest={guest} network={network}"
         )
     dns = ipaddress.ip_address(args.dns_address)
     if not args.hdiutil.is_file():
@@ -94,21 +95,34 @@ def main() -> int:
 
 
 def _user_data() -> str:
-    return """#cloud-config
-hostname: vitalserver-runtime
-manage_etc_hosts: true
-disable_root: true
-ssh_pwauth: false
-runcmd:
-  - [mkdir, -p, /mnt/runtime, /mnt/tirosh, /mnt/tirosh-vital-files, /mnt/runtime/run, /mnt/runtime/vital-files, /opt/vitalserver/run]
-  - [sh, -c, "grep -Fqx 'LABEL=vital-runtime /mnt/runtime ext4 defaults,nofail 0 2' /etc/fstab || printf '%s\\n' 'LABEL=vital-runtime /mnt/runtime ext4 defaults,nofail 0 2' >> /etc/fstab"]
-  - [sh, -c, "grep -Fqx '/opt/vitalserver /mnt/tirosh none bind 0 0' /etc/fstab || printf '%s\\n' '/opt/vitalserver /mnt/tirosh none bind 0 0' >> /etc/fstab"]
-  - [sh, -c, "grep -Fqx '/mnt/runtime/run /mnt/tirosh/run none bind 0 0' /etc/fstab || printf '%s\\n' '/mnt/runtime/run /mnt/tirosh/run none bind 0 0' >> /etc/fstab"]
-  - [sh, -c, "grep -Fqx '/mnt/runtime/vital-files /mnt/tirosh-vital-files none bind 0 0' /etc/fstab || printf '%s\\n' '/mnt/runtime/vital-files /mnt/tirosh-vital-files none bind 0 0' >> /etc/fstab"]
-  - [mount, -a]
-  - [bash, /opt/vitalserver/hyperv-guest/bootstrap.sh]
-final_message: "VitalServer Hyper-V cloud-init completed"
-"""
+    return (
+        "#cloud-config\n"
+        "hostname: vitalserver-runtime\n"
+        "manage_etc_hosts: true\n"
+        "disable_root: true\n"
+        "ssh_pwauth: false\n"
+        "runcmd:\n"
+        "  - [mkdir, -p, /mnt/runtime, /mnt/tirosh, "
+        "/mnt/tirosh-vital-files, /mnt/runtime/run, "
+        "/mnt/runtime/vital-files, /opt/vitalserver/run]\n"
+        "  - [sh, -c, \"grep -Fqx 'LABEL=vital-runtime /mnt/runtime "
+        "ext4 defaults,nofail 0 2' /etc/fstab || printf '%s\\n' "
+        "'LABEL=vital-runtime /mnt/runtime ext4 defaults,nofail 0 2' "
+        ">> /etc/fstab\"]\n"
+        "  - [sh, -c, \"grep -Fqx '/opt/vitalserver /mnt/tirosh "
+        "none bind 0 0' /etc/fstab || printf '%s\\n' "
+        "'/opt/vitalserver /mnt/tirosh none bind 0 0' >> /etc/fstab\"]\n"
+        "  - [sh, -c, \"grep -Fqx '/mnt/runtime/run /mnt/tirosh/run "
+        "none bind 0 0' /etc/fstab || printf '%s\\n' "
+        "'/mnt/runtime/run /mnt/tirosh/run none bind 0 0' >> /etc/fstab\"]\n"
+        "  - [sh, -c, \"grep -Fqx '/mnt/runtime/vital-files "
+        "/mnt/tirosh-vital-files none bind 0 0' /etc/fstab || "
+        "printf '%s\\n' '/mnt/runtime/vital-files "
+        "/mnt/tirosh-vital-files none bind 0 0' >> /etc/fstab\"]\n"
+        "  - [mount, -a]\n"
+        "  - [bash, /opt/vitalserver/hyperv-guest/bootstrap.sh]\n"
+        'final_message: "VitalServer Hyper-V cloud-init completed"\n'
+    )
 
 
 if __name__ == "__main__":

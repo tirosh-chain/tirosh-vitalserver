@@ -5,15 +5,18 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import stat
 import tempfile
 import zipfile
+from pathlib import Path
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build the strict SHA-256 allowlist catalog delivered separately from VitalServer update archives."
+        description=(
+            "Build the strict SHA-256 allowlist catalog delivered separately "
+            "from VitalServer update archives."
+        )
     )
     parser.add_argument("--archive", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -36,17 +39,28 @@ def build_catalog(archives: list[Path], output: Path) -> dict[str, object]:
     for candidate in archives:
         metadata = candidate.lstat()
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-            raise ValueError(f"update archive must be a non-symlink regular file path={candidate}")
+            raise ValueError(
+                "update archive must be a non-symlink regular file "
+                f"path={candidate}"
+            )
         path = candidate.resolve(strict=True)
         validate_publishable_archive(path)
         if path.name in names:
             raise ValueError(f"update archive basename is duplicated name={path.name}")
         digest = sha256(path)
         if digest in digests:
-            raise ValueError(f"update archive content digest is duplicated sha256={digest}")
+            raise ValueError(
+                f"update archive content digest is duplicated sha256={digest}"
+            )
         names.add(path.name)
         digests.add(digest)
-        artifacts.append({"name": path.name, "sha256": digest, "sizeBytes": metadata.st_size})
+        artifacts.append(
+            {
+                "name": path.name,
+                "sha256": digest,
+                "sizeBytes": metadata.st_size,
+            }
+        )
     document = {"schemaVersion": 1, "sha256": sorted(digests)}
     data = (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
     write_atomic(output, data)
@@ -68,7 +82,9 @@ def validate_publishable_archive(path: Path) -> None:
             proof_name = "VitalServer-Windows/proof/windows-hyperv-acceptance.json"
             pending_name = "VitalServer-Windows/proof/acceptance-pending.json"
             if release_name not in names:
-                raise ValueError(f"Windows update archive release owner is missing path={path}")
+                raise ValueError(
+                    f"Windows update archive release owner is missing path={path}"
+                )
             release = json.loads(archive.read(release_name))
             if (
                 not isinstance(release, dict)
@@ -80,10 +96,13 @@ def validate_publishable_archive(path: Path) -> None:
                 or pending_name in names
             ):
                 raise ValueError(
-                    f"Windows update archive is not a sealed releaseCandidate path={path}"
+                    "Windows update archive is not a sealed releaseCandidate "
+                    f"path={path}"
                 )
     except (zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ValueError(f"Windows update archive proof decode failed path={path}: {error}") from error
+        raise ValueError(
+            f"Windows update archive proof decode failed path={path}: {error}"
+        ) from error
 
 
 def sha256(path: Path) -> str:
@@ -96,7 +115,11 @@ def sha256(path: Path) -> str:
 
 def write_atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    descriptor, temporary = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(data)

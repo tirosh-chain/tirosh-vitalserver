@@ -63,6 +63,20 @@ def test_windows_lifecycle_verifier_rejects_mixed_clean_uninstall_identity(tmp_p
     assert "clean uninstall proof field differs field=installedAcceptanceRunId" in result.stderr
 
 
+def test_windows_lifecycle_verifier_rejects_boolean_support_artifact_size(
+    tmp_path: Path,
+) -> None:
+    paths = write_evidence_chain(tmp_path)
+    clean_host = json.loads(paths["clean_host"].read_text())
+    clean_host["supportArtifactSizeBytes"] = True
+    paths["clean_host"].write_text(json.dumps(clean_host), encoding="utf-8")
+
+    result = run_verifier(paths, tmp_path / "result.json")
+
+    assert result.returncode != 0
+    assert "clean-host acceptance support artifact evidence is invalid" in result.stderr
+
+
 def write_evidence_chain(root: Path) -> dict[str, Path]:
     base_bundle, base_release, base_release_sha = write_bundle(root / "base.zip", "2.0.0", "2.3.4", "seal-run")
     update_bundle, update_release, _ = write_bundle(root / "update.zip", "2.0.1", "2.3.5", "update-seal-run")

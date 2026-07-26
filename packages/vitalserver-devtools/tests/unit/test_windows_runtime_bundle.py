@@ -1,11 +1,13 @@
 import hashlib
 import json
-from pathlib import Path
+import runpy
 import struct
 import subprocess
 import sys
 import zipfile
+from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[4]
 BUILDER = ROOT / "scripts/build_windows_runtime_bundle.py"
@@ -302,6 +304,58 @@ def test_windows_bundle_rejects_acceptance_for_another_image(tmp_path: Path) -> 
 
     assert result.returncode != 0
     assert "does not prove this Hyper-V image" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("supportArtifactSHA256", ["not", "a", "digest"]),
+        ("supportArtifactSHA256", 42),
+        ("supportArtifactSizeBytes", "42"),
+        ("supportArtifactSizeBytes", True),
+    ),
+)
+def test_windows_bundle_rejects_malformed_support_artifact_evidence(
+    field: str,
+    value: object,
+) -> None:
+    module = runpy.run_path(str(BUILDER), run_name="windows_runtime_bundle")
+    validate_acceptance = module["_validate_acceptance"]
+    assert callable(validate_acceptance)
+    release_inputs = {"component": "digest"}
+    document: dict[str, object] = {
+        "schemaVersion": 1,
+        "platform": "windows-hyperv-amd64",
+        "status": "passed",
+        "runId": "acceptance-run-1",
+        "failureStage": None,
+        "failureReason": None,
+        "platformVersion": "2.0.0",
+        "runtimeBundleVersion": "2.3.4",
+        "hostBootSessionId": "boot-session-1",
+        "hyperVImageManifestSHA256": "image-digest",
+        "releaseInputs": release_inputs,
+        "releaseManifestSHA256": "release-digest",
+        "supportExportMode": "execute",
+        "supportExportOperationId": "support-operation-1",
+        "supportArtifactSHA256": "a" * 64,
+        "supportArtifactSizeBytes": 42,
+        "stages": [],
+    }
+    document[field] = value
+
+    with pytest.raises(
+        SystemExit,
+        match="Windows acceptance manifest has no valid support artifact evidence",
+    ):
+        validate_acceptance(
+            document,
+            expected_image_manifest_sha256="image-digest",
+            expected_platform_version="2.0.0",
+            expected_runtime_bundle_version="2.3.4",
+            expected_release_inputs=release_inputs,
+            expected_release_manifest_sha256="release-digest",
+        )
 
 
 def test_windows_bundle_rejects_image_artifact_path_escape(tmp_path: Path) -> None:
