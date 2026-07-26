@@ -185,6 +185,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-182 | vNext C76 PostgreSQL backup/restore CLI가 설정 URL 대신 local socket과 OS role로 접속함 | Data store / Guest bootstrap | active | [vNext PostgreSQL backup or restore CLI connects to the local socket](182_vnext_postgresql_backup_cli_uses_local_socket.md) |
 | TS-183 | 제품 소스 변경마다 golden rootfs APT를 다시 실행함 | Packaging / Local development / Guest bootstrap | implemented | [Golden rootfs가 소스 변경마다 APT를 다시 실행함](183_golden-rootfs-repeats-apt-after-source-change.md) |
 | TS-184 | Clean uninstall이 configured external Vital files directory 전체를 삭제할 수 있음 | Uninstall / Packaging | implemented; package verification pending | [Clean uninstall must preserve the configured external Vital files directory](184_clean-uninstall-external-vital-files-directory-deletion.md) |
+| TS-185 | 공식 VM Image Update가 updater bridge로 잘못 표시되어 normal apply에서 거부됨 | Update / Packaging | implemented; apply-smoke pending | [VM Image Update is incorrectly marked as requiring an Updater bridge](185_vm-image-update-inferred-two-phase-bridge.md) |
+| TS-186 | Recorder send_data가 durable admission 전에 억제되어 waveform/activity가 누락될 수 있음 | Recorder ingress / Data delivery | active | [Recorder send_data가 durable admission 전에 억제됨](186_recorder-send-data-suppressed-before-durable-admission.md) |
 
 ## Follow-up 규칙
 

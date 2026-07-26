@@ -12,7 +12,10 @@ import type {
 "use strict";
 
 const { evaluateSendDataBackpressure } = require("../domain/send-data-backpressure-policy");
-const { sendDataFailureReasons } = require("../domain/send-data-ingress-contracts");
+const {
+  sendDataFailureReasons,
+  sendDataIngressModes,
+} = require("../domain/send-data-ingress-contracts");
 const { createSendDataSpoolItem } = require("../domain/send-data-spool-item");
 const { recordSendDataFailure } = require("./send-data-failure-log");
 const {
@@ -46,7 +49,8 @@ function createSendDataIngressService({
 }: SendDataIngressServiceDependencies): SendDataIngressPort {
   return {
     async record(payload, context, payloadSummary) {
-      if (!config.spool.enabled) {
+      const observeOnly = config.spool.mode === sendDataIngressModes.OBSERVE_ONLY;
+      if (!config.spool.enabled && !observeOnly) {
         return {
           ok: true,
           outcome: "accepted",
@@ -95,6 +99,14 @@ function createSendDataIngressService({
           };
         }
         recordSendDataRawArchived(metrics, itemResult.item, archiveResult);
+      }
+
+      if (!config.spool.enabled) {
+        return {
+          ok: true,
+          outcome: "accepted",
+          mode: config.spool.mode,
+        };
       }
 
       const backpressure = evaluateSendDataBackpressure(

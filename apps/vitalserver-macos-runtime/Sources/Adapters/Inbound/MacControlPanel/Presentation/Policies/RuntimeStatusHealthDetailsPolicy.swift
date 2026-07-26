@@ -384,7 +384,11 @@ public struct RuntimeStatusHealthDetailsPolicy {
 
         let spool = status.spool
         let replay = status.replay
-        if spool?.status == "disabled" && (replay?.status == nil || replay?.status == "disabled") {
+        let isObserveOnly = spool?.mode == "observe_only"
+            && (replay?.status == nil || replay?.status == "disabled")
+        if !isObserveOnly
+            && spool?.status == "disabled"
+            && (replay?.status == nil || replay?.status == "disabled") {
             return value("disabled", .neutral)
         }
 
@@ -407,6 +411,9 @@ public struct RuntimeStatusHealthDetailsPolicy {
         } else if (rejectedEvents ?? 0) > 0 || (retryableFailures ?? 0) > 0 {
             severity = .warning
             stateText = "degraded"
+        } else if isObserveOnly {
+            severity = .warning
+            stateText = "observing"
         } else if isMirrorOnly {
             severity = .neutral
             stateText = "mirroring"
@@ -436,6 +443,10 @@ public struct RuntimeStatusHealthDetailsPolicy {
         }
         if isMirrorOnly {
             parts.append("replay disabled")
+        }
+        if isObserveOnly {
+            parts.append("direct delivery preserved")
+            parts.append("load control unavailable")
         }
         if let rejectedEvents, rejectedEvents > 0 {
             parts.append("\(rejectedEvents) rejected")

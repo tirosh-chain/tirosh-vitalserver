@@ -2896,7 +2896,7 @@ export interface components {
             publicHost: string;
             publicPort: number;
             /** @enum {string} */
-            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataMode: "passthrough" | "observe_only" | "mirror_spool" | "spool_only" | "spool_and_replay";
             recorderIngressSendDataReplayBatchSize: number;
             recorderIngressSendDataReplayMaxMiBPerSecond: number;
             recorderIngress: components["schemas"]["RuntimeRecorderIngressSettings"];
@@ -2987,7 +2987,7 @@ export interface components {
             recorderIngress: components["schemas"]["RuntimeRecorderIngressSettings"];
             recorderIngressContainerMemoryLimitMiB: number;
             /** @enum {string} */
-            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataMode: "passthrough" | "observe_only" | "mirror_spool" | "spool_only" | "spool_and_replay";
             recorderIngressSendDataReplayBatchSize: number;
             recorderIngressSendDataReplayMaxMiBPerSecond: number;
             redisContainerMemoryLimitMiB: number;
@@ -3014,7 +3014,7 @@ export interface components {
             publicHost: string;
             publicPort: number;
             /** @enum {string} */
-            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataMode: "passthrough" | "observe_only" | "mirror_spool" | "spool_only" | "spool_and_replay";
             recorderIngressSendDataReplayBatchSize: number;
             /** @description Maximum recorder send_data replay throughput in MiB/s. */
             recorderIngressSendDataReplayMaxMiBPerSecond: number;

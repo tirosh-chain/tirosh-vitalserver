@@ -1871,8 +1871,15 @@ components:
           $ref: "#/components/schemas/RecorderIngressFailure"
     SendDataIngressMode:
       type: string
+      description: |
+        Explicit send_data delivery policy. observe_only preserves direct upstream
+        delivery, records audit/metrics and bounded raw archive evidence without
+        appending Redis replay pending, and keeps replay disabled. In 0.2.1,
+        spool_and_replay is degraded because frame suppression is not guarded by
+        a Recorder-visible durable admission acknowledgement.
       enum:
         - passthrough
+        - observe_only
         - mirror_spool
         - spool_only
         - spool_and_replay

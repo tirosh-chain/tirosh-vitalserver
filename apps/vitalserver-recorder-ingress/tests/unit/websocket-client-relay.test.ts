@@ -20,6 +20,39 @@ test("websocket client relay passes all frames in mirror_spool mode", () => {
   assert.deepStrictEqual(observed, [{ payload: '42["send_data","payload"]', opcode: 1 }]);
 });
 
+test("websocket client relay preserves original send_data in observe_only mode", () => {
+  const observed = [];
+  const relay = createClientWebSocketRelay({
+    mode: "observe_only",
+    onFrame: (payload, opcode) => observed.push({ payload: payload.toString("utf8"), opcode }),
+  });
+  const frame = clientFrame('42["send_data","payload"]', 1);
+
+  const writes = relay.push(frame);
+
+  assert.strictEqual(writes.length, 1);
+  assert.deepStrictEqual(writes[0], frame);
+  assert.deepStrictEqual(observed, [{ payload: '42["send_data","payload"]', opcode: 1 }]);
+});
+
+test("websocket client relay preserves binary send_data attachments in observe_only mode", () => {
+  const relay = createClientWebSocketRelay({
+    mode: "observe_only",
+    onFrame: () => {},
+  });
+  const placeholder = clientFrame(
+    '451-["send_data",{"_placeholder":true,"num":0}]',
+    1
+  );
+  const attachment = clientFrame(Buffer.from("binary-payload"), 2);
+
+  const writes = relay.push(Buffer.concat([placeholder, attachment]));
+
+  assert.strictEqual(writes.length, 2);
+  assert.deepStrictEqual(writes[0], placeholder);
+  assert.deepStrictEqual(writes[1], attachment);
+});
+
 test("websocket client relay drops text send_data in spool_and_replay mode", () => {
   const observed = [];
   const relay = createClientWebSocketRelay({

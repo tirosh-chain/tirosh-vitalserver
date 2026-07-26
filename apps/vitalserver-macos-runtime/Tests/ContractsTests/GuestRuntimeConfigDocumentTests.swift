@@ -117,7 +117,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         XCTAssertEqual(document.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(document.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(document.publicPort, 443)
-        XCTAssertEqual(document.recorderIngressSendDataMode, .spoolAndReplay)
+        XCTAssertEqual(document.recorderIngressSendDataMode, .observeOnly)
         XCTAssertEqual(document.recorderIngressSendDataReplayBatchSize, 1000)
         XCTAssertEqual(document.recorderIngressSendDataReplayMaxMiBPerSecond, 20)
         XCTAssertTrue(document.containerMemoryLimitsEnabled)

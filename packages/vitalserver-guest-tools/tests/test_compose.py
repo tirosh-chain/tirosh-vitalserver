@@ -334,7 +334,7 @@ def test_load_runtime_env_materializes_explicit_compose_environment(
     }
     assert values["VITALSERVER_ADMIN_PASSWORD"] == 'secret#"value'
     assert values["VITALSERVER_PUBLIC_HOST"] == "vital.example.test"
-    assert values["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
+    assert values["RECORDER_INGRESS_SEND_DATA_MODE"] == "observe_only"
     assert len(values["RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN"]) >= 32
     assert (
         values["RECORDER_INGRESS_EXPECTATION_CONTROL_TOKEN"]
@@ -638,7 +638,7 @@ def test_compose_command_uses_runtime_limits_override_when_present(
     ]
 
 
-def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_replay(
+def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_observe_only(
     monkeypatch: Any,
     tmp_path: Any,
 ) -> None:
@@ -671,7 +671,7 @@ def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_re
 
     compose.load_runtime_env()
 
-    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "observe_only"
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "1000"
     assert (
         compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]

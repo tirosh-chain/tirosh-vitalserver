@@ -51,11 +51,12 @@ ORDERED_STOP_POLICIES = (
 RUNNING_STATES = {"running", "restarting", "removing", "paused"}
 RECORDER_INGRESS_SEND_DATA_MODES = {
     "passthrough",
+    "observe_only",
     "mirror_spool",
     "spool_only",
     "spool_and_replay",
 }
-DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "spool_and_replay"
+DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "observe_only"
 DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE = 1000
 DEFAULT_RECORDER_INGRESS_REPLAY_MAX_MIB_PER_SECOND = 20
 DEFAULT_RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS = 100000

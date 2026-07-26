@@ -72,6 +72,7 @@ const vitalDBAnomalyKindSchema = z.enum([
 const networkModeSchema = z.enum(["shared", "bridged"]);
 const recorderIngressSendDataModeSchema = z.enum([
   "passthrough",
+  "observe_only",
   "mirror_spool",
   "spool_only",
   "spool_and_replay"

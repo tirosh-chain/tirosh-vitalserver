@@ -138,7 +138,15 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "launchctl print" not in preinstall_text
     assert "lsof -nP" not in preinstall_text
     assert "plutil -extract" not in preinstall_text
-    assert guest_runtime_settings["recorderIngressSendDataMode"] == "spool_and_replay"
+    assert guest_runtime_settings["recorderIngressSendDataMode"] == "observe_only"
+    assert (
+        '${RECORDER_INGRESS_SEND_DATA_MODE:-observe_only}'
+        in root_compose_text
+    )
+    assert (
+        '${RECORDER_INGRESS_SEND_DATA_MODE:-observe_only}'
+        in guest_compose_text
+    )
     assert guest_runtime_settings["recorderIngressSendDataReplayBatchSize"] == 1000
     assert guest_runtime_settings["recorderIngress"]["sendDataReplayIntervalMs"] == 1000
     assert guest_runtime_settings["recorderIngress"]["rawArchiveMaxFiles"] == 24

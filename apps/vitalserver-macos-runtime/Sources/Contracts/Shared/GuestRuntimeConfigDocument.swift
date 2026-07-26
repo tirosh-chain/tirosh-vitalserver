@@ -231,13 +231,14 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
 
 public enum RuntimeRecorderIngressSendDataMode: String, Codable, CaseIterable, Equatable, Sendable {
     case passthrough
+    case observeOnly = "observe_only"
     case mirrorSpool = "mirror_spool"
     case spoolOnly = "spool_only"
     case spoolAndReplay = "spool_and_replay"
 }
 
 public enum RuntimeRecorderIngressDefaults {
-    public static let sendDataMode = RuntimeRecorderIngressSendDataMode.spoolAndReplay
+    public static let sendDataMode = RuntimeRecorderIngressSendDataMode.observeOnly
     public static let replayBatchSize = 1000
     public static let replayMaxMiBPerSecond = 20
     public static let sendDataMaxPendingItems = 100_000

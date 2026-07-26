@@ -70,7 +70,13 @@ def validated_runtime_settings(source: Mapping[str, Any]) -> dict[str, Any]:
             "runtime settings backupScheduleTimes must be a string list"
         )
     mode = document["recorderIngressSendDataMode"]
-    if mode not in {"passthrough", "mirror_spool", "spool_only", "spool_and_replay"}:
+    if mode not in {
+        "passthrough",
+        "observe_only",
+        "mirror_spool",
+        "spool_only",
+        "spool_and_replay",
+    }:
         raise RuntimeSettingsContractError(
             "runtime settings recorderIngressSendDataMode is invalid"
         )

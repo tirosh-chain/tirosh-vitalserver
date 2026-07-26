@@ -192,11 +192,17 @@ export function SettingsPage() {
               }
             >
               <option value="passthrough">passthrough</option>
+              <option value="observe_only">observe_only</option>
               <option value="mirror_spool">mirror_spool</option>
               <option value="spool_only">spool_only</option>
               <option value="spool_and_replay">spool_and_replay</option>
             </select>
           </label>
+          <p className="settings-hint settings-warning">
+            observe_only preserves direct upstream delivery and records bounded raw
+            archive evidence without replay. spool_and_replay is degraded until
+            Recorder-visible durable admission acknowledgement is available.
+          </p>
           <NumberField
             label="Replay batch size"
             value={draft.settings.recorderIngressSendDataReplayBatchSize}

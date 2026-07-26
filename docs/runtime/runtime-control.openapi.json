@@ -8547,7 +8547,7 @@
           "publicPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
           "recorderIngressSendDataMode": {
             "type": "string",
-            "enum": ["passthrough", "mirror_spool", "spool_only", "spool_and_replay"]
+            "enum": ["passthrough", "observe_only", "mirror_spool", "spool_only", "spool_and_replay"]
           },
           "recorderIngressSendDataReplayBatchSize": { "type": "integer", "minimum": 1 },
           "recorderIngressSendDataReplayMaxMiBPerSecond": { "type": "integer", "minimum": 1 },
@@ -8788,6 +8788,7 @@
             "type": "string",
             "enum": [
               "passthrough",
+              "observe_only",
               "mirror_spool",
               "spool_only",
               "spool_and_replay"
@@ -8914,6 +8915,7 @@
             "type": "string",
             "enum": [
               "passthrough",
+              "observe_only",
               "mirror_spool",
               "spool_only",
               "spool_and_replay"

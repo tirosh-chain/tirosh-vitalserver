@@ -112,6 +112,26 @@ test("metrics snapshot uses explicit spool depth for replay pending items", () =
   assert.strictEqual(snapshot.replay.pendingItems, 3);
 });
 
+test("metrics snapshot exposes observe_only with replay disabled", () => {
+  const metrics = createMetrics();
+  configureSendDataSpool(metrics, {
+    enabled: false,
+    mode: "observe_only",
+    storage: "redis_list",
+    replay: {
+      enabled: false,
+      batchSize: 1000,
+      maxBytesPerSecond: 20 * 1024 * 1024,
+    },
+  });
+
+  const snapshot = metricsSnapshot(metrics);
+
+  assert.strictEqual(snapshot.spool.mode, "observe_only");
+  assert.strictEqual(snapshot.spool.status, "disabled");
+  assert.strictEqual(snapshot.replay.status, "disabled");
+});
+
 test("metrics snapshot clears recorder pending when replay queue is explicitly drained", () => {
   const metrics = createMetrics();
   configureSendDataSpool(metrics, {
