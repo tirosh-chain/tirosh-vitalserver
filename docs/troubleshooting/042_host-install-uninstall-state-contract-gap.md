@@ -137,6 +137,7 @@ Implemented on `feature/issue-44`.
 - Clean uninstall verifies cleanup artifact states before forgetting receipts; command success is not treated as proof that files disappeared.
 - `pkgutil --forget` failures are no longer ignored, and a successful forget command is followed by receipt state verification before uninstall can write `completed`.
 - Config read failure for the vital files directory no longer falls back into a deletion-scope decision. Default product cleanup continues, but external vital files cleanup is skipped and logged when the configured external path cannot be read.
+- A configured external Vital files directory is not a product-owned removal target. Clean uninstall preserves it and excludes it from cleanup completion verification unless a future explicit product-owned entry contract is introduced.
 - `postinstall` failure cleanup no longer runs shell `launchctl`, process probes, `rm -rf`, or `pkgutil --forget`; it delegates to HostCLI `runtime uninstall --clean` and logs `blocked` when that use case fails.
 - `preinstall` no longer runs shell `launchctl`, `pkgutil`, `lsof`, `plutil`, or filesystem state decisions. It delegates to packaged HostCLI `runtime preinstall-check`, which prints a `RuntimeFreshInstallPreflightDocument`.
 

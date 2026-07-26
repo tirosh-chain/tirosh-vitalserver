@@ -122,6 +122,25 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         XCTAssertNil(plan.configuredDirectoryReadFailureLogMessage)
     }
 
+    func testCleanRemovalPlanNeverOwnsConfiguredExternalVitalFilesDirectory() {
+        let useCase = UninstallRuntimeUseCase()
+        let managerApp = URL(fileURLWithPath: "/Applications/VitalServer.app")
+        let externalVitalFiles = URL(fileURLWithPath: "/Volumes/Data/VitalFiles")
+
+        let plan = useCase.removalPlan(
+            clean: true,
+            managerApp: managerApp,
+            externalVitalFilesDirectory: externalVitalFiles,
+            configuredVitalFilesDirectoryReadFailure: nil
+        )
+
+        XCTAssertEqual(plan.targets, [managerApp])
+        XCTAssertEqual(
+            plan.skippedExternalDirectoryLogMessage,
+            "preserved configured external vital files directory path=/Volumes/Data/VitalFiles reason=no-product-owned-removal-contract"
+        )
+    }
+
     func testFileRemovalBlockersPreservePrimaryAndRestoreFailures() {
         let useCase = UninstallRuntimeUseCase()
 

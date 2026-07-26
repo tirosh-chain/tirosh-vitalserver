@@ -33,7 +33,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "state-store-relocated:/product->/.product.uninstall-test-preserve",
             "log:relocated product root source=/product destination=/.product.uninstall-test-preserve",
             "remove:/Applications/VitalServer Helper.app",
-            "remove:/external-vital-files",
+            "log:preserved configured external vital files directory path=/external-vital-files reason=no-product-owned-removal-contract",
             "log:step=remove-installed-files status=completed",
             "log:step=remove-runtime-tools status=started",
             "remove:/usr/local/bin/vitalserver-vm",
@@ -53,6 +53,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "remove:/.product.uninstall-test-preserve",
             "log:step=dispose-uninstall-state-store status=completed",
         ])
+        XCTAssertTrue(harness.existing.contains("/external-vital-files"))
     }
 
     func testStandardUninstallCreatesBackupAndPreservesUserData() throws {
@@ -815,9 +816,6 @@ private final class RuntimeUninstallWorkflowHarness {
         ]
         if clean {
             paths.append("/product")
-            if let externalVitalFilesDirectory {
-                paths.append(externalVitalFilesDirectory)
-            }
         }
         return paths
     }

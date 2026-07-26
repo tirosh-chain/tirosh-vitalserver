@@ -147,15 +147,15 @@ public struct UninstallRuntimeUseCase {
         externalVitalFilesDirectory: URL?,
         configuredVitalFilesDirectoryReadFailure: String?
     ) -> UninstallRuntimeRemovalPlan {
-        var targets = [managerApp]
         var skippedExternalDirectoryLogMessage: String?
         if clean, let externalVitalFilesDirectory {
-            targets.append(externalVitalFilesDirectory)
+            skippedExternalDirectoryLogMessage =
+                "preserved configured external vital files directory path=\(externalVitalFilesDirectory.path) reason=no-product-owned-removal-contract"
         } else if clean, let configuredVitalFilesDirectoryReadFailure {
             skippedExternalDirectoryLogMessage = "skipping external vital files directory cleanup because configured path is unavailable reason=\(configuredVitalFilesDirectoryReadFailure)"
         }
         return UninstallRuntimeRemovalPlan(
-            targets: targets,
+            targets: [managerApp],
             skippedExternalDirectoryLogMessage: skippedExternalDirectoryLogMessage
         )
     }

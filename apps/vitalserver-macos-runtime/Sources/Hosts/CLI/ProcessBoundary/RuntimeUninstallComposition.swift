@@ -262,9 +262,6 @@ public enum RuntimeUninstallComposition {
         artifactPaths.append(contentsOf: paths.runtimeTools)
         if clean {
             artifactPaths.append(paths.productRoot)
-            if let externalVitalFilesDirectory = paths.externalVitalFilesDirectory {
-                artifactPaths.append(externalVitalFilesDirectory)
-            }
         }
         return artifactPaths
     }
