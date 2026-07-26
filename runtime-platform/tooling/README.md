@@ -108,7 +108,11 @@ asking an executing `.exe` to delete itself or recursively invoking `msiexec`.
 Every declared payload file is also connected explicitly to the one MSI
 Feature, so authoring cannot silently leave a C48 file outside the install
 set. The generated source uses the open-source `WixToolset.Util.wixext`
-`WixQuietExec64` action and has no second Manager binary.
+`WixQuietExec64` action and has no second Manager binary. Its `UpgradeVersion`
+row explicitly detects the complete valid Windows Installer ProductVersion
+range (`0.0.0` through `255.255.65535`, inclusive) without removing anything.
+The launch condition therefore rejects both a direct upgrade and a direct
+downgrade while still allowing an installed ProductCode's repair path.
 `make windows-host-msi-compose` requires the caller to set one absolute
 `WINDOWS_HOST_MSI_COMPOSITION` JSON path. That composition names every C48
 release source, C53 source, lifecycle-state path, source output, and—only when

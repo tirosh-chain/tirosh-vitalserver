@@ -135,8 +135,22 @@ class WindowsHostMSIComposerTests(unittest.TestCase):
         self.assertIn('Action="C50PreflightRepair" After="C50PreflightFresh" Condition="Installed AND NOT REMOVE=&quot;ALL&quot;"', content)
         self.assertIn("--package-manager-operation windows-msi-installing", content)
         self.assertIn('<Upgrade Id="{87654321-4321-4321-4321-BA0987654321}">', content)
-        self.assertIn('OnlyDetect="yes" Property="VITALSERVER_RUNTIME_PLATFORM_DIRECT_UPDATE"', content)
+        upgrade_version = document.find(".//wix:UpgradeVersion", namespace)
+        self.assertIsNotNone(upgrade_version)
+        assert upgrade_version is not None
+        self.assertEqual(
+            {
+                "Minimum": "0.0.0",
+                "IncludeMinimum": "yes",
+                "Maximum": "255.255.65535",
+                "IncludeMaximum": "yes",
+                "OnlyDetect": "yes",
+                "Property": "VITALSERVER_RUNTIME_PLATFORM_DIRECT_UPDATE",
+            },
+            upgrade_version.attrib,
+        )
         self.assertIn('Condition="Installed OR NOT VITALSERVER_RUNTIME_PLATFORM_DIRECT_UPDATE"', content)
+        self.assertIn("Direct Windows MSI upgrades and downgrades are unsupported", content)
         self.assertNotIn("MajorUpgrade", content)
         self.assertIn('Id="VitalServerRuntimePlatformFeature" Title="VitalServer Runtime Platform" Level="1" InstallDefault="local" AllowAdvertise="no"', content)
         component_ids = {element.attrib["Id"] for element in document.findall(".//wix:Component", namespace)}

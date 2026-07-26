@@ -45,6 +45,8 @@ _WIX_NAMESPACE = "http://wixtoolset.org/schemas/v4/wxs"
 _WIX_UTIL_EXTENSION = "WixToolset.Util.wixext"
 _WIX_ARCHITECTURE = "x64"
 _COMMAND_LINE_UNSAFE = set('"&|<>^\r\n')
+_WINDOWS_INSTALLER_MINIMUM_PRODUCT_VERSION = "0.0.0"
+_WINDOWS_INSTALLER_MAXIMUM_PRODUCT_VERSION = "255.255.65535"
 
 
 @dataclass(frozen=True)
@@ -236,16 +238,29 @@ def _render_wix_source(composition: WindowsHostMSIComposition, manifest: Mapping
     ElementTree.SubElement(package_element, _tag("MediaTemplate"), {"EmbedCab": "yes"})
     # C68, not Windows Installer major-upgrade, owns a version-changing Host
     # release. MSI detects a related ProductCode before files are written and
-    # rejects that direct invocation; it must not schedule
+    # rejects both direct upgrades and downgrades. Bound detection to the
+    # complete Windows Installer ProductVersion range so the WiX/Upgrade-table
+    # contract is explicit; it must not schedule
     # RemoveExistingProducts as an implicit update workflow.
     upgrade = ElementTree.SubElement(package_element, _tag("Upgrade"), {"Id": composition.upgrade_code})
-    ElementTree.SubElement(upgrade, _tag("UpgradeVersion"), {"OnlyDetect": "yes", "Property": "VITALSERVER_RUNTIME_PLATFORM_DIRECT_UPDATE"})
+    ElementTree.SubElement(
+        upgrade,
+        _tag("UpgradeVersion"),
+        {
+            "Minimum": _WINDOWS_INSTALLER_MINIMUM_PRODUCT_VERSION,
+            "IncludeMinimum": "yes",
+            "Maximum": _WINDOWS_INSTALLER_MAXIMUM_PRODUCT_VERSION,
+            "IncludeMaximum": "yes",
+            "OnlyDetect": "yes",
+            "Property": "VITALSERVER_RUNTIME_PLATFORM_DIRECT_UPDATE",
+        },
+    )
     ElementTree.SubElement(
         package_element,
         _tag("Launch"),
         {
             "Condition": "Installed OR NOT VITALSERVER_RUNTIME_PLATFORM_DIRECT_UPDATE",
-            "Message": "Direct Windows MSI version upgrades are unsupported; use the staged Host Updater.",
+            "Message": "Direct Windows MSI upgrades and downgrades are unsupported; use the staged Host Updater.",
         },
     )
     standard_root = ElementTree.SubElement(package_element, _tag("StandardDirectory"), {"Id": "CommonAppDataFolder"})

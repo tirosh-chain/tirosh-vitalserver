@@ -148,7 +148,11 @@ repair는 ordinary C50 preflight를 거쳐 같은 release만 재검증한다. �
 path도 MSI receipt 부재를 installed/clean으로 추측하지 않는다.
 
 서로 다른 ProductCode지만 같은 UpgradeCode인 direct MSI version install은 WiX
-`Upgrade` detection + `Launch` condition으로 `InstallFiles` 전에 차단한다. MSI
+`Upgrade` detection + `Launch` condition으로 `InstallFiles` 전에 차단한다.
+`UpgradeVersion`은 Windows Installer의 전체 유효 ProductVersion 범위인
+`0.0.0`부터 `255.255.65535`까지 양끝을 포함해 명시적으로 탐지하므로,
+이전 버전에서의 direct upgrade와 이후 버전에서의 direct downgrade를 모두
+차단한다. 현재 ProductCode의 `Installed` repair만 허용한다. MSI
 `MajorUpgrade`/`RemoveExistingProducts`는 사용하지 않는다. version-changing
 release는 C68 staged Host Updater가 candidate publish/activate/reconcile contract로
 수행하며, Windows MSI는 그 절차를 대체하지 않는다. WiX executable과 Util
