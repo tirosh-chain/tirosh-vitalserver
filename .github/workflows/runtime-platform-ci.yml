@@ -39,11 +39,19 @@ jobs:
         with:
           node-version: "20.19.3"
 
+      - name: Preserve Guest Node runtime
+        run: echo "RUNTIME_PLATFORM_GUEST_NODE=$(command -v node)" >> "$GITHUB_ENV"
+
+      - name: Set up Runtime Console Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+
       - name: Bootstrap contract verification tools
         run: make -C runtime-platform bootstrap-contract-tools
 
       - name: Verify runtime-platform root
-        run: make -C runtime-platform check
+        run: make -C runtime-platform check NODE="$RUNTIME_PLATFORM_GUEST_NODE" RUNTIME_CONSOLE_NODE="$(command -v node)"
 
       - name: Build the selected Linux Host and Console delivery kit
         shell: bash
@@ -110,7 +118,7 @@ jobs:
       - name: Set up Runtime Console Node runtime
         uses: actions/setup-node@v4
         with:
-          node-version: "20.19.3"
+          node-version: "22.12.0"
 
       - name: Build and test provider bridge
         run: make -C runtime-platform macos-provider-test
@@ -148,7 +156,7 @@ jobs:
       - name: Set up Runtime Console Node runtime
         uses: actions/setup-node@v4
         with:
-          node-version: "20.19.3"
+          node-version: "22.12.0"
 
       - name: Set up .NET SDK for pinned WiX v4 compiler
         uses: actions/setup-dotnet@v4

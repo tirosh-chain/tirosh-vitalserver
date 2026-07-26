@@ -65,25 +65,36 @@ Neither interface accepts a collector URL, NTP host/port, connection header,
 credential, or raw JSON document.
 
 ```sh
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces ci --include=dev
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run check
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run test
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run build
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces audit
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:macos
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:macos-application
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:windows
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:linux
-PATH="$HOME/.nvm/versions/node/v20.19.3/bin:$PATH" npm --prefix runtime-platform/interfaces run package:linux-deb
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces ci --include=dev
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces run check
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces run test
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces run build
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces audit
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces run package:macos
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces run package:macos-application
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces run package:windows
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces run package:linux
+PATH="$HOME/.nvm/versions/node/v22.12.0/bin:$PATH" npm --prefix runtime-platform/interfaces run package:linux-deb
 ```
 
-`npm ci --include=dev` requires Node 20.19 or later within the Node 20 major;
+`npm ci --include=dev` requires Node 22.12 or later within the Node 22 major;
 the explicit development inclusion prevents an ambient npm production setting
 from silently omitting TypeScript, Electron, or the package builder. The
 committed lockfile is the source of dependency identity; `node_modules/` and
 `dist/` are local development outputs. OS package artifacts are written below
 `runtime-platform/.tmp/runtime-console-desktop/`, outside the source workspace,
 so framework symlinks and temporary installer files cannot become source input.
+
+The workspace-local `.npmrc` sets `legacy-peer-deps=true` for this interface
+dependency graph only. `app-builder-lib` declares both `dmg-builder` and
+`electron-builder-squirrel-windows` as peers. `electron-builder` installs the
+required `dmg-builder` directly, while this product selects DMG, NSIS, AppImage,
+and DEB targets and never selects Squirrel. Disabling npm's automatic peer
+installation therefore excludes the unused Squirrel, `electron-winstaller`,
+and `temp` toolchain without changing a selected package target. The desktop
+dependency-graph test fails if those packages reappear, if the required DMG
+builder disappears, or if the reviewed Electron Builder overrides and
+minimatch/brace-expansion floors change.
 
 The package commands build a signing-independent Electron application installer
 for the selected OS: an arm64 DMG on macOS, an amd64 NSIS installer on Windows,

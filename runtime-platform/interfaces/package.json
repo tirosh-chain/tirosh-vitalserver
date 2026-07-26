@@ -4,7 +4,7 @@
   "private": true,
   "description": "Cross-platform operator interfaces for VitalServer Runtime Platform",
   "engines": {
-    "node": ">=20.19.0 <21"
+    "node": ">=22.12.0 <23"
   },
   "workspaces": [
     "runtime-console-control-contract",
@@ -23,15 +23,18 @@
     "package:linux-deb": "npm run build && npm run package:linux-deb --workspace=@tirosh-chain/runtime-console-desktop"
   },
   "overrides": {
-    "tar": "7.5.20"
+    "@electron/asar": "4.2.1",
+    "@electron/universal": "3.0.6",
+    "ejs": "6.0.1",
+    "tar": "7.5.22"
   },
   "devDependencies": {
-    "@types/node": "20.19.43",
+    "@types/node": "22.20.1",
     "@types/react": "19.1.15",
     "@types/react-dom": "19.1.9",
     "app-builder-bin": "5.0.0-alpha.10",
     "electron": "41.7.1",
-    "electron-builder": "25.1.8",
+    "electron-builder": "26.15.7",
     "esbuild": "0.25.9",
     "typescript": "5.9.3"
   }

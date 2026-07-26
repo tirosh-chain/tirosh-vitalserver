@@ -308,12 +308,12 @@ platformctl-cross-platform-build: ensure-go
 
 ensure-runtime-console-node:
 	@node_path="$$(command -v "$(RUNTIME_CONSOLE_NODE)")"; \
-	[ -n "$$node_path" ] || { printf '%s\n' 'Runtime Console requires Node 20.19+; set RUNTIME_CONSOLE_NODE'; exit 2; }; \
+	[ -n "$$node_path" ] || { printf '%s\n' 'Runtime Console requires Node 22.12+; set RUNTIME_CONSOLE_NODE'; exit 2; }; \
 	node_version="$$($$node_path --version)"; \
-	case "$$node_version" in v20.*) ;; *) printf '%s\n' "Runtime Console requires Node >=20.19.0 <21; selected RUNTIME_CONSOLE_NODE reports $$node_version"; exit 2;; esac; \
-	node_minor="$${node_version#v20.}"; node_minor="$${node_minor%%.*}"; \
+	case "$$node_version" in v22.*) ;; *) printf '%s\n' "Runtime Console requires Node >=22.12.0 <23; selected RUNTIME_CONSOLE_NODE reports $$node_version"; exit 2;; esac; \
+	node_minor="$${node_version#v22.}"; node_minor="$${node_minor%%.*}"; \
 	case "$$node_minor" in ''|*[!0-9]*) printf '%s\n' "Runtime Console could not parse selected Node version $$node_version"; exit 2;; esac; \
-	[ "$$node_minor" -ge 19 ] || { printf '%s\n' "Runtime Console requires Node >=20.19.0 <21; selected RUNTIME_CONSOLE_NODE reports $$node_version"; exit 2; }
+	[ "$$node_minor" -ge 12 ] || { printf '%s\n' "Runtime Console requires Node >=22.12.0 <23; selected RUNTIME_CONSOLE_NODE reports $$node_version"; exit 2; }
 
 runtime-console-deps: ensure-runtime-console-node
 	@node_path="$$(command -v "$(RUNTIME_CONSOLE_NODE)")"; \

@@ -134,6 +134,7 @@ test("desktop packaging declares product icons and excludes source maps from the
   assert.deepEqual(configuration.files, ["dist/**", "!dist/**/*.map", "package.json"]);
   assert.equal(configuration.mac.icon, "assets/runtime-console.icns");
   assert.equal(configuration.win.icon, "assets/runtime-console-512.png");
+  assert.deepEqual(configuration.win.target, ["nsis"]);
   assert.equal(configuration.linux.icon, "assets/runtime-console-512.png");
   assert.equal(configuration.linux.maintainer, "Tirosh Chain <seungbae.ji@gmail.com>");
   assert.deepEqual(configuration.linux.target, ["AppImage"]);
@@ -149,3 +150,47 @@ test("desktop packaging declares product icons and excludes source maps from the
   assert.equal(configuration.directories.output, "../../.tmp/runtime-console-desktop");
   assert.equal(configuration.deb.artifactName, "vitalserver-runtime-console_${version}_${arch}.${ext}");
 });
+
+test("desktop dependency graph installs only the selected packager capabilities", async () => {
+  const interfacesRoot = resolve("..");
+  const npmConfiguration = await readFile(resolve(interfacesRoot, ".npmrc"), "utf8");
+  const lock = JSON.parse(await readFile(resolve(interfacesRoot, "package-lock.json"), "utf8"));
+  const packages = lock.packages;
+
+  assert.equal(npmConfiguration.trim(), "legacy-peer-deps=true");
+  assert.equal(packages["node_modules/electron-builder"].version, "26.15.7");
+  assert.equal(packages["node_modules/dmg-builder"].version, "26.15.7");
+  assert.equal(packages["node_modules/@electron/asar"].version, "4.2.1");
+  assert.equal(packages["node_modules/@electron/universal"].version, "3.0.6");
+  assert.equal(packages["node_modules/ejs"].version, "6.0.1");
+  assert.equal(packages["node_modules/tar"].version, "7.5.22");
+
+  assert.deepEqual(lockedVersionsForPackage(packages, "electron-builder-squirrel-windows"), []);
+  assert.deepEqual(lockedVersionsForPackage(packages, "electron-winstaller"), []);
+  assert.deepEqual(lockedVersionsForPackage(packages, "temp"), []);
+
+  const minimatchVersions = lockedVersionsForPackage(packages, "minimatch");
+  const braceExpansionVersions = lockedVersionsForPackage(packages, "brace-expansion");
+  assert.ok(minimatchVersions.length > 0);
+  assert.ok(braceExpansionVersions.length > 0);
+  assert.equal(minimatchVersions.some((version) => Number(version.split(".")[0]) < 10), false);
+  assert.equal(braceExpansionVersions.some((version) => compareVersions(version, "5.0.8") < 0), false);
+});
+
+function lockedVersionsForPackage(packages, packageName) {
+  return Object.entries(packages)
+    .filter(([path]) => path.endsWith(`/node_modules/${packageName}`) || path === `node_modules/${packageName}`)
+    .map(([, metadata]) => metadata.version);
+}
+
+function compareVersions(left, right) {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
+}
