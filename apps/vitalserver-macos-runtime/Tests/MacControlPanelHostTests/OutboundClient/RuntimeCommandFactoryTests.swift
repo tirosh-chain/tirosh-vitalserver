@@ -204,7 +204,9 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         input.fileHandleForWriting.write(Data("\n".utf8))
         input.fileHandleForWriting.closeFile()
 
-        let deadline = Date().addingTimeInterval(5)
+        // The viewer can consume its full 4-second result grace period after a
+        // 1-second worker poll. Leave room for CI scheduler latency as well.
+        let deadline = Date().addingTimeInterval(10)
         while process.isRunning && Date() < deadline {
             usleep(100_000)
         }
