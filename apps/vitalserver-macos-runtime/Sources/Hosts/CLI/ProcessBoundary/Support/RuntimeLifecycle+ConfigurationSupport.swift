@@ -163,22 +163,90 @@ extension RuntimeLifecycle {
         )
     }
 
-    func configuredExternalVitalFilesDirectory() -> RuntimeConfiguredExternalVitalFilesDirectoryRead {
-        do {
-            let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
-            if let hostPath = config.vitalFilesDirectory?.hostPath, hostPath.hasPrefix("/") {
-                let url = URL(fileURLWithPath: hostPath)
-                guard url.path != installedPaths.vitalFilesDirectory.path else {
-                    return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
-                }
-                return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: url, failure: nil)
-            }
-            return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
-        } catch {
-            let reason = error.localizedDescription
-            log("failed to read configured vital files directory error=\(reason)")
-            return RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: reason)
+    func configuredVitalFilesDirectories() -> RuntimeConfiguredVitalFilesDirectoriesRead {
+        let record: RuntimeHostSettingsRecord
+        switch runtimeHostSettingsRepository().loadHostSettings() {
+        case .missing:
+            return .unavailable(.hostSettingsMissing)
+        case .failed(let reason):
+            return .unavailable(.hostSettingsReadFailed(reason: reason))
+        case .loaded(let loaded):
+            record = loaded
         }
+
+        let desiredSource = RuntimeConfiguredVitalFilesDirectorySource.desired(
+            revision: record.revision
+        )
+        let desired: RuntimeConfiguredVitalFilesDirectory
+        switch configuredVitalFilesDirectory(
+            payload: record.payload,
+            source: desiredSource
+        ) {
+        case .success(let directory):
+            desired = directory
+        case .failure(let reason):
+            return .unavailable(reason)
+        }
+
+        var directories = [desired]
+        if let appliedPayload = record.appliedPayload {
+            guard let appliedRevision = record.appliedRevision else {
+                return .unavailable(.hostSettingsReadFailed(
+                    reason: "Host settings applied payload is present without applied revision"
+                ))
+            }
+            let appliedSource = RuntimeConfiguredVitalFilesDirectorySource.applied(
+                revision: appliedRevision
+            )
+            switch configuredVitalFilesDirectory(
+                payload: appliedPayload,
+                source: appliedSource
+            ) {
+            case .success(let directory):
+                directories.append(directory)
+            case .failure(let reason):
+                return .unavailable(reason)
+            }
+        }
+        return .loaded(RuntimeConfiguredVitalFilesDirectoriesSnapshot(
+            revision: record.revision,
+            appliedRevision: record.appliedRevision,
+            directories: directories
+        ))
+    }
+
+    private func configuredVitalFilesDirectory(
+        payload: RuntimeHostSettingsPayload,
+        source: RuntimeConfiguredVitalFilesDirectorySource
+    ) -> Result<
+        RuntimeConfiguredVitalFilesDirectory,
+        RuntimeConfiguredVitalFilesDirectoriesUnavailableReason
+    > {
+        let config: VMRuntimeConfig
+        do {
+            config = try JSONDecoder().decode(VMRuntimeConfig.self, from: payload.vmConfigJSON)
+        } catch {
+            return .failure(.configDecodeFailed(
+                source: source,
+                reason: RuntimeErrorDescription.describe(error)
+            ))
+        }
+        guard let hostPath = config.vitalFilesDirectory?.hostPath else {
+            return .failure(.pathMissing(source: source))
+        }
+        guard hostPath.isEmpty == false else {
+            return .failure(.pathInvalid(source: source, path: hostPath, reason: "empty"))
+        }
+        guard hostPath.hasPrefix("/") else {
+            return .failure(.pathInvalid(source: source, path: hostPath, reason: "relative"))
+        }
+        guard hostPath.utf8.contains(0) == false else {
+            return .failure(.pathInvalid(source: source, path: hostPath, reason: "contains-nul"))
+        }
+        return .success(RuntimeConfiguredVitalFilesDirectory(
+            source: source,
+            directory: URL(fileURLWithPath: hostPath)
+        ))
     }
 
     func runtimeCommandExecutor() -> RuntimeCommandExecutor {

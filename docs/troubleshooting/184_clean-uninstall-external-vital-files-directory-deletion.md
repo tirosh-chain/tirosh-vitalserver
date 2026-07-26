@@ -11,7 +11,7 @@
 - 외장 volume, NAS mount, 다른 제품과 공유하는 directory를 Vital files directory로 설정한 경우에도 같은 위험이 있습니다.
 - 영향받는 구현의 uninstall log에는 외부 경로에 대한 별도 `preserved configured external vital files directory` 결정이 없습니다.
 
-정상 동작은 clean uninstall이 제품 root 내부의 Helper-managed 기본 Vital files directory만 제거하고, configured external directory 자체는 그대로 두는 것입니다.
+정상 동작은 clean uninstall이 legacy product-root와 shared Helper-managed 두 기본 Vital files directory만 제거하고, SQLite desired/applied 설정에서 안전한 external로 분류된 directory 자체는 그대로 두는 것입니다.
 
 ## Impact
 
@@ -54,7 +54,9 @@ preserved configured external vital files directory path=<path> reason=no-produc
 
 - clean/standard 여부와 관계없이 configured external Vital files directory를 removal target에 넣지 않습니다.
 - 외부 directory를 cleanup completion verification 대상에도 넣지 않습니다.
-- clean uninstall UI 문구는 Helper-managed 기본 directory와 configured external directory의 보존 경계를 구분합니다.
+- Ownership source는 materialized JSON이 아니라 operation lease 이후 읽은 SQLite desired/applied Host settings입니다.
+- Missing/read/decode/path invalid, managed boundary overlap, casing만 다른 managed boundary alias는 external로 추정하지 않고 normal uninstall을 effect 전에 차단합니다.
+- clean uninstall UI 문구는 두 managed default directory와 configured external directory의 보존 경계를 구분합니다.
 - Application, Workflow, HostCLI composition 테스트에서 외부 directory와 그 안의 `.vital` 파일이 남는 것을 검증합니다.
 - 미래에 제품 생성 entry만 선택적으로 삭제하려면 directory 전체가 아니라 schema-versioned product-owned marker/manifest가 명시한 entry만 대상으로 하는 별도 계약을 먼저 설계해야 합니다. Marker가 없거나 읽기/검증에 실패하면 삭제하지 않고 실패를 명시해야 합니다.
 
@@ -62,7 +64,9 @@ preserved configured external vital files directory path=<path> reason=no-produc
 
 - `--clean`은 제품이 관리하는 runtime state를 초기화하는 명령이지, 설정으로 참조된 모든 외부 storage를 소유한다는 선언이 아닙니다.
 - external directory 보존은 best-effort fallback이 아니라 삭제 범위 정책입니다.
-- Helper-managed 기본 Vital files directory는 product root 아래에 있으므로 clean uninstall에서 product root와 함께 제거됩니다. Standard uninstall에서는 기존처럼 임시 보존 후 복원됩니다.
+- Legacy product-root와 shared Helper-managed 두 기본 Vital files directory는 clean uninstall 제거 계약에 포함됩니다. Standard uninstall은 SQLite desired/applied의 현재 경로와 무관하게 known legacy default에 남은 자료를 retained run으로 옮기고 shared/external 경로는 기존 위치에 둡니다.
+- `--force-clean-uninstaller`는 ownership unavailable을 명시적으로 받아들이는 destructive recovery이므로 configured path 보존을 증명할 수 없습니다. 두 known managed default와 product-owned 경로만 제거하며 원래 unavailable reason을 log에 남깁니다.
+- Standard uninstall의 logs/backups/Redis backups 보존과 fresh reinstall 경계는 [TS-187](187_standard-uninstall-retained-data-blocks-fresh-install.md)을 참고합니다.
 
 ## Related Cases
 

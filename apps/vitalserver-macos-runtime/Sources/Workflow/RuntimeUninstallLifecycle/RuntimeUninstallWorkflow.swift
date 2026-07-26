@@ -4,23 +4,14 @@ import Contracts
 import Domain
 import Errors
 
-public struct RuntimeConfiguredExternalVitalFilesDirectoryRead: Equatable {
-    public let externalDirectory: URL?
-    public let failure: String?
-
-    public init(externalDirectory: URL?, failure: String?) {
-        self.externalDirectory = externalDirectory
-        self.failure = failure
-    }
-}
-
 public struct RuntimeUninstallPaths {
     public let productRoot: URL
     public let runtimeStateDatabase: URL
     public let managerApp: URL
-    public let defaultVitalFilesDirectory: URL
-    public let externalVitalFilesDirectory: URL?
-    public let configuredVitalFilesDirectoryReadFailure: String?
+    public let legacyManagedDefaultVitalFilesDirectory: URL
+    public let sharedManagedDefaultVitalFilesDirectory: URL
+    public let retainedDataRoot: URL
+    public let configuredVitalFilesDirectoriesRead: RuntimeConfiguredVitalFilesDirectoriesRead
     public let launchDaemonPlists: [URL]
     public let runtimeTools: [URL]
 
@@ -28,18 +19,20 @@ public struct RuntimeUninstallPaths {
         productRoot: URL,
         runtimeStateDatabase: URL,
         managerApp: URL,
-        defaultVitalFilesDirectory: URL,
-        externalVitalFilesDirectory: URL?,
-        configuredVitalFilesDirectoryReadFailure: String?,
+        legacyManagedDefaultVitalFilesDirectory: URL,
+        sharedManagedDefaultVitalFilesDirectory: URL,
+        retainedDataRoot: URL,
+        configuredVitalFilesDirectoriesRead: RuntimeConfiguredVitalFilesDirectoriesRead,
         launchDaemonPlists: [URL],
         runtimeTools: [URL]
     ) {
         self.productRoot = productRoot
         self.runtimeStateDatabase = runtimeStateDatabase
         self.managerApp = managerApp
-        self.defaultVitalFilesDirectory = defaultVitalFilesDirectory
-        self.externalVitalFilesDirectory = externalVitalFilesDirectory
-        self.configuredVitalFilesDirectoryReadFailure = configuredVitalFilesDirectoryReadFailure
+        self.legacyManagedDefaultVitalFilesDirectory = legacyManagedDefaultVitalFilesDirectory
+        self.sharedManagedDefaultVitalFilesDirectory = sharedManagedDefaultVitalFilesDirectory
+        self.retainedDataRoot = retainedDataRoot
+        self.configuredVitalFilesDirectoriesRead = configuredVitalFilesDirectoriesRead
         self.launchDaemonPlists = launchDaemonPlists
         self.runtimeTools = runtimeTools
     }
@@ -79,7 +72,6 @@ public struct RuntimeUninstallEffects {
     public var stopRuntimeServices: (Bool, Bool) throws -> Void
     public var clearLaunchdDisabledOverrides: () throws -> Void
     public var describeError: (Error) -> String
-    public var temporaryDirectory: () -> URL
     public var uniqueID: () -> String
     public var createDirectory: (URL, Bool) throws -> Void
     public var pathState: (URL) -> RuntimePathState
@@ -94,7 +86,6 @@ public struct RuntimeUninstallEffects {
         stopRuntimeServices: @escaping (Bool, Bool) throws -> Void,
         clearLaunchdDisabledOverrides: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
-        temporaryDirectory: @escaping () -> URL,
         uniqueID: @escaping () -> String,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         pathState: @escaping (URL) -> RuntimePathState,
@@ -108,7 +99,6 @@ public struct RuntimeUninstallEffects {
         self.stopRuntimeServices = stopRuntimeServices
         self.clearLaunchdDisabledOverrides = clearLaunchdDisabledOverrides
         self.describeError = describeError
-        self.temporaryDirectory = temporaryDirectory
         self.uniqueID = uniqueID
         self.createDirectory = createDirectory
         self.pathState = pathState
@@ -161,13 +151,19 @@ public struct RuntimeUninstallWorkflow {
     ) throws {
         let startedState = try start(
             command,
+            writer: writer,
+            diagnostics: diagnostics
+        )
+        let vitalFilesOwnership = try resolveConfiguredVitalFilesDirectories(
+            from: startedState,
+            command: command,
             paths: paths,
             writer: writer,
             diagnostics: diagnostics
         )
         let readyForStopState = try backupIfNeeded(
             command,
-            from: startedState,
+            from: vitalFilesOwnership.state,
             writer: writer,
             effects: effects,
             diagnostics: diagnostics
@@ -185,6 +181,7 @@ public struct RuntimeUninstallWorkflow {
             approvedBy: stoppedDecision,
             command: command,
             paths: paths,
+            vitalFilesOwnership: vitalFilesOwnership.ownership,
             readers: readers,
             writer: writer,
             effects: effects,
@@ -216,13 +213,12 @@ public struct RuntimeUninstallWorkflow {
 
     private func start(
         _ command: RuntimeUninstallCommand,
-        paths: RuntimeUninstallPaths,
         writer: RuntimeUninstallStateWriter,
         diagnostics: RuntimeUninstallDiagnostics
     ) throws -> RuntimeUninstallWorkflowState {
         let plan = uninstallUseCase().startPlan(
             clean: command.clean,
-            configuredDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
+            forceClean: command.forceClean
         )
         log(plan.startedLogMessage, diagnostics: diagnostics)
         let startDecision = try transitionAndPersist(
@@ -232,10 +228,61 @@ public struct RuntimeUninstallWorkflow {
             expectedCommands: [],
             writer: writer
         )
-        if let configuredDirectoryReadFailureLogMessage = plan.configuredDirectoryReadFailureLogMessage {
-            log(configuredDirectoryReadFailureLogMessage, diagnostics: diagnostics)
-        }
         return startDecision.state
+    }
+
+    private func resolveConfiguredVitalFilesDirectories(
+        from state: RuntimeUninstallWorkflowState,
+        command: RuntimeUninstallCommand,
+        paths: RuntimeUninstallPaths,
+        writer: RuntimeUninstallStateWriter,
+        diagnostics: RuntimeUninstallDiagnostics
+    ) throws -> (
+        state: RuntimeUninstallWorkflowState,
+        ownership: UninstallRuntimeVitalFilesOwnership
+    ) {
+        let resolution = uninstallUseCase().resolveVitalFilesDirectories(
+            read: paths.configuredVitalFilesDirectoriesRead,
+            productRoot: paths.productRoot,
+            legacyManagedDefault: paths.legacyManagedDefaultVitalFilesDirectory,
+            sharedManagedDefault: paths.sharedManagedDefaultVitalFilesDirectory,
+            retainedDataRoot: paths.retainedDataRoot
+        )
+        switch resolution {
+        case .available(let directories):
+            log(
+                uninstallUseCase().configuredVitalFilesDirectoriesLoadedLogMessage(directories),
+                diagnostics: diagnostics
+            )
+            return (state, .resolved(directories))
+        case .unavailable(let unavailableReason):
+            let reason = unavailableReason.description
+            let decision = try transitionAndPersist(
+                from: state,
+                event: .vitalFilesOwnershipUnavailable(
+                    reason: reason,
+                    forceClean: command.forceClean
+                ),
+                clean: command.clean,
+                expectedCommands: [],
+                writer: writer
+            )
+            if command.forceClean {
+                log(
+                    uninstallUseCase().forceCleanVitalFilesOwnershipOverrideLogMessage(reason: reason),
+                    diagnostics: diagnostics
+                )
+                return (
+                    decision.state,
+                    .destructiveRecoveryWithoutConfiguredOwnership(reason: unavailableReason)
+                )
+            }
+            throw UninstallRuntimeUseCaseError.operationFailed(
+                uninstallUseCase().configuredVitalFilesDirectoriesUnavailableMessage(
+                    blockers: decision.blockers
+                )
+            )
+        }
     }
 
     private func backupIfNeeded(
@@ -330,6 +377,7 @@ public struct RuntimeUninstallWorkflow {
         approvedBy stoppedDecision: RuntimeUninstallTransitionDecision,
         command: RuntimeUninstallCommand,
         paths: RuntimeUninstallPaths,
+        vitalFilesOwnership: UninstallRuntimeVitalFilesOwnership,
         readers: RuntimeUninstallStateReaders,
         writer: RuntimeUninstallStateWriter,
         effects: RuntimeUninstallEffects,
@@ -357,6 +405,7 @@ public struct RuntimeUninstallWorkflow {
             let relocatedProductRoot = try executeFileRemoval(
                 paths: paths,
                 clean: command.clean,
+                vitalFilesOwnership: vitalFilesOwnership,
                 writer: writer,
                 effects: effects,
                 diagnostics: diagnostics
@@ -467,6 +516,7 @@ public struct RuntimeUninstallWorkflow {
     private func executeFileRemoval(
         paths: RuntimeUninstallPaths,
         clean: Bool,
+        vitalFilesOwnership: UninstallRuntimeVitalFilesOwnership,
         writer: RuntimeUninstallStateWriter,
         effects: RuntimeUninstallEffects,
         diagnostics: RuntimeUninstallDiagnostics
@@ -476,6 +526,7 @@ public struct RuntimeUninstallWorkflow {
             return try removeFiles(
                 paths: paths,
                 clean: clean,
+                vitalFilesOwnership: vitalFilesOwnership,
                 preservedPaths: &preservedPaths,
                 writer: writer,
                 effects: effects,
@@ -498,6 +549,7 @@ public struct RuntimeUninstallWorkflow {
     private func removeFiles(
         paths: RuntimeUninstallPaths,
         clean: Bool,
+        vitalFilesOwnership: UninstallRuntimeVitalFilesOwnership,
         preservedPaths: inout RuntimeUninstallPreservedPaths?,
         writer: RuntimeUninstallStateWriter,
         effects: RuntimeUninstallEffects,
@@ -509,8 +561,15 @@ public struct RuntimeUninstallWorkflow {
         }
         log(stepLogMessage(step: .removePlists, status: .completed), diagnostics: diagnostics)
 
-        let preserved = clean ? nil : try preserveUserData(paths: paths, effects: effects, diagnostics: diagnostics)
-        preservedPaths = preserved
+        if !clean {
+            try preserveUserData(
+                paths: paths,
+                vitalFilesOwnership: vitalFilesOwnership,
+                preservedPaths: &preservedPaths,
+                effects: effects,
+                diagnostics: diagnostics
+            )
+        }
 
         log(stepLogMessage(step: .removeInstalledFiles, status: .started), diagnostics: diagnostics)
         let relocatedProductRoot = try relocateProductRoot(
@@ -522,14 +581,16 @@ public struct RuntimeUninstallWorkflow {
         let removalPlan = uninstallUseCase().removalPlan(
             clean: clean,
             managerApp: paths.managerApp,
-            externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
-            configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
+            legacyManagedDefaultVitalFilesDirectory: paths.legacyManagedDefaultVitalFilesDirectory,
+            sharedManagedDefaultVitalFilesDirectory: paths.sharedManagedDefaultVitalFilesDirectory,
+            retainedDataRoot: paths.retainedDataRoot,
+            vitalFilesOwnership: vitalFilesOwnership
         )
         for target in removalPlan.targets {
             try safeRemove(target, effects: effects, diagnostics: diagnostics)
         }
-        if let skippedExternalDirectoryLogMessage = removalPlan.skippedExternalDirectoryLogMessage {
-            log(skippedExternalDirectoryLogMessage, diagnostics: diagnostics)
+        for message in removalPlan.preservedExternalDirectoryLogMessages {
+            log(message, diagnostics: diagnostics)
         }
         log(stepLogMessage(step: .removeInstalledFiles, status: .completed), diagnostics: diagnostics)
 
@@ -539,10 +600,11 @@ public struct RuntimeUninstallWorkflow {
         }
         log(stepLogMessage(step: .removeRuntimeTools, status: .completed), diagnostics: diagnostics)
 
-        if let preserved {
-            log(stepLogMessage(step: .restorePreservedUserData, status: .started), diagnostics: diagnostics)
-            try restorePreservedPaths(preserved, effects: effects, diagnostics: diagnostics)
-            log(stepLogMessage(step: .restorePreservedUserData, status: .completed), diagnostics: diagnostics)
+        if let preservedPaths {
+            log(
+                uninstallUseCase().retainedUserDataLogMessage(path: preservedPaths.root.path),
+                diagnostics: diagnostics
+            )
         }
         return relocatedProductRoot
     }
@@ -608,24 +670,31 @@ public struct RuntimeUninstallWorkflow {
 
     private func preserveUserData(
         paths: RuntimeUninstallPaths,
+        vitalFilesOwnership: UninstallRuntimeVitalFilesOwnership,
+        preservedPaths: inout RuntimeUninstallPreservedPaths?,
         effects: RuntimeUninstallEffects,
         diagnostics: RuntimeUninstallDiagnostics
-    ) throws -> RuntimeUninstallPreservedPaths {
+    ) throws {
         log(stepLogMessage(step: .preserveUserData, status: .started), diagnostics: diagnostics)
         let preserveRoot = uninstallUseCase().preserveRootDirectory(
-            temporaryDirectory: effects.temporaryDirectory(),
+            retainedDataRoot: paths.retainedDataRoot,
             uniqueID: effects.uniqueID()
         )
+        guard try pathIsPresent(preserveRoot, effects: effects) == false else {
+            throw UninstallRuntimeUseCaseError.operationFailed(
+                uninstallUseCase().retainedDataDirectoryAlreadyPresentMessage(path: preserveRoot.path)
+            )
+        }
         try effects.createDirectory(preserveRoot, true)
 
-        var items: [RuntimeUninstallPreservedPath] = []
+        preservedPaths = RuntimeUninstallPreservedPaths(root: preserveRoot, items: [])
         let plan = uninstallUseCase().preservePlan(
             productRoot: paths.productRoot,
-            defaultVitalFilesDirectory: paths.defaultVitalFilesDirectory,
-            externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
-            configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
+            legacyManagedDefaultVitalFilesDirectory: paths.legacyManagedDefaultVitalFilesDirectory,
+            vitalFilesOwnership: vitalFilesOwnership
         )
         for candidate in plan.candidates {
+            var items = preservedPaths?.items ?? []
             try preservePath(
                 candidate.source,
                 preserveRoot,
@@ -634,16 +703,13 @@ public struct RuntimeUninstallWorkflow {
                 effects: effects,
                 diagnostics: diagnostics
             )
+            preservedPaths = RuntimeUninstallPreservedPaths(root: preserveRoot, items: items)
         }
-        if let externalDirectoryLogMessage = plan.externalDirectoryLogMessage {
-            log(externalDirectoryLogMessage, diagnostics: diagnostics)
-        }
-        if let configuredDirectoryReadFailureLogMessage = plan.configuredDirectoryReadFailureLogMessage {
-            log(configuredDirectoryReadFailureLogMessage, diagnostics: diagnostics)
+        for message in plan.vitalFilesDirectoryLogMessages {
+            log(message, diagnostics: diagnostics)
         }
 
         log(stepLogMessage(step: .preserveUserData, status: .completed), diagnostics: diagnostics)
-        return RuntimeUninstallPreservedPaths(root: preserveRoot, items: items)
     }
 
     private func preservePath(

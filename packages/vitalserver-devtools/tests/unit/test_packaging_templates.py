@@ -236,6 +236,9 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         in uninstall_text
     )
     assert 'VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"' in uninstall_text
+    assert 'rm -f "${uninstall}"' not in uninstall_text
+    assert 'if [ -e "${uninstall}" ]; then' in uninstall_text
+    assert "uninstaller remains after CLIHost cleanup" in uninstall_text
     assert (
         'reset_bin="${script_dir}/bin/vitalserver-troubleshooting-reset-for-reinstall"'
         in reset_for_reinstall_command_text

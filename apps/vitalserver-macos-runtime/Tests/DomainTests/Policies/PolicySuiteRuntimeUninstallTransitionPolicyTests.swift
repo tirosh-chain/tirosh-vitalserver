@@ -27,6 +27,39 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         XCTAssertEqual(standardStart.message, "uninstall started")
     }
 
+    func testVitalFilesOwnershipUnavailableBlocksBeforeAnyEffectCommand() throws {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
+            from: .started,
+            event: .vitalFilesOwnershipUnavailable(
+                reason: "host-settings-read-failed:reason=permission denied",
+                forceClean: false
+            )
+        )
+
+        XCTAssertEqual(decision.state, .failed)
+        XCTAssertEqual(decision.persistedState, .failed)
+        XCTAssertEqual(decision.commands, [])
+        XCTAssertEqual(decision.blockers, [
+            "vital-files-ownership-unavailable:reason=host-settings-read-failed:reason=permission denied",
+        ])
+    }
+
+    func testForceCleanExplicitlyAcceptsUnavailableVitalFilesOwnershipWithoutInferringIt() throws {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
+            from: .started,
+            event: .vitalFilesOwnershipUnavailable(
+                reason: "host-settings-missing",
+                forceClean: true
+            )
+        )
+
+        XCTAssertEqual(decision.state, .started)
+        XCTAssertNil(decision.persistedState)
+        XCTAssertEqual(decision.commands, [])
+        XCTAssertEqual(decision.blockers, [])
+        XCTAssertEqual(decision.message, "force-clean Vital files ownership override accepted")
+    }
+
     func testVitalServerBackupRequestAndCompletionAreExplicitTransitions() throws {
         let requested = try RuntimeUninstallTransitionPolicy.transition(
             from: .started,
