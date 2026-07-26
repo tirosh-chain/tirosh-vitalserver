@@ -2,8 +2,8 @@
 
 The bridge executable is deliberately a portable deterministic fixture. It
 proves Host's C21 composition, request-id/revision idempotency, and no-fallback
-behavior. It does not claim that Hyper-V or libvirt executed on this macOS
-workspace; those facts remain C24 clean-host proof stages.
+behavior. It does not claim that Hyper-V or libvirt executed on the current
+development host; those facts remain C24 clean-host proof stages.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -24,6 +25,20 @@ from tooling.contracts import ContractRepository
 
 ROOT = Path(__file__).resolve().parents[2]
 GO = os.environ.get("RUNTIME_PLATFORM_GO", "go")
+
+
+def current_host_platform() -> str:
+    host_platform = {
+        "darwin": "macos",
+        "linux": "linux",
+        "win32": "windows",
+    }.get(sys.platform)
+    if host_platform is None:
+        raise RuntimeError(f"cross-platform delivery acceptance does not support sys.platform={sys.platform!r}")
+    return host_platform
+
+
+HOST_PLATFORM = current_host_platform()
 
 
 def free_port() -> int:
@@ -317,37 +332,52 @@ class CrossPlatformDeliveryAcceptance(unittest.TestCase):
         self.host_process = None
         self.assertFalse(descriptor_path.exists(), "Host Agent left a stale C52 descriptor after shutdown")
 
-    def test_windows_and_linux_bridge_evidence_is_c22_valid_when_wrong_os_is_explicit(self) -> None:
+    def test_windows_and_linux_bridge_evidence_is_c22_valid_and_wrong_os_is_explicit(self) -> None:
         repository = ContractRepository(ROOT)
         repository.load()
         provider_root = ROOT / "providers" / "os-provider-bridge"
-        for provider_kind, command in (
-            ("windows-hyperv-scm", "./cmd/windows-hyperv-scm-bridge"),
-            ("linux-kvm-libvirt-systemd", "./cmd/linux-kvm-libvirt-systemd-bridge"),
-        ):
-            binary = self.work / provider_kind
-            build = subprocess.run(
-                [GO, "build", "-o", str(binary), command],
-                cwd=provider_root,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if build.returncode != 0:
-                raise AssertionError(f"build {provider_kind} bridge failed:\n{build.stdout}\n{build.stderr}")
-            output = subprocess.run(
-                [str(binary), "--mode", "evidence", "--provider-id", "guest-vm", "--vm-name", "guest-a", "--service-name", "vitalserver-host-agent"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(0, output.returncode, output.stderr)
-            evidence = json.loads(output.stdout)
-            self.assertEqual([], repository.validate_instance("provider-installation-evidence.schema.json", evidence))
-            self.assertEqual(provider_kind, evidence["providerKind"])
-            self.assertEqual("macos", evidence["hostPlatform"])
-            self.assertEqual("unavailable", evidence["installation"]["state"])
-            self.assertEqual(provider_kind + "-host-platform-mismatch", evidence["installation"]["issue"]["code"])
+        providers = (
+            ("windows-hyperv-scm", "windows", "./cmd/windows-hyperv-scm-bridge"),
+            ("linux-kvm-libvirt-systemd", "linux", "./cmd/linux-kvm-libvirt-systemd-bridge"),
+        )
+        expected_wrong_os_providers = {
+            provider_kind
+            for provider_kind, provider_host_platform, _ in providers
+            if provider_host_platform != HOST_PLATFORM
+        }
+        observed_wrong_os_providers = set()
+        for provider_kind, provider_host_platform, command in providers:
+            with self.subTest(provider_kind=provider_kind, host_platform=HOST_PLATFORM):
+                binary = self.work / provider_kind
+                build = subprocess.run(
+                    [GO, "build", "-o", str(binary), command],
+                    cwd=provider_root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if build.returncode != 0:
+                    raise AssertionError(f"build {provider_kind} bridge failed:\n{build.stdout}\n{build.stderr}")
+                output = subprocess.run(
+                    [str(binary), "--mode", "evidence", "--provider-id", "guest-vm", "--vm-name", "guest-a", "--service-name", "vitalserver-host-agent"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(0, output.returncode, output.stderr)
+                evidence = json.loads(output.stdout)
+                self.assertEqual([], repository.validate_instance("provider-installation-evidence.schema.json", evidence))
+                self.assertEqual(provider_kind, evidence["providerKind"])
+                self.assertEqual(HOST_PLATFORM, evidence["hostPlatform"])
+                issue = evidence["installation"].get("issue")
+                if provider_host_platform != HOST_PLATFORM:
+                    observed_wrong_os_providers.add(provider_kind)
+                    self.assertEqual("unavailable", evidence["installation"]["state"])
+                    self.assertIsNotNone(issue)
+                    self.assertEqual(provider_kind + "-host-platform-mismatch", issue["code"])
+                elif issue is not None:
+                    self.assertNotEqual(provider_kind + "-host-platform-mismatch", issue["code"])
+        self.assertEqual(expected_wrong_os_providers, observed_wrong_os_providers)
 
 
 if __name__ == "__main__":
