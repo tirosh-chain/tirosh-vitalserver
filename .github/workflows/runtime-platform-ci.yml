@@ -109,19 +109,27 @@ jobs:
           retention-days: 14
 
   macos-provider:
-    name: macOS provider and Runtime Console delivery artifact
+    name: macOS native checks and Runtime Console delivery artifact
     runs-on: macos-15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Set up Runtime Console Node runtime
         uses: actions/setup-node@v4
         with:
           node-version: "22.12.0"
 
-      - name: Build and test provider bridge
-        run: make -C runtime-platform macos-provider-test
+      - name: Bootstrap contract verification tools
+        run: make -C runtime-platform bootstrap-contract-tools
+
+      - name: Run macOS native source checks
+        run: make -C runtime-platform macos-native-check
 
       - name: Package the macOS Runtime Console
         run: make -C runtime-platform runtime-console-package-macos

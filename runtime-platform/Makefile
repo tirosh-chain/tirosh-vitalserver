@@ -89,6 +89,8 @@ endif
 	host-edge-proxy-test \
 	host-guest-acceptance \
 	guest-operational-state-backup-restore-acceptance \
+	ensure-macos-host \
+	macos-native-check \
 	macos-provider-test \
 	guest-artifact-compiler-test \
 	guest-artifact-compilation-input-assembler-test \
@@ -173,10 +175,10 @@ endif
 	installation-update-acceptance \
 	check
 
-# `check` is the portable source, contract, and acceptance gate. Native provider
-# compilation belongs to a matching-OS target and CI job; for example, macOS
-# invokes `macos-provider-test` explicitly because it requires Apple's
-# Virtualization framework.
+# `check` is the portable source, contract, and acceptance gate. Tests that only
+# model macOS contracts remain here. The Host package composer keeps its pure
+# cases here too and explicitly skips only five real pkgbuild/pkgutil effects
+# away from macOS. Apple SDK compilation belongs to `macos-native-check`.
 check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test guest-product-amd64-build guest-product-release-manager-test guest-product-release-effect-executor-test guest-product-release-effect-executor-cross-platform-build guest-bundled-upstream-image-set-manager-test guest-bundled-upstream-image-set-manager-linux-build guest-bundled-upstream-image-set-effect-executor-test guest-bundled-upstream-image-set-effect-executor-cross-platform-build guest-bundled-upstream-image-set-archive-composer-test guest-product-release-update-composer-test guest-product-release-archive-composer-test host-platform-release-archive-composer-test guest-product-release-update-composition-acceptance platformctl-test platformctl-cross-platform-build runtime-console-test host-guest-acceptance guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test native-guest-artifact-input-preparer-test guest-telemetry-collector-artifact-builder-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-linux-source-disk-materializer-test guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test linux-host-package-composer-test linux-host-release-input-preparer-test windows-host-msi-composer-test windows-host-release-input-preparer-test macos-release-package-assembly-test macos-development-release-input-preparer-test macos-development-guest-boot-input-assembly-test macos-clean-host-release-evidence-runner-test guest-installed-runtime-evidence-runner-test vital-replay-corpus-test windows-clean-host-release-evidence-runner-test linux-clean-host-release-evidence-runner-test release-delivery-proof-attachment-test release-artifact-sbom-notices-test host-platform-release-transition-evidence-test macos-development-installation-evidence-runner-test recorder-gateway-check lab-recorder-runner-check guest-node-services-bundle-test recorder-gateway-acceptance lab-recorder-runner-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test host-update-handoff-supervisor-test host-service-runner-test host-service-runner-cross-platform-build host-installation-manager-test host-installation-manager-build release-composer-test installation-update-acceptance
 
 bootstrap-contract-tools:
@@ -386,7 +388,15 @@ guest-operational-state-backup-restore-acceptance: ensure-go
 			-run TestGuestOperationalStateBackupRestoresBothOwnedDatabasesToEmptyTargets \
 			./internal/adapters/gueststatebackupstageexecutor
 
-macos-provider-test:
+ensure-macos-host:
+	@test "$$(uname -s)" = "Darwin" || { printf '%s\n' 'macOS native checks require a macOS Host'; exit 2; }
+
+# The Provider compiles against Apple Virtualization. Running the package
+# composer module again on macOS exercises the five explicitly Darwin-gated
+# pkgbuild/pkgutil cases in addition to its portable policy tests.
+macos-native-check: ensure-macos-host macos-provider-test macos-host-package-composer-test
+
+macos-provider-test: ensure-macos-host
 	@$(SWIFT) --version >/dev/null 2>&1 || { printf '%s\n' 'Swift is unavailable; install Xcode Command Line Tools or set SWIFT'; exit 2; }
 	$(SWIFT) test --package-path providers/macos-virtualization
 	$(SYSTEM_PYTHON) -m unittest tooling.tests.test_macos_virtual_machine_command_cli

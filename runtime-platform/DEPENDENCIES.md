@@ -74,7 +74,12 @@ C24 evidence hashes/URIs. `make -C runtime-platform release-ready` fails while
 any clean-host proof is pending. A successful compile, source inventory, or
 portable provider test is not license/install evidence.
 
-The root `check` target is portable and therefore does not compile the native
-macOS Provider against Apple's SDK. A macOS development or CI host must also run
-`make -C runtime-platform macos-provider-test`; the matching macOS workflow job
-owns that platform-framework check.
+The root `check` target is portable. It retains pure macOS contract, archive,
+assembly, evidence, and Host package policy tests, but it does not compile the
+native Provider against Apple's SDK. Exactly five Host package composer tests
+that execute real `pkgbuild` and `pkgutil` are explicitly skipped unless
+`sys.platform == "darwin"`; no missing-tool probe changes their meaning. A macOS
+development or CI host must also run
+`make -C runtime-platform macos-native-check`; the matching macOS workflow job
+compiles the Provider and runs the complete package suite, including those five
+native integrations.

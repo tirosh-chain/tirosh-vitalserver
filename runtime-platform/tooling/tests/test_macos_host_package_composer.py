@@ -8,12 +8,26 @@ from dataclasses import replace
 from pathlib import Path, PurePosixPath
 import plistlib
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
 from tooling import macos_host_package_composer as composer
 from tooling import macos_host_package_verifier as verifier
+
+
+MACOS_NATIVE_PACKAGE_TOOL_TESTS = (
+    "test_developer_id_virtual_machine_supervisor_is_signed_and_verified_only_in_the_staged_payload",
+    "test_unsigned_development_package_can_carry_an_ad_hoc_entitled_supervisor",
+    "test_pkgbuild_composes_an_unsigned_package_without_installing_it",
+    "test_package_verifier_requires_c23_product_version_to_match_packaged_c33",
+    "test_package_verifier_requires_the_explicit_payload_base_path",
+)
+requires_macos_native_package_tools = unittest.skipUnless(
+    sys.platform == "darwin",
+    "requires the macOS pkgbuild and pkgutil tools",
+)
 
 
 class MacOSHostPackageComposerTests(unittest.TestCase):
@@ -1025,7 +1039,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         composition = replace(
             self.composition(),
             output_package=output_directory / "VitalServerRuntimePlatform-0.1.0-dev.pkg",
-            pkgbuild_executable=Path("/usr/bin/pkgbuild"),
+            pkgbuild_executable=self.pkgbuild,
         )
         with self.assertRaisesRegex(composer.MacOSHostPackageCompositionError, "Guest kernel source SHA-256"):
             composer.compose_macos_host_package(composition)
@@ -1300,12 +1314,13 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             composer.load_macos_host_package_documents(self.composition())
 
     def test_developer_id_package_requires_a_developer_id_virtual_machine_supervisor(self) -> None:
+        productsign = self.write_file("artifacts/productsign", b"productsign")
         composition = replace(
             self.composition(),
             macos_installer_package_signing=composer.MacOSInstallerPackageSigning(
                 mode="developer-id",
                 signing_identity="Developer ID Installer: Tirosh",
-                productsign_executable=Path("/usr/bin/productsign"),
+                productsign_executable=productsign,
             ),
         )
 
@@ -1458,6 +1473,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 composer.load_macos_host_package_documents(composition),
             )
 
+    @requires_macos_native_package_tools
     def test_developer_id_virtual_machine_supervisor_is_signed_and_verified_only_in_the_staged_payload(self) -> None:
         codesign_log = self.root / "codesign.log"
         productsign_log = self.root / "productsign.log"
@@ -1561,6 +1577,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.assertEqual(0, payload_listing.returncode, payload_listing.stderr)
         self.assertNotIn("/._", payload_listing.stdout)
 
+    @requires_macos_native_package_tools
     def test_unsigned_development_package_can_carry_an_ad_hoc_entitled_supervisor(self) -> None:
         codesign_log = self.root / "codesign.log"
         fake_codesign = self.write_file(
@@ -1637,6 +1654,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             ),
         )
 
+    @requires_macos_native_package_tools
     def test_pkgbuild_composes_an_unsigned_package_without_installing_it(self) -> None:
         output_directory = self.root / "output"
         output_directory.mkdir()
@@ -1759,6 +1777,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
             ):
                 verifier.verify_expanded_payload_has_no_appledouble_sidecars(payload_root)
 
+    @requires_macos_native_package_tools
     def test_package_verifier_requires_c23_product_version_to_match_packaged_c33(self) -> None:
         output_directory = self.root / "output"
         output_directory.mkdir()
@@ -1787,6 +1806,7 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 )
             )
 
+    @requires_macos_native_package_tools
     def test_package_verifier_requires_the_explicit_payload_base_path(self) -> None:
         output_directory = self.root / "output"
         output_directory.mkdir()

@@ -37,16 +37,21 @@ make -C runtime-platform check
 The portable `check` target verifies the required responsibility layout,
 rejects symlinks and legacy source coupling in production paths, validates
 quarantined fixture provenance and integrity, validates the versioned contract
-source, and exercises portable provider contracts. It deliberately does not
-compile an OS-native provider against another OS's SDK. Run the matching native
-target in addition to `check`; on macOS that is:
+source, and exercises portable provider contracts. macOS-named tests that model
+documents, policies, archives, and evidence with explicit fake effects remain
+portable. The Host package composer module also remains in this gate: 53 policy
+tests run everywhere, while exactly five real `pkgbuild`/`pkgutil` integration
+tests are explicitly gated by `sys.platform == "darwin"`. The gate excludes
+Apple SDK compilation. Run the matching native aggregate in addition to
+`check`; on macOS that is:
 
 ```sh
-make -C runtime-platform macos-provider-test
+make -C runtime-platform macos-native-check
 ```
 
 The dedicated GitHub Actions workflow runs the portable gate on Linux and the
-macOS provider target in its macOS job.
+native aggregate in its macOS job, where the five package integrations run
+instead of being skipped.
 
 ## Responsibility map
 
