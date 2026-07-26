@@ -1,6 +1,7 @@
 package gueststatepostgresqlbackup
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,8 +26,10 @@ func TestInspectSnapshotRequiresEveryOwnerAndRevisionProof(t *testing.T) {
 		DatabaseURL:             "postgresql://unused",
 		PGRestoreExecutablePath: restore,
 	}, commandEnvironment: os.Environ()}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	snapshot, err := owner.inspectSnapshot(
-		t.Context(),
+		ctx,
 		snapshotPath,
 		"guest-postgresql-12345678-1234-1234-1234-123456789abc",
 		"0006_backup_owner",

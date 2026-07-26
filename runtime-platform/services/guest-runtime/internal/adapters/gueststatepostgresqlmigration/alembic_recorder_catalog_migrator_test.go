@@ -1,6 +1,7 @@
 package gueststatepostgresqlmigration
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -20,8 +21,10 @@ func TestBoundedCommandOutputPreservesBoundAndReportsTruncation(t *testing.T) {
 }
 
 func TestApplyRecorderCatalogMigrationsRejectsIncompleteConfiguration(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 	_, err := ApplyRecorderCatalogMigrations(
-		t.Context(),
+		ctx,
 		RecorderCatalogMigrationConfiguration{},
 	)
 	if err == nil || !strings.Contains(err.Error(), "configuration is incomplete") {
