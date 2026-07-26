@@ -73,3 +73,8 @@ notices, apply the permissive-license allowlist in the vNext design, and attach
 C24 evidence hashes/URIs. `make -C runtime-platform release-ready` fails while
 any clean-host proof is pending. A successful compile, source inventory, or
 portable provider test is not license/install evidence.
+
+The root `check` target is portable and therefore does not compile the native
+macOS Provider against Apple's SDK. A macOS development or CI host must also run
+`make -C runtime-platform macos-provider-test`; the matching macOS workflow job
+owns that platform-framework check.

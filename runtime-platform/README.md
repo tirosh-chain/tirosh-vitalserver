@@ -34,7 +34,19 @@ make -C runtime-platform bootstrap-contract-tools
 make -C runtime-platform check
 ```
 
-The checks verify the required responsibility layout, reject symlinks and legacy source coupling in production paths, validate quarantined fixture provenance and integrity, and validate the versioned contract source. The dedicated GitHub Actions workflow runs the complete suite when this root changes.
+The portable `check` target verifies the required responsibility layout,
+rejects symlinks and legacy source coupling in production paths, validates
+quarantined fixture provenance and integrity, validates the versioned contract
+source, and exercises portable provider contracts. It deliberately does not
+compile an OS-native provider against another OS's SDK. Run the matching native
+target in addition to `check`; on macOS that is:
+
+```sh
+make -C runtime-platform macos-provider-test
+```
+
+The dedicated GitHub Actions workflow runs the portable gate on Linux and the
+macOS provider target in its macOS job.
 
 ## Responsibility map
 
