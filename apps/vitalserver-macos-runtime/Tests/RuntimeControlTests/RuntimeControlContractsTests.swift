@@ -4,6 +4,16 @@ import XCTest
 import Errors
 
 final class RuntimeControlContractsTests: XCTestCase {
+    func testPlatformCapabilitiesDefaultUpdateApplyFailClosedWithoutDisablingLocalIntegrityChecks() {
+        let capabilities = RuntimeControlCapabilities()
+        let platformCapabilities = PlatformCapabilities(capabilities)
+
+        XCTAssertFalse(capabilities.canApplyBundle)
+        XCTAssertFalse(platformCapabilities.canApplyBundle)
+        XCTAssertTrue(capabilities.canOpenLocalFiles)
+        XCTAssertTrue(platformCapabilities.canOpenLocalFiles)
+    }
+
     func testPlatformWorkflowAndRedisRelaySettingsWireContractsEncodeRequiredNulls() throws {
         let workflow = PlatformWorkflowResource(state: .missing, operation: nil, readError: nil)
         let relaySettings = RuntimeRedisRelaySettingsRead(

@@ -558,6 +558,9 @@ public struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     public func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        guard commandClient.capabilities.canApplyBundle else {
+            throw RuntimeControlAPIReadHandlerError.updateApplyUnavailable
+        }
         let result = try await hostClient.applyUpdateBundle(url: try localFileURL(bundle))
         if result.exitCode == 0 {
             scheduleHelperRelaunch()

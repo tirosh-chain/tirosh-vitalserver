@@ -5,7 +5,7 @@ import Errors
 @MainActor
 extension RuntimeViewModel {
     func chooseUpdateBundle() async {
-        guard controlClient.capabilities.canApplyBundle else {
+        guard controlClient.capabilities.canOpenLocalFiles else {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
@@ -50,7 +50,7 @@ extension RuntimeViewModel {
     }
 
     func verifySelectedBundle() async {
-        guard controlClient.capabilities.canApplyBundle else {
+        guard controlClient.capabilities.canOpenLocalFiles else {
             message = AppConstants.StatusText.actionUnavailable
             return
         }

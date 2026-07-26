@@ -175,13 +175,23 @@ def verify_update_bundle(input: VerifyReleaseUpdateBundleInput) -> int:
         output_dir=input.output_dir,
     )
     verify_bundle(bundle_path)
-    print(f"update bundle verified: {bundle_path}")
+    print(
+        "update bundle integrity checked; "
+        f"publisher authenticity unverified: {bundle_path}"
+    )
     return 0
 
 
 def apply_smoke_update_bundle(input: ApplySmokeReleaseUpdateBundleInput) -> int:
     root = repo_root()
     settings = load_macos_release_settings(input.config, root)
+    release_file = resolve_path(root, input.release_file)
+    release = load_release_manifest(release_file)
+    if release.channel != "dev":
+        raise SystemExit(
+            f"0.2.1 {release.channel} update apply smoke is unavailable because "
+            "trusted publisher verification is not implemented"
+        )
     bundle_path = release_update_bundle_path(
         config=input.config,
         release_file=input.release_file,
@@ -197,8 +207,16 @@ def apply_smoke_update_bundle(input: ApplySmokeReleaseUpdateBundleInput) -> int:
             f"installed runtime CLI is missing or not executable: {vm_cli}"
         )
     print(f"update apply smoke started bundle={bundle_path} cli={vm_cli}", flush=True)
+    command = [
+        "sudo",
+        str(vm_cli),
+        "runtime",
+        "apply-bundle",
+        str(bundle_path),
+        "--allow-unsigned-dev-bundle",
+    ]
     result = subprocess.run(
-        ["sudo", str(vm_cli), "runtime", "apply-bundle", str(bundle_path)],
+        command,
         check=False,
         text=True,
         capture_output=True,
@@ -210,7 +228,7 @@ def apply_smoke_update_bundle(input: ApplySmokeReleaseUpdateBundleInput) -> int:
     if result.returncode != 0:
         raise SystemExit(
             f"update apply smoke failed exitCode={result.returncode}: "
-            f"sudo {vm_cli} runtime apply-bundle {bundle_path}. "
+            f"{' '.join(command)}. "
             "Run from an interactive administrator shell or configure sudo "
             "credentials before running dist/*/apply-smoke targets."
         )

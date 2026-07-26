@@ -22,7 +22,7 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     public init(
         canInstallRuntime: Bool = true,
         canUninstallRuntime: Bool = true,
-        canApplyBundle: Bool = true,
+        canApplyBundle: Bool = false,
         canRollback: Bool = true,
         canRollbackRelease: Bool = false,
         canEditRuntimeProviderResources: Bool = true,

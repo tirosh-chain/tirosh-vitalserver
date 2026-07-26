@@ -199,7 +199,40 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         )
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["apply-bundle", bundleURL.path]),
-            .applyBundle(bundleURL)
+            .applyBundle(RuntimeApplyBundleCommand(
+                bundleURL: bundleURL,
+                trustIntent: .requireVerifiedPublisher
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "apply-bundle",
+                bundleURL.path,
+                "--allow-unsigned-dev-bundle",
+            ]),
+            .applyBundle(RuntimeApplyBundleCommand(
+                bundleURL: bundleURL,
+                trustIntent: .allowUnsignedDevelopmentBundle
+            ))
+        )
+    }
+
+    func testApplyBundleRejectsUnknownOrMisplacedUnsignedDevelopmentIntent() {
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse([
+                "apply-bundle",
+                "/tmp/update-bundle.tar.gz",
+                "--unknown",
+            ]),
+            expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse([
+                "apply-bundle",
+                "--allow-unsigned-dev-bundle",
+                "/tmp/update-bundle.tar.gz",
+            ]),
+            expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
         )
     }
 
@@ -403,7 +436,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         )
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["apply-bundle"]),
-            expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>"
+            expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
         )
     }
 

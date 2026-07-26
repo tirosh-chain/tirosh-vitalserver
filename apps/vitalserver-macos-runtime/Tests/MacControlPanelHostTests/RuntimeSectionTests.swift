@@ -277,6 +277,28 @@ final class RuntimeSectionTests: XCTestCase {
     }
 
     @MainActor
+    func testPlatformAgentRejectsUpdateApplyBeforeInvokingNativeWorker() async {
+        let client = HostFakeRuntimeControlClient()
+        XCTAssertFalse(client.capabilities.canApplyBundle)
+        let handler = makeRuntimeControlAPIHandler(client: client)
+
+        do {
+            _ = try await handler.applyUpdateBundle(bundle: RuntimeControlFileReference(
+                kind: .localPath,
+                value: "/tmp/update-bundle.tar.gz"
+            ))
+            XCTFail("0.2.1 Platform Agent must reject update apply")
+        } catch {
+            XCTAssertEqual(
+                error as? RuntimeControlAPIReadHandlerError,
+                .updateApplyUnavailable
+            )
+        }
+
+        XCTAssertEqual(client.applyUpdateBundleCount, 0)
+    }
+
+    @MainActor
     private func makeRuntimeControlAPIHandler(
         client: HostFakeRuntimeControlClient,
         platformWorkflowDocument: URL = InstalledRuntimePaths.defaultInstalled.hostRunDirectory.appendingPathComponent("platform-workflow.json"),
@@ -336,6 +358,7 @@ private final class HostFakeRuntimeControlClient:
     )
     var guestStackStatusCount = 0
     var guestServiceResourceRequests: [String] = []
+    var applyUpdateBundleCount = 0
 
     func loadSettings() -> RuntimeSettings { RuntimeSettings() }
     func loadPlatformState(settings: RuntimeSettings) -> PlatformState { platformState() }
@@ -407,7 +430,8 @@ private final class HostFakeRuntimeControlClient:
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
     func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+        applyUpdateBundleCount += 1
+        return RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
     func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")

@@ -54,7 +54,7 @@ struct RuntimeUpdatePanel: View {
                 Button(AppConstants.Actions.chooseBundle) {
                     Task { await viewModel.chooseUpdateBundle() }
                 }
-                .disabled(viewModel.shouldShowUpdateProgress || !viewModel.capabilities.canApplyBundle)
+                .disabled(viewModel.shouldShowUpdateProgress || !viewModel.capabilities.canOpenLocalFiles)
             }
         }
     }
@@ -82,7 +82,7 @@ struct RuntimeUpdatePanel: View {
                 .disabled(
                     viewModel.shouldShowUpdateProgress
                         || !viewModel.hasSelectedBundle
-                        || !viewModel.capabilities.canApplyBundle
+                        || !viewModel.capabilities.canOpenLocalFiles
                 )
             }
         }

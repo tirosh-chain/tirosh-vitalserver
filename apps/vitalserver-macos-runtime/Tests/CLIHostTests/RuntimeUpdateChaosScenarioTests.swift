@@ -436,6 +436,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         return RuntimeBundleComposition(
             context: RuntimeBundleCompositionContext(
+                installedChannel: .dev,
                 installedPaths: installedPaths,
                 bundlesDirectory: URL(fileURLWithPath: "/product/bundles"),
                 backupsDirectory: URL(fileURLWithPath: "/product/backups"),

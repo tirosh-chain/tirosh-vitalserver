@@ -14,7 +14,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case configure(RuntimeConfigureCommand)
     case verifyBundle(URL)
     case stageBundle(URL)
-    case applyBundle(URL)
+    case applyBundle(RuntimeApplyBundleCommand)
     case rollback(RuntimeRollbackCommand)
     case redisBackup
     case redisRestore(URL)
@@ -73,10 +73,7 @@ extension RuntimeLifecycleCommand {
                 usage: "usage: vitalserver-vm runtime stage-bundle <bundle.tar.gz>"
             ))
         case "apply-bundle":
-            return .applyBundle(try requiredBundleURL(
-                in: remaining,
-                usage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>"
-            ))
+            return .applyBundle(try parseApplyBundleCommand(remaining))
         case "rollback":
             return .rollback(parseRollbackCommand(remaining))
         case "redis-backup":
@@ -195,7 +192,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart|--restart-vm-runtime]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
-      vitalserver-vm runtime apply-bundle <bundle.tar.gz>
+      vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime redis-restore <archive.tar.gz>
@@ -235,6 +232,32 @@ extension RuntimeLifecycleCommand {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         return URL(fileURLWithPath: bundlePath)
+    }
+
+    private static func parseApplyBundleCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeApplyBundleCommand {
+        let usage = "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
+        guard arguments.count == 1 || arguments.count == 2,
+              let bundlePath = arguments.first,
+              !bundlePath.isEmpty,
+              bundlePath != "--allow-unsigned-dev-bundle"
+        else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        let intent: RuntimeUpdateApplyTrustIntent
+        if arguments.count == 2 {
+            guard arguments[1] == "--allow-unsigned-dev-bundle" else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+            intent = .allowUnsignedDevelopmentBundle
+        } else {
+            intent = .requireVerifiedPublisher
+        }
+        return RuntimeApplyBundleCommand(
+            bundleURL: URL(fileURLWithPath: bundlePath),
+            trustIntent: intent
+        )
     }
 
     private static func requiredPackageInstallContractURL(in arguments: [String]) throws -> URL {
@@ -530,5 +553,15 @@ extension RuntimeLifecycleCommand {
         case .unknown(let key):
             throw RuntimeLifecycleCommandParseError.missingArgument("unsupported runtime configure option: \(key)")
         }
+    }
+}
+
+public struct RuntimeApplyBundleCommand: Equatable {
+    public let bundleURL: URL
+    public let trustIntent: RuntimeUpdateApplyTrustIntent
+
+    public init(bundleURL: URL, trustIntent: RuntimeUpdateApplyTrustIntent) {
+        self.bundleURL = bundleURL
+        self.trustIntent = trustIntent
     }
 }

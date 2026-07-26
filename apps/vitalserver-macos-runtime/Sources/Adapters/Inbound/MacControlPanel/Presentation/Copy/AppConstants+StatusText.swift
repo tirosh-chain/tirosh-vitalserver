@@ -106,11 +106,11 @@ public extension AppConstants {
         public static let updateBundleAppliedRelaunching = "Update bundle applied. Relaunching VitalServer Helper..."
         public static let updateBundlePreparing = "Preparing update bundle..."
         public static let updateBundleApplying = "Applying update bundle..."
-        public static let updateBundleVerifying = "Verifying update bundle..."
-        public static let updateBundleVerified = "Update bundle verified."
-        public static let updateBundleVerificationFailed = "Update bundle verification failed."
-        public static let updateBundleNotVerified = "Verify the update bundle before applying it."
-        public static let updateBundleConfirmation = "Apply this verified bundle?\n\nThis may restart VitalServer services. Detailed progress is written to the Command log and Update activation log."
+        public static let updateBundleVerifying = "Checking update bundle integrity..."
+        public static let updateBundleIntegrityChecked = "Update bundle integrity checked. Publisher authenticity is unverified."
+        public static let updateBundleVerificationFailed = "Update bundle integrity check failed."
+        public static let updateBundleNotVerified = "Check the update bundle integrity before applying it."
+        public static let updateBundleConfirmation = "Apply this integrity-checked bundle?\n\nPublisher authenticity is unverified. This may restart VitalServer services. Detailed progress is written to the Command log and Update activation log."
         public static let rollbackCompleted = "Rollback completed."
         public static let rollbackPreparing = "Preparing rollback..."
         public static let rollbackRunning = "Rolling back runtime..."
@@ -534,7 +534,7 @@ public extension AppConstants {
             case "configure":
                 return "Configure"
             case "verify-bundle":
-                return "Verify Bundle"
+                return "Check Bundle Integrity"
             case "stage-bundle":
                 return "Stage Bundle"
             case "apply-bundle":

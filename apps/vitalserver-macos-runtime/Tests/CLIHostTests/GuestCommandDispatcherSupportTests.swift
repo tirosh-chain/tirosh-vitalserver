@@ -323,19 +323,24 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(postinstall.contains("pgrep -f"))
     }
 
-    func testPreinstallDelegatesFreshOrReinstallStateCheckToCLIHost() throws {
+    func testPreinstallDelegatesFreshOnlyStateCheckToCLIHost() throws {
         let preinstall = try readRuntimeSupportFile("Packaging/preinstall")
 
         XCTAssertTrue(preinstall.contains("preflight_bin=\"${script_dir}/vitalserver-vm-preinstall\""))
         XCTAssertTrue(preinstall.contains("\"${preflight_bin}\" runtime preinstall-check"))
         XCTAssertTrue(preinstall.contains("--package-install-contract \"${package_install_contract}\""))
         XCTAssertTrue(preinstall.contains("package_install_contract=\"${script_dir}/package-install-contract.json\""))
-        XCTAssertTrue(preinstall.contains("Existing package receipts select the data-preserving reinstall path"))
+        XCTAssertTrue(
+            preinstall.contains(
+                "Existing package receipts block direct PKG repair, upgrade, and downgrade"
+            )
+        )
         XCTAssertTrue(preinstall.contains("printf \"%s\\n\" \"${preflight_output}\" >&2"))
         XCTAssertFalse(preinstall.contains("pkgutil --pkg-info"))
         XCTAssertFalse(preinstall.contains("launchctl print"))
         XCTAssertFalse(preinstall.contains("lsof -nP"))
         XCTAssertFalse(preinstall.contains("plutil -extract"))
+        XCTAssertFalse(preinstall.contains("stop-package-services"))
         XCTAssertFalse(preinstall.contains("[[ -e"))
     }
 

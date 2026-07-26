@@ -29,7 +29,7 @@ struct RuntimeUpdateBundleVerifier {
 
         if result.exitCode == 0 {
             let verification = processMessageFormatter.message(
-                title: AppConstants.StatusText.updateBundleVerified,
+                title: AppConstants.StatusText.updateBundleIntegrityChecked,
                 result: result
             )
             return RuntimeUpdateBundleVerificationResult(

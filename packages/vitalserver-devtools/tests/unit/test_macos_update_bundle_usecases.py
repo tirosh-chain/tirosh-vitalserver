@@ -254,7 +254,7 @@ def test_apply_smoke_release_update_bundle_uses_installed_cli(
     macos_update_bundle_usecases.apply_smoke_update_bundle(
         ApplySmokeReleaseUpdateBundleInput(
             config=Path("config/vm-build.toml"),
-            release_file=Path("release.json"),
+            release_file=Path("release-dev.json"),
             bundle_name=None,
             bundle_kind="product-update",
             output_dir=Path("custom-bundles"),
@@ -268,8 +268,75 @@ def test_apply_smoke_release_update_bundle_uses_installed_cli(
             "runtime",
             "apply-bundle",
             str(bundle_path),
+            "--allow-unsigned-dev-bundle",
         ]
     ]
+
+
+def test_apply_smoke_release_update_bundle_rejects_stable_channel_before_sudo(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    bundle_dir = tmp_path / "custom-bundles"
+    bundle_dir.mkdir()
+    bundle_path = bundle_dir / "update-bundle-stable-product-update-1.2.3.tar.gz"
+    bundle_path.write_text("bundle", encoding="utf-8")
+    vm_cli = tmp_path / "bin/vitalserver-vm"
+    vm_cli.parent.mkdir()
+    vm_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    vm_cli.chmod(0o755)
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(macos_update_bundle_usecases, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        macos_update_bundle_usecases,
+        "load_macos_release_settings",
+        lambda config, root: SimpleNamespace(
+            dist_dir=root / "dist",
+            install=SimpleNamespace(vm_cli=str(vm_cli)),
+        ),
+    )
+    monkeypatch.setattr(
+        macos_update_bundle_usecases,
+        "resolve_path",
+        lambda root, value: Path(value) if Path(value).is_absolute() else root / value,
+    )
+    monkeypatch.setattr(
+        macos_update_bundle_usecases,
+        "load_release_manifest",
+        lambda path: ReleaseManifest(
+            channel="stable",
+            helper_version="1.2.3",
+            release_label="1.2.3",
+            minimum_updater_version="1.0.0",
+            vitalserver_version="2.3.4",
+            target_platform="macos-arm64",
+        ),
+    )
+    monkeypatch.setattr(
+        macos_update_bundle_usecases.subprocess,
+        "run",
+        lambda *args, **kwargs: commands.append(list(args[0])),
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            "0.2.1 stable update apply smoke is unavailable because "
+            "trusted publisher verification is not implemented"
+        ),
+    ):
+        macos_update_bundle_usecases.apply_smoke_update_bundle(
+            ApplySmokeReleaseUpdateBundleInput(
+                config=Path("config/vm-build.toml"),
+                release_file=Path("release.json"),
+                bundle_name=None,
+                bundle_kind="product-update",
+                output_dir=Path("custom-bundles"),
+            )
+        )
+
+    assert commands == []
 
 
 def test_apply_smoke_release_update_bundle_reports_sudo_failure(
@@ -329,7 +396,7 @@ def test_apply_smoke_release_update_bundle_reports_sudo_failure(
         macos_update_bundle_usecases.apply_smoke_update_bundle(
             ApplySmokeReleaseUpdateBundleInput(
                 config=Path("config/vm-build.toml"),
-                release_file=Path("release.json"),
+                release_file=Path("release-dev.json"),
                 bundle_name=None,
                 bundle_kind="product-update",
                 output_dir=Path("custom-bundles"),

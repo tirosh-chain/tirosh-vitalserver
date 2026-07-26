@@ -77,6 +77,20 @@ public enum RuntimeUpdateCompatibilityError: Error, Equatable, CustomStringConve
     }
 }
 
+public enum RuntimeUpdateApplyTrustError: Error, Equatable, CustomStringConvertible {
+    case publisherVerificationUnavailable(installedChannel: UpdateBundleChannel)
+    case unsignedDevelopmentIntentNotAllowed(installedChannel: UpdateBundleChannel)
+
+    public var description: String {
+        switch self {
+        case .publisherVerificationUnavailable(let installedChannel):
+            return "update apply blocked installedChannel=\(installedChannel.rawValue) reason=trusted-publisher-verification-unavailable"
+        case .unsignedDevelopmentIntentNotAllowed(let installedChannel):
+            return "unsigned development bundle apply is not allowed for installedChannel=\(installedChannel.rawValue)"
+        }
+    }
+}
+
 
 public enum UpdateBundleArchiveVerificationError: Error, Equatable, CustomStringConvertible {
     case emptyArchive

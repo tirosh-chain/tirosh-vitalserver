@@ -9,6 +9,7 @@ import Workflow
 import Errors
 
 public struct RuntimeBundleCompositionContext {
+    let installedChannel: UpdateBundleChannel
     let installedPaths: InstalledRuntimePaths
     let bundlesDirectory: URL
     let backupsDirectory: URL
@@ -17,6 +18,7 @@ public struct RuntimeBundleCompositionContext {
     let vmDisk: URL
 
     public init(
+        installedChannel: UpdateBundleChannel,
         installedPaths: InstalledRuntimePaths,
         bundlesDirectory: URL,
         backupsDirectory: URL,
@@ -24,6 +26,7 @@ public struct RuntimeBundleCompositionContext {
         rootfsBase: URL,
         vmDisk: URL
     ) {
+        self.installedChannel = installedChannel
         self.installedPaths = installedPaths
         self.bundlesDirectory = bundlesDirectory
         self.backupsDirectory = backupsDirectory
@@ -153,7 +156,9 @@ public struct RuntimeBundleComposition {
             bundleURL,
             operations: runtimeBundlePreparationOperations()
         )
-        print("bundle verified: \(result.sourceURL.path)")
+        print(
+            "bundle integrity checked; publisher authenticity unverified: \(result.sourceURL.path)"
+        )
     }
 
     @discardableResult
@@ -166,7 +171,17 @@ public struct RuntimeBundleComposition {
         return result.destinationURL
     }
 
-    public func applyBundle(_ bundleURL: URL) throws {
+    public func applyBundle(
+        _ bundleURL: URL,
+        trustIntent: RuntimeUpdateApplyTrustIntent
+    ) throws {
+        let trustDecision = try AuthorizeRuntimeUpdateApplyUseCase().authorize(
+            input: AuthorizeRuntimeUpdateApplyInput(
+                installedChannel: context.installedChannel,
+                trustIntent: trustIntent
+            )
+        )
+        operations.log(trustDecision.logMessage)
         let operationLease = try operations.acquireOperationLease(.applyBundle)
         defer {
             do {
@@ -319,7 +334,7 @@ public struct RuntimeBundleComposition {
                     rootfsBase: context.rootfsBase,
                     updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
                     currentUpdaterVersion: Constants.launcherVersion,
-                    currentChannel: Constants.launcherChannel,
+                    currentChannel: context.installedChannel,
                     currentPlatform: Constants.Platform.current
                 ))
             },

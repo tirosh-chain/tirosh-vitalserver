@@ -161,8 +161,8 @@ struct RuntimeLifecycle {
             try verifyBundle(bundleURL)
         case .stageBundle(let bundleURL):
             _ = try stageBundle(bundleURL)
-        case .applyBundle(let bundleURL):
-            try applyBundle(bundleURL)
+        case .applyBundle(let command):
+            try applyBundle(command)
         case .rollback(let command):
             try rollback(command)
         case .redisBackup:
@@ -318,8 +318,11 @@ struct RuntimeLifecycle {
         try runtimeBundleComposition().stageBundle(bundleURL)
     }
 
-    func applyBundle(_ bundleURL: URL) throws {
-        try runtimeBundleComposition().applyBundle(bundleURL)
+    func applyBundle(_ command: RuntimeApplyBundleCommand) throws {
+        try runtimeBundleComposition().applyBundle(
+            command.bundleURL,
+            trustIntent: command.trustIntent
+        )
     }
 
     func repairDatastore() throws {

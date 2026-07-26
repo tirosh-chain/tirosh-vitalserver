@@ -277,6 +277,10 @@ function recoveryForStatus(status: number, code: string | undefined): string {
     return "This feature is not implemented by the current Helper build.";
   }
 
+  if (code === "updateApplyUnavailable") {
+    return "This 0.2.1 build does not support update apply. Check bundle integrity only; do not retry the apply request.";
+  }
+
   if (status === 503 && code === "guestControlUnavailable") {
     return "The Guest Runtime Controller cannot read its control ledger. Inspect Guest control storage and retry.";
   }

@@ -98,7 +98,9 @@ public struct RuntimeBundleDirectoryVerifier {
             try operations.verifyDigest(migrationURL, fileVerification, checksumMap)
         }
 
-        operations.log("bundle verification completed path=\(sourceURL.path)")
+        operations.log(
+            "bundle integrity checked publisherAuthenticity=unverified path=\(sourceURL.path)"
+        )
         return manifest
     }
 

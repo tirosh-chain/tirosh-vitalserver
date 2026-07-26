@@ -1766,6 +1766,7 @@ final class RuntimeControlAPITests: XCTestCase {
     @MainActor
     func testRuntimeControlClientReadHandlerAdaptsPlatformAffordances() async throws {
         let client = FakeRuntimeControlClient()
+        client.capabilities.canApplyBundle = true
         let handler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
         let bundle = RuntimeControlFileReference(kind: .localPath, value: "/bundles/update.tar.gz")
         let backup = RuntimeControlFileReference(kind: .localPath, value: "/backups/latest")
@@ -1842,7 +1843,9 @@ final class RuntimeControlAPITests: XCTestCase {
 
     @MainActor
     func testRuntimeControlClientReadHandlerRequiresPlatformAffordanceClientForHostOperations() async throws {
-        let handler = RuntimeControlClientAPIReadHandler(client: FakeRuntimeControlClient())
+        let client = FakeRuntimeControlClient()
+        client.capabilities.canApplyBundle = true
+        let handler = RuntimeControlClientAPIReadHandler(client: client)
         let bundle = RuntimeControlFileReference(kind: .localPath, value: "/bundles/update.tar.gz")
         let backup = RuntimeControlFileReference(kind: .localPath, value: "/backups/latest")
         let destination = RuntimeControlFileReference(kind: .localPath, value: "/tmp/vitalserver-logs.zip")
@@ -1899,6 +1902,7 @@ final class RuntimeControlAPITests: XCTestCase {
     @MainActor
     func testRuntimeControlClientReadHandlerRejectsUnsupportedFileReferencesForLocalHostOperations() async throws {
         let client = FakeRuntimeControlClient()
+        client.capabilities.canApplyBundle = true
         let handler = RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
         let remote = RuntimeControlFileReference(kind: .remoteURL, value: "https://example.invalid/update.tar.gz")
 
@@ -2130,6 +2134,34 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(response.status, .notImplemented)
         XCTAssertEqual(error.code, .platformAffordanceUnavailable)
         XCTAssertEqual(error.message, RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable.localizedDescription)
+    }
+
+    @MainActor
+    func testRouterRejectsUpdateApplyWhenPublisherVerificationIsUnavailable() async throws {
+        let client = FakeRuntimeControlClient()
+        client.capabilities.canApplyBundle = false
+        let router = RuntimeControlAPIRouter(
+            handler: RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
+        )
+        let bundle = RuntimeControlFileReference(
+            kind: .localPath,
+            value: "/tmp/update-bundle.tar.gz"
+        )
+
+        let response = await router.route(.init(
+            method: .post,
+            path: "/platform/update-bundles/apply",
+            body: try JSONEncoder().encode(RuntimeUpdateBundleRequest(bundle: bundle))
+        ))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .notImplemented)
+        XCTAssertEqual(error.code, .updateApplyUnavailable)
+        XCTAssertEqual(
+            error.message,
+            RuntimeControlAPIReadHandlerError.updateApplyUnavailable.localizedDescription
+        )
+        XCTAssertEqual(client.applyUpdateBundleCount, 0)
     }
 
     @MainActor
@@ -3907,6 +3939,7 @@ private final class FakeRuntimeControlClient:
     var loadSettingsCount = 0
     var createRedisBackupCount = 0
     var createRuntimeDataBackupCount = 0
+    var applyUpdateBundleCount = 0
     var restoreRedisBackupCount = 0
     var restoreRuntimeDataBackupCount = 0
     var loadRedisBackupsCount = 0
@@ -4387,7 +4420,8 @@ private final class FakeRuntimeControlClient:
     }
 
     func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "apply \(url.path)", stderr: "")
+        applyUpdateBundleCount += 1
+        return RuntimeCommandResult(exitCode: 0, stdout: "apply \(url.path)", stderr: "")
     }
 
     func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
