@@ -145,6 +145,17 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 
 Reader는 required contract field 누락을 실패로 처리합니다. 새 필드는 가능한 optional metadata로 추가하고, required field/schema major version을 바꾸는 경우에는 기존 Updater가 읽을 수 있는 bridge/two-phase Product Update를 먼저 제공해야 합니다. Stable/dev artifact identity와 optional container 포함 정책은 `apps/vitalserver-macos-runtime/release.json` 및 `release-dev.json`을 SoT로 삼고, build tool이 manifest로 변환합니다.
 
+`requiresTwoPhaseUpdate`의 owner 경계는 아래처럼 고정합니다.
+
+| 경계 | 책임 |
+|---|---|
+| Make/release command | updater bridge 필요 여부를 명시적으로 입력하며 기본값은 `false` |
+| release use case | 입력값을 bundle kind나 artifact로 추론하지 않고 manifest builder에 전달 |
+| manifest builder | 전달받은 boolean을 `requiresTwoPhaseUpdate`에 그대로 기록 |
+| installed Swift Updater | normal apply에서 `true`를 거부하고 bridge 절차가 필요함을 보고 |
+
+따라서 `vm-image-update`이거나 `rootfs-base.raw.gz`를 포함한다는 사실만으로 이 값이 `true`가 되지 않습니다. 일반 VM Image Update는 normal apply preflight를 통과할 수 있어야 하며, 기존 Updater가 새 계약을 이해하지 못하는 실제 bridge Product Update만 build 호출에서 `true`를 명시합니다.
+
 ### Two-Phase Update 기준
 
 update system 자체가 바뀌는 경우에는 runtime payload와 updater payload를 한 번에 섞어 처리하지 않습니다.
@@ -208,6 +219,16 @@ bridge bundle:
 일반적으로 제외:
   - rootfs-base.raw.gz
   - 대용량 Docker image bundle
+```
+
+Build에서도 bridge 여부를 별도로 선언합니다.
+
+```sh
+# 일반 VM Image Update: requiresTwoPhaseUpdate=false
+make dist/image-update/dev
+
+# 기존 Updater를 먼저 교체해야 하는 명시적 bridge Product Update
+make dist/update/dev VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE=true
 ```
 
 ### Idempotency 기준

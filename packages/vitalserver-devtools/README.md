@@ -152,6 +152,12 @@ Rootfs is intentionally optional. Product updates should omit `--rootfs-base`;
 VM Image updates should provide it explicitly and should be routed through a
 Danger Zone flow.
 
+`--requires-two-phase-update` is an explicit Updater bridge declaration and
+defaults to `false`. The release workflow forwards it unchanged; neither
+`vm-image-update` nor `--rootfs-base` implies a bridge. Set it to `true` only
+for a bridge Product Update that must upgrade the installed Updater before the
+next payload can be applied.
+
 `signature` is currently written as `unsigned`. It is a fixed bundle slot for
 release hardening, not an active cryptographic verification step yet.
 

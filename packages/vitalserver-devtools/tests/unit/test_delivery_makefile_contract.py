@@ -180,6 +180,24 @@ def test_distribution_review_runs_the_complete_swift_suite_and_guest_repair() ->
     assert "packages/vitalserver-guest-tools/tests/test_redis_repair.py" in review
 
 
+def test_vm_image_update_does_not_infer_updater_bridge_from_rootfs() -> None:
+    makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    image_update_contract = makefile.split(
+        "internal/vm/image-update: VM_UPDATE_ROOTFS_BASE",
+        maxsplit=1,
+    )[1].split("internal/vm/image-update/dev", maxsplit=1)[0]
+
+    assert "VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false" in makefile
+    assert (
+        "internal/vm/image-update: "
+        "VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE := true"
+    ) not in makefile
+    assert (
+        'VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE='
+        '"$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)"'
+    ) in image_update_contract
+
+
 def test_public_dmg_targets_route_only_to_the_standard_profiles() -> None:
     makefile = ROOT_MAKEFILE.read_text(encoding="utf-8")
 

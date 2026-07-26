@@ -672,6 +672,10 @@ def main() -> int:
         "--requires-two-phase-update",
         type=parse_bool,
         default=False,
+        help=(
+            "explicitly declare that an Updater bridge must be applied first; "
+            "never inferred from bundle kind or rootfs inclusion"
+        ),
     )
     update_bundle.add_argument(
         "--bundle-kind",
@@ -723,6 +727,10 @@ def main() -> int:
         "--requires-two-phase-update",
         type=parse_bool,
         default=False,
+        help=(
+            "explicitly declare that an Updater bridge must be applied first; "
+            "never inferred from bundle kind or rootfs inclusion"
+        ),
     )
     release_update_bundle.add_argument("--compression-threads", type=int)
     release_update_bundle.add_argument("--sdkroot")
