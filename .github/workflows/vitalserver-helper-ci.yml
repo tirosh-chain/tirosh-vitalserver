@@ -125,7 +125,16 @@ jobs:
         run: uv sync --all-groups --locked
 
       - name: Test current-product Python workspace
-        run: uv run pytest
+        run: >-
+          uv run pytest
+          packages/vitalserver-core/tests
+          apps/vitalserver-recorder-recovery/tests
+          packages/vitalserver-guest-tools/tests
+          packages/vitalserver-testkit/tests
+          packages/vitalserver-vitalfile/tests
+          apps/vitaldb-observer/tests
+          apps/vitalserver-lab/tests
+          apps/vitalserver-redis-relay/tests
 
       - name: Verify product scenarios
         run: uv run python scripts/validate_user_scenarios.py

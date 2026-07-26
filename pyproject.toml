@@ -145,7 +145,7 @@ warn_unused_configs = true
 warn_unused_ignores = true
 
 [tool.pytest.ini_options]
-addopts = "-ra -v"
+addopts = "-ra -v --import-mode=importlib"
 pythonpath = [
   ".",
   "packages/vitalserver-core/src",
