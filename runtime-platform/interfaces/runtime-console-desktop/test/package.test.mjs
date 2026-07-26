@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
   assertRuntimeConsolePackageBuildHost,
+  electronBuilderProcessInvocation,
   electronBuilderTargetArguments,
   parseTarget,
   runtimeConsoleArtifactReceipt,
@@ -34,6 +35,24 @@ test("desktop packaging uses the product delivery architecture, never the build 
   assert.throws(() => electronBuilderTargetArguments("freebsd"));
   assertRuntimeConsolePackageBuildHost("linux-deb", "linux");
   assert.throws(() => assertRuntimeConsolePackageBuildHost("linux-deb", "darwin"), /native Linux build runner/);
+});
+
+test("desktop packaging invokes the reviewed Electron Builder JavaScript CLI through Node", () => {
+  const nodeExecutable = "C:\\Program Files\\nodejs\\node.exe";
+  const stage = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\runtime-console-stage";
+  const invocation = electronBuilderProcessInvocation("windows", stage, nodeExecutable);
+
+  assert.equal(invocation.command, nodeExecutable);
+  assert.deepEqual(invocation.arguments, [
+    resolve("..", "node_modules", "electron-builder", "cli.js"),
+    "--projectDir", resolve("."),
+    "--config", resolve("electron-builder.config.json"),
+    `--config.directories.app=${stage}`,
+    "--win", "--x64",
+    "--publish", "never",
+  ]);
+  assert.equal(invocation.arguments.some((argument) => argument.endsWith(".cmd")), false);
+  assert.equal(invocation.arguments.some((argument) => argument.includes(`${resolve("..", "node_modules", ".bin")}`)), false);
 });
 
 test("desktop packaging publishes one explicit C71 artifact identity per target", () => {

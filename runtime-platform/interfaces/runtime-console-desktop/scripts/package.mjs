@@ -141,6 +141,46 @@ export function electronBuilderTargetArguments(targetValue) {
   throw new Error("Runtime Console package target must be macos, macos-application, windows, linux, linux-deb, or all");
 }
 
+/**
+ * Describe one Electron Builder process without relying on an OS shell shim.
+ *
+ * npm exposes package binaries as a symlink on POSIX hosts and a `.cmd` file
+ * on Windows. The latter is not a native executable and cannot be passed to
+ * `spawn` with shell execution disabled. The Runtime Console packager invokes
+ * Electron Builder's reviewed JavaScript entrypoint with the Node process
+ * that is already running this build instead.
+ */
+export function electronBuilderProcessInvocation(
+  targetValue,
+  stage,
+  nodeExecutable = process.execPath,
+) {
+  const electronBuilderCliPath = join(
+    interfacesRoot,
+    "node_modules",
+    "electron-builder",
+    "cli.js",
+  );
+  const builderArguments = [
+    electronBuilderCliPath,
+    "--projectDir", desktopRoot,
+    "--config", packageConfigurationPath,
+    `--config.directories.app=${stage}`,
+    ...electronBuilderTargetArguments(targetValue),
+    "--publish", "never",
+  ];
+  if (targetValue === "macos-application") {
+    builderArguments.push(
+      "--config.productName=VitalServer Runtime Platform",
+      "--config.mac.executableName=VitalServer Runtime Platform",
+    );
+  }
+  return {
+    command: nodeExecutable,
+    arguments: builderArguments,
+  };
+}
+
 /** A DEB is a Linux package-manager artifact, so its builder is Linux-only. */
 export function assertRuntimeConsolePackageBuildHost(targetValue, hostPlatform = process.platform) {
   if (targetValue === "linux-deb" && hostPlatform !== "linux") {
@@ -280,23 +320,8 @@ function artifactTargetsForPackaging(targetValue) {
 }
 
 async function runElectronBuilder(targetValue, stage) {
-  const executable = process.platform === "win32"
-    ? join(interfacesRoot, "node_modules", ".bin", "electron-builder.cmd")
-    : join(interfacesRoot, "node_modules", ".bin", "electron-builder");
-  const builderArguments = [
-    "--projectDir", desktopRoot,
-    "--config", packageConfigurationPath,
-    `--config.directories.app=${stage}`,
-    ...electronBuilderTargetArguments(targetValue),
-    "--publish", "never",
-  ];
-  if (targetValue === "macos-application") {
-    builderArguments.push(
-      "--config.productName=VitalServer Runtime Platform",
-      "--config.mac.executableName=VitalServer Runtime Platform",
-    );
-  }
-  await run(executable, builderArguments);
+  const invocation = electronBuilderProcessInvocation(targetValue, stage);
+  await run(invocation.command, invocation.arguments);
 }
 
 function run(command, arguments_) {
