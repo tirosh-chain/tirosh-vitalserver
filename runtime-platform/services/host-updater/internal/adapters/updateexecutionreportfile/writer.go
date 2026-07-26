@@ -24,6 +24,9 @@ func WriteStagedProductUpdateExecutionReport(path string, report hostupdaterdoma
 	if path == "" || !filepath.IsAbs(path) {
 		return fmt.Errorf("C28 report output path must be absolute")
 	}
+	if isWindowsNetworkPath(path) {
+		return fmt.Errorf("C28 report output path must be on a Host-local volume")
+	}
 	canonicalPath, err := canonicalHostOwnedOutputPath(path)
 	if err != nil {
 		return fmt.Errorf("resolve C28 report output path: %w", err)
@@ -78,6 +81,10 @@ func WriteStagedProductUpdateExecutionReport(path string, report hostupdaterdoma
 	return nil
 }
 
+func isWindowsNetworkPath(path string) bool {
+	return strings.HasPrefix(filepath.VolumeName(filepath.Clean(path)), `\\`)
+}
+
 // canonicalHostOwnedOutputPath accepts the OS-owned /tmp and /var aliases on
 // macOS while preserving the no-arbitrary-symlink rule for product-owned
 // paths. A Host staging/report directory often originates in a standard
@@ -110,8 +117,11 @@ func rejectSymbolicLinkPathComponents(path string) error {
 		return fmt.Errorf("path must be absolute")
 	}
 	clean := filepath.Clean(path)
-	current := string(filepath.Separator)
-	for _, component := range strings.Split(strings.TrimPrefix(clean, string(filepath.Separator)), string(filepath.Separator)) {
+	volume := filepath.VolumeName(clean)
+	current := volume + string(filepath.Separator)
+	relative := strings.TrimPrefix(clean, volume)
+	relative = strings.TrimPrefix(relative, string(filepath.Separator))
+	for _, component := range strings.Split(relative, string(filepath.Separator)) {
 		if component == "" {
 			continue
 		}
@@ -123,8 +133,8 @@ func rejectSymbolicLinkPathComponents(path string) error {
 		if err != nil {
 			return fmt.Errorf("inspect path component %s: %w", current, err)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("path component is a symbolic link: %s", current)
+		if info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return fmt.Errorf("path component is a symbolic link or redirecting reparse point: %s", current)
 		}
 	}
 	return nil

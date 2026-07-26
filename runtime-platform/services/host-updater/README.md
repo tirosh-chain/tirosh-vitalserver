@@ -16,6 +16,8 @@ The release-owned C55 protocol has no caller-controlled executable arguments:
 
 ```text
 --protocol-version v1
+--effect-executor-id <C26 effect executor ID>
+--effect-configuration-path <verified staged configuration artifact path>
 --receipt-path <Host-owned path>
 --update-id <C30 updateId>
 --layer <C26 layer>
@@ -23,6 +25,9 @@ The release-owned C55 protocol has no caller-controlled executable arguments:
 --artifact-path <verified staged artifact path>
 --artifact-sha256 <C26 artifact digest>
 ```
+
+On Windows, C28 output must use a drive-rooted Host-local path. UNC paths are
+rejected because C56 does not permit network storage to own update evidence.
 
 The workflow applies layers in C26/C25 order, stops on the first non-success
 C55, invokes already-succeeded rollback artifacts in reverse order, and
