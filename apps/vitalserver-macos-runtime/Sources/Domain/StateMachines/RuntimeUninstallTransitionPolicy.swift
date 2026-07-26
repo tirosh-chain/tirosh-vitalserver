@@ -20,6 +20,7 @@ public enum RuntimeUninstallWorkflowState: Equatable, Sendable {
 
 public enum RuntimeUninstallWorkflowEvent: Equatable, Sendable {
     case start(clean: Bool)
+    case vitalFilesOwnershipUnavailable(reason: String, forceClean: Bool)
     case vitalServerBackupRequested
     case vitalServerBackupSucceeded
     case vitalServerBackupFailed(reason: String)
@@ -74,6 +75,20 @@ public enum RuntimeUninstallTransitionPolicy {
                 state: .started,
                 persistedState: .started,
                 message: "uninstall started"
+            )
+
+        case (.started, .vitalFilesOwnershipUnavailable(let reason, let forceClean)):
+            if forceClean {
+                return RuntimeUninstallTransitionDecision(
+                    state: .started,
+                    message: "force-clean Vital files ownership override accepted"
+                )
+            }
+            return RuntimeUninstallTransitionDecision(
+                state: .failed,
+                persistedState: .failed,
+                blockers: ["vital-files-ownership-unavailable:reason=\(reason)"],
+                message: "Vital files ownership unavailable"
             )
 
         case (.started, .vitalServerBackupRequested):

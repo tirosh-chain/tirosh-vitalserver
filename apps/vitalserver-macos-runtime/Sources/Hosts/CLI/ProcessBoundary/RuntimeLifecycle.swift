@@ -161,8 +161,8 @@ struct RuntimeLifecycle {
             try verifyBundle(bundleURL)
         case .stageBundle(let bundleURL):
             _ = try stageBundle(bundleURL)
-        case .applyBundle(let bundleURL):
-            try applyBundle(bundleURL)
+        case .applyBundle(let command):
+            try applyBundle(command)
         case .rollback(let command):
             try rollback(command)
         case .redisBackup:
@@ -217,28 +217,28 @@ struct RuntimeLifecycle {
     }
 
     func installProvision(packageInstallContract: URL) throws {
-        let contract = try loadPackageInstallContract(from: packageInstallContract)
-        try runtimeInstallComposition().installProvision(mode: contract.mode)
+        _ = try loadPackageInstallContract(from: packageInstallContract)
+        try runtimeInstallComposition().installProvision()
     }
 
     func preinstallCheck(packageInstallContract: URL) throws {
         let document = runtimeFreshInstallPreflight()
+        let targetVersion = try packageTargetVersion()
         let data = try JSONEncoder.pretty.encode(document)
         if let text = String(data: data, encoding: .utf8) {
             print(text)
         }
-        switch RuntimePackageInstallPreflightPolicy.disposition(document: document) {
+        switch RuntimePackageInstallPreflightPolicy.disposition(
+            document: document,
+            targetVersion: targetVersion
+        ) {
         case .fresh:
-            try writePackageInstallContract(mode: .fresh, to: packageInstallContract)
-            print("package install disposition=fresh")
-        case .reinstall:
-            try initializeHostStateStore()
-            try migrateLegacyHostSettingsIfNeeded()
-            let settings = try requirePackageReinstallSettings()
-            try requirePackageReinstallProxyPortAvailable(settings.proxyPort)
-            try stopRuntimeServicesForPackageReplacement()
-            try writePackageInstallContract(mode: .reinstall, to: packageInstallContract)
-            print("package install disposition=reinstall Host settings preserved and existing runtime services stopped")
+            try writePackageInstallContract(
+                targetVersion: targetVersion,
+                intent: .fresh,
+                to: packageInstallContract
+            )
+            print("package install disposition=fresh targetVersion=\(targetVersion.rawValue)")
         case .blocked(let blockers):
             throw LauncherError.runtimeOperationFailed(
                 "package install preflight blocked blockers=\(blockers.joined(separator: ","))"
@@ -318,8 +318,11 @@ struct RuntimeLifecycle {
         try runtimeBundleComposition().stageBundle(bundleURL)
     }
 
-    func applyBundle(_ bundleURL: URL) throws {
-        try runtimeBundleComposition().applyBundle(bundleURL)
+    func applyBundle(_ command: RuntimeApplyBundleCommand) throws {
+        try runtimeBundleComposition().applyBundle(
+            command.bundleURL,
+            trustIntent: command.trustIntent
+        )
     }
 
     func repairDatastore() throws {

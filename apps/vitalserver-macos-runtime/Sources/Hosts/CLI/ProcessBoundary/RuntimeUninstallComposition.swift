@@ -21,7 +21,7 @@ public struct RuntimeUninstallCompositionContext {
 
 public struct RuntimeUninstallCompositionOperations {
     let fileStore: RuntimeFileStore
-    let configuredExternalVitalFilesDirectory: () -> RuntimeConfiguredExternalVitalFilesDirectoryRead
+    let configuredVitalFilesDirectories: () -> RuntimeConfiguredVitalFilesDirectoriesRead
     let serviceState: (RuntimeManagedService) -> RuntimeServiceState
     let createVitalServerBackup: () throws -> Void
     let disableAutomaticBackupScheduler: () throws -> Void
@@ -40,7 +40,7 @@ public struct RuntimeUninstallCompositionOperations {
 
     public init(
         fileStore: RuntimeFileStore,
-        configuredExternalVitalFilesDirectory: @escaping () -> RuntimeConfiguredExternalVitalFilesDirectoryRead,
+        configuredVitalFilesDirectories: @escaping () -> RuntimeConfiguredVitalFilesDirectoriesRead,
         serviceState: @escaping (RuntimeManagedService) -> RuntimeServiceState,
         createVitalServerBackup: @escaping () throws -> Void,
         disableAutomaticBackupScheduler: @escaping () throws -> Void,
@@ -58,7 +58,7 @@ public struct RuntimeUninstallCompositionOperations {
         stateWriter: RuntimeUninstallStateWriter? = nil
     ) {
         self.fileStore = fileStore
-        self.configuredExternalVitalFilesDirectory = configuredExternalVitalFilesDirectory
+        self.configuredVitalFilesDirectories = configuredVitalFilesDirectories
         self.serviceState = serviceState
         self.createVitalServerBackup = createVitalServerBackup
         self.disableAutomaticBackupScheduler = disableAutomaticBackupScheduler
@@ -78,16 +78,16 @@ public struct RuntimeUninstallCompositionOperations {
 }
 
 public struct RuntimeUninstallRunner {
-    private let paths: RuntimeUninstallPaths
-    private let readers: RuntimeUninstallStateReaders
+    private let paths: () -> RuntimeUninstallPaths
+    private let readers: (RuntimeUninstallPaths) -> RuntimeUninstallStateReaders
     private let effects: RuntimeUninstallEffects
     private let writer: RuntimeUninstallStateWriter
     private let diagnostics: RuntimeUninstallDiagnostics
     private let packageReceiptIdentifiers: [String]
 
     public init(
-        paths: RuntimeUninstallPaths,
-        readers: RuntimeUninstallStateReaders,
+        paths: @escaping () -> RuntimeUninstallPaths,
+        readers: @escaping (RuntimeUninstallPaths) -> RuntimeUninstallStateReaders,
         effects: RuntimeUninstallEffects,
         writer: RuntimeUninstallStateWriter,
         diagnostics: RuntimeUninstallDiagnostics,
@@ -104,10 +104,11 @@ public struct RuntimeUninstallRunner {
     public func run(_ command: RuntimeUninstallCommand) throws {
         try writer.acquireOperationLease()
         do {
+            let resolvedPaths = paths()
             try RuntimeUninstallWorkflow().run(
                 command,
-                paths: paths,
-                readers: readers,
+                paths: resolvedPaths,
+                readers: readers(resolvedPaths),
                 effects: effects,
                 writer: writer,
                 diagnostics: diagnostics,
@@ -132,23 +133,6 @@ public enum RuntimeUninstallComposition {
         context: RuntimeUninstallCompositionContext,
         operations: RuntimeUninstallCompositionOperations
     ) -> RuntimeUninstallRunner {
-        let vitalFilesDirectoryRead = operations.configuredExternalVitalFilesDirectory()
-        let uninstallPaths = RuntimeUninstallPaths(
-            productRoot: context.installedPaths.productRoot,
-            runtimeStateDatabase: context.installedPaths.runtimeStateDatabase,
-            managerApp: context.installedPaths.managerApp,
-            defaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory,
-            externalVitalFilesDirectory: vitalFilesDirectoryRead.externalDirectory,
-            configuredVitalFilesDirectoryReadFailure: vitalFilesDirectoryRead.failure,
-            launchDaemonPlists: RuntimeManagedService.uninstallOrder.map {
-                URL(fileURLWithPath: RuntimeManagedServicePaths.launchDaemonPlist($0))
-            } + [context.installedPaths.automaticBackupLaunchDaemon],
-            runtimeTools: [
-                context.installedPaths.launcher,
-                URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
-                context.installedPaths.uninstaller,
-            ]
-        )
         let operationID = operations.operationID()
         let stateWriter = operations.stateWriter ?? RuntimeUninstallWorkflowOperationStateSession(
             operationID: operationID,
@@ -164,26 +148,46 @@ public enum RuntimeUninstallComposition {
             }
         ).writer()
         return RuntimeUninstallRunner(
-            paths: uninstallPaths,
-            readers: RuntimeUninstallStateReaders(
-                serviceStates: {
-                    Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map { service in
-                        (service, operations.serviceState(service))
-                    })
-                },
-                vmProcessState: {
-                    ProcessState.inspect(pidFile: context.pidFile, fileStore: operations.fileStore)
-                },
-                packageReceiptStates: {
-                    operations.packageReceiptStates()
-                },
-                cleanupArtifactStates: { clean in
-                    RuntimeInstallArtifactStateReader.states(
-                        paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path),
-                        fileStore: operations.fileStore
-                    )
-                }
-            ),
+            paths: {
+                RuntimeUninstallPaths(
+                    productRoot: context.installedPaths.productRoot,
+                    runtimeStateDatabase: context.installedPaths.runtimeStateDatabase,
+                    managerApp: context.installedPaths.managerApp,
+                    legacyManagedDefaultVitalFilesDirectory: context.installedPaths.vitalFilesDirectory,
+                    sharedManagedDefaultVitalFilesDirectory: context.installedPaths.helperManagedDefaultVitalFilesDirectory,
+                    retainedDataRoot: context.installedPaths.standardUninstallRetainedDataRoot,
+                    configuredVitalFilesDirectoriesRead: operations.configuredVitalFilesDirectories(),
+                    launchDaemonPlists: RuntimeManagedService.uninstallOrder.map {
+                        URL(fileURLWithPath: RuntimeManagedServicePaths.launchDaemonPlist($0))
+                    } + [context.installedPaths.automaticBackupLaunchDaemon],
+                    runtimeTools: [
+                        context.installedPaths.launcher,
+                        URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                        context.installedPaths.uninstaller,
+                    ]
+                )
+            },
+            readers: { uninstallPaths in
+                RuntimeUninstallStateReaders(
+                    serviceStates: {
+                        Dictionary(uniqueKeysWithValues: RuntimeManagedService.uninstallOrder.map { service in
+                            (service, operations.serviceState(service))
+                        })
+                    },
+                    vmProcessState: {
+                        ProcessState.inspect(pidFile: context.pidFile, fileStore: operations.fileStore)
+                    },
+                    packageReceiptStates: {
+                        operations.packageReceiptStates()
+                    },
+                    cleanupArtifactStates: { clean in
+                        RuntimeInstallArtifactStateReader.states(
+                            paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path),
+                            fileStore: operations.fileStore
+                        )
+                    }
+                )
+            },
             effects: RuntimeUninstallEffects(
                 createVitalServerBackup: operations.createVitalServerBackup,
                 stopRuntimeServices: { clean, forceClean in
@@ -208,9 +212,6 @@ public enum RuntimeUninstallComposition {
                 },
                 clearLaunchdDisabledOverrides: operations.clearLaunchdDisabledOverridesAfterUninstall,
                 describeError: RuntimeErrorDescription.describe,
-                temporaryDirectory: {
-                    operations.fileStore.temporaryDirectory
-                },
                 uniqueID: {
                     UUID().uuidString
                 },
@@ -260,11 +261,11 @@ public enum RuntimeUninstallComposition {
         var artifactPaths = [paths.managerApp]
         artifactPaths.append(contentsOf: paths.launchDaemonPlists)
         artifactPaths.append(contentsOf: paths.runtimeTools)
+        artifactPaths.append(paths.productRoot)
         if clean {
-            artifactPaths.append(paths.productRoot)
-            if let externalVitalFilesDirectory = paths.externalVitalFilesDirectory {
-                artifactPaths.append(externalVitalFilesDirectory)
-            }
+            artifactPaths.append(paths.legacyManagedDefaultVitalFilesDirectory)
+            artifactPaths.append(paths.sharedManagedDefaultVitalFilesDirectory)
+            artifactPaths.append(paths.retainedDataRoot)
         }
         return artifactPaths
     }

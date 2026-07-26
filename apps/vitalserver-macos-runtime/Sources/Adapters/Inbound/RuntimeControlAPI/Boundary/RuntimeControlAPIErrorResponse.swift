@@ -74,6 +74,12 @@ enum RuntimeControlHTTPErrorResponseMapper {
                 code: .platformAffordanceUnavailable,
                 message: error.localizedDescription
             )
+        case .updateApplyUnavailable:
+            return RuntimeControlHTTPResponseFactory.error(
+                status: .notImplemented,
+                code: .updateApplyUnavailable,
+                message: error.localizedDescription
+            )
         case .platformSettingsCurrentStateInvalid:
             return RuntimeControlHTTPResponseFactory.error(
                 status: .serviceUnavailable,

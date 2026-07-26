@@ -139,10 +139,10 @@ test("config loads explicit native vital upload tracking settings", () => {
   });
 });
 
-test("config enables bounded spool and replay by default", () => {
+test("config preserves direct upstream delivery and observes send_data by default", () => {
   assert.deepStrictEqual(loadConfig({}).spool, {
-    enabled: true,
-    mode: "spool_and_replay",
+    enabled: false,
+    mode: "observe_only",
     storage: "redis_list",
     listKey: "vitalserver:recorder_ingress:send_data:pending",
     inFlightListKey: "vitalserver:recorder_ingress:send_data:in_flight",
@@ -154,7 +154,7 @@ test("config enables bounded spool and replay by default", () => {
     maxPendingBytes: 512 * 1024 * 1024,
     maxPayloadBytes: 10 * 1024 * 1024,
     replay: {
-      enabled: true,
+      enabled: false,
       intervalMs: 1000,
       batchSize: 1000,
       maxAttempts: 3,

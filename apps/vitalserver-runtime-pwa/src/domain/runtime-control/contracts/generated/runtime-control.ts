@@ -956,7 +956,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Verify selected update bundle */
+        /**
+         * Check selected update bundle integrity
+         * @description Checks manifest, size, and checksum integrity. VitalServer Helper 0.2.1 does not authenticate the bundle publisher.
+         */
         post: operations["verifyHostUpdateBundle"];
         delete?: never;
         options?: never;
@@ -973,7 +976,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Apply selected update bundle */
+        /**
+         * Apply selected update bundle
+         * @description VitalServer Helper 0.2.1 does not implement trusted publisher verification. The Platform capability is canApplyBundle=false and this route returns 501 with code updateApplyUnavailable without invoking the Host apply command.
+         */
         post: operations["applyHostUpdateBundle"];
         delete?: never;
         options?: never;
@@ -2896,7 +2902,7 @@ export interface components {
             publicHost: string;
             publicPort: number;
             /** @enum {string} */
-            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataMode: "passthrough" | "observe_only" | "mirror_spool" | "spool_only" | "spool_and_replay";
             recorderIngressSendDataReplayBatchSize: number;
             recorderIngressSendDataReplayMaxMiBPerSecond: number;
             recorderIngress: components["schemas"]["RuntimeRecorderIngressSettings"];
@@ -2987,7 +2993,7 @@ export interface components {
             recorderIngress: components["schemas"]["RuntimeRecorderIngressSettings"];
             recorderIngressContainerMemoryLimitMiB: number;
             /** @enum {string} */
-            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataMode: "passthrough" | "observe_only" | "mirror_spool" | "spool_only" | "spool_and_replay";
             recorderIngressSendDataReplayBatchSize: number;
             recorderIngressSendDataReplayMaxMiBPerSecond: number;
             redisContainerMemoryLimitMiB: number;
@@ -3014,7 +3020,7 @@ export interface components {
             publicHost: string;
             publicPort: number;
             /** @enum {string} */
-            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataMode: "passthrough" | "observe_only" | "mirror_spool" | "spool_only" | "spool_and_replay";
             recorderIngressSendDataReplayBatchSize: number;
             /** @description Maximum recorder send_data replay throughput in MiB/s. */
             recorderIngressSendDataReplayMaxMiBPerSecond: number;
@@ -3131,7 +3137,7 @@ export interface components {
             message?: string;
         };
         /** @enum {string} */
-        RuntimeControlAPIErrorCode: "badRequest" | "routeNotFound" | "resourceNotFound" | "methodNotAllowed" | "unauthorized" | "endpointNotImplemented" | "platformAffordanceUnavailable" | "operationInProgress" | "guestControlUnavailable" | "handlerFailed";
+        RuntimeControlAPIErrorCode: "badRequest" | "routeNotFound" | "resourceNotFound" | "methodNotAllowed" | "unauthorized" | "endpointNotImplemented" | "platformAffordanceUnavailable" | "updateApplyUnavailable" | "operationInProgress" | "guestControlUnavailable" | "handlerFailed";
         RuntimeControlFileReference: {
             /** @enum {string} */
             kind?: "localPath" | "uploadedArtifact" | "remoteURL";

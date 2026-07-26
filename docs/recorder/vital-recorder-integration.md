@@ -85,7 +85,7 @@ VitalServer code 기준으로 VRecorder의 identity는 IP가 아니라 `vrcode`�
 
 ### 4-2. Redis 갱신 값
 
-VitalServer는 upstream handler가 `send_data`를 처리한 뒤 `roomname`으로 bed id를 만들고, Redis에 아래 값을 갱신합니다. recorder ingress `spool_and_replay` mode에서는 이 처리가 VRecorder 송신 즉시가 아니라 replay worker가 upstream으로 emit한 뒤에 일어납니다. 이 표는 Web Monitoring UI를 이해하는 데 필요한 대표 key만 다룹니다. 전체 Redis key model과 relay scope는 [VitalServer recorder Redis key model](redis-key-model.md)를 기준으로 봅니다.
+VitalServer는 upstream handler가 `send_data`를 처리한 뒤 `roomname`으로 bed id를 만들고, Redis에 아래 값을 갱신합니다. 0.2.1 기본 `observe_only`에서는 direct upstream delivery가 보존되어 VRecorder 송신 직후 처리됩니다. 명시적 `spool_and_replay` mode에서는 replay worker가 upstream으로 emit한 뒤 처리됩니다. 이 표는 Web Monitoring UI를 이해하는 데 필요한 대표 key만 다룹니다. 전체 Redis key model과 relay scope는 [VitalServer recorder Redis key model](redis-key-model.md)를 기준으로 봅니다.
 
 | Key | 의미 | UI 영향 |
 | --- | --- | --- |

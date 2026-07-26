@@ -381,6 +381,10 @@ struct RuntimeStatusDisplayPolicy {
             && (replay?.status == nil || replay?.status == "disabled") {
             return .neutral
         }
+        if spool?.mode == "observe_only"
+            && (replay?.status == nil || replay?.status == "disabled") {
+            return .warning
+        }
         if (spool?.pendingItems ?? replay?.pendingItems ?? 0) > 0 || (replay?.inFlightItems ?? 0) > 0 {
             return .warning
         }

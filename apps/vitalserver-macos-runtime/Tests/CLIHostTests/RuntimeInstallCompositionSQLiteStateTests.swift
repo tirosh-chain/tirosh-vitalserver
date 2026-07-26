@@ -11,24 +11,11 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
         let events = RuntimeInstallCompositionEventRecorder()
         let composition = makeProvisionComposition(events: events)
 
-        try composition.installProvision(mode: .fresh)
+        try composition.installProvision()
 
         XCTAssertTrue(events.values.contains("initialize-state-store"))
         XCTAssertFalse(events.values.contains("migrate-legacy-settings"))
         XCTAssertTrue(events.values.contains("prepare-host-settings"))
-    }
-
-    func testReinstallPackageProvisionRunsExplicitLegacyMigrationBeforeLoadingSettings() throws {
-        let events = RuntimeInstallCompositionEventRecorder()
-        let composition = makeProvisionComposition(events: events)
-
-        try composition.installProvision(mode: .reinstall)
-
-        let initializeIndex = try XCTUnwrap(events.values.firstIndex(of: "initialize-state-store"))
-        let migrationIndex = try XCTUnwrap(events.values.firstIndex(of: "migrate-legacy-settings"))
-        let loadIndex = try XCTUnwrap(events.values.firstIndex(of: "load-settings"))
-        XCTAssertLessThan(initializeIndex, migrationIndex)
-        XCTAssertLessThan(migrationIndex, loadIndex)
     }
 
     func testFullInstallCapturesPreflightBeforePreparingSQLiteAndPersistsTerminalState() throws {
@@ -223,9 +210,6 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
                 log: { _ in },
                 initializeHostStateStore: {
                     events.values.append("initialize-state-store")
-                },
-                migrateLegacyHostSettings: {
-                    events.values.append("migrate-legacy-settings")
                 },
                 prepareHostSettings: { _ in
                     events.values.append("prepare-host-settings")

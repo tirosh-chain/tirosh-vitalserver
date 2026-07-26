@@ -80,7 +80,7 @@ final class RuntimeBundleDirectoryVerifierTests: XCTestCase {
             "file:/bundle/migrations/001.sql",
             "log:verifying migration name=001.sql size=0.0 MiB",
             "digest:/bundle/migrations/001.sql:migrations/001.sql:2",
-            "log:bundle verification completed path=/input/update-bundle",
+            "log:bundle integrity checked publisherAuthenticity=unverified path=/input/update-bundle",
         ])
     }
 

@@ -293,8 +293,12 @@
         </label>
         <div class="actions">
           <button id="summaryBundle">Summary</button>
-          <button id="verifyBundle">Verify</button>
-          <button id="applyBundle">Apply</button>
+          <button id="verifyBundle">Check Integrity</button>
+          <button
+            id="applyBundle"
+            disabled
+            title="This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
+          >Apply unavailable in 0.2.1</button>
         </div>
         <label>
           Backup path
@@ -723,7 +727,7 @@
     }
 
     async function verifyBundle() {
-      await runRuntimeCommand("bundle-verified", () => postJSON("/platform/update-bundles/verify", {
+      await runRuntimeCommand("bundle-integrity-checked", () => postJSON("/platform/update-bundles/verify", {
         bundle: localPathReference($("bundlePath").value)
       }));
     }

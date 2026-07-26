@@ -31,7 +31,7 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
 
     func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
         if url.lastPathComponent.hasSuffix(".tar.gz") || url.lastPathComponent.hasSuffix(".tgz") {
-            return .loaded("Archive: \(url.lastPathComponent)\nVerify to inspect manifest and checksums.")
+            return .loaded("Archive: \(url.lastPathComponent)\nCheck integrity to inspect manifest and checksums. Publisher authenticity is unverified.")
         }
         let manifestURL = url.appendingPathComponent("manifest.json")
         let manifestState = fileStore.pathState(at: manifestURL)

@@ -68,6 +68,28 @@ describe("runtime control error summaries", () => {
     });
   });
 
+  it("explains the 0.2.1 update apply product limitation without suggesting a retry", () => {
+    expect(
+      summarizeRuntimeControlError(
+        new RuntimeControlAPIError(
+          "update apply unavailable",
+          501,
+          JSON.stringify({
+            code: "updateApplyUnavailable",
+            message:
+              "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
+          })
+        )
+      )
+    ).toMatchObject({
+      kind: "api",
+      detail:
+        "updateApplyUnavailable: This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable.",
+      recovery:
+        "This 0.2.1 build does not support update apply. Check bundle integrity only; do not retry the apply request."
+    });
+  });
+
   it("summarizes contract validation failures", () => {
     expect(
       summarizeRuntimeControlError(

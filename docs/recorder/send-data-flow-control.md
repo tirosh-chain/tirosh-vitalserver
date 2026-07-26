@@ -45,6 +45,13 @@ Replay는 upstream 처리량을 조절하는 지점입니다. Worker는 tick int
 VRecorder -> upstream VitalServer
 ```
 
+0.2.1 안정화 기본값인 `observe_only`는 원본 전달을 바꾸지 않고 관측 사본만 남깁니다.
+
+```text
+VRecorder -> recorder ingress -> upstream VitalServer
+                         \-> audit/metrics + bounded raw archive
+```
+
 `spool_and_replay` 경로는 "먼저 저장하고, 정해진 속도로 다시 보낸다"입니다.
 
 ```text
@@ -63,13 +70,13 @@ VRecorder
   -> upstream VitalServer
 ```
 
-운영 목표 mode는 `spool_and_replay`입니다.
+장기 flow-control 목표 mode는 `spool_and_replay`이지만, 0.2.1의 안정화 운영 기본은 `observe_only`입니다.
 
-- ingress는 client `send_data` frame을 upstream direct relay에서 제거합니다.
-- ingress는 원본 compressed payload를 Redis pending list에 저장합니다.
-- replay worker는 pending item을 claim해 upstream Socket.IO `send_data`로 다시 보냅니다.
-- pending이 너무 커지면 성공처럼 숨기지 않고 `spool_full`/`rejected` evidence를 남깁니다.
-- upstream 장애와 spool 장애는 서로 다른 failure로 남깁니다.
+- `observe_only`는 client `send_data` frame을 upstream에 그대로 전달합니다.
+- ingress는 audit/metrics와 bounded raw archive에 관측 증거를 남기며 Redis replay pending에는 append하지 않습니다.
+- replay worker는 비활성화됩니다.
+- 관측 사본 저장 실패는 status/failure evidence로 남지만 원본 upstream 전달을 억제하지 않습니다.
+- load control은 durable Recorder admission acknowledgement가 생기기 전까지 `unavailable`입니다.
 
 ## 2. 왜 upstream이 메모리를 많이 쓰는가
 
@@ -358,27 +365,28 @@ Replay 성공은 "upstream으로 `send_data` emit을 완료했다"는 뜻입니�
 
 `RECORDER_INGRESS_SEND_DATA_MODE`는 ingress가 client `send_data`를 upstream으로 직접 통과시킬지, spool에만 기록할지, replay worker를 사용할지 결정합니다.
 
-기본 운영값은 `spool_and_replay`입니다. Helper Settings는 내부 mode 이름을 그대로 노출하지 않고 `Recorder load control` On/Off로 표현합니다.
+신규 0.2.1 설치의 기본 운영값은 `observe_only`입니다. Helper Settings는 내부 mode 이름을 그대로 노출하지 않고 `Recorder load control` On/Off로 표현합니다.
 
-- Off: `passthrough`
-- On: `spool_and_replay`
+- Off: `observe_only` — direct upstream delivery 보존, bounded raw archive 관측, replay spool/replay 비활성화
+- On: `spool_and_replay` — explicit degraded mode
 
-`mirror_spool`과 `spool_only`는 내부/CLI/테스트/진단용 mode로 유지하지만, 일반 Settings 화면에서는 선택지로 노출하지 않습니다. 운영자가 기본적으로 판단해야 하는 것은 "Recorder 부하 제어를 켤 것인가"와 "켜져 있을 때 replay 속도를 얼마로 제한할 것인가"입니다.
+`passthrough`, `mirror_spool`, `spool_only`는 내부/CLI/테스트/진단용 mode로 유지하지만, 일반 Settings 화면에서는 선택지로 노출하지 않습니다. 기존 설치의 명시적 설정은 provenance가 없어 자동으로 덮어쓰지 않습니다. 따라서 기존 `spool_and_replay` 설치는 Settings 경고와 `/recorder-ingress/status`의 mode를 확인한 뒤 운영자가 Off로 전환해야 합니다.
 
 Helper Settings의 값은 `runtime-settings.json`에 저장되고, guest compose runner가 `RECORDER_INGRESS_SEND_DATA_MODE`와 replay byte throughput 환경변수로 recorder ingress에 전달합니다. 이 설정은 VM restart가 아니라 container service reconcile로 적용됩니다.
 
-`mirror_spool`에서 Redis pending이 늘어나는 것은 "replay worker가 밀려서 소비하지 못하는 backlog"가 아닙니다. 이 mode는 upstream direct relay를 그대로 유지하면서 Redis에 관측용 사본을 남기고, replay를 명시적으로 켜지 않으면 소비자가 없습니다. 따라서 status에서는 이런 상태를 `draining`이 아니라 `mirroring, replay disabled`로 해석해야 합니다. Upstream 메모리 압력을 구조적으로 줄이려면 `mirror_spool`이 아니라 `spool_and_replay`를 사용해야 합니다.
+`observe_only`는 Redis replay pending을 만들지 않습니다. Audit/metrics와 bounded raw archive만 남기며 upstream direct relay를 보존합니다. `mirror_spool`에서 Redis pending이 늘어나는 것은 replay backlog가 아니라 소비자 없는 관측 사본입니다. Status는 `observe_only`를 `observing, direct delivery preserved, load control unavailable`로, `mirror_spool`을 `mirroring, replay disabled`로 구분합니다.
 
 | Mode | Direct upstream relay | Spool write | Replay worker | 용도 |
 |---|---:|---:|---:|---|
 | `passthrough` | 예 | 아니오 | 아니오 | spool 기능 비활성화. 기존 동작에 가깝습니다. |
+| `observe_only` | 예 | 아니오 | 아니오 | 0.2.1 안정화 기본. Audit/metrics와 bounded raw archive로 관측하고 replay pending은 만들지 않습니다. Load control은 unavailable입니다. |
 | `mirror_spool` | 예 | 예 | 설정에 따름 | 안전한 관측/증거 수집용입니다. Upstream OOM을 구조적으로 막지는 않습니다. |
 | `spool_only` | 아니오 | 예 | 아니오 | upstream direct 유입 차단 검증과 cutover 준비용입니다. |
-| `spool_and_replay` | 아니오 | 예 | 예 | 목표 운영 mode입니다. |
+| `spool_and_replay` | 아니오 | 예 | 예 | Durable admission ACK가 없는 0.2.1에서는 explicit degraded mode입니다. |
 
 `spool_only`와 `spool_and_replay`에서는 recorder ingress가 client WebSocket frame을 frame-level로 검사합니다. Socket.IO `send_data` text event와 관련 binary attachment는 upstream direct relay에서 제거하고, `join_vr`, `req_cmd`, control frame 등 다른 frame은 계속 전달합니다.
 
-현재 구현에서 중요한 점은 client frame relay와 spool write가 같은 synchronous transaction이 아니라는 것입니다. Socket.IO audit service가 `send_data`를 관측하면 spool 기록을 비동기로 요청하고, WebSocket relay는 mode에 따라 `send_data` frame을 제거합니다. 따라서 `spool_and_replay`에서 spool write가 실패해도 해당 client frame이 upstream으로 fallback relay되지 않습니다. 실패는 client ack가 아니라 `/recorder-ingress/status`의 spool failure evidence와 send_data failure JSONL로 확인해야 합니다.
+현재 구현에서 중요한 점은 client frame relay와 spool write가 같은 synchronous transaction이 아니라는 것입니다. Socket.IO audit service가 `send_data`를 관측하면 spool 기록을 비동기로 요청하고, WebSocket relay는 mode에 따라 `send_data` frame을 제거합니다. 따라서 `spool_and_replay`에서 spool write가 실패해도 해당 client frame이 upstream으로 fallback relay되지 않습니다. 이것이 신규 설치 기본을 `observe_only`로 바꾼 이유입니다. 기존 명시 설정은 자동 migration하지 않으며, 실패는 client ack가 아니라 `/recorder-ingress/status`의 mode/spool failure evidence와 send_data failure JSONL로 확인해야 합니다.
 
 ## 6. 한 send_data의 lifecycle
 
@@ -751,7 +759,7 @@ upload, index timeout은 각각 stage/code/message/failedAt이 있는 `failed` �
 
 | 환경변수 | 기본값 | 설명 |
 |---|---|---|
-| `RECORDER_INGRESS_SEND_DATA_MODE` | `spool_and_replay` | `passthrough`, `mirror_spool`, `spool_only`, `spool_and_replay` 중 하나 |
+| `RECORDER_INGRESS_SEND_DATA_MODE` | `observe_only` | `passthrough`, `observe_only`, `mirror_spool`, `spool_only`, `spool_and_replay` 중 하나 |
 | `RECORDER_INGRESS_SEND_DATA_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:pending` | durable `send_data` spool Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:in_flight` | replay worker가 claim한 item의 in-flight Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:replayed` | replay 완료 item Redis List key |
@@ -934,6 +942,8 @@ make testkit/recorder-ingress/backpressure
 
 - Client-visible reject가 없습니다. `spool_only`/`spool_and_replay`에서 spool write나 backpressure reject가 발생해도 client에게 Socket.IO ack/error를 돌려주지 않습니다. 운영자는 status evidence로 확인해야 합니다.
 - Spool write와 frame suppression은 같은 transaction이 아닙니다. `spool_and_replay`에서 spool write 실패가 발생해도 upstream direct fallback relay를 하지 않습니다.
+- 이 때문에 신규 설치는 `observe_only`로 시작합니다. Status의 `observing, direct delivery preserved, load control unavailable`은 장애가 아니라 명시적인 안정화 경계이며, Settings에서는 warning severity로 표시합니다.
+- 기존 설치의 `spool_and_replay` 설정은 생성 provenance가 없으므로 자동 변경하지 않습니다. 자동 변경은 운영자가 명시적으로 선택한 mode까지 덮어쓸 수 있기 때문입니다.
 - Config parser는 documented default/fallback을 사용합니다. strict invalid config failure는 별도 작업입니다.
 - `dead_letter_oldest` 같은 backlog pruning policy는 현재 구현되어 있지 않습니다. 기본은 reject evidence를 남기는 것입니다.
 - Replay 성공은 upstream emit 완료입니다. Upstream 내부 Redis write/domain success를 보장하지 않습니다.

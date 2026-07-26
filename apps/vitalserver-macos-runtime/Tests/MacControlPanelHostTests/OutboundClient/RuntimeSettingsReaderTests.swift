@@ -120,7 +120,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let settings = reader.load()
 
         XCTAssertEqual(settings.readIssues, [])
-        XCTAssertEqual(settings.recorderIngressSendDataMode, .spoolAndReplay)
+        XCTAssertEqual(settings.recorderIngressSendDataMode, .observeOnly)
         XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 1000)
         XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 20)
     }

@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "packages/vitalserver-devtools/src"))
 
-from tirosh_vitalserver.devtools.runtime_v2_conformance import (
+from tirosh_vitalserver.devtools.runtime_v2_conformance import (  # noqa: E402
     RuntimeV2ConformanceSuite,
     http_json_getter,
 )

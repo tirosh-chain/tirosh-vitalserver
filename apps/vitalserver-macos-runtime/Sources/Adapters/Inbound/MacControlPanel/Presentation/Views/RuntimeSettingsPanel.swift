@@ -63,6 +63,7 @@ struct RuntimeSettingsPanel: View {
                     settingToggle(AppConstants.Labels.recorderIngressLoadControl, isOn: recorderLoadControlBinding)
                     .disabled(!viewModel.capabilities.canControlRuntimeServices)
                     settingHelp(AppConstants.Labels.recorderIngressLoadControlHelp)
+                    settingWarning(AppConstants.Labels.recorderIngressLoadControlRisk)
                     settingSlider(
                         AppConstants.Labels.recorderIngressMaxReplayThroughput,
                         value: $viewModel.settings.recorderIngressSendDataReplayMaxMiBPerSecond,
@@ -205,7 +206,6 @@ struct RuntimeSettingsPanel: View {
             clampReplayThroughput()
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
-            normalizeRecorderLoadControlMode()
             normalizeRecorderArchiveDefaults()
         }
         .onChange(of: viewModel.settings.cpuCount) {
@@ -221,7 +221,6 @@ struct RuntimeSettingsPanel: View {
             enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.recorderIngressSendDataMode) {
-            normalizeRecorderLoadControlMode()
             enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.recorderIngress) {
@@ -296,25 +295,16 @@ struct RuntimeSettingsPanel: View {
     private var recorderLoadControlBinding: Binding<Bool> {
         Binding(
             get: {
-                viewModel.settings.recorderIngressSendDataMode != .passthrough
+                viewModel.settings.recorderIngressSendDataMode == .spoolAndReplay
             },
             set: { enabled in
-                viewModel.settings.recorderIngressSendDataMode = enabled ? .spoolAndReplay : .passthrough
+                viewModel.settings.recorderIngressSendDataMode = enabled ? .spoolAndReplay : .observeOnly
             }
         )
     }
 
     private var recorderLoadControlEnabled: Bool {
-        viewModel.settings.recorderIngressSendDataMode != .passthrough
-    }
-
-    private func normalizeRecorderLoadControlMode() {
-        switch viewModel.settings.recorderIngressSendDataMode {
-        case .passthrough, .spoolAndReplay:
-            return
-        case .mirrorSpool, .spoolOnly:
-            viewModel.settings.recorderIngressSendDataMode = .spoolAndReplay
-        }
+        viewModel.settings.recorderIngressSendDataMode == .spoolAndReplay
     }
 
     private func normalizeRecorderArchiveDefaults() {

@@ -3,6 +3,7 @@ import Foundation
 
 public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
     case platformAffordanceUnavailable
+    case updateApplyUnavailable
     case runtimeProviderControlUnavailable(String)
     case platformSettingsCurrentStateInvalid([String])
     case unsupportedFileReference(String)
@@ -11,6 +12,8 @@ public enum RuntimeControlAPIReadHandlerError: LocalizedError, Equatable {
         switch self {
         case .platformAffordanceUnavailable:
             return "Host affordance client is unavailable."
+        case .updateApplyUnavailable:
+            return "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
         case .runtimeProviderControlUnavailable(let reason):
             return "Runtime Provider control is unavailable. \(reason)"
         case .platformSettingsCurrentStateInvalid(let issues):

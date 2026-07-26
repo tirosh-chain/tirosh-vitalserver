@@ -17,7 +17,7 @@ final class RuntimeUpdateBundleVerifierTests: XCTestCase {
         }
 
         XCTAssertTrue(result.isVerified)
-        XCTAssertEqual(result.verification, "\(AppConstants.StatusText.updateBundleVerified)\n\nok")
+        XCTAssertEqual(result.verification, "\(AppConstants.StatusText.updateBundleIntegrityChecked)\n\nok")
         XCTAssertEqual(result.message, result.verification)
     }
 

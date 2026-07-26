@@ -32,6 +32,7 @@ public enum RuntimeControlAPIErrorCode: String, CaseIterable, Codable, Equatable
     case unauthorized
     case endpointNotImplemented
     case platformAffordanceUnavailable
+    case updateApplyUnavailable
     case operationInProgress
     case guestControlUnavailable
     case handlerFailed

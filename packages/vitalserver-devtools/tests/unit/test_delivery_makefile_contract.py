@@ -167,16 +167,54 @@ def test_release_contract_precedes_fingerprint_and_docker_compile() -> None:
         assert f"{target}: internal/vm/release-contract" in makefile
 
 
-def test_distribution_review_covers_release_contract_and_guest_repair() -> None:
+def test_distribution_review_runs_the_complete_swift_suite_and_guest_repair() -> None:
     review = target_recipe(
         PACKAGE_MAKEFILE.read_text(encoding="utf-8"),
         "internal/vm/distribution/review",
     )
 
-    assert "GuestCommandDispatcherSupportTests" in review
-    assert "RuntimeFreshInstallHostSettingsTests" in review
+    assert "swift test" in review
+    assert '--package-path "$(VM_SWIFT_PACKAGE_DIR)"' in review
+    assert "--filter" not in review
     assert "test_release_sync_contract.py" in review
     assert "packages/vitalserver-guest-tools/tests/test_redis_repair.py" in review
+
+
+def test_distribution_review_runs_current_macos_stabilization_contracts() -> None:
+    review = target_recipe(
+        PACKAGE_MAKEFILE.read_text(encoding="utf-8"),
+        "internal/vm/distribution/review",
+    )
+
+    for current_product_test in (
+        "packages/vitalserver-devtools/tests/unit/"
+        "test_macos_package_install_policy.py",
+        "packages/vitalserver-devtools/tests/unit/test_macos_package_receipts.py",
+        "packages/vitalserver-devtools/tests/unit/test_macos_installed_runtime.py",
+        "packages/vitalserver-devtools/tests/unit/"
+        "test_macos_update_bundle_usecases.py",
+    ):
+        assert current_product_test in review
+
+    assert "packages/vitalserver-devtools/tests/unit" not in review.splitlines()
+
+
+def test_vm_image_update_does_not_infer_updater_bridge_from_rootfs() -> None:
+    makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    image_update_contract = makefile.split(
+        "internal/vm/image-update: VM_UPDATE_ROOTFS_BASE",
+        maxsplit=1,
+    )[1].split("internal/vm/image-update/dev", maxsplit=1)[0]
+
+    assert "VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false" in makefile
+    assert (
+        "internal/vm/image-update: "
+        "VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE := true"
+    ) not in makefile
+    assert (
+        'VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE='
+        '"$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)"'
+    ) in image_update_contract
 
 
 def test_public_dmg_targets_route_only_to_the_standard_profiles() -> None:

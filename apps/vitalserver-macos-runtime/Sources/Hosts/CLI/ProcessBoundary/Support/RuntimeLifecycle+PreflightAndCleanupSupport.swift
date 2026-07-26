@@ -17,7 +17,7 @@ extension RuntimeLifecycle {
             ),
             operations: RuntimeUninstallCompositionOperations(
                 fileStore: fileStore,
-                configuredExternalVitalFilesDirectory: configuredExternalVitalFilesDirectory,
+                configuredVitalFilesDirectories: configuredVitalFilesDirectories,
                 serviceState: { service in
                     healthChecker.launchdState(service)
                 },

@@ -66,7 +66,7 @@ export const emptyRuntimeSettingsDraft: RuntimeSettingsDraft = {
   vitalFilesDirectory: "",
   publicHost: "",
   publicPort: "",
-  recorderIngressLoadControlEnabled: true,
+  recorderIngressLoadControlEnabled: false,
   recorderIngressSendDataReplayMaxMiBPerSecond: "",
   recorderIngressSendDataMaxPendingItems: "",
   recorderIngressSendDataMaxPendingMiB: "",
@@ -125,7 +125,7 @@ export function runtimeSettingsToDraft(
     publicHost: settings.publicHost,
     publicPort: formatNumber(settings.publicPort),
     recorderIngressLoadControlEnabled:
-      settings.recorderIngressSendDataMode !== "passthrough",
+      settings.recorderIngressSendDataMode === "spool_and_replay",
     recorderIngressSendDataReplayMaxMiBPerSecond: formatNumber(
       settings.recorderIngressSendDataReplayMaxMiBPerSecond
     ),
@@ -240,7 +240,7 @@ export function draftToRuntimeSettings(
     publicPort: customAdvertisedURL ? requiredNumber(draft.publicPort) : proxyPort,
     recorderIngressSendDataMode: draft.recorderIngressLoadControlEnabled
       ? "spool_and_replay"
-      : "passthrough",
+      : "observe_only",
     recorderIngressSendDataReplayBatchSize: Math.max(
       current.recorderIngressSendDataReplayBatchSize,
       RECORDER_INGRESS_INTERNAL_REPLAY_BATCH_SIZE

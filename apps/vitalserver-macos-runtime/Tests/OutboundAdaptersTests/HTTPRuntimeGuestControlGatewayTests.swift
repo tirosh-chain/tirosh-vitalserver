@@ -1107,8 +1107,18 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
                 "collection":null,"capabilities":{}
               },
               "boot":{
-                "state":"started","bootId":"boot-001",
+                "state":"started","orderingState":"ordered","bootId":"boot-001",
                 "startedAt":"2026-07-23T23:00:00Z","cleanShutdownAt":null
+              },
+              "evidenceHealth":{
+                "state":"healthy","checkedAt":"2026-07-24T00:00:00Z",
+                "checkCount":3,"detail":null
+              },
+              "incidentState":{
+                "state":"clear","policyVersion":"1",
+                "bootLoopState":"clear","repeatedUndervoltageState":"clear",
+                "evidenceState":"complete","consecutiveUnexpectedBoots":0,
+                "undervoltageBootsConsidered":3
               },
               "operationalHealth":{
                 "state":"warning","evaluatedAt":"2026-07-24T00:00:00Z",

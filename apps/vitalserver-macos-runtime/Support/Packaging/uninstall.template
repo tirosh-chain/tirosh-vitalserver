@@ -84,7 +84,9 @@ fi
 log "delegating uninstall to CLIHost clean=${clean} forceClean=${force_clean}"
 VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"
 
-log "step=remove-uninstaller status=started"
-rm -f "${uninstall}"
-log "step=remove-uninstaller status=completed"
+if [ -e "${uninstall}" ]; then
+  log "uninstaller remains after CLIHost cleanup path=${uninstall}"
+  exit 5
+fi
+log "terminal cleanup verified uninstaller=${uninstall}"
 log "uninstall completed log=${uninstall_log}"

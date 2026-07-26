@@ -44,10 +44,12 @@ services:
       - -c
       - |
         if [ -f /data/appendonly.aof ]; then
-          redis-check-aof /data/appendonly.aof >/tmp/redis-aof-check.log 2>&1 || {
-            cp /data/appendonly.aof "/data/appendonly.aof.bak.$(date +%Y%m%d%H%M%S)" || true
-            printf 'y\n' | redis-check-aof --fix /data/appendonly.aof
-          }
+          if ! redis-check-aof /data/appendonly.aof >/tmp/redis-aof-check.log 2>&1; then
+            cat /tmp/redis-aof-check.log >&2
+            printf '%s\n' \
+              'Redis append-only file validation failed; automatic repair is disabled. Run the explicit datastore repair workflow before restarting Redis.' >&2
+            exit 1
+          fi
         fi
         exec redis-server --appendonly yes --bind 0.0.0.0 --protected-mode no
     expose:
@@ -243,7 +245,7 @@ services:
       RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR:-/var/lib/vitalserver-recorder-ingress/recovery/vital-export}"
       RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH:-/var/lib/vitalserver-recorder-ingress/recovery/raw-archive-auto-export-state.json}"
       RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS: "${RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS:-3600000}"
-      RECORDER_INGRESS_SEND_DATA_MODE: "${RECORDER_INGRESS_SEND_DATA_MODE:-spool_and_replay}"
+      RECORDER_INGRESS_SEND_DATA_MODE: "${RECORDER_INGRESS_SEND_DATA_MODE:-observe_only}"
       RECORDER_INGRESS_SEND_DATA_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_REDIS_LIST:-vitalserver:recorder_ingress:send_data:pending}"
       RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST:-vitalserver:recorder_ingress:send_data:in_flight}"
       RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST:-vitalserver:recorder_ingress:send_data:replayed}"

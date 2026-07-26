@@ -8,6 +8,65 @@ import Workflow
 import XCTest
 
 final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
+    func testConfiguredVitalFilesSQLiteSnapshotIsReadAfterOperationLeaseAcquisition() throws {
+        let installedPaths = InstalledRuntimePaths(
+            productRoot: URL(fileURLWithPath: "/lease-ordered-uninstall-product")
+        )
+        let fileStore = RuntimeFileStoreSpy()
+        var ordering: [String] = []
+        let runner = RuntimeUninstallComposition.make(
+            context: RuntimeUninstallCompositionContext(
+                installedPaths: installedPaths,
+                pidFile: installedPaths.pidFile
+            ),
+            operations: RuntimeUninstallCompositionOperations(
+                fileStore: fileStore,
+                configuredVitalFilesDirectories: {
+                    ordering.append("read-host-settings")
+                    return configuredVitalFilesDirectories(
+                        installedPaths.helperManagedDefaultVitalFilesDirectory
+                    )
+                },
+                serviceState: { _ in .notLoaded },
+                createVitalServerBackup: {},
+                disableAutomaticBackupScheduler: {},
+                disableRuntimeServicesForUninstall: {},
+                stopRuntimeServicesForUninstall: {},
+                forceStopRuntimeServicesForUninstall: {},
+                clearLaunchdDisabledOverridesAfterUninstall: {},
+                cleanupHostProxyPortAfterStop: { _ in },
+                packageReceiptStates: { [] },
+                openFilesInDirectory: { _ in
+                    RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                },
+                forgetPackageReceipt: { _ in
+                    RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                },
+                now: { Date(timeIntervalSince1970: 0) },
+                log: { _ in },
+                stateWriter: RuntimeUninstallStateWriter(
+                    acquireOperationLease: {
+                        ordering.append("acquire-lease")
+                    },
+                    releaseOperationLease: {
+                        ordering.append("release-lease")
+                    },
+                    writeState: { _, _, _, _ in },
+                    relocateProductRoot: { _, _ in }
+                )
+            )
+        )
+
+        XCTAssertEqual(ordering, [])
+        try runner.run(RuntimeUninstallCommand(clean: true))
+
+        XCTAssertEqual(Array(ordering.prefix(2)), [
+            "acquire-lease",
+            "read-host-settings",
+        ])
+        XCTAssertEqual(ordering.last, "release-lease")
+    }
+
     func testCleanUninstallForcesRuntimeServiceCleanupWhenGracefulStopFails() throws {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/clean-uninstall-product"))
         let fileStore = RuntimeFileStoreSpy()
@@ -19,8 +78,10 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
             ),
             operations: RuntimeUninstallCompositionOperations(
                 fileStore: fileStore,
-                configuredExternalVitalFilesDirectory: {
-                    RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
+                configuredVitalFilesDirectories: {
+                    configuredVitalFilesDirectories(
+                        installedPaths.helperManagedDefaultVitalFilesDirectory
+                    )
                 },
                 serviceState: { _ in .notLoaded },
                 createVitalServerBackup: {
@@ -80,8 +141,10 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
             ),
             operations: RuntimeUninstallCompositionOperations(
                 fileStore: fileStore,
-                configuredExternalVitalFilesDirectory: {
-                    RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
+                configuredVitalFilesDirectories: {
+                    configuredVitalFilesDirectories(
+                        installedPaths.helperManagedDefaultVitalFilesDirectory
+                    )
                 },
                 serviceState: { _ in .notLoaded },
                 createVitalServerBackup: {
@@ -123,6 +186,51 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
         XCTAssertTrue(events.contains("force-stop"))
         XCTAssertTrue(events.contains("cleanup:clean=true"))
         XCTAssertFalse(events.contains("stop"))
+    }
+
+    func testCleanUninstallPreservesConfiguredExternalVitalFilesDirectoryWithoutOwnedEntries() throws {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/clean-uninstall-product"))
+        let externalVitalFilesDirectory = URL(fileURLWithPath: "/Volumes/ClinicalData/VitalFiles")
+        let externalVitalFile = externalVitalFilesDirectory.appendingPathComponent("patient.vital")
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.directories.insert(externalVitalFilesDirectory)
+        fileStore.files[externalVitalFile] = Data("vital-data".utf8)
+        var events: [String] = []
+        let runner = RuntimeUninstallComposition.make(
+            context: RuntimeUninstallCompositionContext(
+                installedPaths: installedPaths,
+                pidFile: installedPaths.pidFile
+            ),
+            operations: RuntimeUninstallCompositionOperations(
+                fileStore: fileStore,
+                configuredVitalFilesDirectories: {
+                    configuredVitalFilesDirectories(externalVitalFilesDirectory)
+                },
+                serviceState: { _ in .notLoaded },
+                createVitalServerBackup: {},
+                disableAutomaticBackupScheduler: {},
+                disableRuntimeServicesForUninstall: {},
+                stopRuntimeServicesForUninstall: {},
+                forceStopRuntimeServicesForUninstall: {},
+                clearLaunchdDisabledOverridesAfterUninstall: {},
+                cleanupHostProxyPortAfterStop: { _ in },
+                packageReceiptStates: { [] },
+                openFilesInDirectory: { _ in RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "") },
+                forgetPackageReceipt: { _ in RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "") },
+                now: { Date(timeIntervalSince1970: 0) },
+                log: { events.append($0) },
+                stateWriter: testUninstallStateWriter()
+            )
+        )
+
+        try runner.run(RuntimeUninstallCommand(clean: true))
+
+        XCTAssertTrue(fileStore.directoryExists(externalVitalFilesDirectory))
+        XCTAssertEqual(fileStore.files[externalVitalFile], Data("vital-data".utf8))
+        XCTAssertFalse(fileStore.removed.contains(externalVitalFilesDirectory))
+        XCTAssertTrue(events.contains(
+            "preserved configured external vital files directory path=/Volumes/ClinicalData/VitalFiles reason=no-product-owned-removal-contract"
+        ))
     }
 
     func testForceCleanUninstallRecoveryUnloadsLaunchdServicesWhenVMPidFileIsMissing() throws {
@@ -219,6 +327,22 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
             )
         }
     }
+}
+
+private func configuredVitalFilesDirectories(
+    _ directory: URL,
+    revision: Int = 1
+) -> RuntimeConfiguredVitalFilesDirectoriesRead {
+    .loaded(RuntimeConfiguredVitalFilesDirectoriesSnapshot(
+        revision: revision,
+        appliedRevision: nil,
+        directories: [
+            RuntimeConfiguredVitalFilesDirectory(
+                source: .desired(revision: revision),
+                directory: directory
+            ),
+        ]
+    ))
 }
 
 private func testUninstallStateWriter() -> RuntimeUninstallStateWriter {

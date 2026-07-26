@@ -296,7 +296,10 @@ def main() -> int:
 
     installed_status = subparsers.add_parser(
         "macos-installed-status",
-        help="print installed macOS runtime files and launchd status",
+        help=(
+            "check the installed Helper app executable, runtime executables, "
+            "and required launchd jobs"
+        ),
     )
     installed_status.add_argument(
         "--fail-on-unhealthy",
@@ -313,7 +316,7 @@ def main() -> int:
 
     installed_health = subparsers.add_parser(
         "macos-installed-health",
-        help="check installed macOS runtime HTTP health",
+        help="check installed status plus guest and host proxy HTTP health",
     )
     installed_health.add_argument("--proxy-port", required=True)
     installed_health.set_defaults(
@@ -329,7 +332,10 @@ def main() -> int:
 
     installed_smoke = subparsers.add_parser(
         "macos-installed-smoke",
-        help="run installed macOS runtime smoke checks",
+        help=(
+            "check installed status, HTTP health, and the installed "
+            "runtime CLI health contract"
+        ),
     )
     installed_smoke.add_argument("--proxy-port", required=True)
     installed_smoke.set_defaults(
@@ -672,6 +678,10 @@ def main() -> int:
         "--requires-two-phase-update",
         type=parse_bool,
         default=False,
+        help=(
+            "explicitly declare that an Updater bridge must be applied first; "
+            "never inferred from bundle kind or rootfs inclusion"
+        ),
     )
     update_bundle.add_argument(
         "--bundle-kind",
@@ -723,6 +733,10 @@ def main() -> int:
         "--requires-two-phase-update",
         type=parse_bool,
         default=False,
+        help=(
+            "explicitly declare that an Updater bridge must be applied first; "
+            "never inferred from bundle kind or rootfs inclusion"
+        ),
     )
     release_update_bundle.add_argument("--compression-threads", type=int)
     release_update_bundle.add_argument("--sdkroot")

@@ -2,6 +2,7 @@ import Foundation
 import Application
 import Contracts
 import Errors
+import RuntimeControl
 
 public struct InstalledRuntimePaths: Equatable, Sendable {
     public static let defaultProductRoot = URL(fileURLWithPath: "/Library/Application Support/VitalServerHelper")
@@ -109,6 +110,12 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         productRoot.appendingPathComponent(RuntimeBackupStorageLayout.rootDirectoryName)
     }
 
+    public var standardUninstallRetainedDataRoot: URL {
+        productRoot
+            .deletingLastPathComponent()
+            .appendingPathComponent("\(productRoot.lastPathComponent)-retained-uninstall-data")
+    }
+
     public var vitalServerHelperBackupsDirectory: URL {
         RuntimeBackupStorageLayout.vitalServerHelperBackupsDirectory(under: backupsDirectory)
     }
@@ -151,6 +158,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var vitalFilesDirectory: URL {
         dataDirectory.appendingPathComponent("vital-files")
+    }
+
+    public var helperManagedDefaultVitalFilesDirectory: URL {
+        URL(fileURLWithPath: RuntimeSettingsInitialValues.vitalFilesDirectory)
     }
 
     public var vrReleaseDirectory: URL {

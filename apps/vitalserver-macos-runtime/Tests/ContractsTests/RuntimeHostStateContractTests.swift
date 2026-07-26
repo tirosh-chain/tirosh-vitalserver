@@ -126,7 +126,10 @@ final class RuntimeHostStateContractTests: XCTestCase {
 
     func testRuntimePackageReceiptStateKeepsPresentAndReadFailureDistinctFromAbsent() throws {
         let states: [RuntimePackageReceiptState] = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
             .absent(identifier: "ai.tirosh.vitalserver.helper.tools"),
             .readFailed(identifier: "ai.tirosh.vitalserver.helper.tools", reason: "exitCode=1 stderr=denied"),
             .forgetFailed(identifier: "ai.tirosh.vitalserver.helper", reason: "exitCode=1 stderr=locked"),

@@ -39,6 +39,14 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.managerHelperMessageLog.path, "/private/tmp/tirosh-vitalserver-helper-message.log")
         XCTAssertEqual(paths.centralCommandLog.path, "/Library/Application Support/VitalServerHelper/logs/command.log")
         XCTAssertEqual(paths.guestRuntimeSettings.path, "/Library/Application Support/VitalServerHelper/vm/data/deploy/runtime-settings.json")
+        XCTAssertEqual(
+            paths.standardUninstallRetainedDataRoot.path,
+            "/Library/Application Support/VitalServerHelper-retained-uninstall-data"
+        )
+        XCTAssertEqual(
+            paths.helperManagedDefaultVitalFilesDirectory.path,
+            "/Users/Shared/VitalServerHelper/vital-files"
+        )
     }
 
     func testRuntimeHomeInitializerDerivesProductRoot() {
@@ -48,5 +56,9 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.runtimeHome.path, "/tmp/product/vm")
         XCTAssertEqual(paths.backupsDirectory.path, "/tmp/product/backups")
         XCTAssertEqual(paths.runtimeStatus.path, "/tmp/product/status/runtime-status.json")
+        XCTAssertEqual(
+            paths.standardUninstallRetainedDataRoot.path,
+            "/tmp/product-retained-uninstall-data"
+        )
     }
 }

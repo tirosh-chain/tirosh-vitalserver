@@ -44,6 +44,13 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     settings_install_home,
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
+from tirosh_vitalserver.devtools.core.macos_release.package_install import (
+    NumericPackageVersion,
+    PackageReceiptAbsent,
+    PackageReceiptPresent,
+    PackageReceiptReadFailed,
+    PackageReceiptReadStage,
+)
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
     default_troubleshooting_tools_output,
     default_update_migrations,
@@ -805,7 +812,11 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
     assert (
         package_vm_home / "runtime" / rootfs_manifest.name
     ).read_text(encoding="utf-8") == rootfs_manifest.read_text(encoding="utf-8")
-    assert any(command[0] == "pkgbuild" for command in commands)
+    pkgbuild_command = next(command for command in commands if command[0] == "pkgbuild")
+    assert pkgbuild_command[
+        pkgbuild_command.index("--identifier") + 1
+    ] == "ai.tirosh.vitalserver.helper"
+    assert pkgbuild_command[pkgbuild_command.index("--version") + 1] == "1.2.3"
 
     commands.clear()
     mismatched_context = replace(
@@ -1282,6 +1293,135 @@ def test_release_dmg_artifact_verify_reports_detach_failure(
     assert detach in report.blockers
 
 
+def test_install_pkg_blocks_present_receipt_before_settings_or_installer_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = repo_root()
+    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output.write_text("pkg", encoding="utf-8")
+    install_settings = tmp_path / "install-settings.json"
+    install_settings.write_text("{}", encoding="utf-8")
+    events: list[str] = []
+    installed_version = NumericPackageVersion.parse("0.2.1")
+    assert installed_version is not None
+
+    monkeypatch.setattr(
+        macos_package,
+        "default_pkg_output",
+        lambda settings, release: pkg_output,
+    )
+
+    def observe_receipt(identifier: str) -> PackageReceiptPresent:
+        events.append(f"receipt:{identifier}")
+        return PackageReceiptPresent(
+            identifier=identifier,
+            version=installed_version,
+        )
+
+    monkeypatch.setattr(macos_package, "read_package_receipt", observe_receipt)
+    monkeypatch.setattr(
+        macos_package,
+        "run",
+        lambda command: events.append(f"effect:{' '.join(command)}"),
+    )
+
+    with pytest.raises(SystemExit, match="same-version-repair"):
+        macos_package.install_pkg(
+            MacOSPackageInstallInput(
+                config=root / "config/vm-build.toml",
+                release_file=root
+                / "apps/vitalserver-macos-runtime/release-dev.json",
+                install_settings=str(install_settings),
+            )
+        )
+
+    assert events == ["receipt:ai.tirosh.vitalserver.helper"]
+
+
+def test_install_pkg_blocks_receipt_read_failure_before_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = repo_root()
+    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output.write_text("pkg", encoding="utf-8")
+    effects: list[list[str]] = []
+    monkeypatch.setattr(
+        macos_package,
+        "default_pkg_output",
+        lambda settings, release: pkg_output,
+    )
+    monkeypatch.setattr(
+        macos_package,
+        "read_package_receipt",
+        lambda identifier: PackageReceiptReadFailed(
+            identifier=identifier,
+            stage=PackageReceiptReadStage.CATALOG,
+            reason="exitCode=1 stderr=permission denied",
+        ),
+    )
+    monkeypatch.setattr(macos_package, "run", effects.append)
+
+    with pytest.raises(SystemExit, match="receipt preflight failed"):
+        macos_package.install_pkg(
+            MacOSPackageInstallInput(
+                config=root / "config/vm-build.toml",
+                release_file=root
+                / "apps/vitalserver-macos-runtime/release-dev.json",
+                install_settings=None,
+            )
+        )
+
+    assert effects == []
+
+
+def test_install_pkg_observes_absent_receipt_before_settings_write_and_installer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = repo_root()
+    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output.write_text("pkg", encoding="utf-8")
+    install_settings = tmp_path / "install-settings.json"
+    install_settings.write_text("{}", encoding="utf-8")
+    events: list[str] = []
+    monkeypatch.setattr(
+        macos_package,
+        "default_pkg_output",
+        lambda settings, release: pkg_output,
+    )
+
+    def observe_receipt(identifier: str) -> PackageReceiptAbsent:
+        events.append(f"receipt:{identifier}")
+        return PackageReceiptAbsent(identifier=identifier)
+
+    monkeypatch.setattr(macos_package, "read_package_receipt", observe_receipt)
+    monkeypatch.setattr(
+        macos_package,
+        "run",
+        lambda command: events.append(f"effect:{' '.join(command)}"),
+    )
+
+    assert (
+        macos_package.install_pkg(
+            MacOSPackageInstallInput(
+                config=root / "config/vm-build.toml",
+                release_file=root
+                / "apps/vitalserver-macos-runtime/release-dev.json",
+                install_settings=str(install_settings),
+            )
+        )
+        == 0
+    )
+
+    assert events[0] == "receipt:ai.tirosh.vitalserver.helper"
+    assert events[1].startswith("effect:sudo install -m 0600 ")
+    assert events[2] == (
+        f"effect:sudo installer -pkg {pkg_output} -target /"
+    )
+
+
 def test_install_pkg_reports_sudo_failure_without_traceback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1316,6 +1456,11 @@ def test_install_pkg_reports_sudo_failure_without_traceback(
         macos_package,
         "default_pkg_output",
         lambda settings, release: pkg_output,
+    )
+    monkeypatch.setattr(
+        macos_package,
+        "read_package_receipt",
+        lambda identifier: PackageReceiptAbsent(identifier=identifier),
     )
 
     def fail_run(command: list[str]) -> None:

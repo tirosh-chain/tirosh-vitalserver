@@ -14,7 +14,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case configure(RuntimeConfigureCommand)
     case verifyBundle(URL)
     case stageBundle(URL)
-    case applyBundle(URL)
+    case applyBundle(RuntimeApplyBundleCommand)
     case rollback(RuntimeRollbackCommand)
     case redisBackup
     case redisRestore(URL)
@@ -73,10 +73,7 @@ extension RuntimeLifecycleCommand {
                 usage: "usage: vitalserver-vm runtime stage-bundle <bundle.tar.gz>"
             ))
         case "apply-bundle":
-            return .applyBundle(try requiredBundleURL(
-                in: remaining,
-                usage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz>"
-            ))
+            return .applyBundle(try parseApplyBundleCommand(remaining))
         case "rollback":
             return .rollback(parseRollbackCommand(remaining))
         case "redis-backup":
@@ -191,11 +188,11 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--runtime-control-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-max-mib-per-second <count>] [--container-memory-limits true|false] [--vitalserver-container-memory-limit-mib <mib>] [--recorder-ingress-container-memory-limit-mib <mib>] [--redis-container-memory-limit-mib <mib>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--restart|--restart-vm-runtime]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--runtime-control-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|observe_only|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-max-mib-per-second <count>] [--container-memory-limits true|false] [--vitalserver-container-memory-limit-mib <mib>] [--recorder-ingress-container-memory-limit-mib <mib>] [--redis-container-memory-limit-mib <mib>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--restart|--restart-vm-runtime]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart|--restart-vm-runtime]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
-      vitalserver-vm runtime apply-bundle <bundle.tar.gz>
+      vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime redis-restore <archive.tar.gz>
@@ -235,6 +232,32 @@ extension RuntimeLifecycleCommand {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         return URL(fileURLWithPath: bundlePath)
+    }
+
+    private static func parseApplyBundleCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeApplyBundleCommand {
+        let usage = "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
+        guard arguments.count == 1 || arguments.count == 2,
+              let bundlePath = arguments.first,
+              !bundlePath.isEmpty,
+              bundlePath != "--allow-unsigned-dev-bundle"
+        else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        let intent: RuntimeUpdateApplyTrustIntent
+        if arguments.count == 2 {
+            guard arguments[1] == "--allow-unsigned-dev-bundle" else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+            intent = .allowUnsignedDevelopmentBundle
+        } else {
+            intent = .requireVerifiedPublisher
+        }
+        return RuntimeApplyBundleCommand(
+            bundleURL: URL(fileURLWithPath: bundlePath),
+            trustIntent: intent
+        )
     }
 
     private static func requiredPackageInstallContractURL(in arguments: [String]) throws -> URL {
@@ -425,7 +448,7 @@ extension RuntimeLifecycleCommand {
         case .recorderIngressSendDataMode:
             guard let mode = RuntimeRecorderIngressSendDataMode(rawValue: value) else {
                 throw RuntimeLifecycleCommandParseError.missingArgument(
-                    "--recorder-ingress-send-data-mode must be passthrough, mirror_spool, spool_only, or spool_and_replay"
+                    "--recorder-ingress-send-data-mode must be passthrough, observe_only, mirror_spool, spool_only, or spool_and_replay"
                 )
             }
             return .recorderIngressSendDataMode(mode)
@@ -530,5 +553,15 @@ extension RuntimeLifecycleCommand {
         case .unknown(let key):
             throw RuntimeLifecycleCommandParseError.missingArgument("unsupported runtime configure option: \(key)")
         }
+    }
+}
+
+public struct RuntimeApplyBundleCommand: Equatable {
+    public let bundleURL: URL
+    public let trustIntent: RuntimeUpdateApplyTrustIntent
+
+    public init(bundleURL: URL, trustIntent: RuntimeUpdateApplyTrustIntent) {
+        self.bundleURL = bundleURL
+        self.trustIntent = trustIntent
     }
 }

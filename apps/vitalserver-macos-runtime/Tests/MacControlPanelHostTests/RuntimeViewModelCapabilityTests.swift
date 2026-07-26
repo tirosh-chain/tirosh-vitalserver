@@ -809,6 +809,31 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertTrue(viewModel.selectedBundleVerified)
     }
 
+    func testVerifyOnlyClientChecksIntegrityButDoesNotApplyBundle() async {
+        let capabilities = RuntimeControlCapabilities(
+            canApplyBundle: false,
+            canOpenLocalFiles: true
+        )
+        let client = FakeRuntimeClient(capabilities: capabilities)
+        let nativeShell = FakeRuntimeNativeShell()
+        let bundleURL = URL(fileURLWithPath: "/tmp/update-bundle.tar.gz")
+        nativeShell.updateBundleURL = bundleURL
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.chooseUpdateBundle()
+        await viewModel.applySelectedBundle()
+
+        XCTAssertEqual(client.verifiedBundleURLs, [bundleURL])
+        XCTAssertTrue(viewModel.selectedBundleVerified)
+        XCTAssertEqual(client.applyUpdateBundleCount, 0)
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.actionUnavailable)
+    }
+
     func testOpenAndExportOperationsUseNativeShellBoundary() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()

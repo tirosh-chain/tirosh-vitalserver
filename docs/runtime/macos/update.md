@@ -7,9 +7,9 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 질문 | 답 |
 |---|---|
 | update 입력 단위는? | `dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball |
-| 현장 적용 UI는? | Product Update는 Helper app의 Update 탭, VM Image Update는 Danger Zone |
-| CLI backend는? | `/usr/local/bin/vitalserver-vm runtime apply-bundle` |
-| 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size |
+| 현장 적용 UI는? | 0.2.1 UI는 integrity 확인만 제공하고 apply는 `canApplyBundle=false`로 차단한다 |
+| CLI backend는? | 0.2.1에서는 installed `dev` launcher와 명시적 `--allow-unsigned-dev-bundle` intent만 `/usr/local/bin/vitalserver-vm runtime apply-bundle`을 실행할 수 있다 |
+| 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size로 integrity를 확인한다. publisher authenticity는 검증하지 않는다 |
 | Product Update bundle에 rootfs가 들어가나? | 아니다. `make dist/update/release`는 rootfs를 제외한다 |
 | rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make dist/image-update/release`를 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
@@ -18,6 +18,29 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | `bootstrap.sh` 수정은 update bundle로 반영되나? | 된다. `guest-deploy.tar.gz`에 포함되고 기본 migration/activation 경로로 반영된다 |
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
 | update 중 watchdog이 복구를 시도하나? | 안 한다. `apply-bundle`, `activate-guest-update`, `rollback` 진행 중에는 watchdog auto-recovery를 suppress한다 |
+
+## 0.2.1 Update Apply 제한
+
+0.2.1 bundle의 `signature` 파일은 `unsigned` placeholder이고 trusted publisher verification 구현과 trust root/config 계약이 없습니다. 따라서 integrity 확인 성공을 publisher 인증 성공으로 취급하면 안 됩니다.
+
+| 진입점 | 0.2.1 계약 |
+|---|---|
+| Helper native UI / Runtime Control PWA | `canApplyBundle=false`; integrity 확인 가능, apply 비활성 |
+| `POST /platform/update-bundles/apply` | 항상 `501`과 `updateApplyUnavailable`; Host apply command를 호출하지 않음 |
+| CLI 기본 `apply-bundle <path>` | publisher verification unavailable 오류로 lease/state/staging 전에 거부 |
+| stable/unknown installed launcher + dev flag | dev flag가 있어도 lease/state/staging 전에 거부 |
+| dev installed launcher + dev flag | 로컬 개발 apply만 허용 |
+| Updater bridge/two-phase | publisher trust 우회가 아니며 계속 차단 |
+
+로컬 개발 설치본의 유일한 허용 명령은 다음과 같습니다.
+
+```sh
+sudo /usr/local/bin/vitalserver-vm runtime apply-bundle \
+  /path/to/update-bundle-dev-<kind>-<releaseLabel>.tar.gz \
+  --allow-unsigned-dev-bundle
+```
+
+이 flag는 bundle channel을 보고 dev 상태를 추론하지 않습니다. 설치된 binary가 가진 `Constants.launcherChannel`이 명시적으로 `dev`여야 하며 API/native worker는 이 flag를 전달하지 않습니다. Dev apply-smoke만 이 intent를 전달하고 stable apply-smoke는 `sudo` 전에 명시적으로 실패합니다.
 
 ## Update 안정성 기준
 
@@ -145,6 +168,17 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 
 Reader는 required contract field 누락을 실패로 처리합니다. 새 필드는 가능한 optional metadata로 추가하고, required field/schema major version을 바꾸는 경우에는 기존 Updater가 읽을 수 있는 bridge/two-phase Product Update를 먼저 제공해야 합니다. Stable/dev artifact identity와 optional container 포함 정책은 `apps/vitalserver-macos-runtime/release.json` 및 `release-dev.json`을 SoT로 삼고, build tool이 manifest로 변환합니다.
 
+`requiresTwoPhaseUpdate`의 owner 경계는 아래처럼 고정합니다.
+
+| 경계 | 책임 |
+|---|---|
+| Make/release command | updater bridge 필요 여부를 명시적으로 입력하며 기본값은 `false` |
+| release use case | 입력값을 bundle kind나 artifact로 추론하지 않고 manifest builder에 전달 |
+| manifest builder | 전달받은 boolean을 `requiresTwoPhaseUpdate`에 그대로 기록 |
+| installed Swift Updater | normal apply에서 `true`를 거부하고 bridge 절차가 필요함을 보고 |
+
+따라서 `vm-image-update`이거나 `rootfs-base.raw.gz`를 포함한다는 사실만으로 이 값이 `true`가 되지 않습니다. 일반 VM Image Update는 normal apply preflight를 통과할 수 있어야 하며, 기존 Updater가 새 계약을 이해하지 못하는 실제 bridge Product Update만 build 호출에서 `true`를 명시합니다.
+
 ### Two-Phase Update 기준
 
 update system 자체가 바뀌는 경우에는 runtime payload와 updater payload를 한 번에 섞어 처리하지 않습니다.
@@ -210,13 +244,23 @@ bridge bundle:
   - 대용량 Docker image bundle
 ```
 
+Build에서도 bridge 여부를 별도로 선언합니다.
+
+```sh
+# 일반 VM Image Update: requiresTwoPhaseUpdate=false
+make dist/image-update/dev
+
+# 기존 Updater를 먼저 교체해야 하는 명시적 bridge Product Update
+make dist/update/dev VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE=true
+```
+
 ### Idempotency 기준
 
 update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 위해 단계별 marker 또는 result를 남깁니다.
 
 | 단계 | marker/log 기준 |
 |---|---|
-| verification completed | command log |
+| integrity check completed; publisher authenticity unverified | command log |
 | bundle staged | staged bundle path |
 | backup created | `backups/<timestamp>-before-<version>` |
 | artifacts replaced | runtime progress step |
@@ -446,14 +490,14 @@ VM Image Update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치
 
 `guest-deploy.tar.gz` 안에 Docker image bundle이 포함되어도, 그것은 “host shared directory에 새 image tar가 놓였다”는 뜻입니다. VM 안의 Docker daemon에 image가 실제로 load되고, 기존 container가 새 image로 recreate되는 것은 별도의 guest-side activation입니다.
 
-따라서 `apps/vitalserver-macos-runtime/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 이미 설치된 현장에서 실제로 반영되려면 Helper Update 탭 또는 `apply-bundle`로 해당 bundle을 적용해야 합니다.
+따라서 `apps/vitalserver-macos-runtime/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 0.2.1에서는 Helper Update 탭과 stable CLI apply가 차단되므로 실제 반영은 installed dev launcher의 명시적 개발 apply에만 허용됩니다.
 
 ## Apply 과정
 
-Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합니다.
+아래 lifecycle은 publisher trust gate를 통과한 apply에만 실행됩니다. 0.2.1에서는 installed dev launcher가 명시적 개발 intent를 받은 경우뿐입니다. Helper Update 탭과 Runtime Control API는 이 lifecycle을 시작하지 않습니다.
 
 ```text
-1. verify bundle
+1. check bundle integrity; publisher authenticity remains unverified
 2. stage bundle
 3. free-space preflight
 4. create managed backup
@@ -472,7 +516,7 @@ Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합�
 
 | 단계 | 설명 |
 |---|---|
-| verify | `manifest.json`, `checksums.txt`, artifact sha256/size 검증 |
+| integrity check | `manifest.json`, `checksums.txt`, artifact sha256/size 검증. publisher authenticity는 검증하지 않음 |
 | stage | bundle을 product root의 `bundles/` 아래로 복사 |
 | preflight | stage/apply/backup에 필요한 여유 공간 확인 |
 | backup | rollback 가능한 artifact를 `backups/` 아래에 저장 |
@@ -485,7 +529,7 @@ Helper app의 Update 탭과 CLI는 같은 Swift runtime lifecycle을 사용합�
 | health wait | guest HTTP, host proxy, Redis UI, Swagger UI 등 runtime health 대기 |
 | rollback | health wait 실패 또는 migration 실패 시 backup 복원 시도 |
 
-Helper app은 update 중 Command log를 1초 단위로 갱신합니다. Update 탭에서는 현재 단계와 command log tail을 함께 보여주며, 상세 로그는 Logs 탭의 `Command log`, `Update activation`, `Containers` source에서 확인합니다.
+개발 apply가 실행되는 동안 Helper의 기존 진단 projection은 Command log를 1초 단위로 갱신할 수 있습니다. 상세 로그는 Logs 탭의 `Command log`, `Update activation`, `Containers` source에서 확인합니다. 이 진단 표시는 UI apply capability를 허용하지 않습니다.
 
 ## Watchdog Coordination
 
@@ -599,7 +643,7 @@ host apply-bundle
 Bundle 검증과 host-side artifact 교체가 통과했더라도, guest-side activation이 빠지면 VM 내부 Docker daemon은 이전 image/cache를 계속 사용할 수 있습니다.
 
 ```text
-bundle verified
+bundle integrity checked; publisher authenticity unverified
 bundle staged
 backup created
 replace-update-artifacts completed

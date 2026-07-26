@@ -14,7 +14,8 @@
 .PHONY: internal/vm/image-update/smoke internal/vm/image-update/smoke/dev internal/vm/image-update/smoke/release internal/vm/image-update/apply-smoke internal/vm/image-update/apply-smoke/dev internal/vm/image-update/apply-smoke/release
 .PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs internal/vm/golden-rootfs/compile internal/vm/golden-rootfs/negative internal/vm/golden-rootfs/require internal/vm/golden-rootfs/runtime-smoke
 
-# Public update bundle knobs.
+# Public update bundle knobs. Two-phase is an explicit Updater bridge contract;
+# bundle kind and included artifacts must never infer it.
 VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
 VM_UPDATE_BUNDLE_KIND ?= product-update
 VM_UPDATE_TARGET_PLATFORM ?=
@@ -472,13 +473,16 @@ internal/vm/pkg/dev/runtime-smoke:
 
 internal/vm/distribution/review: repo/verify-submodule product/scenarios/check pwa/check pwa/test
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test \
-		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
-		--filter 'RuntimeLogArchiveRetention|RuntimeSettingsReadPolicy|RuntimeLogExporterTests|RuntimeLogCollectorTests|RuntimeSettingsValidatorTests|RuntimeLifecycleCommandTests|RuntimeConfigureRunnerTests|RuntimeFreshInstallHostSettingsTests|GuestCommandDispatcherSupportTests'
+		--package-path "$(VM_SWIFT_PACKAGE_DIR)"
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- pytest \
 		packages/vitalserver-devtools/tests/unit/test_delivery_makefile_contract.py \
 		packages/vitalserver-devtools/tests/unit/test_docker_image_bundle.py \
 		packages/vitalserver-devtools/tests/unit/test_guest_deploy_bundle.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_installed_runtime.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_package_install_policy.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_package_receipts.py \
 		packages/vitalserver-devtools/tests/unit/test_macos_release_plans.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_update_bundle_usecases.py \
 		packages/vitalserver-devtools/tests/unit/test_packaging_templates.py \
 		packages/vitalserver-devtools/tests/unit/test_release_sync_contract.py \
 		packages/vitalserver-devtools/tests/unit/test_upstream_vitalserver_contract.py
@@ -634,7 +638,6 @@ internal/vm/update/release:
 
 internal/vm/image-update: VM_UPDATE_ROOTFS_BASE = $(VM_PKG_ROOTFS_CACHE)
 internal/vm/image-update: VM_UPDATE_BUNDLE_KIND := vm-image-update
-internal/vm/image-update: VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE := true
 internal/vm/image-update:
 	$(MAKE) internal/vm/golden-rootfs VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 	$(MAKE) internal/vm/update \

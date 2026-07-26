@@ -86,6 +86,16 @@ describe("runtime settings form mapping", () => {
     });
   });
 
+  it("shows observe_only as load control unavailable", () => {
+    expect(
+      runtimeSettingsToDraft(
+        runtimeSettings({ recorderIngressSendDataMode: "observe_only" })
+      )
+    ).toMatchObject({
+      recorderIngressLoadControlEnabled: false
+    });
+  });
+
   it("uses proxy port as advertised port when custom advertised URL is disabled", () => {
     expect(
       draftToRuntimeSettings(
@@ -127,7 +137,7 @@ describe("runtime settings form mapping", () => {
     });
   });
 
-  it("maps recorder load control to passthrough or spool_and_replay settings", () => {
+  it("maps disabled recorder load control to observe_only", () => {
     expect(
       draftToRuntimeSettings(
         draft({
@@ -139,7 +149,7 @@ describe("runtime settings form mapping", () => {
         false
       )
     ).toMatchObject({
-      recorderIngressSendDataMode: "passthrough",
+      recorderIngressSendDataMode: "observe_only",
       recorderIngressSendDataReplayBatchSize: 1000,
       recorderIngressSendDataReplayMaxMiBPerSecond: 35,
       containerMemoryLimitsEnabled: false,

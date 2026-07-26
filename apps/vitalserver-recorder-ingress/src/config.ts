@@ -21,7 +21,11 @@ const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS = 60 * 1000;
 const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 function loadConfig(env) {
-  const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.SPOOL_AND_REPLAY);
+  const sendDataMode = sendDataIngressModeEnv(
+    env,
+    "RECORDER_INGRESS_SEND_DATA_MODE",
+    sendDataIngressModes.OBSERVE_ONLY
+  );
   const upstreamHost = env.RECORDER_INGRESS_UPSTREAM_HOST || "app";
   const upstreamPort = numberEnv(env, "RECORDER_INGRESS_UPSTREAM_PORT", 80);
   const replayMaxBytesPerSecond = numberEnv(
@@ -149,7 +153,8 @@ function loadConfig(env) {
       },
     },
     spool: {
-      enabled: sendDataMode !== sendDataIngressModes.PASSTHROUGH,
+      enabled: sendDataMode !== sendDataIngressModes.PASSTHROUGH
+        && sendDataMode !== sendDataIngressModes.OBSERVE_ONLY,
       mode: sendDataMode,
       storage: "redis_list",
       listKey: env.RECORDER_INGRESS_SEND_DATA_REDIS_LIST || "vitalserver:recorder_ingress:send_data:pending",

@@ -475,7 +475,7 @@ struct Launcher {
               vitalserver-vm runtime watchdog
               vitalserver-vm runtime verify-bundle <bundle.tar.gz>
               vitalserver-vm runtime stage-bundle <bundle.tar.gz>
-              vitalserver-vm runtime apply-bundle <bundle.tar.gz>
+              vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
               vitalserver-vm runtime rollback [backup-dir]
               vitalserver-vm clean
               vitalserver-vm version

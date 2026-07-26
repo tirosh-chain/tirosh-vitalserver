@@ -95,7 +95,7 @@ export function UpdatePage() {
         </p>
       </Panel>
 
-      <Panel title="Bundle verification">
+      <Panel title="Bundle integrity">
         <pre className="command-output">
           {summarize.data?.summary ??
             "Inspect the bundle to show manifest and checksum details."}
@@ -110,22 +110,21 @@ export function UpdatePage() {
           }}
           disabled={!hasBundlePath || verify.isPending || workflowActive}
         >
-          Verify
+          Check Integrity
         </button>
         {summarize.isError ? (
           <ErrorState title="Failed to inspect bundle" error={summarize.error} />
         ) : null}
         <WorkflowOperation operation={verify.data ?? null} />
-        {verify.error ? <ErrorState title="Bundle verification failed" error={verify.error} /> : null}
+        {verify.error ? <ErrorState title="Bundle integrity check failed" error={verify.error} /> : null}
       </Panel>
 
       <Panel title="Apply update">
         <p className="muted">
-          Applies the verified bundle and may restart VitalServer services.
-          VM/rootfs level changes remain administrator-level operations.
+          Integrity checking does not authenticate the publisher.
         </p>
         <ConfirmButton
-          confirmMessage="Apply the verified update bundle? VitalServer services may restart."
+          confirmMessage="Apply the integrity-checked update bundle? Publisher authenticity is unverified."
           onClick={applyBundle}
           disabled={
             !hasBundlePath ||
@@ -138,14 +137,14 @@ export function UpdatePage() {
           Apply Bundle
         </ConfirmButton>
         {!selectedBundleVerified && hasBundlePath ? (
-          <p className="muted">Verify the selected bundle successfully before applying it.</p>
+          <p className="muted">Check the selected bundle integrity before applying it.</p>
         ) : null}
         {capabilities.isError ? (
           <ErrorState title="Failed to read update capability" error={capabilities.error} />
         ) : null}
         {!capabilities.isPending && !capabilities.isError && capabilities.data?.canApplyBundle === false ? (
           <p className="muted">
-            Update apply is unavailable until this Platform Agent has a trusted publisher verification policy.
+            This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable.
           </p>
         ) : null}
         {!capabilities.isPending && !capabilities.isError && capabilities.data?.canApplyBundle === undefined ? (

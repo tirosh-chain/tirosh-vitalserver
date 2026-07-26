@@ -19,7 +19,7 @@ public extension AppConstants {
         public static let applySettings = "Apply"
         public static let chooseDirectory = "Choose..."
         public static let chooseBundle = "Choose Bundle"
-        public static let verifyBundle = "Verify"
+        public static let verifyBundle = "Check Integrity"
         public static let applyBundle = "Apply Bundle"
         public static let rollback = "Rollback"
         public static let createBackup = "Create VitalServer Backup"

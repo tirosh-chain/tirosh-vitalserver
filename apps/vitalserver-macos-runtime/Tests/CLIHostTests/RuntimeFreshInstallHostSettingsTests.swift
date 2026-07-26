@@ -9,7 +9,7 @@ import OutboundAdapters
 import XCTest
 
 final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
-    func testPackageInstallContractRoundTripsExplicitFreshMode() throws {
+    func testPackageInstallContractRoundTripsExplicitFreshIntentAndTargetVersion() throws {
         let productRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent("runtime-package-install-contract-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: productRoot) }
@@ -17,15 +17,31 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
         let contractURL = productRoot.appendingPathComponent("package-install-contract.json")
         try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
 
-        try lifecycle.writePackageInstallContract(mode: .fresh, to: contractURL)
+        let targetVersion = try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1"))
+        try lifecycle.writePackageInstallContract(
+            targetVersion: targetVersion,
+            intent: .fresh,
+            to: contractURL
+        )
 
         XCTAssertEqual(
             try lifecycle.loadPackageInstallContract(from: contractURL),
             RuntimePackageInstallContract(
                 packageIdentifier: Constants.Product.identifier,
-                mode: .fresh
+                targetVersion: targetVersion,
+                intent: .fresh
             )
         )
+        let encoded = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: contractURL)
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(encoded["schemaVersion"] as? Int, 2)
+        XCTAssertEqual(encoded["packageIdentifier"] as? String, Constants.Product.identifier)
+        XCTAssertEqual(encoded["targetVersion"] as? String, "0.2.1")
+        XCTAssertEqual(encoded["intent"] as? String, "fresh")
+        XCTAssertNil(encoded["mode"])
     }
 
     func testPackageInstallContractRejectsUnsupportedSchema() throws {
@@ -39,7 +55,8 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
             RuntimePackageInstallContract(
                 schemaVersion: RuntimePackageInstallContract.currentSchemaVersion + 1,
                 packageIdentifier: Constants.Product.identifier,
-                mode: .fresh
+                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1")),
+                intent: .fresh
             )
         ).write(to: contractURL)
 
@@ -58,13 +75,157 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
         try JSONEncoder().encode(
             RuntimePackageInstallContract(
                 packageIdentifier: "example.invalid.package",
-                mode: .fresh
+                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1")),
+                intent: .fresh
             )
         ).write(to: contractURL)
 
         XCTAssertThrowsError(try lifecycle.loadPackageInstallContract(from: contractURL)) { error in
             XCTAssertTrue(String(describing: error).contains("identifier mismatch"))
         }
+    }
+
+    func testPackageInstallContractRejectsTargetVersionMismatch() throws {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runtime-package-install-contract-target-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        let lifecycle = makeLifecycle(productRoot: productRoot)
+        let contractURL = productRoot.appendingPathComponent("package-install-contract.json")
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
+        try JSONEncoder().encode(
+            RuntimePackageInstallContract(
+                packageIdentifier: Constants.Product.identifier,
+                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.0")),
+                intent: .fresh
+            )
+        ).write(to: contractURL)
+
+        XCTAssertThrowsError(try lifecycle.loadPackageInstallContract(from: contractURL)) { error in
+            XCTAssertTrue(String(describing: error).contains("target version mismatch"))
+        }
+    }
+
+    func testPackageInstallContractRejectsNonFreshIntent() throws {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runtime-package-install-contract-intent-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        let lifecycle = makeLifecycle(productRoot: productRoot)
+        let contractURL = productRoot.appendingPathComponent("package-install-contract.json")
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
+        try JSONEncoder().encode(
+            RuntimePackageInstallContract(
+                packageIdentifier: Constants.Product.identifier,
+                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1")),
+                intent: .sameVersionRepair
+            )
+        ).write(to: contractURL)
+
+        XCTAssertThrowsError(try lifecycle.loadPackageInstallContract(from: contractURL)) { error in
+            XCTAssertTrue(String(describing: error).contains("intent is unsupported"))
+        }
+    }
+
+    func testInstallProvisionRejectsTargetMismatchAndNonFreshIntentBeforeSQLiteProvisioning() throws {
+        let currentVersion = try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1"))
+        let cases = [
+            RuntimePackageInstallContract(
+                packageIdentifier: Constants.Product.identifier,
+                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.0")),
+                intent: .fresh
+            ),
+            RuntimePackageInstallContract(
+                packageIdentifier: Constants.Product.identifier,
+                targetVersion: currentVersion,
+                intent: .sameVersionRepair
+            ),
+        ]
+
+        for contract in cases {
+            let productRoot = FileManager.default.temporaryDirectory
+                .appendingPathComponent("runtime-package-provision-contract-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: productRoot) }
+            let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+            let contractURL = productRoot.appendingPathComponent("package-install-contract.json")
+            try FileManager.default.createDirectory(
+                at: productRoot,
+                withIntermediateDirectories: true
+            )
+            try JSONEncoder().encode(contract).write(to: contractURL)
+            let lifecycle = makeLifecycle(productRoot: productRoot)
+
+            XCTAssertThrowsError(
+                try lifecycle.installProvision(packageInstallContract: contractURL)
+            )
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: installedPaths.runtimeStateDatabase.path),
+                "invalid postinstall contract must stop before SQLite provisioning"
+            )
+        }
+    }
+
+    func testReceiptPresentPreinstallBlocksBeforeSQLiteProxyServiceOrContractEffects() throws {
+        let productRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("runtime-package-preinstall-effects-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        let contractURL = productRoot.appendingPathComponent("scripts/package-install-contract.json")
+        let proxySentinel = installedPaths.nginxDirectory
+            .appendingPathComponent("conf/vitalserver-nginx.conf")
+        let expectedProxyContents = Data("proxy-sentinel".utf8)
+        try FileManager.default.createDirectory(
+            at: proxySentinel.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try expectedProxyContents.write(to: proxySentinel)
+        let commandRunner = RuntimeReceiptPresentPreinstallCommandRunner()
+        let serviceManager = RuntimeReceiptPresentPreinstallServiceManager()
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installedPaths.runtimeHome,
+                installed: installedPaths,
+                config: installedPaths.vmConfig,
+                pidFile: installedPaths.pidFile
+            ),
+            clock: RuntimeFreshInstallFixedClock(),
+            commandRunner: commandRunner,
+            serviceManager: serviceManager
+        )
+
+        XCTAssertThrowsError(
+            try lifecycle.preinstallCheck(packageInstallContract: contractURL)
+        ) { error in
+            XCTAssertTrue(String(describing: error).contains("same-version-repair"))
+        }
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: installedPaths.runtimeStateDatabase.path),
+            "receipt-present preflight must stop before SQLite initialization or migration"
+        )
+        XCTAssertEqual(
+            try Data(contentsOf: proxySentinel),
+            expectedProxyContents,
+            "receipt-present preflight must not mutate proxy state"
+        )
+        XCTAssertTrue(
+            serviceManager.effectCalls.isEmpty,
+            "receipt-present preflight must not stop or reconfigure services"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: contractURL.path),
+            "receipt-present preflight must not write an install contract"
+        )
+        XCTAssertEqual(
+            commandRunner.commands,
+            [
+                ["/usr/sbin/pkgutil", "--pkgs"],
+                [
+                    "/usr/sbin/pkgutil",
+                    "--pkg-info-plist",
+                    Constants.Product.identifier,
+                ],
+            ],
+            "receipt observation must be the only injected process interaction"
+        )
     }
 
     func testFreshInstallInitializesSQLiteBeforeMaterializingBootDocuments() throws {
@@ -356,6 +517,84 @@ private struct RuntimeFreshInstallCommandRunner: RuntimeCommandRunner {
         output: URL
     ) -> RuntimeProcessResult {
         run(executable, arguments: arguments)
+    }
+}
+
+private final class RuntimeReceiptPresentPreinstallCommandRunner: RuntimeCommandRunner {
+    var commands: [[String]] = []
+
+    func run(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
+        commands.append([executable] + arguments)
+        switch arguments {
+        case ["--pkgs"]:
+            return RuntimeProcessResult(
+                exitCode: 0,
+                stdout: "\(Constants.Product.identifier)\n",
+                stderr: ""
+            )
+        case ["--pkg-info-plist", Constants.Product.identifier]:
+            return RuntimeProcessResult(
+                exitCode: 0,
+                stdout: """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <plist version="1.0">
+                <dict>
+                  <key>pkgid</key>
+                  <string>\(Constants.Product.identifier)</string>
+                  <key>pkg-version</key>
+                  <string>0.2.1</string>
+                </dict>
+                </plist>
+                """,
+                stderr: ""
+            )
+        default:
+            return RuntimeProcessResult(
+                exitCode: 127,
+                stdout: "",
+                stderr: "unexpected command"
+            )
+        }
+    }
+
+    func runWritingOutput(
+        _ executable: String,
+        arguments: [String],
+        output: URL
+    ) -> RuntimeProcessResult {
+        run(executable, arguments: arguments)
+    }
+}
+
+private final class RuntimeReceiptPresentPreinstallServiceManager: RuntimeServiceManager {
+    var effectCalls: [String] = []
+
+    func state(service: RuntimeManagedService) -> RuntimeServiceState {
+        .notLoaded
+    }
+
+    func start(service: RuntimeManagedService, plist: String) -> RuntimeProcessResult {
+        effectCalls.append("start:\(service.label)")
+        return success()
+    }
+
+    func restart(service: RuntimeManagedService) -> RuntimeProcessResult {
+        effectCalls.append("restart:\(service.label)")
+        return success()
+    }
+
+    func stop(service: RuntimeManagedService) -> RuntimeProcessResult {
+        effectCalls.append("stop:\(service.label)")
+        return success()
+    }
+
+    func setEnabled(service: RuntimeManagedService, enabled: Bool) -> RuntimeProcessResult {
+        effectCalls.append("set-enabled:\(service.label):\(enabled)")
+        return success()
+    }
+
+    private func success() -> RuntimeProcessResult {
+        RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 }
 

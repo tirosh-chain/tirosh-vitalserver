@@ -1144,7 +1144,7 @@ describe("runtime console pages", () => {
       target: { value: "/tmp/update.tar.gz" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
-    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check Integrity" }));
     fireEvent.click(screen.getByRole("button", { name: "Apply Bundle" }));
 
     expect(summarize.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
@@ -1172,9 +1172,13 @@ describe("runtime console pages", () => {
     fireEvent.change(screen.getByLabelText("Offline bundle"), {
       target: { value: "/tmp/update.tar.gz" }
     });
-    expect(screen.getByRole("button", { name: "Verify" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Check Integrity" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Apply Bundle" })).toBeDisabled();
-    expect(screen.getByText(/trusted publisher verification policy/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("treats an absent Platform workflow as an initial state, not an error", () => {

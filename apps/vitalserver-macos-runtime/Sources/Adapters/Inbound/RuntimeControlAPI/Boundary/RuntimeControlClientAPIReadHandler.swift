@@ -358,6 +358,9 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     public func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        guard client.capabilities.canApplyBundle else {
+            throw RuntimeControlAPIReadHandlerError.updateApplyUnavailable
+        }
         guard let hostClient else {
             throw RuntimeControlAPIReadHandlerError.platformAffordanceUnavailable
         }

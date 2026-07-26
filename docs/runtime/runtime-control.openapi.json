@@ -1816,7 +1816,8 @@
     "/platform/update-bundles/verify": {
       "post": {
         "operationId": "verifyHostUpdateBundle",
-        "summary": "Verify selected update bundle",
+        "summary": "Check selected update bundle integrity",
+        "description": "Checks manifest, size, and checksum integrity. VitalServer Helper 0.2.1 does not authenticate the bundle publisher.",
         "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -1851,6 +1852,7 @@
       "post": {
         "operationId": "applyHostUpdateBundle",
         "summary": "Apply selected update bundle",
+        "description": "VitalServer Helper 0.2.1 does not implement trusted publisher verification. The Platform capability is canApplyBundle=false and this route returns 501 with code updateApplyUnavailable without invoking the Host apply command.",
         "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -8547,7 +8549,7 @@
           "publicPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
           "recorderIngressSendDataMode": {
             "type": "string",
-            "enum": ["passthrough", "mirror_spool", "spool_only", "spool_and_replay"]
+            "enum": ["passthrough", "observe_only", "mirror_spool", "spool_only", "spool_and_replay"]
           },
           "recorderIngressSendDataReplayBatchSize": { "type": "integer", "minimum": 1 },
           "recorderIngressSendDataReplayMaxMiBPerSecond": { "type": "integer", "minimum": 1 },
@@ -8788,6 +8790,7 @@
             "type": "string",
             "enum": [
               "passthrough",
+              "observe_only",
               "mirror_spool",
               "spool_only",
               "spool_and_replay"
@@ -8914,6 +8917,7 @@
             "type": "string",
             "enum": [
               "passthrough",
+              "observe_only",
               "mirror_spool",
               "spool_only",
               "spool_and_replay"
@@ -9362,6 +9366,7 @@
           "unauthorized",
           "endpointNotImplemented",
           "platformAffordanceUnavailable",
+          "updateApplyUnavailable",
           "operationInProgress",
           "guestControlUnavailable",
           "handlerFailed"

@@ -1731,6 +1731,40 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: details)?.value.severity, .neutral)
     }
 
+    func testRecorderIngressQueueReportsObserveOnlyLoadControlAsUnavailable() {
+        let recorderIngressStatusRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    mode: "observe_only",
+                    status: "disabled",
+                    rejectedEvents: 0,
+                    writeFailures: 0,
+                    pendingItems: 0,
+                    pendingBytes: 0
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "disabled",
+                    inFlightItems: 0,
+                    retryableFailures: 0,
+                    deadLetteredEvents: 0
+                )
+            ),
+            readError: nil
+        )
+
+        let summary = policy.recorderIngressQueue(
+            recorderIngressStatusRead: recorderIngressStatusRead
+        )
+
+        XCTAssertEqual(
+            summary.text,
+            "observing, direct delivery preserved, load control unavailable"
+        )
+        XCTAssertEqual(summary.severity, .warning)
+    }
+
     func testRecorderIngressQueueDisplaysFailureEvidence() {
         let status = healthyRuntimeStatus()
         let recorderIngressStatusRead = recorderIngressStatusRead(

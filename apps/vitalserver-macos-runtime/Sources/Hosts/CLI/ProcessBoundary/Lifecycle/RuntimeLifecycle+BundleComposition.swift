@@ -12,6 +12,7 @@ extension RuntimeLifecycle {
     func runtimeBundleComposition() -> RuntimeBundleComposition {
         RuntimeBundleComposition(
             context: RuntimeBundleCompositionContext(
+                installedChannel: Constants.launcherChannel,
                 installedPaths: installedPaths,
                 bundlesDirectory: bundlesDirectory,
                 backupsDirectory: backupsDirectory,

@@ -96,6 +96,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let export = try await client.exportLogs(to: URL(fileURLWithPath: "/tmp/logs.zip"))
         let loadedReleaseInfo = try await client.loadReleaseInfo()
 
+        XCTAssertFalse(client.capabilities.canApplyBundle)
         XCTAssertEqual(client.loadSettings().proxyPort, 19080)
         XCTAssertEqual(client.loadPlatformState(settings: RuntimeSettings()).installedVersion, "status")
         XCTAssertEqual(healthStatus.installedVersion, "health")
@@ -115,7 +116,10 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(asyncLogText, .loaded("log:command:11"))
         XCTAssertEqual(client.preferredLogsPath(), "/logs")
         XCTAssertEqual(folders.map { $0.name }, ["vital"])
-        XCTAssertEqual(verification.stdout, "verified:/bundle")
+        XCTAssertEqual(
+            verification.stdout,
+            "integrity-checked publisher-authenticity-unverified:/bundle"
+        )
         XCTAssertEqual(export.destination.path, "/tmp/logs.zip")
         XCTAssertEqual(loadedReleaseInfo, releaseInfo)
         XCTAssertFalse(client.loadInstallInfo().appBundlePath?.isEmpty ?? true)
@@ -145,6 +149,10 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--clean") })
         XCTAssertFalse(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
+        let applyCommand = try XCTUnwrap(
+            runner.shellCommands.first { $0.contains("apply-bundle") }
+        )
+        XCTAssertFalse(applyCommand.contains("--allow-unsigned-dev-bundle"))
     }
 
     func testCommandWorkerPreservesFailedGuestDatastoreRepairOperation() async throws {
@@ -692,7 +700,11 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
     }
 
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "verified:\(bundleURL.path)", stderr: "")
+        RuntimeCommandResult(
+            exitCode: 0,
+            stdout: "integrity-checked publisher-authenticity-unverified:\(bundleURL.path)",
+            stderr: ""
+        )
     }
 }
 

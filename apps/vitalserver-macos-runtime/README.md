@@ -47,7 +47,8 @@ Browser / VRecorder
 | air-gapped 현장 업데이트 bundle을 만들고 싶다 | `make dist/update/release` |
 | 만든 update bundle을 검증하고 싶다 | `make dist/update/verify/release` |
 | 개발용 package를 현재 Mac에 설치해 보고 싶다 | `make dist/install/dev` |
-| repo 기반 개발 설치 runtime 상태를 확인하고 싶다 | `make dist/installed/health` |
+| repo 기반 설치의 app/files/jobs와 guest/host HTTP를 확인하고 싶다 | `make dist/installed/health` |
+| 설치된 CLI가 제공하는 runtime health 계약까지 확인하고 싶다 | `make dist/installed/smoke` |
 | 권한/update/observability 실패 주입 시나리오를 빠르게 확인하고 싶다 | `make runtime/chaos` |
 | 권한/update/observability 실패 주입 시나리오를 반복 확인하고 싶다 | `make runtime/chaos/loop` |
 | 개발용 설치물을 지우고 싶다 | `make dist/uninstall/dev` |
@@ -195,9 +196,21 @@ update bundle 생성 시에도 artifact 압축은 필요합니다. 기본 Produc
 make dist/pkg/dev
 make dist/install/dev
 make dist/installed/health
+make dist/installed/smoke
 ```
 
 설치 후 `/Applications/VitalServer Helper.app`을 열어 상태를 확인합니다. VitalServer 접속 URL은 Helper app Status 탭의 `VitalServer URL`을 사용합니다.
+
+`dist/installed/health`는 Helper app과 main executable, 설치 runtime executable,
+필수 launchd job과 VM IP, Guest HTTP, Host proxy HTTP를 확인합니다.
+`dist/installed/smoke`는 이 결과에 더해 설치된
+`/usr/local/bin/vitalserver-vm runtime health`가 성공해야 통과합니다. 이 명령은
+자동으로 권한을 상승시키지 않고 호출자의 identity로 실행합니다. 현재 health command는
+root-owned Host state를 읽고 상태 artifact를 쓸 수 있으므로, 권한이 없는 호출에서 발생한
+read/write failure는 smoke 실패로 그대로 보존됩니다.
+
+Package receipt/version과 recorder ingress → Redis → VitalServer data path는 이 두
+명령이 추정하지 않으며 별도의 privileged installed acceptance가 소유합니다.
 
 개발용 설치물을 지울 때:
 
@@ -290,7 +303,8 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | `make dist/update/verify/dev` | dev product update bundle checksum/manifest 검증 |
 | `make dist/update/verify/release` | release product update bundle checksum/manifest 검증 |
 | `make dist/install/dev` | 현재 Mac에 개발용 package 설치 |
-| `make dist/installed/health` | repo 기반 개발 설치의 launchd VM/proxy 상태 확인 |
+| `make dist/installed/health` | Helper app/main executable, 설치 runtime executable, 필수 launchd job, VM IP와 guest/host HTTP 확인 |
+| `make dist/installed/smoke` | installed health에 설치된 `vitalserver-vm runtime health` 결과를 추가로 요구 |
 | `make dist/uninstall/dev` | 개발용 설치물 제거 |
 | `make runtime/up` | 개발 VM start + host proxy 연결 |
 | `make runtime/health` | 개발 VM health 확인 |

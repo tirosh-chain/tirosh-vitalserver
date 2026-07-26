@@ -84,6 +84,99 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0.contains("copying bundle to managed storage") })
     }
 
+    func testStableApplyRejectsUnsignedDevelopmentIntentBeforeLeaseStateOrStaging() {
+        let fileStore = RuntimeFileStoreSpy()
+        let stateRepository = RuntimeWorkflowOperationStateRepositorySpy()
+        var events: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            currentChannel: .stable,
+            workflowOperationStateRepository: stateRepository,
+            acquireOperationLease: { operation in
+                events.append("lease:\(operation.rawValue)")
+                throw TestRuntimeBundleCompositionError.unexpectedSideEffect
+            },
+            log: { events.append("log:\($0)") }
+        )
+
+        XCTAssertThrowsError(try workflow.applyBundle(
+            URL(fileURLWithPath: "/input/update-bundle"),
+            trustIntent: .allowUnsignedDevelopmentBundle
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeUpdateApplyTrustError,
+                .unsignedDevelopmentIntentNotAllowed(installedChannel: .stable)
+            )
+        }
+
+        XCTAssertEqual(events, [])
+        XCTAssertTrue(stateRepository.states.isEmpty)
+        XCTAssertTrue(fileStore.files.isEmpty)
+        XCTAssertTrue(fileStore.directories.isEmpty)
+    }
+
+    func testUnknownApplyRejectsUnsignedDevelopmentIntentBeforeLeaseStateOrStaging() {
+        let channel = UpdateBundleChannel.unknown("preview")
+        let fileStore = RuntimeFileStoreSpy()
+        let stateRepository = RuntimeWorkflowOperationStateRepositorySpy()
+        var events: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            currentChannel: channel,
+            workflowOperationStateRepository: stateRepository,
+            acquireOperationLease: { operation in
+                events.append("lease:\(operation.rawValue)")
+                throw TestRuntimeBundleCompositionError.unexpectedSideEffect
+            },
+            log: { events.append("log:\($0)") }
+        )
+
+        XCTAssertThrowsError(try workflow.applyBundle(
+            URL(fileURLWithPath: "/input/update-bundle"),
+            trustIntent: .allowUnsignedDevelopmentBundle
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeUpdateApplyTrustError,
+                .unsignedDevelopmentIntentNotAllowed(installedChannel: channel)
+            )
+        }
+
+        XCTAssertEqual(events, [])
+        XCTAssertTrue(stateRepository.states.isEmpty)
+        XCTAssertTrue(fileStore.files.isEmpty)
+        XCTAssertTrue(fileStore.directories.isEmpty)
+    }
+
+    func testApplyWithoutDevelopmentIntentRejectsBeforeLeaseStateOrStaging() {
+        let fileStore = RuntimeFileStoreSpy()
+        let stateRepository = RuntimeWorkflowOperationStateRepositorySpy()
+        var acquiredLease = false
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            currentChannel: .dev,
+            workflowOperationStateRepository: stateRepository,
+            acquireOperationLease: { operation in
+                acquiredLease = true
+                throw TestRuntimeBundleCompositionError.unexpectedSideEffect
+            }
+        )
+
+        XCTAssertThrowsError(try workflow.applyBundle(
+            URL(fileURLWithPath: "/input/update-bundle"),
+            trustIntent: .requireVerifiedPublisher
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeUpdateApplyTrustError,
+                .publisherVerificationUnavailable(installedChannel: .dev)
+            )
+        }
+
+        XCTAssertFalse(acquiredLease)
+        XCTAssertTrue(stateRepository.states.isEmpty)
+        XCTAssertTrue(fileStore.files.isEmpty)
+        XCTAssertTrue(fileStore.directories.isEmpty)
+    }
+
     func testApplyBundleGuestShutdownStopFailureIsPropagatedAndLeaseIsReleased() throws {
         let fileStore = RuntimeFileStoreSpy()
         let source = URL(fileURLWithPath: "/input/update-bundle")
@@ -101,7 +194,10 @@ final class RuntimeBundleCompositionTests: XCTestCase {
             releaseOperationLease: { _ in events.append("release-lease") }
         )
 
-        XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
+        XCTAssertThrowsError(try workflow.applyBundle(
+            source,
+            trustIntent: .allowUnsignedDevelopmentBundle
+        )) { error in
             XCTAssertEqual(error as? TestRuntimeBundleCompositionError, .vmStopFailed)
         }
 
@@ -135,7 +231,10 @@ final class RuntimeBundleCompositionTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
+        XCTAssertThrowsError(try workflow.applyBundle(
+            source,
+            trustIntent: .allowUnsignedDevelopmentBundle
+        )) { error in
             XCTAssertEqual(error as? TestRuntimeBundleCompositionError, .vmStopFailed)
         }
 
@@ -171,7 +270,10 @@ final class RuntimeBundleCompositionTests: XCTestCase {
             }
         )
 
-        try workflow.applyBundle(source)
+        try workflow.applyBundle(
+            source,
+            trustIntent: .allowUnsignedDevelopmentBundle
+        )
 
         XCTAssertEqual(events.first, "acquire:apply-bundle")
         XCTAssertEqual(events.last, "release:lease-1")
@@ -199,7 +301,10 @@ final class RuntimeBundleCompositionTests: XCTestCase {
             }
         )
 
-        try workflow.applyBundle(source)
+        try workflow.applyBundle(
+            source,
+            trustIntent: .allowUnsignedDevelopmentBundle
+        )
 
         let state = try XCTUnwrap(stateRepository.states["lease-state-1"])
         XCTAssertEqual(state.operation, .applyBundle)
@@ -234,7 +339,10 @@ final class RuntimeBundleCompositionTests: XCTestCase {
             }
         )
 
-        XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
+        XCTAssertThrowsError(try workflow.applyBundle(
+            source,
+            trustIntent: .allowUnsignedDevelopmentBundle
+        )) { error in
             XCTAssertEqual(error as? TestRuntimeBundleCompositionError, .vmStopFailed)
         }
         let state = try XCTUnwrap(stateRepository.states["lease-state-failed"])
@@ -260,7 +368,10 @@ final class RuntimeBundleCompositionTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
+        XCTAssertThrowsError(try workflow.applyBundle(
+            source,
+            trustIntent: .allowUnsignedDevelopmentBundle
+        )) { error in
             XCTAssertEqual(error as? TestRuntimeBundleCompositionError, .vmStopFailed)
         }
         XCTAssertTrue(logs.contains { $0.contains("runtime operation lease release failed") })
@@ -270,6 +381,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
 
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
+        currentChannel: UpdateBundleChannel = .dev,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void = { _ in },
         stopRuntimeServices: @escaping () throws -> Void = {},
         prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: @escaping (UpdateBundleManifest) throws -> Void = { _ in },
@@ -295,6 +407,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         return RuntimeBundleComposition(
             context: RuntimeBundleCompositionContext(
+                installedChannel: currentChannel,
                 installedPaths: installedPaths,
                 bundlesDirectory: URL(fileURLWithPath: "/product/bundles"),
                 backupsDirectory: URL(fileURLWithPath: "/product/backups"),
@@ -455,6 +568,7 @@ private struct FixedRuntimeClock: RuntimeClock {
 }
 
 private enum TestRuntimeBundleCompositionError: Error, Equatable {
+    case unexpectedSideEffect
     case vmStopFailed
     case cleanupFailed
     case rollbackFailed
