@@ -556,7 +556,7 @@ public struct UninstallRuntimeUseCase {
     ) -> [String: RuntimePackageReceiptState] {
         Dictionary(uniqueKeysWithValues: states.compactMap { state -> (String, RuntimePackageReceiptState)? in
             switch state {
-            case .present(let identifier),
+            case .present(let identifier, _),
                  .absent(let identifier),
                  .readFailed(let identifier, _),
                  .forgetFailed(let identifier, _):

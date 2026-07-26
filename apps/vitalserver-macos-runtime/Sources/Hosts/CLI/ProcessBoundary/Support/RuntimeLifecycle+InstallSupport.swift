@@ -183,19 +183,23 @@ extension RuntimeLifecycle {
     }
 
     func writePackageInstallContract(
-        mode: RuntimePackageInstallMode,
+        targetVersion: RuntimePackageVersion,
+        intent: RuntimePackageInstallIntent,
         to url: URL
     ) throws {
         let contract = RuntimePackageInstallContract(
             packageIdentifier: Constants.Product.identifier,
-            mode: mode
+            targetVersion: targetVersion,
+            intent: intent
         )
         try fileStore.writeData(
             try JSONEncoder.pretty.encode(contract),
             to: url,
             options: .atomic
         )
-        log("package install contract written path=\(url.path) mode=\(mode.rawValue)")
+        log(
+            "package install contract written path=\(url.path) targetVersion=\(targetVersion.rawValue) intent=\(intent.rawValue)"
+        )
     }
 
     func loadPackageInstallContract(from url: URL) throws -> RuntimePackageInstallContract {
@@ -220,7 +224,27 @@ extension RuntimeLifecycle {
                 "Package install contract identifier mismatch path=\(url.path) actual=\(contract.packageIdentifier) expected=\(Constants.Product.identifier)"
             )
         }
+        let expectedTargetVersion = try packageTargetVersion()
+        guard contract.targetVersion == expectedTargetVersion else {
+            throw LauncherError.runtimeOperationFailed(
+                "Package install contract target version mismatch path=\(url.path) actual=\(contract.targetVersion.rawValue) expected=\(expectedTargetVersion.rawValue)"
+            )
+        }
+        guard contract.intent == .fresh else {
+            throw LauncherError.runtimeOperationFailed(
+                "Package install contract intent is unsupported path=\(url.path) intent=\(contract.intent.rawValue) targetVersion=\(contract.targetVersion.rawValue)"
+            )
+        }
         return contract
+    }
+
+    func packageTargetVersion() throws -> RuntimePackageVersion {
+        guard let version = RuntimePackageVersion(rawValue: Constants.launcherVersion) else {
+            throw LauncherError.runtimeOperationFailed(
+                "Package target version is invalid value=\(Constants.launcherVersion)"
+            )
+        }
+        return version
     }
 
     private func packageProvisionSettings(

@@ -33,6 +33,9 @@ from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     build_pkg as run_build_pkg,
 )
+from tirosh_vitalserver.devtools.adapters.macos_release.package_receipts import (
+    read_package_receipt,
+)
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     build_app_bundle,
     build_swift,
@@ -69,6 +72,13 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     settings_install_home,
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
+from tirosh_vitalserver.devtools.core.macos_release.package_install import (
+    NumericPackageVersion,
+    PackageReceiptAbsent,
+    PackageReceiptPresent,
+    PackageReceiptReadFailed,
+    classify_package_install_intent,
+)
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
     default_pkg_output,
     default_troubleshooting_tools_output,
@@ -886,6 +896,36 @@ def install_pkg(input: MacOSPackageInstallInput) -> int:
     if not pkg_output.is_file():
         raise SystemExit(
             f"missing {pkg_output}. Run: make vm-pkg-dev or make vm-pkg-release"
+        )
+    target_version = NumericPackageVersion.parse(release.helper_version)
+    if target_version is None:
+        raise SystemExit(
+            "package install target version is invalid "
+            f"value={release.helper_version}"
+        )
+    receipt = read_package_receipt(settings.package_identifier)
+    if isinstance(receipt, PackageReceiptReadFailed):
+        raise SystemExit(
+            "package install receipt preflight failed "
+            f"identifier={receipt.identifier} stage={receipt.stage.value} "
+            f"reason={receipt.reason}"
+        )
+    if isinstance(receipt, PackageReceiptPresent):
+        intent = classify_package_install_intent(
+            receipt.version,
+            target_version,
+        )
+        raise SystemExit(
+            "package install blocked "
+            f"intent={intent.value} identifier={receipt.identifier} "
+            f"installedVersion={receipt.version.raw_value} "
+            f"targetVersion={target_version.raw_value}; "
+            "VitalServer Helper direct PKG installs are fresh-only for this release"
+        )
+    if not isinstance(receipt, PackageReceiptAbsent):
+        raise SystemExit(
+            "package install receipt preflight returned unsupported state "
+            f"identifier={settings.package_identifier}"
         )
     try:
         if input.install_settings:

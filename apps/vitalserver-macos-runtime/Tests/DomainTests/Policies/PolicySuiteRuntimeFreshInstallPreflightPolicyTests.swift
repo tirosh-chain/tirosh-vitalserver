@@ -22,7 +22,10 @@ final class RuntimeFreshInstallPreflightPolicyTests: XCTestCase {
                 RuntimeManagedService.vm.label: .loaded,
             ]),
             packageReceiptStates: [
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
             ],
             proxyPortState: .occupied(port: 80, listeners: "nginx/123")
         ))

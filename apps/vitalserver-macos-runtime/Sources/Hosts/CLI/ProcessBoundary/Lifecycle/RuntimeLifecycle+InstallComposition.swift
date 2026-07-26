@@ -55,7 +55,6 @@ extension RuntimeLifecycle {
                 cleanupInstallSettings: cleanupInstallSettings,
                 log: log,
                 initializeHostStateStore: initializeHostStateStore,
-                migrateLegacyHostSettings: migrateLegacyHostSettingsIfNeeded,
                 prepareHostSettings: prepareHostSettings,
                 workflowOperationStateRepository: SQLiteRuntimeWorkflowOperationStateRepository(
                     databaseURL: installedPaths.runtimeStateDatabase

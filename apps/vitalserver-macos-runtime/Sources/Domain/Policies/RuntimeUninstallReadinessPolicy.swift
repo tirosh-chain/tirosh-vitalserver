@@ -87,7 +87,7 @@ public enum RuntimeUninstallReadinessPolicy {
         var blockers: [String] = []
         for state in states {
             switch state {
-            case .present(let identifier):
+            case .present(let identifier, _):
                 blockers.append("package-receipt-present:identifier=\(identifier)")
             case .readFailed(let identifier, let reason):
                 blockers.append("package-receipt-read-failed:identifier=\(identifier) reason=\(reason)")

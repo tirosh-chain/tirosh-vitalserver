@@ -3,7 +3,7 @@
 > ID: TS-155
 > Category: Packaging / Host state persistence
 > Owner: Host Installation Manager
-> Status: implemented; clean-Host C24 evidence pending
+> Status: implemented for C50; Helper 0.2.1 contained as fresh-only; clean-Host C24 evidence pending
 
 ## Symptoms
 
@@ -17,6 +17,11 @@ unfinished-installation-transaction
 또는 `current` link는 새 slot을 가리키지만 서비스 registration이 없는 `activated`
 상태가 남을 수 있다. 이 상태를 data directory가 비어 있거나 package receipt가
 존재한다는 사실만으로 clean/reinstall success로 분류하면 안 된다.
+
+Legacy VitalServer Helper 0.2.1 direct PKG에서는 receipt가 이미 있는 target이
+`same-version-repair`, `upgrade`, `downgrade` 중 하나로 분류되고 preinstall에서
+차단된다. 따라서 이 문서의 C50 service-quiescence transaction을 구현하지 않은
+Helper package가 receipt-present target에서 payload overwrite를 시작해서는 안 된다.
 
 ## Cause
 
@@ -76,6 +81,23 @@ C49 observer와 C50 journal writer는 final path뿐 아니라 모든 existing pa
 component도 non-symbolic-link인지 검증한다. 따라서 data root 또는 journal parent가
 symbolic link이면 `unreadable`로 남고, preflight retry나 write로 바뀌지 않는다.
 
+VitalServer Helper 0.2.1 direct PKG는 C50 transaction과 별개로 다음 containment를
+사용한다.
+
+1. 성공한 `pkgutil --pkgs` exact membership과 present일 때의
+   `pkgutil --pkg-info-plist` strict decode로 installed version을 읽는다.
+2. receipt absence만 `fresh`로 admit한다. same-version repair, upgrade, downgrade는
+   SQLite, proxy, service, contract effect 전에 차단한다.
+3. admitted fresh intent만 `targetVersion`과 `intent=fresh`가 있는 schema v2 contract로
+   postinstall에 전달한다.
+4. postinstall은 target mismatch와 non-fresh intent를 provisioning 전에 거절한다.
+5. repository install workflow도 이 preflight 뒤에만 optional install-settings를
+   쓴다.
+
+이 containment는 transactional repair/update를 구현한 것이 아니다. Candidate
+payload, durable activation intent, compensation, rollback proof가 제공될 때까지
+receipt-present Helper package를 열지 않는다.
+
 ## Prevention
 
 - Preflight와 service/process effect를 같은 상태로 취급하지 않는다.
@@ -85,6 +107,8 @@ symbolic link이면 `unreadable`로 남고, preflight retry나 write로 바뀌�
 - C48 mutable store는 owner/retention뿐 아니라 expected kind를 선언하고, regular
   file/symlink/unknown을 compatible directory로 바꾸지 않는다.
 - Direct version-changing PKG install은 staged Host Updater execution boundary가
+  제공되기 전까지 explicit blocked state다.
+- Helper direct same-version repair도 candidate activation/rollback proof가
   제공되기 전까지 explicit blocked state다.
 - `preflight-verified` retry는 package receipt/release/service가 모두 없고,
   manager가 선언된 journal path 아래에 만든 directory만 compatible일 때만

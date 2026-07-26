@@ -10,7 +10,7 @@ package_install_contract="${script_dir}/package-install-contract.json"
 fail_package_install_preflight() {
   echo "VitalServer Helper package install preflight failed." >&2
   echo "Fresh installs require an empty target and a clear configured Host proxy port." >&2
-  echo "Existing package receipts select the data-preserving reinstall path; unreadable state or a service stop failure blocks replacement." >&2
+  echo "Existing package receipts block direct PKG repair, upgrade, and downgrade until transactional payload activation is available." >&2
   exit 1
 }
 

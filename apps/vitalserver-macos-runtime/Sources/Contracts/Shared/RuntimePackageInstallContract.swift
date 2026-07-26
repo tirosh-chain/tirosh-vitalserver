@@ -1,22 +1,27 @@
-public enum RuntimePackageInstallMode: String, Codable, Equatable, Sendable {
+public enum RuntimePackageInstallIntent: String, Codable, Equatable, Sendable {
     case fresh
-    case reinstall
+    case sameVersionRepair = "same-version-repair"
+    case upgrade
+    case downgrade
 }
 
 public struct RuntimePackageInstallContract: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let packageIdentifier: String
-    public let mode: RuntimePackageInstallMode
+    public let targetVersion: RuntimePackageVersion
+    public let intent: RuntimePackageInstallIntent
 
     public init(
         schemaVersion: Int = RuntimePackageInstallContract.currentSchemaVersion,
         packageIdentifier: String,
-        mode: RuntimePackageInstallMode
+        targetVersion: RuntimePackageVersion,
+        intent: RuntimePackageInstallIntent
     ) {
         self.schemaVersion = schemaVersion
         self.packageIdentifier = packageIdentifier
-        self.mode = mode
+        self.targetVersion = targetVersion
+        self.intent = intent
     }
 }

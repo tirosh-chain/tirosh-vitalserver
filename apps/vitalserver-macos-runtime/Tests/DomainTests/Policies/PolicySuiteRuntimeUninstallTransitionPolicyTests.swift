@@ -258,7 +258,10 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         let blocked = try RuntimeUninstallTransitionPolicy.transition(
             from: .receiptsForgetStarted,
             event: .packageReceiptsObserved([
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
             ])
         )
 
@@ -284,7 +287,10 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         let cases: [(name: String, state: RuntimePackageReceiptState, blocker: String)] = [
             (
                 "present receipt",
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
                 "package-receipt-present:identifier=ai.tirosh.vitalserver.helper"
             ),
             (

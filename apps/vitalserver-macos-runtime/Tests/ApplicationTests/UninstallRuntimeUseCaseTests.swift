@@ -318,7 +318,10 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
         let useCase = UninstallRuntimeUseCase()
         let observed = useCase.packageReceiptStateMap([
             .absent(identifier: "ai.tirosh.absent"),
-            .present(identifier: "ai.tirosh.present"),
+            .present(
+                identifier: "ai.tirosh.present",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
             .unknown("mystery"),
         ])
 

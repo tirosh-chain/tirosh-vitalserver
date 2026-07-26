@@ -22,6 +22,49 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
 PROXY_EVENT_TIMEOUT_SECONDS = 10
 
 
+def test_release_helper_version_owns_pkg_metadata_and_install_contract_target() -> None:
+    root = repo_root()
+    runtime_dir = root / "apps/vitalserver-macos-runtime"
+    release = json.loads(
+        (runtime_dir / "release-dev.json").read_text(encoding="utf-8")
+    )
+    helper_version = release["helperVersion"]
+    generated_version = (
+        runtime_dir
+        / "Sources/Bootstrap/Composition/GeneratedVersion.swift"
+    ).read_text(encoding="utf-8")
+    installer_package_source = (
+        root
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
+        / "adapters/macos_release/installer_package.py"
+    ).read_text(encoding="utf-8")
+    package_usecase_source = (
+        root
+        / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
+        / "application/usecases/macos_package.py"
+    ).read_text(encoding="utf-8")
+    prepare_package_context_source = package_usecase_source.split(
+        "def prepare_package_context",
+        maxsplit=1,
+    )[1]
+
+    assert (
+        f'static let launcherVersion = "{helper_version}"'
+        in generated_version
+    )
+    assert (
+        '"--version",\n            context.release.helper_version,'
+        in installer_package_source
+    )
+    assert (
+        "NumericPackageVersion.parse(release.helper_version)"
+        in package_usecase_source
+    )
+    assert prepare_package_context_source.index(
+        "sync_release("
+    ) < prepare_package_context_source.index("build_swift(")
+
+
 def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     root = repo_root()
     settings = load_macos_release_settings(
@@ -125,7 +168,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     proxy_run_text = proxy_run.read_text(encoding="utf-8")
     assert "${PRODUCT_ROOT}" not in rendered
     assert "${NGINX_PREFIX}" not in rendered
-    assert "Existing package receipts select the data-preserving reinstall path" in preinstall_text
+    assert (
+        "Existing package receipts block direct PKG repair, upgrade, and downgrade"
+        in preinstall_text
+    )
     assert 'preflight_bin="${script_dir}/vitalserver-vm-preinstall"' in preinstall_text
     assert '"${preflight_bin}" runtime preinstall-check \\' in preinstall_text
     assert '--package-install-contract "${package_install_contract}"' in preinstall_text
@@ -138,6 +184,8 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "launchctl print" not in preinstall_text
     assert "lsof -nP" not in preinstall_text
     assert "plutil -extract" not in preinstall_text
+    assert "stop-package-services" not in preinstall_text
+    assert "runtime install-provision" not in preinstall_text
     assert guest_runtime_settings["recorderIngressSendDataMode"] == "observe_only"
     assert (
         '${RECORDER_INGRESS_SEND_DATA_MODE:-observe_only}'

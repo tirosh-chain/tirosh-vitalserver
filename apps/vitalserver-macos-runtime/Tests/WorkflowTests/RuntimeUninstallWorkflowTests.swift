@@ -485,7 +485,10 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
     func testReceiptForgetFailureWritesBlockedState() {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.receiptStates = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
         ]
         harness.receiptForgetResults["ai.tirosh.vitalserver.helper"] = RuntimeProcessResult(
             exitCode: 1,
@@ -506,7 +509,10 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
     func testPresentReceiptIsForgottenBeforeCompletion() throws {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.receiptStates = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
         ]
 
         try harness.run(RuntimeUninstallCommand(clean: true))
@@ -520,7 +526,10 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.updateReceiptsOnForget = false
         harness.receiptStates = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
         ]
 
         XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true)))
@@ -536,7 +545,10 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.updateReceiptsOnForget = false
         harness.receiptStates = [
-            .present(identifier: "ai.tirosh.vitalserver.helper"),
+            .present(
+                identifier: "ai.tirosh.vitalserver.helper",
+                version: RuntimePackageVersion(rawValue: "0.2.1")!
+            ),
         ]
 
         XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true)))
@@ -812,7 +824,7 @@ private final class RuntimeUninstallWorkflowHarness {
         if result.exitCode == 0 && updateReceiptsOnForget {
             receiptStates = receiptStates.map { state in
                 switch state {
-                case .present(let existingIdentifier) where existingIdentifier == identifier:
+                case .present(let existingIdentifier, _) where existingIdentifier == identifier:
                     return .absent(identifier: identifier)
                 default:
                     return state
@@ -840,7 +852,7 @@ private final class RuntimeUninstallWorkflowHarness {
             if result.exitCode == 0 && updateReceiptsOnForget {
                 receiptStates = receiptStates.map { state in
                     switch state {
-                    case .present(let existingIdentifier) where existingIdentifier == identifier:
+                    case .present(let existingIdentifier, _) where existingIdentifier == identifier:
                         return .absent(identifier: identifier)
                     default:
                         return state

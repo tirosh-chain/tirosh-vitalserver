@@ -52,7 +52,10 @@ final class DomainRuntimeUninstallTransitionPolicyTests: XCTestCase {
         let blocked = try RuntimeUninstallTransitionPolicy.transition(
             from: .receiptsForgetStarted,
             event: .packageReceiptsObserved([
-                .present(identifier: "ai.tirosh.vitalserver.helper"),
+                .present(
+                    identifier: "ai.tirosh.vitalserver.helper",
+                    version: RuntimePackageVersion(rawValue: "0.2.1")!
+                ),
             ])
         )
 
