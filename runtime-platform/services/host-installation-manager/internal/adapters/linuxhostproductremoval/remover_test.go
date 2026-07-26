@@ -37,13 +37,12 @@ func linuxRemovalManifest(root string) hostinstallationmanagerdomain.HostProduct
 
 func TestLinuxHostProductRemoverRemovesOnlyDeclaredResourcesAndHandsPackageToDpkg(t *testing.T) {
 	// /var is a symbolic link on macOS, while the production Linux paths have
-	// no symlink components. Use the physical temporary root so this portable
-	// unit test exercises the same safety guard rather than macOS's /var alias.
-	root, err := os.MkdirTemp("/private/tmp", "linux-host-product-removal-")
+	// no symlink components. Resolve the platform's temporary root so this
+	// portable test exercises the same safety guard on macOS and Linux.
+	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	manifest := linuxRemovalManifest(root)
 	if err := os.MkdirAll(manifest.ImmutablePayload.ReleaseRootPath, 0755); err != nil {
 		t.Fatal(err)
