@@ -5,7 +5,7 @@ import Errors
 
 final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
     private let policy = RuntimeControlActionAvailabilityPolicy()
-    private let capabilities = RuntimeControlCapabilities()
+    private let capabilities = RuntimeControlCapabilities(canApplyBundle: true)
 
     func testExplicitNonExecutableRuntimeStateBlocksRuntimeActionsEvenWhenLegacyBoolIsInstalled() {
         let status = platformState(runtimeInstallationState: .present)
