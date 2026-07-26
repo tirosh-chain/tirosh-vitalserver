@@ -167,14 +167,15 @@ def test_release_contract_precedes_fingerprint_and_docker_compile() -> None:
         assert f"{target}: internal/vm/release-contract" in makefile
 
 
-def test_distribution_review_covers_release_contract_and_guest_repair() -> None:
+def test_distribution_review_runs_the_complete_swift_suite_and_guest_repair() -> None:
     review = target_recipe(
         PACKAGE_MAKEFILE.read_text(encoding="utf-8"),
         "internal/vm/distribution/review",
     )
 
-    assert "GuestCommandDispatcherSupportTests" in review
-    assert "RuntimeFreshInstallHostSettingsTests" in review
+    assert "swift test" in review
+    assert '--package-path "$(VM_SWIFT_PACKAGE_DIR)"' in review
+    assert "--filter" not in review
     assert "test_release_sync_contract.py" in review
     assert "packages/vitalserver-guest-tools/tests/test_redis_repair.py" in review
 

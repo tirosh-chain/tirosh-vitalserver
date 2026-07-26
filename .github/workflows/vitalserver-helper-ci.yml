@@ -1,0 +1,142 @@
+name: VitalServer Helper CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/vitalserver-helper-ci.yml"
+      - ".python-version"
+      - "Makefile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "make/**"
+      - "config/**"
+      - "features/**"
+      - "apps/vitalserver"
+      - "apps/vitalserver-macos-runtime/**"
+      - "apps/vitalserver-runtime-pwa/**"
+      - "apps/vitalserver-recorder-ingress/**"
+      - "apps/vitalserver-recorder-recovery/**"
+      - "apps/vitalserver-postgres-migrator/**"
+      - "apps/vitaldb-observer/**"
+      - "apps/vitalserver-lab/**"
+      - "apps/vitalserver-redis-relay/**"
+      - "packages/vitalserver-core/**"
+      - "packages/vitalserver-devtools/**"
+      - "packages/vitalserver-guest-tools/**"
+      - "packages/vitalserver-testkit/**"
+      - "packages/vitalserver-vitalfile/**"
+      - "scripts/**"
+      - "docs/product/**"
+      - "docs/runtime/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/vitalserver-helper-ci.yml"
+      - ".python-version"
+      - "Makefile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "make/**"
+      - "config/**"
+      - "features/**"
+      - "apps/vitalserver"
+      - "apps/vitalserver-macos-runtime/**"
+      - "apps/vitalserver-runtime-pwa/**"
+      - "apps/vitalserver-recorder-ingress/**"
+      - "apps/vitalserver-recorder-recovery/**"
+      - "apps/vitalserver-postgres-migrator/**"
+      - "apps/vitaldb-observer/**"
+      - "apps/vitalserver-lab/**"
+      - "apps/vitalserver-redis-relay/**"
+      - "packages/vitalserver-core/**"
+      - "packages/vitalserver-devtools/**"
+      - "packages/vitalserver-guest-tools/**"
+      - "packages/vitalserver-testkit/**"
+      - "packages/vitalserver-vitalfile/**"
+      - "scripts/**"
+      - "docs/product/**"
+      - "docs/runtime/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vitalserver-helper-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  distribution-review:
+    name: macOS distribution source review
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/vitalserver-runtime-pwa/package-lock.json
+
+      - name: Install PWA dependencies
+        run: npm ci --prefix apps/vitalserver-runtime-pwa
+
+      - name: Run the complete distribution source review
+        run: make dist/pkg/dev/review
+
+  product-components:
+    name: Python and Recorder component review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Recorder Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.3"
+          cache: npm
+          cache-dependency-path: apps/vitalserver-recorder-ingress/package-lock.json
+
+      - name: Install Python workspace
+        run: uv sync --all-groups --locked
+
+      - name: Test current-product Python workspace
+        run: uv run pytest
+
+      - name: Verify product scenarios
+        run: uv run python scripts/validate_user_scenarios.py
+
+      - name: Test PostgreSQL schema owner
+        run: >-
+          uv run --with-editable apps/vitalserver-postgres-migrator
+          pytest apps/vitalserver-postgres-migrator/tests
+
+      - name: Install Recorder ingress dependencies
+        run: npm ci --prefix apps/vitalserver-recorder-ingress
+
+      - name: Test Recorder ingress
+        run: npm test --prefix apps/vitalserver-recorder-ingress

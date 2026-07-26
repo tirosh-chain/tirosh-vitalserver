@@ -472,8 +472,7 @@ internal/vm/pkg/dev/runtime-smoke:
 
 internal/vm/distribution/review: repo/verify-submodule product/scenarios/check pwa/check pwa/test
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test \
-		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
-		--filter 'RuntimeLogArchiveRetention|RuntimeSettingsReadPolicy|RuntimeLogExporterTests|RuntimeLogCollectorTests|RuntimeSettingsValidatorTests|RuntimeLifecycleCommandTests|RuntimeConfigureRunnerTests|RuntimeFreshInstallHostSettingsTests|GuestCommandDispatcherSupportTests'
+		--package-path "$(VM_SWIFT_PACKAGE_DIR)"
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- pytest \
 		packages/vitalserver-devtools/tests/unit/test_delivery_makefile_contract.py \
 		packages/vitalserver-devtools/tests/unit/test_docker_image_bundle.py \
