@@ -7,6 +7,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
+import yaml
 
 from tirosh_vitalserver.devtools.adapters.build_config import load_config
 from tirosh_vitalserver.devtools.adapters.guest_services import deploy_bundle
@@ -147,6 +148,19 @@ def test_guest_compose_contract_accepts_release_declared_services() -> None:
     ).read_text(encoding="utf-8")
 
     assert release_guest_compose_contract_errors(compose_text=compose_text) == ()
+
+
+def test_packaged_redis_startup_preserves_corrupt_aof_for_explicit_repair() -> None:
+    compose_path = ROOT / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    redis = document["services"]["redis"]
+    startup_script = redis["command"][2]
+
+    assert "redis-check-aof /data/appendonly.aof" in startup_script
+    assert "redis-check-aof --fix" not in startup_script
+    assert "cp /data/appendonly.aof" not in startup_script
+    assert "automatic repair is disabled" in startup_script
+    assert "exit 1" in startup_script
 
 
 def test_vitalfile_package_is_guest_deploy_and_rootfs_contract_input() -> None:

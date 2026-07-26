@@ -66,3 +66,7 @@ def test_repair_appendonly_file_uses_the_declared_redis_compose_service(
         "-c",
     ]
     assert "redis:3.2.12-alpine" not in commands[1]
+    repair_script = commands[1][11]
+    assert 'cp /data/appendonly.aof "$backup"' in repair_script
+    assert "redis-check-aof --fix /data/appendonly.aof" in repair_script
+    assert "|| true" not in repair_script

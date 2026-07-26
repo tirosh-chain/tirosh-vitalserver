@@ -44,10 +44,12 @@ services:
       - -c
       - |
         if [ -f /data/appendonly.aof ]; then
-          redis-check-aof /data/appendonly.aof >/tmp/redis-aof-check.log 2>&1 || {
-            cp /data/appendonly.aof "/data/appendonly.aof.bak.$(date +%Y%m%d%H%M%S)" || true
-            printf 'y\n' | redis-check-aof --fix /data/appendonly.aof
-          }
+          if ! redis-check-aof /data/appendonly.aof >/tmp/redis-aof-check.log 2>&1; then
+            cat /tmp/redis-aof-check.log >&2
+            printf '%s\n' \
+              'Redis append-only file validation failed; automatic repair is disabled. Run the explicit datastore repair workflow before restarting Redis.' >&2
+            exit 1
+          fi
         fi
         exec redis-server --appendonly yes --bind 0.0.0.0 --protected-mode no
     expose:
