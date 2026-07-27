@@ -112,9 +112,12 @@ produce the cross-platform canonical payload, verify real Ed25519 signatures,
 stream artifact digests, and reject non-regular files. The installed publisher
 trust store is also a strict contract; its reader keeps unavailable, read
 failure, decode failure, policy violation, and public-key decode failure
-distinct. Durable admission/handoff state, staged updater execution, release
-composition, and Helper/PWA wiring remain implementation work. This paragraph
-must be updated as each owner becomes executable.
+distinct. A strict Host-owned journal contract and pure state machine now
+separate admitted, handoff-pending, running, succeeded, failed, and interrupted
+states; terminal receipts must match the journal revision, request, envelope,
+and specification digest. SQLite journal persistence, staged updater execution,
+release composition, and Helper/PWA wiring remain implementation work. This
+paragraph must be updated as each owner becomes executable.
 
 ## 결과
 
