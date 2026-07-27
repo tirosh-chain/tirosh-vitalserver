@@ -115,9 +115,11 @@ failure, decode failure, policy violation, and public-key decode failure
 distinct. A strict Host-owned journal contract and pure state machine now
 separate admitted, handoff-pending, running, succeeded, failed, and interrupted
 states; terminal receipts must match the journal revision, request, envelope,
-and specification digest. SQLite journal persistence, staged updater execution,
-release composition, and Helper/PWA wiring remain implementation work. This
-paragraph must be updated as each owner becomes executable.
+and specification digest. Host SQLite schema v8 owns the journal document and
+uses optimistic revisions to reject stale writers; no JSON state-file fallback
+is used. Staged updater execution, release composition, and Helper/PWA wiring
+remain implementation work. This paragraph must be updated as each owner
+becomes executable.
 
 ## 결과
 

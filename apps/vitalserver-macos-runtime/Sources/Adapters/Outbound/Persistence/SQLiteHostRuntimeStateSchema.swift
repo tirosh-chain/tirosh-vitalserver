@@ -3,7 +3,7 @@ import Errors
 import SQLite3
 
 enum SQLiteHostRuntimeStateSchema {
-    static let supportedVersion = 7
+    static let supportedVersion = 8
 
     static func migrate(
         _ db: OpaquePointer,
@@ -57,6 +57,9 @@ enum SQLiteHostRuntimeStateSchema {
             if currentVersion < 7 {
                 try applyVersion7(db, appliedAt: timestamp())
             }
+            if currentVersion < 8 {
+                try applyVersion8(db, appliedAt: timestamp())
+            }
 
             return try loadMetadata(db)
         }
@@ -84,6 +87,7 @@ enum SQLiteHostRuntimeStateSchema {
             "vm_lifecycle",
             "runtime_endpoint",
             "host_runtime_settings",
+            "update_bootstrap_journals",
         ] {
             let count = try SQLiteHostRuntimeStateStatement.scalarInt(
                 db,
@@ -546,6 +550,51 @@ enum SQLiteHostRuntimeStateSchema {
             db,
             sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             bindings: [.int(7), .text(appliedAt)]
+        )
+    }
+
+    private static func applyVersion8(
+        _ db: OpaquePointer,
+        appliedAt: String
+    ) throws {
+        guard !appliedAt.isEmpty else {
+            throw SQLiteHostRuntimeStateDatabaseError.metadataInvalid(
+                field: "appliedAt",
+                value: appliedAt
+            )
+        }
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            CREATE TABLE update_bootstrap_journals (
+              journal_id TEXT PRIMARY KEY CHECK(length(journal_id) > 0),
+              journal_revision INTEGER NOT NULL CHECK(journal_revision > 0),
+              state TEXT NOT NULL CHECK(length(state) > 0),
+              document_json TEXT NOT NULL CHECK(length(document_json) > 0),
+              updated_at TEXT NOT NULL CHECK(length(updated_at) > 0)
+            )
+            """
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            CREATE INDEX idx_update_bootstrap_journals_latest
+              ON update_bootstrap_journals(updated_at DESC, journal_revision DESC)
+            """
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            UPDATE runtime_metadata
+            SET schema_version = 8, updated_at = ?
+            WHERE singleton_id = 1
+            """,
+            bindings: [.text(appliedAt)]
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            bindings: [.int(8), .text(appliedAt)]
         )
     }
 
