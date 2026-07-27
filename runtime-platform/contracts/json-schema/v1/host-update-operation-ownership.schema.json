@@ -45,6 +45,9 @@
         "applying"
       ]
     },
+    "interruptionRequested": {
+      "type": "boolean"
+    },
     "journalRevision": {
       "type": "integer",
       "minimum": 1

@@ -1665,6 +1665,25 @@
         }
       }
     },
+    "/v1/platform/updates/{updateId}:request-interruption": {
+      "post": {
+        "operationId": "requestHostUpdateInterruption",
+        "summary": "Request cancellation of the exact active Host update owner",
+        "description": "Host-local lifecycle coordination command. Acceptance records cancellation-requested and retains active ownership; it does not claim that the supervisor or staged next updater process has terminated.",
+        "x-owner": "host-agent-update-journal",
+        "x-network-scope": "host-local",
+        "parameters": [{ "$ref": "#/components/parameters/UpdateId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-interruption-request.schema.json" } } }
+        },
+        "responses": {
+          "202": { "description": "Cancellation intent durably recorded while update ownership remains active", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateWorkflowOutcome" } } } },
+          "400": { "description": "Interruption request rejected", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host update interruption admission outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
     "/v1/platform/operations/{operationId}": {
       "get": {
         "operationId": "getPlatformOperation",

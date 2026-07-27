@@ -763,6 +763,15 @@
       "schemas": [
         "json-schema/v1/host-update-operation-ownership.schema.json"
       ]
+    },
+    {
+      "id": "C81",
+      "name": "HostUpdateInterruptionRequest",
+      "owner": "Host Agent",
+      "boundary": "Host-local exact-owner cancellation intent that remains active until supervisor termination evidence settles the Update Journal",
+      "schemas": [
+        "json-schema/v1/host-update-interruption-request.schema.json"
+      ]
     }
   ]
 }

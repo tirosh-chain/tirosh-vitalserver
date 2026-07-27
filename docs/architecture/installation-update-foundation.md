@@ -115,6 +115,7 @@ stale object나 empty state를 반환하지 않는다.
 | C52 `HostLocalAdministrationEndpointDescriptor` | Host Agent가 공개한 OS-local Unix socket/Windows named pipe 주소. next updater는 이 descriptor 이외의 completion target을 선택하지 않음 |
 | C55 `StagedUpdateLayerEffectReceipt` | C26-declared executor가 고정 protocol apply/rollback 뒤 기록하는 typed layer outcome. process exit/log은 C55를 대체하지 못함 |
 | Host Update Operation Ownership (C80) | 현재 installation identity/revision에 대해 active Update Journal이 없다는 `idle` 또는 유일한 active owner를 Host Agent가 명시적으로 제공하는 Host-local coordination read |
+| Host Update Interruption Request (C81) | exact installation/update/journal revision owner에게 취소 의도를 기록하되 process 종료 전까지 active ownership을 유지하는 Host-local command |
 
 ## Active update ownership
 
@@ -134,6 +135,16 @@ installation identity/revision 불일치는 install/remove 허가로 변환하�
 명령과 child updater process ownership을 연결하는 작업은 별도 application
 workflow로 이어진다.
 
+취소 요청은 `POST
+/v1/platform/updates/{updateId}:request-interruption`으로 제출한다. Host
+Agent는 요청 identity와 installation/update/journal revision을 모두
+대조하고 Update Journal의 기존 active state를 유지한 채 additive
+`interruption` 사실을 기록한다. 따라서 `interruptionRequested=true`인
+ownership도 여전히 `active`다. 요청 수락이나 signal 전송만으로
+`interrupted` 또는 `idle`을 만들지 않는다. Update Handoff Supervisor가
+child updater 종료를 확인한 뒤 별도 termination evidence로 terminal
+transition을 확정해야 한다.
+
 Host-local routes는 `contracts/openapi/control.v1.json`에 `x-network-scope:
 host-local`로 명시했다.
 
@@ -141,6 +152,8 @@ host-local`로 명시했다.
 - `GET /v1/platform/updates/{updateId}` — C29 `ReadResult`
 - `POST /v1/platform/updates/{updateId}:complete` — staged next updater의 C27
   completion + C28 report → `{ operation, journal }`
+- `POST /v1/platform/updates/{updateId}:request-interruption` — exact active
+  owner에 cancellation intent를 기록하되 ownership은 유지
 
 이 route들은 browser/public maintenance API가 아니다. operator
 authentication/authorization과 public maintenance surface를 설계하기 전에는

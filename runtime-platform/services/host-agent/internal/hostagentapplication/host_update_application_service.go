@@ -239,6 +239,43 @@ func (service *HostUpdateApplicationService) ExecuteHostUpdateCommand(ctx contex
 	return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, nil
 }
 
+// RequestHostUpdateInterruption records cancellation intent while preserving
+// active ownership. Installation/removal workflows must continue to wait until
+// the supervisor confirms process termination and the journal becomes
+// terminal.
+func (service *HostUpdateApplicationService) RequestHostUpdateInterruption(ctx context.Context, command hostagentdomain.HostUpdateInterruptionRequest) (HostUpdateWorkflowOutcome, *hostagentdomain.CommandRejection, *hostagentdomain.CommandAdmissionFailure) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if issue := hostagentdomain.ValidateHostUpdateInterruptionRequest(command); issue != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, *issue), nil
+	}
+	journal, err := service.repository.ReadHostUpdateJournal(ctx, command.UpdateID)
+	if errors.Is(err, ErrHostAgentOwnedResourceNotFound) {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: "host-update-not-found", Message: "Host update interruption target does not exist"}), nil
+	}
+	if err != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "host-update-state-read-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+	}
+	if issue := hostagentdomain.ValidateHostUpdateJournal(journal); issue != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", *issue)
+	}
+	operation, err := service.repository.ReadHostOperation(ctx, journal.OperationID)
+	if err != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "host-update-operation-read-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+	}
+	if hostagentdomain.HostUpdateInterruptionRequestIsReplay(journal, command) {
+		return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, nil
+	}
+	next, transitionErr := hostagentdomain.RequestUpdateInterruption(journal, command, hostagentdomain.Timestamp(service.clock.Now()))
+	if transitionErr != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: transitionErr.Error(), Message: "Host update interruption request does not own the current update journal"}), nil
+	}
+	if err := service.repository.PersistHostUpdateProgress(ctx, operation, next); err != nil {
+		return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, service.persistenceFailure(command.RequestID, "persist update interruption request", err)
+	}
+	return HostUpdateWorkflowOutcome{Operation: operation, Journal: next}, nil, nil
+}
+
 func (service *HostUpdateApplicationService) CompleteHostUpdateExecution(ctx context.Context, command hostagentdomain.UpdateCompletionCommand) (HostUpdateWorkflowOutcome, *hostagentdomain.CommandRejection, *hostagentdomain.CommandAdmissionFailure) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -271,6 +308,9 @@ func (service *HostUpdateApplicationService) CompleteHostUpdateExecution(ctx con
 	}
 	if command.ExpectedJournalRevision != journal.JournalRevision {
 		return HostUpdateWorkflowOutcome{}, service.rejection(command.Report.RequestID, hostagentdomain.Issue{Code: "update-journal-revision-conflict", Message: "expectedJournalRevision does not match the Host-owned update journal"}), nil
+	}
+	if journal.Interruption != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.Report.RequestID, hostagentdomain.Issue{Code: "update-interruption-pending", Message: "update completion is blocked until the accepted interruption request is settled"}), nil
 	}
 	if journal.State == "handoff-pending" {
 		journal, err = hostagentdomain.BeginUpdateExecution(journal, hostagentdomain.Timestamp(service.clock.Now()))

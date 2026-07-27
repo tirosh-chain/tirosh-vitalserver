@@ -1575,6 +1575,62 @@
           "x-owner": "host-agent-update-journal"
         }
       },
+      "/v1/platform/updates/{updateId}:request-interruption": {
+        "post": {
+          "description": "Host-local lifecycle coordination command. Acceptance records cancellation-requested and retains active ownership; it does not claim that the supervisor or staged next updater process has terminated.",
+          "operationId": "requestHostUpdateInterruption",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/UpdateId"
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/host-update-interruption-request.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HostUpdateWorkflowOutcome"
+                  }
+                }
+              },
+              "description": "Cancellation intent durably recorded while update ownership remains active"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "Interruption request rejected"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+                  }
+                }
+              },
+              "description": "Host update interruption admission outcome is unavailable or unknown"
+            }
+          },
+          "summary": "Request cancellation of the exact active Host update owner",
+          "x-network-scope": "host-local",
+          "x-owner": "host-agent-update-journal"
+        }
+      },
       "/v1/recorder-cold-path/captures/{coldPathCaptureId}": {
         "get": {
           "operationId": "getRecorderColdPathCapture",
@@ -16597,6 +16653,48 @@
       "title": "HostUpdateHandoffSupervisorConfiguration",
       "type": "object"
     },
+    "json-schema/v1/host-update-interruption-request.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-interruption-request",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "A Host-local request to cancel the exact active update owner. Acceptance records cancellation intent but does not claim that the staged next updater process has terminated.",
+      "properties": {
+        "expectedInstallationRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expectedJournalRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "reason": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "updateId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "updateId",
+        "installationId",
+        "expectedInstallationRevision",
+        "expectedJournalRevision",
+        "reason"
+      ],
+      "title": "HostUpdateInterruptionRequest",
+      "type": "object"
+    },
     "json-schema/v1/host-update-journal.schema.json": {
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-journal",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -16749,6 +16847,36 @@
         "installationId": {
           "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
         },
+        "interruption": {
+          "additionalProperties": false,
+          "properties": {
+            "interruptedState": {
+              "enum": [
+                "requested",
+                "bootstrap-staged",
+                "handoff-pending",
+                "applying"
+              ],
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+            },
+            "requestId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "requestedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            }
+          },
+          "required": [
+            "requestId",
+            "interruptedState",
+            "reason",
+            "requestedAt"
+          ],
+          "type": "object"
+        },
         "journalRevision": {
           "minimum": 1,
           "type": "integer"
@@ -16885,6 +17013,9 @@
         "installationRevision": {
           "minimum": 1,
           "type": "integer"
+        },
+        "interruptionRequested": {
+          "type": "boolean"
         },
         "journalRevision": {
           "minimum": 1,

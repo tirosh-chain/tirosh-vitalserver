@@ -53,6 +53,11 @@ The detailed design history and acceptance evidence are in [Host/Guest Control S
   atomically permits at most one non-terminal Update Journal. `idle` is emitted
   only after the installation and active-journal query both succeed; a missing,
   invalid, failed, or unavailable read never permits install or removal.
+- Host Update Interruption Request (contract C81) records exact-owner
+  cancellation intent without claiming process termination. The journal keeps
+  its existing active state, the ownership projection reports
+  `interruptionRequested`, and completion is fenced until the handoff
+  supervisor supplies explicit termination evidence.
 - C69 is the operator entry boundary for an offline release bundle. The Host-local `update-bundles:import` command accepts one OS-selected directory, rejects links/partial trees/conflicting bytes, and atomically publishes it below the configured bundle store. Its `declared` C25 view means only that immutable bytes are present; C25 signature verification still happens at the existing C27 bootstrap boundary. `update-bundles/{id}:apply` reads that Host-owned declaration and binds it to the normal C27/C29 workflow, so Console and CLI cannot author an envelope or substitute a path after import.
 
 See [Product Composition and Staged Update](../../../docs/architecture/product-composition-and-staged-update.md) for C25–C31 ownership, API scope, acceptance evidence, and remaining native delivery proof.

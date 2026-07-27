@@ -193,6 +193,65 @@ func TestUpdateOwnershipReadDistinguishesIdleActiveAndTerminal(t *testing.T) {
 	}
 }
 
+func TestUpdateInterruptionRequestKeepsOwnershipActiveAndIsIdempotent(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, _ := newUpdateService(t, bootstrapper)
+	admitted, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-interrupt-owner", 1))
+	if rejection != nil || admissionFailure != nil {
+		t.Fatalf("admit update rejection=%+v admissionFailure=%+v", rejection, admissionFailure)
+	}
+	command := hostagentdomain.HostUpdateInterruptionRequest{
+		SchemaVersion:                "v1",
+		RequestID:                    "interrupt-request-1",
+		UpdateID:                     admitted.Journal.ID,
+		InstallationID:               admitted.Journal.InstallationID,
+		ExpectedInstallationRevision: admitted.Journal.ExpectedInstallationRevision,
+		ExpectedJournalRevision:      admitted.Journal.JournalRevision,
+		Reason:                       hostagentdomain.Issue{Code: "host-installation-removal-requested", Message: "Host product removal requires the active update to stop"},
+	}
+	requested, rejection, admissionFailure := service.RequestHostUpdateInterruption(context.Background(), command)
+	if rejection != nil || admissionFailure != nil || requested.Journal.State != "handoff-pending" || requested.Journal.Interruption == nil || requested.Journal.Interruption.InterruptedState != "handoff-pending" {
+		t.Fatalf("request interruption outcome=%+v rejection=%+v admissionFailure=%+v", requested, rejection, admissionFailure)
+	}
+	replayed, rejection, admissionFailure := service.RequestHostUpdateInterruption(context.Background(), command)
+	if rejection != nil || admissionFailure != nil || replayed.Journal.JournalRevision != requested.Journal.JournalRevision {
+		t.Fatalf("replay interruption outcome=%+v rejection=%+v admissionFailure=%+v", replayed, rejection, admissionFailure)
+	}
+	ownershipRead := service.ReadHostUpdateOperationOwnership(context.Background())
+	ownership, ok := ownershipRead.Value.(hostagentdomain.HostUpdateOperationOwnership)
+	if ownershipRead.State != "available" || !ok || ownership.State != "active" || ownership.UpdateState != "handoff-pending" || !ownership.InterruptionRequested {
+		t.Fatalf("interruption ownership read=%+v value=%+v", ownershipRead, ownershipRead.Value)
+	}
+	second, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-during-cancellation", 1))
+	if admissionFailure != nil || rejection == nil || rejection.Issue.Code != "host-update-operation-active" || second.Journal.ID != "" {
+		t.Fatalf("second update outcome=%+v rejection=%+v admissionFailure=%+v", second, rejection, admissionFailure)
+	}
+	report := successReport(admitted.Journal)
+	completed, rejection, admissionFailure := service.CompleteHostUpdateExecution(context.Background(), hostagentdomain.UpdateCompletionCommand{
+		SchemaVersion:           "v1",
+		UpdateID:                admitted.Journal.ID,
+		ExpectedJournalRevision: admitted.Journal.JournalRevision,
+		Report:                  report,
+	})
+	if admissionFailure != nil || rejection == nil || rejection.Issue.Code != "update-journal-revision-conflict" || completed.Journal.ID != "" {
+		t.Fatalf("stale completion outcome=%+v rejection=%+v admissionFailure=%+v", completed, rejection, admissionFailure)
+	}
+	completed, rejection, admissionFailure = service.CompleteHostUpdateExecution(context.Background(), hostagentdomain.UpdateCompletionCommand{
+		SchemaVersion:           "v1",
+		UpdateID:                requested.Journal.ID,
+		ExpectedJournalRevision: requested.Journal.JournalRevision,
+		Report:                  report,
+	})
+	if admissionFailure != nil || rejection == nil || rejection.Issue.Code != "update-interruption-pending" || completed.Journal.ID != "" {
+		t.Fatalf("completion during interruption outcome=%+v rejection=%+v admissionFailure=%+v", completed, rejection, admissionFailure)
+	}
+	interrupted, err := hostagentdomain.ConfirmUpdateInterruption(requested.Journal, "2026-07-17T00:00:10Z", hostagentdomain.Issue{Code: "staged-next-updater-terminated", Message: "the supervisor observed child process termination"})
+	if err != nil || interrupted.State != "interrupted" || hostagentdomain.ValidateHostUpdateJournal(interrupted) != nil {
+		t.Fatalf("confirmed interruption journal=%+v err=%v validation=%+v", interrupted, err, hostagentdomain.ValidateHostUpdateJournal(interrupted))
+	}
+}
+
 func TestTerminalUpdateReleasesAdmissionForNextInstallationRevision(t *testing.T) {
 	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
 	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}

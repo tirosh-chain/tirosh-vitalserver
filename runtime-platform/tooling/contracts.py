@@ -266,7 +266,7 @@ class ContractRepository:
 
 
 def validate_catalog(repository: ContractRepository) -> List[Finding]:
-    """Check that C1–C80 have one owner and explicit canonical schema sources."""
+    """Check that C1–C81 have one owner and explicit canonical schema sources."""
 
     findings = []
     try:
@@ -284,7 +284,7 @@ def validate_catalog(repository: ContractRepository) -> List[Finding]:
             )
         ]
 
-    expected_ids = {"C{0}".format(number) for number in range(1, 81)}
+    expected_ids = {"C{0}".format(number) for number in range(1, 82)}
     actual_ids = set()
     for entry in contracts:
         if not isinstance(entry, dict):
