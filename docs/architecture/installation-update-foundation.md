@@ -116,6 +116,7 @@ stale object나 empty state를 반환하지 않는다.
 | C55 `StagedUpdateLayerEffectReceipt` | C26-declared executor가 고정 protocol apply/rollback 뒤 기록하는 typed layer outcome. process exit/log은 C55를 대체하지 못함 |
 | Host Update Operation Ownership (C80) | 현재 installation identity/revision에 대해 active Update Journal이 없다는 `idle` 또는 유일한 active owner를 Host Agent가 명시적으로 제공하는 Host-local coordination read |
 | Host Update Interruption Request (C81) | exact installation/update/journal revision owner에게 취소 의도를 기록하되 process 종료 전까지 active ownership을 유지하는 Host-local command |
+| Host Update Interruption Confirmation (C82) | Supervisor가 exact child updater를 cancel하고 wait한 뒤 제출하는 typed termination evidence와 terminal settlement command |
 
 ## Active update ownership
 
@@ -145,6 +146,15 @@ ownership도 여전히 `active`다. 요청 수락이나 signal 전송만으로
 child updater 종료를 확인한 뒤 별도 termination evidence로 terminal
 transition을 확정해야 한다.
 
+종료 확인은 `POST
+/v1/platform/updates/{updateId}:confirm-interruption`으로만 수행한다.
+confirmation은 installation identity/revision, Update Journal revision,
+interruption request ID와 termination evidence를 모두 포함한다. Host Agent는
+이 값이 현재 owner와 정확히 일치할 때 Update Journal과 Operation을 하나의
+SQLite transaction으로 `interrupted` 처리한다. 다른 installation 또는
+이전 journal revision을 가진 Supervisor/next updater는 terminal state를
+쓸 수 없다.
+
 Host-local routes는 `contracts/openapi/control.v1.json`에 `x-network-scope:
 host-local`로 명시했다.
 
@@ -154,6 +164,8 @@ host-local`로 명시했다.
   completion + C28 report → `{ operation, journal }`
 - `POST /v1/platform/updates/{updateId}:request-interruption` — exact active
   owner에 cancellation intent를 기록하되 ownership은 유지
+- `POST /v1/platform/updates/{updateId}:confirm-interruption` — Supervisor의
+  exact process termination evidence를 검증하고 ownership을 terminal 처리
 
 이 route들은 browser/public maintenance API가 아니다. operator
 authentication/authorization과 public maintenance surface를 설계하기 전에는

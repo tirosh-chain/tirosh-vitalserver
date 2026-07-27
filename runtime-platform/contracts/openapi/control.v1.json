@@ -1684,6 +1684,25 @@
         }
       }
     },
+    "/v1/platform/updates/{updateId}:confirm-interruption": {
+      "post": {
+        "operationId": "confirmHostUpdateInterruption",
+        "summary": "Settle an accepted interruption after staged next-updater termination",
+        "description": "Host-local supervisor channel. The exact installation, update, interruption request, and journal revision must match. Host Agent releases active ownership only after typed process termination evidence is accepted.",
+        "x-owner": "host-agent-update-journal",
+        "x-network-scope": "host-local",
+        "parameters": [{ "$ref": "#/components/parameters/UpdateId" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/host-update-interruption-confirmation.schema.json" } } }
+        },
+        "responses": {
+          "202": { "description": "Interruption terminal state durably committed or idempotently replayed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HostUpdateWorkflowOutcome" } } } },
+          "400": { "description": "Interruption confirmation rejected", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-rejection.schema.json" } } } },
+          "503": { "description": "Host interruption settlement outcome is unavailable or unknown", "content": { "application/json": { "schema": { "$ref": "../json-schema/v1/command-admission-failure.schema.json" } } } }
+        }
+      }
+    },
     "/v1/platform/operations/{operationId}": {
       "get": {
         "operationId": "getPlatformOperation",

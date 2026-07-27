@@ -1575,6 +1575,62 @@
           "x-owner": "host-agent-update-journal"
         }
       },
+      "/v1/platform/updates/{updateId}:confirm-interruption": {
+        "post": {
+          "description": "Host-local supervisor channel. The exact installation, update, interruption request, and journal revision must match. Host Agent releases active ownership only after typed process termination evidence is accepted.",
+          "operationId": "confirmHostUpdateInterruption",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/UpdateId"
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/host-update-interruption-confirmation.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HostUpdateWorkflowOutcome"
+                  }
+                }
+              },
+              "description": "Interruption terminal state durably committed or idempotently replayed"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "Interruption confirmation rejected"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+                  }
+                }
+              },
+              "description": "Host interruption settlement outcome is unavailable or unknown"
+            }
+          },
+          "summary": "Settle an accepted interruption after staged next-updater termination",
+          "x-network-scope": "host-local",
+          "x-owner": "host-agent-update-journal"
+        }
+      },
       "/v1/platform/updates/{updateId}:request-interruption": {
         "post": {
           "description": "Host-local lifecycle coordination command. Acceptance records cancellation-requested and retains active ownership; it does not claim that the supervisor or staged next updater process has terminated.",
@@ -16653,6 +16709,60 @@
       "title": "HostUpdateHandoffSupervisorConfiguration",
       "type": "object"
     },
+    "json-schema/v1/host-update-interruption-confirmation.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-interruption-confirmation",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "The Host Update Handoff Supervisor's exact-owner confirmation that it cancelled and waited for the staged next-updater process before Host update ownership is released.",
+      "properties": {
+        "expectedInstallationRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expectedJournalRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "interruptionRequestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "outcome": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "terminationEvidence": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+        },
+        "updateId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "updateId",
+        "installationId",
+        "expectedInstallationRevision",
+        "expectedJournalRevision",
+        "interruptionRequestId",
+        "terminationEvidence",
+        "outcome",
+        "observedAt"
+      ],
+      "title": "HostUpdateInterruptionConfirmation",
+      "type": "object"
+    },
     "json-schema/v1/host-update-interruption-request.schema.json": {
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-interruption-request",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -16850,6 +16960,12 @@
         "interruption": {
           "additionalProperties": false,
           "properties": {
+            "confirmationRequestId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "confirmedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
             "interruptedState": {
               "enum": [
                 "requested",
@@ -16867,6 +16983,9 @@
             },
             "requestedAt": {
               "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "terminationEvidence": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
             }
           },
           "required": [
@@ -17013,6 +17132,9 @@
         "installationRevision": {
           "minimum": 1,
           "type": "integer"
+        },
+        "interruptionRequestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
         },
         "interruptionRequested": {
           "type": "boolean"

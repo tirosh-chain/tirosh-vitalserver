@@ -294,6 +294,19 @@ func TestHostUpdateInterruptionRouteReportsUnavailableWithoutItsOwnerModule(t *t
 	}
 }
 
+func TestHostUpdateInterruptionConfirmationRouteReportsUnavailableWithoutItsOwnerModule(t *testing.T) {
+	handler := hostagentcontrolhttpapi.NewHostAgentControlHTTPServerWithModules(hostagentcontrolhttpapi.HostAgentControlHTTPModules{})
+	request := httptest.NewRequest(http.MethodPost, "/v1/platform/updates/update-1:confirm-interruption", strings.NewReader(`{"schemaVersion":"v1","requestId":"confirmation-1"}`))
+	request.Header.Set("X-Request-Id", "confirmation-1")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"admissionState":"not-admitted"`) || !strings.Contains(response.Body.String(), `"code":"host-update-unavailable"`) {
+		t.Fatalf("confirmation status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func writeHTTPUpdateBundle(t *testing.T) string {
 	t.Helper()
 	directory := filepath.Join(t.TempDir(), "release")

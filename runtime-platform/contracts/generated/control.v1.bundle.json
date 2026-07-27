@@ -11483,6 +11483,16 @@
                   "interruption": {
                     "additionalProperties": false,
                     "properties": {
+                      "confirmationRequestId": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "confirmedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
                       "interruptedState": {
                         "enum": [
                           "requested",
@@ -11530,6 +11540,33 @@
                       "requestedAt": {
                         "format": "date-time",
                         "type": "string"
+                      },
+                      "terminationEvidence": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                            "type": "string"
+                          },
+                          "uri": {
+                            "format": "uri-reference",
+                            "maxLength": 2048,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ],
+                        "type": "object"
                       }
                     },
                     "required": [
@@ -11903,6 +11940,12 @@
                   "installationRevision": {
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "interruptionRequestId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
                   },
                   "interruptionRequested": {
                     "type": "boolean"
@@ -13244,6 +13287,16 @@
               "interruption": {
                 "additionalProperties": false,
                 "properties": {
+                  "confirmationRequestId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "confirmedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
                   "interruptedState": {
                     "enum": [
                       "requested",
@@ -13291,6 +13344,33 @@
                   "requestedAt": {
                     "format": "date-time",
                     "type": "string"
+                  },
+                  "terminationEvidence": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "uri": {
+                        "format": "uri-reference",
+                        "maxLength": 2048,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ],
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -33599,6 +33679,302 @@
           }
         },
         "summary": "Settle a Host update from staged next-updater evidence",
+        "x-network-scope": "host-local",
+        "x-owner": "host-agent-update-journal"
+      }
+    },
+    "/v1/platform/updates/{updateId}:confirm-interruption": {
+      "post": {
+        "description": "Host-local supervisor channel. The exact installation, update, interruption request, and journal revision must match. Host Agent releases active ownership only after typed process termination evidence is accepted.",
+        "operationId": "confirmHostUpdateInterruption",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UpdateId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-interruption-confirmation",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "description": "The Host Update Handoff Supervisor's exact-owner confirmation that it cancelled and waited for the staged next-updater process before Host update ownership is released.",
+                "properties": {
+                  "expectedInstallationRevision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "expectedJournalRevision": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "installationId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "interruptionRequestId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "observedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "dependency": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "message": {
+                        "maxLength": 1024,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "retryable": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "code"
+                    ],
+                    "type": "object"
+                  },
+                  "requestId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  },
+                  "schemaVersion": {
+                    "const": "v1"
+                  },
+                  "terminationEvidence": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                        "type": "string"
+                      },
+                      "uri": {
+                        "format": "uri-reference",
+                        "maxLength": 2048,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "updateId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schemaVersion",
+                  "requestId",
+                  "updateId",
+                  "installationId",
+                  "expectedInstallationRevision",
+                  "expectedJournalRevision",
+                  "interruptionRequestId",
+                  "terminationEvidence",
+                  "outcome",
+                  "observedAt"
+                ],
+                "title": "HostUpdateInterruptionConfirmation",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostUpdateWorkflowOutcome"
+                }
+              }
+            },
+            "description": "Interruption terminal state durably committed or idempotently replayed"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:command-rejection",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "description": "A typed command non-admission result. No Operation exists for this result. It can describe invalid input, revision conflict, or a dependency failure determined before forwarding.",
+                  "properties": {
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "rejectedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "const": "rejected"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "requestId",
+                    "rejectedAt",
+                    "issue"
+                  ],
+                  "title": "CommandRejection",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Interruption confirmation rejected"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:command-admission-failure",
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "additionalProperties": false,
+                  "description": "A typed failure while admitting a command. admissionState=not-admitted proves no Operation was persisted; admissionState=unknown preserves that the caller must retry the exact requestId after the owner recovers.",
+                  "properties": {
+                    "admissionState": {
+                      "enum": [
+                        "not-admitted",
+                        "unknown"
+                      ],
+                      "type": "string"
+                    },
+                    "issue": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "code": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "dependency": {
+                          "maxLength": 128,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                          "type": "string"
+                        },
+                        "message": {
+                          "maxLength": 1024,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "observedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+                      "type": "string"
+                    },
+                    "schemaVersion": {
+                      "const": "v1"
+                    },
+                    "state": {
+                      "const": "failed"
+                    }
+                  },
+                  "required": [
+                    "schemaVersion",
+                    "state",
+                    "requestId",
+                    "observedAt",
+                    "admissionState",
+                    "issue"
+                  ],
+                  "title": "CommandAdmissionFailure",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Host interruption settlement outcome is unavailable or unknown"
+          }
+        },
+        "summary": "Settle an accepted interruption after staged next-updater termination",
         "x-network-scope": "host-local",
         "x-owner": "host-agent-update-journal"
       }

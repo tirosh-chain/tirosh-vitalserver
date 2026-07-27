@@ -88,6 +88,8 @@ func (server *HostAgentControlHTTPServer) ServeHTTP(response http.ResponseWriter
 		server.completeUpdate(response, request, updateCompletionID(request.URL.Path))
 	case request.Method == http.MethodPost && updateInterruptionRequestID(request.URL.Path) != "":
 		server.requestUpdateInterruption(response, request, updateInterruptionRequestID(request.URL.Path))
+	case request.Method == http.MethodPost && updateInterruptionConfirmationID(request.URL.Path) != "":
+		server.confirmUpdateInterruption(response, request, updateInterruptionConfirmationID(request.URL.Path))
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/platform/time/authorities":
 		server.applyTimeAuthority(response, request)
 	case request.Method == http.MethodGet && pathParameter(request.URL.Path, "/v1/platform/time/authorities/") != "":
@@ -253,6 +255,33 @@ func (server *HostAgentControlHTTPServer) requestUpdateInterruption(response htt
 		return
 	}
 	outcome, rejection, admissionFailure := server.updates.RequestHostUpdateInterruption(request.Context(), command)
+	if rejection != nil {
+		writeJSON(response, http.StatusBadRequest, rejection)
+		return
+	}
+	if admissionFailure != nil {
+		writeJSON(response, http.StatusServiceUnavailable, admissionFailure)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, outcome)
+}
+
+func (server *HostAgentControlHTTPServer) confirmUpdateInterruption(response http.ResponseWriter, request *http.Request, updateID string) {
+	if server.updates == nil {
+		writeJSON(response, http.StatusServiceUnavailable, unavailableAdmission(requestIDFromRequest(request), "host-update-unavailable", "Host update module is not configured"))
+		return
+	}
+	var command hostagentdomain.HostUpdateInterruptionConfirmation
+	requestID, err := decodeStrictCommand(request, &command)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(requestID, "invalid-host-update-interruption-confirmation", err.Error()))
+		return
+	}
+	if command.UpdateID != updateID {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(command.RequestID, "update-id-route-mismatch", "updateId must match the requested route"))
+		return
+	}
+	outcome, rejection, admissionFailure := server.updates.ConfirmHostUpdateInterruption(request.Context(), command)
 	if rejection != nil {
 		writeJSON(response, http.StatusBadRequest, rejection)
 		return
@@ -638,6 +667,19 @@ func updateCompletionID(path string) string {
 func updateInterruptionRequestID(path string) string {
 	const prefix = "/v1/platform/updates/"
 	const suffix = ":request-interruption"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	value := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	if value == "" || strings.Contains(value, "/") {
+		return ""
+	}
+	return value
+}
+
+func updateInterruptionConfirmationID(path string) string {
+	const prefix = "/v1/platform/updates/"
+	const suffix = ":confirm-interruption"
 	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
 		return ""
 	}

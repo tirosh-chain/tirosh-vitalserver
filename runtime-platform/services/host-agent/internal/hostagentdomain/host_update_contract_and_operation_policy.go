@@ -94,13 +94,31 @@ type HostUpdateInterruptionRequest struct {
 	Reason                       Issue  `json:"reason"`
 }
 
+// HostUpdateInterruptionConfirmation is submitted only after the supervisor
+// has cancelled and waited for the exact staged next-updater process.
+type HostUpdateInterruptionConfirmation struct {
+	SchemaVersion                string            `json:"schemaVersion"`
+	RequestID                    string            `json:"requestId"`
+	UpdateID                     string            `json:"updateId"`
+	InstallationID               string            `json:"installationId"`
+	ExpectedInstallationRevision int               `json:"expectedInstallationRevision"`
+	ExpectedJournalRevision      int               `json:"expectedJournalRevision"`
+	InterruptionRequestID        string            `json:"interruptionRequestId"`
+	TerminationEvidence          EvidenceReference `json:"terminationEvidence"`
+	Outcome                      Issue             `json:"outcome"`
+	ObservedAt                   string            `json:"observedAt"`
+}
+
 // HostUpdateInterruption records the accepted request and the state whose
 // owner must be cancelled and waited for by the handoff supervisor.
 type HostUpdateInterruption struct {
-	RequestID        string `json:"requestId"`
-	InterruptedState string `json:"interruptedState"`
-	Reason           Issue  `json:"reason"`
-	RequestedAt      string `json:"requestedAt"`
+	RequestID             string             `json:"requestId"`
+	InterruptedState      string             `json:"interruptedState"`
+	Reason                Issue              `json:"reason"`
+	RequestedAt           string             `json:"requestedAt"`
+	ConfirmationRequestID string             `json:"confirmationRequestId,omitempty"`
+	TerminationEvidence   *EvidenceReference `json:"terminationEvidence,omitempty"`
+	ConfirmedAt           string             `json:"confirmedAt,omitempty"`
 }
 
 // UpdateBootstrapReceipt is returned by the selected bootstrap adapter after
@@ -196,6 +214,7 @@ type HostUpdateOperationOwnership struct {
 	RequestID             string `json:"requestId,omitempty"`
 	UpdateState           string `json:"updateState,omitempty"`
 	InterruptionRequested bool   `json:"interruptionRequested,omitempty"`
+	InterruptionRequestID string `json:"interruptionRequestId,omitempty"`
 	JournalRevision       int    `json:"journalRevision,omitempty"`
 }
 
@@ -434,6 +453,9 @@ func ProjectHostUpdateOperationOwnership(installation PlatformInstallation, acti
 	ownership.RequestID = journal.RequestID
 	ownership.UpdateState = journal.State
 	ownership.InterruptionRequested = journal.Interruption != nil
+	if journal.Interruption != nil {
+		ownership.InterruptionRequestID = journal.Interruption.RequestID
+	}
 	ownership.JournalRevision = journal.JournalRevision
 	return ownership, nil
 }
@@ -504,6 +526,9 @@ func ValidateHostUpdateJournal(journal HostUpdateJournal) *Issue {
 		if issue := validateTerminalHostUpdateInterruption(journal.Interruption); issue != nil {
 			return issue
 		}
+		if !ValidIdentifier(journal.Interruption.ConfirmationRequestID) || journal.Interruption.TerminationEvidence == nil || !ValidIdentifier(journal.Interruption.TerminationEvidence.Kind) || !ValidIdentifier(journal.Interruption.TerminationEvidence.ID) || journal.Interruption.ConfirmedAt == "" {
+			return &Issue{Code: "host-update-journal-invalid", Message: "interrupted update journal requires explicit supervisor termination evidence"}
+		}
 	default:
 		return &Issue{Code: "host-update-journal-invalid", Message: "Host update journal state is unsupported"}
 	}
@@ -517,7 +542,7 @@ func validateHostUpdateInterruption(journal HostUpdateJournal) *Issue {
 	if issue := validateTerminalHostUpdateInterruption(journal.Interruption); issue != nil {
 		return issue
 	}
-	if journal.Interruption.InterruptedState != journal.State {
+	if journal.Interruption.InterruptedState != journal.State || journal.Interruption.ConfirmationRequestID != "" || journal.Interruption.TerminationEvidence != nil || journal.Interruption.ConfirmedAt != "" {
 		return &Issue{Code: "host-update-journal-invalid", Message: "active update journal interruption request is invalid"}
 	}
 	return nil
@@ -714,18 +739,50 @@ func FailUpdateJournal(journal HostUpdateJournal, at string, issue Issue) (HostU
 	return next, nil
 }
 
-// ConfirmUpdateInterruption is reserved for explicit supervisor termination
-// evidence. A cancellation request alone cannot release active ownership.
-func ConfirmUpdateInterruption(journal HostUpdateJournal, at string, issue Issue) (HostUpdateJournal, error) {
-	if !HostUpdateJournalIsActive(journal) || journal.Interruption == nil || !ValidIdentifier(issue.Code) || issue.Message == "" || at == "" {
-		return HostUpdateJournal{}, fmt.Errorf("only an active update journal with cancellation intent can be interrupted")
+func ValidateHostUpdateInterruptionConfirmation(command HostUpdateInterruptionConfirmation) *Issue {
+	if command.SchemaVersion != SchemaVersion || !ValidIdentifier(command.RequestID) || !ValidIdentifier(command.UpdateID) || !ValidIdentifier(command.InstallationID) || command.ExpectedInstallationRevision < 1 || command.ExpectedJournalRevision < 1 || !ValidIdentifier(command.InterruptionRequestID) || !ValidIdentifier(command.TerminationEvidence.Kind) || !ValidIdentifier(command.TerminationEvidence.ID) || !ValidIdentifier(command.Outcome.Code) || command.Outcome.Message == "" || command.ObservedAt == "" {
+		return &Issue{Code: "host-update-interruption-confirmation-invalid", Message: "Host update interruption confirmation identity, revisions, outcome, and termination evidence are required"}
+	}
+	return nil
+}
+
+// ConfirmUpdateInterruption consumes explicit supervisor termination evidence.
+// A cancellation request alone cannot release active ownership.
+func ConfirmUpdateInterruption(journal HostUpdateJournal, command HostUpdateInterruptionConfirmation) (HostUpdateJournal, error) {
+	if issue := ValidateHostUpdateInterruptionConfirmation(command); issue != nil {
+		return HostUpdateJournal{}, fmt.Errorf("%s", issue.Code)
+	}
+	if !HostUpdateJournalIsActive(journal) || journal.Interruption == nil {
+		return HostUpdateJournal{}, fmt.Errorf("host-update-interruption-confirmation-state-conflict")
+	}
+	if journal.ID != command.UpdateID || journal.InstallationID != command.InstallationID || journal.ExpectedInstallationRevision != command.ExpectedInstallationRevision || journal.JournalRevision != command.ExpectedJournalRevision || journal.Interruption.RequestID != command.InterruptionRequestID {
+		return HostUpdateJournal{}, fmt.Errorf("host-update-interruption-confirmation-owner-mismatch")
 	}
 	next := journal
 	next.State = "interrupted"
-	next.Failure = &issue
-	next.UpdatedAt = at
+	next.Failure = &command.Outcome
+	next.Interruption.ConfirmationRequestID = command.RequestID
+	next.Interruption.TerminationEvidence = &command.TerminationEvidence
+	next.Interruption.ConfirmedAt = command.ObservedAt
+	next.UpdatedAt = command.ObservedAt
 	next.JournalRevision++
 	return next, nil
+}
+
+func HostUpdateInterruptionConfirmationIsReplay(journal HostUpdateJournal, command HostUpdateInterruptionConfirmation) bool {
+	return journal.State == "interrupted" &&
+		journal.Interruption != nil &&
+		journal.Interruption.ConfirmationRequestID == command.RequestID &&
+		journal.Interruption.RequestID == command.InterruptionRequestID &&
+		journal.Interruption.TerminationEvidence != nil &&
+		*journal.Interruption.TerminationEvidence == command.TerminationEvidence &&
+		journal.Interruption.ConfirmedAt == command.ObservedAt &&
+		journal.Failure != nil &&
+		sameIssue(*journal.Failure, command.Outcome) &&
+		journal.ID == command.UpdateID &&
+		journal.InstallationID == command.InstallationID &&
+		journal.ExpectedInstallationRevision == command.ExpectedInstallationRevision &&
+		journal.JournalRevision == command.ExpectedJournalRevision+1
 }
 
 func ValidateHostUpdateInterruptionRequest(command HostUpdateInterruptionRequest) *Issue {

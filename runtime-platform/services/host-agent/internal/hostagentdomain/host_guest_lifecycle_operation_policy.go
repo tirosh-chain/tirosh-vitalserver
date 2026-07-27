@@ -62,11 +62,12 @@ func TransitionOperation(operation Operation, targetState string, at string, iss
 	if !operationTransitions[operation.State][targetState] {
 		return Operation{}, fmt.Errorf("operation transition %s -> %s is not allowed", operation.State, targetState)
 	}
-	if targetState == "failed" && issue == nil {
-		return Operation{}, fmt.Errorf("failed operation requires failure issue")
+	terminalWithReason := targetState == "failed" || targetState == "cancelled" || targetState == "interrupted"
+	if terminalWithReason && issue == nil {
+		return Operation{}, fmt.Errorf("%s operation requires a terminal issue", targetState)
 	}
-	if targetState != "failed" && issue != nil {
-		return Operation{}, fmt.Errorf("only failed transition can carry an issue")
+	if !terminalWithReason && issue != nil {
+		return Operation{}, fmt.Errorf("only failed, cancelled, or interrupted transition can carry an issue")
 	}
 	next := operation
 	next.State = targetState

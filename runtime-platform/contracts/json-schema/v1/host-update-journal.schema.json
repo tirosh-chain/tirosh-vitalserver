@@ -33,7 +33,10 @@
         "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
         "interruptedState": { "type": "string", "enum": ["requested", "bootstrap-staged", "handoff-pending", "applying"] },
         "reason": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" },
-        "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+        "requestedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" },
+        "confirmationRequestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+        "terminationEvidence": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference" },
+        "confirmedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
       }
     },
     "failure": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" },

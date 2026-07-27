@@ -48,6 +48,9 @@
     "interruptionRequested": {
       "type": "boolean"
     },
+    "interruptionRequestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
     "journalRevision": {
       "type": "integer",
       "minimum": 1

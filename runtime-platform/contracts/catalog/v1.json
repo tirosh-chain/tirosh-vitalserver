@@ -772,6 +772,15 @@
       "schemas": [
         "json-schema/v1/host-update-interruption-request.schema.json"
       ]
+    },
+    {
+      "id": "C82",
+      "name": "HostUpdateInterruptionConfirmation",
+      "owner": "Host Update Handoff Supervisor",
+      "boundary": "exact-owner staged next-updater termination evidence submitted after cancel and wait, before Host Agent releases update ownership",
+      "schemas": [
+        "json-schema/v1/host-update-interruption-confirmation.schema.json"
+      ]
     }
   ]
 }
