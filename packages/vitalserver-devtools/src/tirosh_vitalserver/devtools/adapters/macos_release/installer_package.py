@@ -35,6 +35,7 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     install_app_bundle,
     install_home,
     install_nginx_prefix,
+    install_prefix,
     package_install_value,
     package_output_value,
     package_path,
@@ -731,6 +732,14 @@ def stage_pkg_root(context: PackageContext) -> None:
         package_path(
             context,
             f"{install_home(context)}/runtime/{rootfs_manifest.name}",
+        ),
+    )
+    install_file(
+        context.update_bootstrap_trust_store,
+        package_path(
+            context,
+            f"{install_prefix(context)}/config/"
+            "update-bootstrap-trust-store.json",
         ),
     )
     install_file(

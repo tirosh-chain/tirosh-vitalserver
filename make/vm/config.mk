@@ -16,6 +16,7 @@ VM_RELEASE_BRANCH ?= main
 VM_COMPRESSION_THREADS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 VM_CODESIGN_IDENTITY ?= -
 VM_BRIDGED_CODESIGN_IDENTITY ?= $(VM_CODESIGN_IDENTITY)
+VM_UPDATE_BOOTSTRAP_TRUST_STORE ?=
 
 # Host toolchain knobs.
 VM_SDKROOT ?= $(firstword $(wildcard /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk) $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null))

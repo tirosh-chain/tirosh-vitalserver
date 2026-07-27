@@ -938,6 +938,11 @@ def main() -> int:
         choices=["pkg", "dmg"],
         required=True,
     )
+    release_package_environment_preflight.add_argument(
+        "--update-bootstrap-trust-store",
+        type=Path,
+        required=True,
+    )
     release_package_environment_preflight.set_defaults(
         handler=(
             lambda args: macos_package_usecases.preflight_release_package_environment(
@@ -952,12 +957,20 @@ def main() -> int:
     )
     release_dmg_verify.add_argument("--release-file", type=Path, required=True)
     release_dmg_verify.add_argument("--output", type=Path)
+    release_dmg_verify.add_argument(
+        "--update-bootstrap-trust-store",
+        type=Path,
+        required=True,
+    )
     release_dmg_verify.set_defaults(
         handler=lambda args: macos_package_usecases.verify_dmg_artifact(
             usecase_inputs.ReleaseDmgArtifactVerifyInput(
                 config=args.config,
                 release_file=args.release_file,
                 output=args.output,
+                update_bootstrap_trust_store=(
+                    args.update_bootstrap_trust_store
+                ),
             )
         )
     )
@@ -1340,6 +1353,7 @@ def release_package_input(
         nginx_expected_version=args.nginx_expected_version,
         docker_platform=args.docker_platform,
         guest_deploy_source=args.guest_deploy_source,
+        update_bootstrap_trust_store=args.update_bootstrap_trust_store,
     )
 
 
@@ -1364,6 +1378,7 @@ def release_package_environment_preflight_input(
         release_file=args.release_file,
         output=args.output,
         output_kind=args.output_kind,
+        update_bootstrap_trust_store=args.update_bootstrap_trust_store,
     )
 
 
@@ -1386,6 +1401,12 @@ def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
         type=Path,
         required=True,
         help="exact Guest deploy bundle exercised by the rootfs compile",
+    )
+    parser.add_argument(
+        "--update-bootstrap-trust-store",
+        type=Path,
+        required=True,
+        help="release-owned Ed25519 public-key trust store installed with the Host",
     )
 
 

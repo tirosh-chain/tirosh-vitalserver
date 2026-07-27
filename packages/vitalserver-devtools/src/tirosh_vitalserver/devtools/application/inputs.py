@@ -310,6 +310,7 @@ class ReleasePackageEnvironmentPreflightInput:
     release_file: Path
     output: Path | None
     output_kind: str
+    update_bootstrap_trust_store: Path
 
 
 @dataclass(frozen=True)
@@ -329,6 +330,7 @@ class ReleasePackageInput:
     nginx_expected_version: str | None
     docker_platform: str | None
     guest_deploy_source: Path
+    update_bootstrap_trust_store: Path
 
 
 @dataclass(frozen=True)
@@ -346,6 +348,7 @@ class ReleaseDmgArtifactVerifyInput:
     config: Path
     release_file: Path
     output: Path | None
+    update_bootstrap_trust_store: Path
 
 
 @dataclass(frozen=True)

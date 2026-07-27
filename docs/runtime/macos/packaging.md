@@ -80,6 +80,48 @@ Runtime Control PWA와 headless `vitalserver-platform-agent`는 Helper app bundl
 실행합니다. 빌드 머신에서는 packaging 전에 한 번 `make pwa/install`을 실행해야
 하며, 현장 Mac에는 npm/Vite나 registry 접근이 필요하지 않습니다.
 
+### Stable updater trust-store release input
+
+0.2.2 stable bootstrap을 포함하는 PKG/DMG build는 release publisher가 소유하는
+Ed25519 **공개키** trust store를 명시적으로 받아야 합니다. repository는 production
+기본 키, test key, private-key 검색, public-key 파생 fallback을 제공하지 않습니다.
+
+```sh
+export VM_UPDATE_BOOTSTRAP_TRUST_STORE=/secure/release/update-bootstrap-trust-store.json
+make dist/dmg/dev
+```
+
+입력은 다음 strict v1 계약을 따릅니다. `keys`는 비어 있을 수 없고, key ID는
+중복될 수 없으며, `publicKey`는 정확히 32 byte Ed25519 public key의 base64
+표현이어야 합니다. 알 수 없는 필드는 거부됩니다.
+
+```json
+{
+  "schemaVersion": "v1",
+  "keys": [
+    {
+      "id": "helper-release-key-2026",
+      "algorithm": "ed25519",
+      "publicKey": "<base64-encoded-32-byte-public-key>"
+    }
+  ]
+}
+```
+
+누락, symlink, read/decode 실패, invalid key는 package environment preflight에서
+VM/rootfs compile 전에 실패합니다. PKG에는 입력 파일의 exact bytes를 아래 경로로
+설치하고, DMG artifact verify는 expanded PKG에서 이 파일을 다시 읽어 strict
+contract와 원본 byte equality를 모두 검증합니다.
+
+```text
+/Library/Application Support/VitalServerHelper/
+  config/
+    update-bootstrap-trust-store.json
+```
+
+서명용 private key는 이 파일이나 PKG에 포함하지 않습니다. bundle envelope의
+`publisherKeyId`는 이 trust store에 이미 포함된 공개키 ID를 가리켜야 합니다.
+
 ## Build and Runtime Validation Contracts
 
 Packaging workflow 이름은 각 단계가 보장하는 상태를 뜻합니다. `compile`은 artifact 생성 계약이고, installed runtime 상태를 추정하지 않습니다. Guest bootstrap 완료와 runtime contract는 별도 runtime smoke가 소유합니다. `make dist/dmg/dev`와 `make dist/dmg/release`는 각각 dev/release 현장 전달 표준 gate이며, review → release-contract → package environment preflight → PWA build → clean golden-rootfs compile → DMG artifact verify → golden runtime smoke 순서로 실행합니다. cache 재사용 여부는 `make dist/dmg/dev/cached`라는 별도 target이 소유합니다. 같은 `compile` target을 변수로 cached/clean mode 사이에서 바꾸지 않습니다.
@@ -246,6 +288,8 @@ dist/VitalServerHelper-<version>.dmg
 /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist
 /Library/Application Support/VitalServerHelper/
   backups/
+  config/
+    update-bootstrap-trust-store.json # release-owned Ed25519 public keys
   logs/
     install.log
   status/

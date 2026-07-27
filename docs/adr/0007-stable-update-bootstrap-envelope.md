@@ -168,9 +168,14 @@ atomically settles the succeeded journal with the next installed release
 revision. An existing journal is an explicit collision: this entry point does
 not guess whether it should retry, resume, or replace that state. Archive
 materialization cleanup failure is also reported instead of being hidden.
-Package assembly of the release-process-owned trust-store payload and an
-explicit recovery/resume command for already persisted non-terminal journals
-remain implementation work.
+Package assembly now requires a release-process-owned public-key trust store as
+an explicit input before VM/rootfs compile. The tooling strict-decodes the v1
+contract, installs the exact bytes at
+`/Library/Application Support/VitalServerHelper/config/update-bootstrap-trust-store.json`,
+and reads the expanded PKG payload back from the DMG to prove that it matches
+the release input. It neither creates a default key nor derives a public key
+from private signing material. An explicit recovery/resume command for already
+persisted non-terminal journals remains implementation work.
 
 Release automation calls:
 

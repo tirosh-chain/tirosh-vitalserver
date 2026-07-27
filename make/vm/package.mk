@@ -443,9 +443,14 @@ internal/vm/app: pwa/build
 		--sdkroot "$(VM_SDKROOT)"
 
 internal/vm/pkg/environment-preflight:
+	@test -n "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)" || { \
+		echo "error: VM_UPDATE_BOOTSTRAP_TRUST_STORE is required"; \
+		exit 1; \
+	}
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-package-environment-preflight \
 		--release-file "$(VM_RELEASE_FILE)" \
-		--output-kind pkg
+		--output-kind pkg \
+		--update-bootstrap-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
 
 internal/vm/pkg: internal/vm/release-contract internal/vm/pkg/environment-preflight pwa/build internal/vm/golden-rootfs
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-pkg \
@@ -458,7 +463,8 @@ internal/vm/pkg: internal/vm/release-contract internal/vm/pkg/environment-prefli
 		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
 		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
 		--sdkroot "$(VM_SDKROOT)" \
-		--nginx-binary "$(VM_NGINX_BIN)"
+		--nginx-binary "$(VM_NGINX_BIN)" \
+		--update-bootstrap-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
 
 internal/vm/pkg/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/pkg/dev:
@@ -485,6 +491,7 @@ internal/vm/distribution/review: repo/verify-submodule product/scenarios/check p
 		packages/vitalserver-devtools/tests/unit/test_macos_update_bundle_usecases.py \
 		packages/vitalserver-devtools/tests/unit/test_packaging_templates.py \
 		packages/vitalserver-devtools/tests/unit/test_release_sync_contract.py \
+		packages/vitalserver-devtools/tests/unit/test_update_bootstrap_trust_store.py \
 		packages/vitalserver-devtools/tests/unit/test_upstream_vitalserver_contract.py
 	$(UV) run --project packages/vitalserver-guest-tools pytest \
 		packages/vitalserver-guest-tools/tests/test_redis_repair.py
@@ -512,9 +519,14 @@ internal/vm/pkg/release/verify:
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_STABLE_RELEASE_FILE)"
 
 internal/vm/dmg/environment-preflight:
+	@test -n "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)" || { \
+		echo "error: VM_UPDATE_BOOTSTRAP_TRUST_STORE is required"; \
+		exit 1; \
+	}
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-package-environment-preflight \
 		--release-file "$(VM_RELEASE_FILE)" \
-		--output-kind dmg
+		--output-kind dmg \
+		--update-bootstrap-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
 
 internal/vm/dmg: internal/vm/release-contract internal/vm/dmg/environment-preflight pwa/build internal/vm/golden-rootfs
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-dmg \
@@ -527,11 +539,17 @@ internal/vm/dmg: internal/vm/release-contract internal/vm/dmg/environment-prefli
 		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
 		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
 		--sdkroot "$(VM_SDKROOT)" \
-		--nginx-binary "$(VM_NGINX_BIN)"
+		--nginx-binary "$(VM_NGINX_BIN)" \
+		--update-bootstrap-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
 
 internal/vm/dmg/artifact-verify:
+	@test -n "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)" || { \
+		echo "error: VM_UPDATE_BOOTSTRAP_TRUST_STORE is required"; \
+		exit 1; \
+	}
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-dmg-verify \
-		--release-file "$(VM_RELEASE_FILE)"
+		--release-file "$(VM_RELEASE_FILE)" \
+		--update-bootstrap-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
 
 internal/vm/dmg/dev:
 	$(MAKE) internal/vm/dmg/dev/review

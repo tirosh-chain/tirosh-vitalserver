@@ -32,6 +32,9 @@ from tirosh_vitalserver.devtools.application.usecases import macos_package
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
+from tirosh_vitalserver.devtools.config.update_bootstrap_trust_store import (
+    UpdateBootstrapTrustStoreReadError,
+)
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.guest_image import (
     RuntimeDataDiskConfig,
@@ -229,6 +232,9 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
         rootfs_base=tmp_path / "rootfs-base.raw.gz",
         golden_runtime_dir=tmp_path / "golden",
         guest_deploy_source=tmp_path / "compiled-deploy",
+        update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+            tmp_path / "update-bootstrap-trust-store.json"
+        ),
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=tmp_path / "deploy",
             base_url="https://example.invalid/noble",
@@ -749,6 +755,9 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
         rootfs_base=rootfs_base,
         golden_runtime_dir=golden,
         guest_deploy_source=compiled_deploy,
+        update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+            tmp_path / "update-bootstrap-trust-store.json"
+        ),
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=package_vm_home / "data/deploy",
             base_url="https://example.invalid/noble",
@@ -812,6 +821,15 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
     assert (
         package_vm_home / "runtime" / rootfs_manifest.name
     ).read_text(encoding="utf-8") == rootfs_manifest.read_text(encoding="utf-8")
+    installed_trust_store = (
+        package_vm_home.parent
+        / "config"
+        / "update-bootstrap-trust-store.json"
+    )
+    assert (
+        installed_trust_store.read_bytes()
+        == context.update_bootstrap_trust_store.read_bytes()
+    )
     pkgbuild_command = next(command for command in commands if command[0] == "pkgbuild")
     assert pkgbuild_command[
         pkgbuild_command.index("--identifier") + 1
@@ -1012,6 +1030,27 @@ def write_rootfs_artifact_receipt(rootfs: Path, deploy: Path) -> None:
     )
 
 
+def write_update_bootstrap_trust_store(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": "v1",
+                "keys": [
+                    {
+                        "id": "release-key-1",
+                        "algorithm": "ed25519",
+                        "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def write_expanded_dmg_pkg_payload(destination: Path) -> Path:
     assert not destination.exists()
     payload = destination / "Payload"
@@ -1033,6 +1072,11 @@ def write_expanded_dmg_pkg_payload(destination: Path) -> Path:
     )
     (deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
     write_rootfs_artifact_receipt(rootfs, deploy)
+    write_update_bootstrap_trust_store(
+        payload
+        / "Library/Application Support/VitalServerHelper/config"
+        / "update-bootstrap-trust-store.json"
+    )
     return payload
 
 
@@ -1095,6 +1139,9 @@ def test_release_dmg_artifact_verify_accepts_expected_layout(
             config=root / "config/vm-build.toml",
             release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
             output=dmg_output,
+            update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+                tmp_path / "update-bootstrap-trust-store.json"
+            ),
         )
     )
 
@@ -1154,6 +1201,33 @@ def test_verify_dmg_pkg_rootfs_material_rejects_missing_compile_proof(
     assert proof.message == "packaged rootfs receipt is invalid"
 
 
+def test_verify_dmg_pkg_update_trust_store_rejects_release_input_mismatch(
+    tmp_path: Path,
+) -> None:
+    payload = write_expanded_dmg_pkg_payload(tmp_path / "expanded")
+    expected = write_update_bootstrap_trust_store(
+        tmp_path / "expected-update-bootstrap-trust-store.json"
+    )
+    expected.write_text(
+        expected.read_text(encoding="utf-8").replace(
+            "release-key-1",
+            "replacement-release-key",
+        ),
+        encoding="utf-8",
+    )
+
+    check = macos_package.verify_dmg_pkg_update_bootstrap_trust_store(
+        payload=payload,
+        install_product_root_path=(
+            "/Library/Application Support/VitalServerHelper"
+        ),
+        expected=expected,
+    )
+
+    assert check.status == PreflightStatus.FAILED
+    assert "differs from release input" in check.message
+
+
 def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1211,6 +1285,9 @@ def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
             config=root / "config/vm-build.toml",
             release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
             output=dmg_output,
+            update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+                tmp_path / "update-bootstrap-trust-store.json"
+            ),
         )
     )
 
@@ -1285,6 +1362,9 @@ def test_release_dmg_artifact_verify_reports_detach_failure(
             config=root / "config/vm-build.toml",
             release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
             output=dmg_output,
+            update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+                tmp_path / "update-bootstrap-trust-store.json"
+            ),
         )
     )
 
@@ -1526,11 +1606,42 @@ def test_release_package_environment_preflight_does_not_require_rootfs(
             / "apps/vitalserver-macos-runtime/release-dev.json",
             output=tmp_path / "dist/VitalServerHelper.dmg",
             output_kind="dmg",
+            update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+                tmp_path / "update-bootstrap-trust-store.json"
+            ),
         )
     )
 
     assert report.passed
     assert all("rootfs" not in check.name for check in report.checks)
+
+
+def test_update_bootstrap_trust_store_preflight_preserves_failure_meanings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing = macos_package.check_update_bootstrap_trust_store(
+        tmp_path / "missing.json"
+    )
+    invalid_path = tmp_path / "invalid.json"
+    invalid_path.write_text("{", encoding="utf-8")
+    invalid = macos_package.check_update_bootstrap_trust_store(invalid_path)
+
+    def fail_read(_: Path) -> Path:
+        raise UpdateBootstrapTrustStoreReadError("permission denied")
+
+    monkeypatch.setattr(
+        macos_package,
+        "load_update_bootstrap_trust_store",
+        fail_read,
+    )
+    failed = macos_package.check_update_bootstrap_trust_store(
+        tmp_path / "unreadable.json"
+    )
+
+    assert missing.status == PreflightStatus.MISSING
+    assert invalid.status == PreflightStatus.INVALID
+    assert failed.status == PreflightStatus.FAILED
 
 
 def test_release_package_preflight_reuses_compiled_guest_material_without_docker(
@@ -1698,6 +1809,9 @@ def release_package_input(
         nginx_expected_version=None,
         docker_platform=None,
         guest_deploy_source=compiled_deploy,
+        update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+            tmp_path / "update-bootstrap-trust-store.json"
+        ),
     )
 
 

@@ -48,6 +48,31 @@ def test_package_environment_and_pwa_fail_before_rootfs_compile() -> None:
     ) in makefile
 
 
+def test_package_delivery_requires_the_release_owned_bootstrap_trust_store() -> None:
+    makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+
+    for target in (
+        "internal/vm/pkg/environment-preflight",
+        "internal/vm/dmg/environment-preflight",
+        "internal/vm/dmg/artifact-verify",
+    ):
+        recipe = target_recipe(makefile, target)
+        assert "VM_UPDATE_BOOTSTRAP_TRUST_STORE is required" in recipe
+        assert (
+            '--update-bootstrap-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"'
+            in recipe
+        )
+
+    for target in (
+        "internal/vm/pkg",
+        "internal/vm/dmg",
+    ):
+        assert (
+            '--update-bootstrap-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"'
+            in target_recipe(makefile, target)
+        )
+
+
 def test_rootfs_cache_miss_recreates_the_base_disk() -> None:
     recipe = target_recipe(
         PACKAGE_MAKEFILE.read_text(encoding="utf-8"),
@@ -110,7 +135,14 @@ def test_airgap_rootfs_waits_for_launcher_exit_before_mutating_runtime_files() -
     second_wait = recipe.index(shutdown_wait, second_stop)
     second_guard = recipe.index(no_running_guard, second_wait)
 
-    assert first_stop < first_wait < first_guard < second_stop < second_wait < second_guard
+    assert (
+        first_stop
+        < first_wait
+        < first_guard
+        < second_stop
+        < second_wait
+        < second_guard
+    )
     assert recipe.count("macos-runtime-force-stop") >= 2
     assert 'apt_source="network"' in recipe
     assert 'apt_source="verified-cache"' in recipe
@@ -193,6 +225,8 @@ def test_distribution_review_runs_current_macos_stabilization_contracts() -> Non
         "packages/vitalserver-devtools/tests/unit/test_macos_installed_runtime.py",
         "packages/vitalserver-devtools/tests/unit/"
         "test_macos_update_bundle_usecases.py",
+        "packages/vitalserver-devtools/tests/unit/"
+        "test_update_bootstrap_trust_store.py",
     ):
         assert current_product_test in review
 
