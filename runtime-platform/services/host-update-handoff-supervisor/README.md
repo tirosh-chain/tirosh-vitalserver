@@ -30,6 +30,20 @@ it selects `execute`. Both paths remain explicit and C55/C28 idempotency is
 enforced by the staged updater; the supervisor never invents layer state from
 a process exit or log.
 
+While one staged next updater is running, the supervisor reads Host Update
+Operation Ownership through the C52 OS-local endpoint at the explicit C56
+service poll interval. An unavailable, invalid, or mismatched ownership read
+is a dispatch failure; it is never treated as “no cancellation”.
+
+When the exact active owner reports an accepted interruption request, the
+supervisor cancels the child context and waits for the staged next-updater
+process to terminate. It then submits Host Update Interruption Confirmation
+(contract C82) with the exact installation identity/revision, Update Journal
+revision, interruption request ID, and typed termination evidence. Host Agent,
+not the supervisor, atomically changes the Update Journal and Operation to
+`interrupted`. A process error caused by a completion/interruption race is
+followed by one final ownership read so the confirmation is not lost.
+
 An OS service starts the distinct long-running service mode with only its
 absolute C56 configuration. C56 supplies servicePollIntervalMilliseconds, so
 there is no hidden retry interval. Each unchanged queue entry maps to the same

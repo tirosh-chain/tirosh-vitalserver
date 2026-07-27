@@ -155,6 +155,15 @@ SQLite transaction으로 `interrupted` 처리한다. 다른 installation 또는
 이전 journal revision을 가진 Supervisor/next updater는 terminal state를
 쓸 수 없다.
 
+Update Handoff Supervisor는 C52 Host-local transport로 C80 ownership을
+C56의 명시적 poll interval마다 읽는다. exact update의 interruption이
+관찰되면 next updater context를 cancel하고 process `Wait`가 끝날 때까지
+ownership을 유지한다. 종료 뒤 C82 confirmation이 Host Agent에서
+accepted된 경우에만 interruption 처리가 완료된다. completion 제출과
+interruption 요청이 경합해 next updater가 먼저 오류로 종료되더라도,
+Supervisor는 마지막 ownership read로 accepted interruption을 다시
+확인한다.
+
 Host-local routes는 `contracts/openapi/control.v1.json`에 `x-network-scope:
 host-local`로 명시했다.
 

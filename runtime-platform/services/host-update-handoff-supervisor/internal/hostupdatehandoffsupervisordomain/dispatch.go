@@ -57,6 +57,27 @@ type StagedNextUpdaterCompletionSubmission struct {
 	CompletionCommandSHA256 string
 }
 
+type HostUpdateInterruptionObservation struct {
+	InstallationID        string
+	InstallationRevision  int
+	UpdateID              string
+	JournalRevision       int
+	InterruptionRequestID string
+}
+
+type HostUpdateInterruptionConfirmation struct {
+	SchemaVersion                string            `json:"schemaVersion"`
+	RequestID                    string            `json:"requestId"`
+	UpdateID                     string            `json:"updateId"`
+	InstallationID               string            `json:"installationId"`
+	ExpectedInstallationRevision int               `json:"expectedInstallationRevision"`
+	ExpectedJournalRevision      int               `json:"expectedJournalRevision"`
+	InterruptionRequestID        string            `json:"interruptionRequestId"`
+	TerminationEvidence          EvidenceReference `json:"terminationEvidence"`
+	Outcome                      DispatchIssue     `json:"outcome"`
+	ObservedAt                   string            `json:"observedAt"`
+}
+
 type DispatchIssue struct {
 	Code       string `json:"code"`
 	Message    string `json:"message,omitempty"`
@@ -128,6 +149,38 @@ func ValidateCompletionSubmission(submission StagedNextUpdaterCompletionSubmissi
 		return fmt.Errorf("C27 completion command digest is invalid")
 	}
 	return nil
+}
+
+func ValidateHostUpdateInterruptionObservation(observation HostUpdateInterruptionObservation, updateID string) error {
+	if !validIdentifier(observation.InstallationID) || observation.InstallationRevision < 1 || observation.UpdateID != updateID || !validIdentifier(observation.UpdateID) || observation.JournalRevision < 1 || !validIdentifier(observation.InterruptionRequestID) {
+		return fmt.Errorf("Host update interruption observation does not identify the exact active update owner")
+	}
+	return nil
+}
+
+func NewHostUpdateInterruptionConfirmation(attemptID string, observation HostUpdateInterruptionObservation, observedAt string) (HostUpdateInterruptionConfirmation, error) {
+	if !validIdentifier(attemptID) || observedAt == "" {
+		return HostUpdateInterruptionConfirmation{}, fmt.Errorf("interruption confirmation attempt and time are required")
+	}
+	if err := ValidateHostUpdateInterruptionObservation(observation, observation.UpdateID); err != nil {
+		return HostUpdateInterruptionConfirmation{}, err
+	}
+	requestID := "interruption-confirmation-" + attemptID
+	if !validIdentifier(requestID) {
+		return HostUpdateInterruptionConfirmation{}, fmt.Errorf("interruption confirmation request identifier is invalid")
+	}
+	return HostUpdateInterruptionConfirmation{
+		SchemaVersion:                SchemaVersion,
+		RequestID:                    requestID,
+		UpdateID:                     observation.UpdateID,
+		InstallationID:               observation.InstallationID,
+		ExpectedInstallationRevision: observation.InstallationRevision,
+		ExpectedJournalRevision:      observation.JournalRevision,
+		InterruptionRequestID:        observation.InterruptionRequestID,
+		TerminationEvidence:          EvidenceReference{Kind: "host-update-process-termination", ID: attemptID},
+		Outcome:                      DispatchIssue{Code: "staged-next-updater-terminated", Message: "Host Update Handoff Supervisor cancelled and waited for the staged next-updater process", Dependency: "host-update-handoff-supervisor"},
+		ObservedAt:                   observedAt,
+	}, nil
 }
 
 func validIdentifier(value string) bool { return identifierPattern.MatchString(value) }
