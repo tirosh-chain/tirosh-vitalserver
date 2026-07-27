@@ -4252,6 +4252,7 @@
         "additionalProperties": false,
         "required": [
           "state",
+          "orderingState",
           "bootId",
           "startedAt",
           "cleanShutdownAt"

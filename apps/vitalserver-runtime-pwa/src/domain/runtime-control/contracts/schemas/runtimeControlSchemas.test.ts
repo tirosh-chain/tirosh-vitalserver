@@ -28,8 +28,12 @@ import {
 describe("runtime control contract schemas", () => {
   it("preserves explicit Recorder observability read states and rejects raw aggregate fields", () => {
     const detail = fullRecorderObservabilityDetail();
+    const withoutObserver = recorderWithoutObserverDetail();
 
     expect(recorderObservabilityDetailSchema.parse(detail)).toEqual(detail);
+    expect(recorderObservabilityDetailSchema.parse(withoutObserver)).toEqual(
+      withoutObserver
+    );
     expect(
       recorderObservabilityDetailSchema.safeParse({
         ...detail,
@@ -1731,6 +1735,60 @@ function fullRecorderObservabilityDetail() {
     },
     readIssues: [],
     readError: null
+  };
+}
+
+function recorderWithoutObserverDetail() {
+  const detail = fullRecorderObservabilityDetail();
+  return {
+    ...detail,
+    state: "notReported",
+    support: {
+      ...detail.support,
+      state: "unknown",
+      source: null
+    },
+    report: {
+      ...detail.report,
+      state: "notEvaluated",
+      receivedAt: null,
+      deviceObservedAt: null,
+      collectionState: null
+    },
+    profile: {
+      ...detail.profile,
+      state: "missing",
+      deviceId: null,
+      bootId: null
+    },
+    boot: {
+      state: "notReported",
+      orderingState: "unknown",
+      bootId: null,
+      startedAt: null,
+      cleanShutdownAt: null
+    },
+    evidenceHealth: {
+      state: "notReported",
+      checkedAt: null,
+      checkCount: 0,
+      detail: null
+    },
+    incidentState: {
+      state: "notReported",
+      policyVersion: null,
+      bootLoopState: null,
+      repeatedUndervoltageState: null,
+      evidenceState: null,
+      consecutiveUnexpectedBoots: null,
+      undervoltageBootsConsidered: null
+    },
+    operationalHealth: {
+      state: "unknown",
+      evaluatedAt: null,
+      issueCount: 0,
+      issues: []
+    }
   };
 }
 

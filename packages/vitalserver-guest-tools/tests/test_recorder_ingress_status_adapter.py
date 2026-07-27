@@ -207,7 +207,28 @@ def test_recorder_ingress_adapter_reads_observability_and_preserves_legacy_unkno
     assert detail["support"]["state"] == "unknown"
     assert detail["report"]["state"] == "notEvaluated"
     assert detail["profile"]["state"] == "missing"
-    assert detail["boot"]["state"] == "notReported"
+    assert detail["boot"] == {
+        "state": "notReported",
+        "orderingState": "unknown",
+        "bootId": None,
+        "startedAt": None,
+        "cleanShutdownAt": None,
+    }
+    assert detail["evidenceHealth"] == {
+        "state": "notReported",
+        "checkedAt": None,
+        "checkCount": 0,
+        "detail": None,
+    }
+    assert detail["incidentState"] == {
+        "state": "notReported",
+        "policyVersion": None,
+        "bootLoopState": None,
+        "repeatedUndervoltageState": None,
+        "evidenceState": None,
+        "consecutiveUnexpectedBoots": None,
+        "undervoltageBootsConsidered": None,
+    }
     assert detail["readings"]["temperatureCelsius"]["state"] == "missing"
     assert detail["readError"] is None
 
@@ -284,9 +305,25 @@ def test_recorder_ingress_adapter_accepts_typed_observability_detail(
         },
         "boot": {
             "state": "started",
+            "orderingState": "ordered",
             "bootId": "boot-001",
             "startedAt": "2026-07-23T23:00:00Z",
             "cleanShutdownAt": None,
+        },
+        "evidenceHealth": {
+            "state": "healthy",
+            "checkedAt": "2026-07-24T00:00:00Z",
+            "checkCount": 3,
+            "detail": None,
+        },
+        "incidentState": {
+            "state": "reported",
+            "policyVersion": "v1",
+            "bootLoopState": "none",
+            "repeatedUndervoltageState": "none",
+            "evidenceState": "healthy",
+            "consecutiveUnexpectedBoots": 0,
+            "undervoltageBootsConsidered": 3,
         },
         "operationalHealth": {
             "state": "healthy",
@@ -334,6 +371,56 @@ def test_recorder_ingress_adapter_accepts_typed_observability_detail(
 
     assert result == document
     assert "resources" not in result
+
+
+def test_recorder_ingress_adapter_rejects_detail_without_explicit_boot_ordering(
+    monkeypatch: Any,
+) -> None:
+    document = {
+        "state": "loaded",
+        "vrcode": "VR-001",
+        "support": {"state": "unknown"},
+        "report": {"state": "notEvaluated"},
+        "profile": {"state": "missing"},
+        "boot": {"state": "notReported"},
+        "evidenceHealth": {"state": "notReported"},
+        "incidentState": {"state": "notReported"},
+        "operationalHealth": {
+            "state": "unknown",
+            "evaluatedAt": None,
+            "issueCount": 0,
+            "issues": [],
+        },
+        "readings": {},
+        "readIssues": [],
+        "readError": None,
+    }
+
+    class Response:
+        status = 200
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def read(self) -> bytes:
+            return json.dumps(document).encode()
+
+    monkeypatch.setattr(
+        status_service,
+        "urlopen",
+        lambda *args, **kwargs: Response(),
+    )
+
+    with pytest.raises(RecorderIngressDependencyError) as error:
+        RecorderIngressStatusServiceAdapter().recorder_observability_detail(
+            "VR-001"
+        )
+
+    assert error.value.kind == "recorder-ingress-contract-invalid"
+    assert "boot" in error.value.message
 
 
 def test_recorder_ingress_adapter_forwards_bounded_timeline_query(

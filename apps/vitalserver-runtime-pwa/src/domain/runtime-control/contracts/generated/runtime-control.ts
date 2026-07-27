@@ -1927,7 +1927,7 @@ export interface components {
             /** @enum {string} */
             state: "notReported" | "started" | "shutdownClean" | "nonOrderable";
             /** @enum {string} */
-            orderingState?: "ordered" | "nonOrderable" | "unknown";
+            orderingState: "ordered" | "nonOrderable" | "unknown";
             bootId: string | null;
             startedAt: string | null;
             cleanShutdownAt: string | null;

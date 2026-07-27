@@ -226,6 +226,16 @@ postgresTest("PostgreSQL owns atomic admission and one-row current projection", 
       receivedAt: "2026-07-23T01:05:00.000Z",
     }],
   );
+  const recorderWithoutObserverIncidents =
+    await repository.readRecorderObservabilityIncidents({
+      vrcode: "VR-WITHOUT-OBSERVER",
+      from: "2026-07-23T01:00:00Z",
+      until: "2026-07-23T02:00:00Z",
+      incidentType: null,
+      cursor: null,
+      limit: 10,
+    });
+  assert.deepStrictEqual(recorderWithoutObserverIncidents, []);
 
   await repository.admit(batch({
     requestId: "00000000-0000-4000-8000-000000000004",
