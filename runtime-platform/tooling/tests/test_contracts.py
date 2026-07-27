@@ -105,6 +105,7 @@ class ContractKernelTests(unittest.TestCase):
             by_id["C78"]["owner"],
         )
         self.assertEqual("Release data review", by_id["C79"]["owner"])
+        self.assertEqual("Host Agent", by_id["C80"]["owner"])
 
     def test_checked_in_guest_bootstrap_configurations_are_explicit_valid_architecture_inputs(self) -> None:
         product_root = self.root / "product" / "guest-product"

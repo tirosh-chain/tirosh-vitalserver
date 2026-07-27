@@ -74,6 +74,8 @@ func (server *HostAgentControlHTTPServer) ServeHTTP(response http.ResponseWriter
 		server.executeLifecycle(response, request, "reboot")
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/platform/updates":
 		server.applyUpdate(response, request)
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/platform/update-operation-ownership":
+		server.getUpdateOperationOwnership(response, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/platform/update-bundles:import":
 		server.importUpdateBundle(response, request)
 	case request.Method == http.MethodPost && updateBundleApplyID(request.URL.Path) != "":
@@ -196,6 +198,14 @@ func (server *HostAgentControlHTTPServer) getUpdate(response http.ResponseWriter
 		return
 	}
 	writeJSON(response, http.StatusOK, server.updates.ReadHostUpdateJournal(request.Context(), updateID))
+}
+
+func (server *HostAgentControlHTTPServer) getUpdateOperationOwnership(response http.ResponseWriter, request *http.Request) {
+	if server.updates == nil {
+		writeJSON(response, http.StatusServiceUnavailable, unavailableRead("host-update-unavailable", "Host update module is not configured"))
+		return
+	}
+	writeJSON(response, http.StatusOK, server.updates.ReadHostUpdateOperationOwnership(request.Context()))
 }
 
 func (server *HostAgentControlHTTPServer) completeUpdate(response http.ResponseWriter, request *http.Request, updateID string) {

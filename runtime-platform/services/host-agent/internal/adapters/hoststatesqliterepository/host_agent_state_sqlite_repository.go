@@ -77,6 +77,9 @@ func (repository *HostAgentStateSQLiteRepository) migrate(ctx context.Context) e
 			execution_digest TEXT,
 			document_json TEXT NOT NULL
 		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS host_update_journals_one_active_owner
+			ON host_update_journals ((1))
+			WHERE json_extract(document_json, '$.state') IN ('requested', 'bootstrap-staged', 'handoff-pending', 'applying')`,
 		`CREATE TABLE IF NOT EXISTS host_time_authorities (
 			id TEXT PRIMARY KEY,
 			document_json TEXT NOT NULL
@@ -311,13 +314,39 @@ func (repository *HostAgentStateSQLiteRepository) ReadHostUpdateJournalByRequest
 	return repository.readHostUpdateJournalBy(ctx, `SELECT command_digest, COALESCE(execution_digest, ''), document_json FROM host_update_journals WHERE request_id = ?`, requestID)
 }
 
+// ReadActiveHostUpdateJournals returns every non-terminal update ownership
+// record. The unique partial index enforces at most one such row atomically;
+// returning a slice keeps an invalid pre-existing database observable rather
+// than selecting one owner and hiding the others.
+func (repository *HostAgentStateSQLiteRepository) ReadActiveHostUpdateJournals(ctx context.Context) ([]hostagentdomain.HostUpdateJournal, error) {
+	return repository.readHostUpdateJournalsByState(
+		ctx,
+		`SELECT command_digest, COALESCE(execution_digest, ''), document_json
+		 FROM host_update_journals
+		 WHERE json_extract(document_json, '$.state') IN ('requested', 'bootstrap-staged', 'handoff-pending', 'applying')
+		 ORDER BY id`,
+		"active",
+	)
+}
+
 // ReadRecoverableHostUpdateJournals returns only the explicitly recoverable part
 // of the Host-owned update state machine.  "applying" is deliberately absent:
 // a Host restart cannot infer whether the next updater is still executing.
 func (repository *HostAgentStateSQLiteRepository) ReadRecoverableHostUpdateJournals(ctx context.Context) ([]hostagentdomain.HostUpdateJournal, error) {
-	rows, err := repository.database.QueryContext(ctx, `SELECT command_digest, COALESCE(execution_digest, ''), document_json FROM host_update_journals WHERE json_extract(document_json, '$.state') IN ('bootstrap-staged', 'handoff-pending') ORDER BY id`)
+	return repository.readHostUpdateJournalsByState(
+		ctx,
+		`SELECT command_digest, COALESCE(execution_digest, ''), document_json
+		 FROM host_update_journals
+		 WHERE json_extract(document_json, '$.state') IN ('bootstrap-staged', 'handoff-pending')
+		 ORDER BY id`,
+		"recoverable",
+	)
+}
+
+func (repository *HostAgentStateSQLiteRepository) readHostUpdateJournalsByState(ctx context.Context, query string, description string) ([]hostagentdomain.HostUpdateJournal, error) {
+	rows, err := repository.database.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("list recoverable Host update journals: %w", err)
+		return nil, fmt.Errorf("list %s Host update journals: %w", description, err)
 	}
 	defer rows.Close()
 	journals := []hostagentdomain.HostUpdateJournal{}
@@ -326,18 +355,18 @@ func (repository *HostAgentStateSQLiteRepository) ReadRecoverableHostUpdateJourn
 		var executionDigest string
 		var encoded string
 		if err := rows.Scan(&commandDigest, &executionDigest, &encoded); err != nil {
-			return nil, fmt.Errorf("scan recoverable Host update journal: %w", err)
+			return nil, fmt.Errorf("scan %s Host update journal: %w", description, err)
 		}
 		var journal hostagentdomain.HostUpdateJournal
 		if err := json.Unmarshal([]byte(encoded), &journal); err != nil {
-			return nil, fmt.Errorf("decode recoverable Host update journal: %w", err)
+			return nil, fmt.Errorf("decode %s Host update journal: %w", description, err)
 		}
 		journal.CommandDigest = commandDigest
 		journal.ExecutionDigest = executionDigest
 		journals = append(journals, journal)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate recoverable Host update journals: %w", err)
+		return nil, fmt.Errorf("iterate %s Host update journals: %w", description, err)
 	}
 	return journals, nil
 }

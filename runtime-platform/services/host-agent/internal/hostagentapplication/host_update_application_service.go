@@ -51,6 +51,31 @@ func (service *HostUpdateApplicationService) ReadHostUpdateJournal(ctx context.C
 	return hostagentdomain.ReadResult{SchemaVersion: hostagentdomain.SchemaVersion, State: "available", ObservedAt: now, Value: journal, SourceRevision: &revision}
 }
 
+func (service *HostUpdateApplicationService) ReadHostUpdateOperationOwnership(ctx context.Context) hostagentdomain.ReadResult {
+	now := hostagentdomain.Timestamp(service.clock.Now())
+	installation, err := service.repository.ReadHostPlatformInstallation(ctx)
+	if errors.Is(err, ErrHostAgentOwnedResourceNotFound) {
+		return missingRead(now, "platform-installation-missing", "Host installation state has not been configured")
+	}
+	if err != nil {
+		return failedRead(now, "host-installation-state-read-failed", err.Error(), "host-state-store")
+	}
+	activeJournals, err := service.repository.ReadActiveHostUpdateJournals(ctx)
+	if err != nil {
+		return failedRead(now, "active-host-update-state-read-failed", err.Error(), "host-state-store")
+	}
+	ownership, issue := hostagentdomain.ProjectHostUpdateOperationOwnership(installation, activeJournals)
+	if issue != nil {
+		return invalidRead(now, issue.Code, issue.Message)
+	}
+	return hostagentdomain.ReadResult{
+		SchemaVersion: hostagentdomain.SchemaVersion,
+		State:         "available",
+		ObservedAt:    now,
+		Value:         ownership,
+	}
+}
+
 // RecoverDurableHostUpdateHandoffs is startup recovery for the one state whose effect is
 // safe to repeat: a durable bootstrap-staged or handoff-pending journal.  It
 // never guesses about an applying next updater.  That updater must later send
@@ -134,6 +159,16 @@ func (service *HostUpdateApplicationService) ExecuteHostUpdateCommand(ctx contex
 	if installation.ResourceRevision != command.ExpectedInstallationRevision {
 		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: "resource-revision-conflict", Message: "expectedInstallationRevision does not match the Host-owned installation"}), nil
 	}
+	activeJournals, err := service.repository.ReadActiveHostUpdateJournals(ctx)
+	if err != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "active-host-update-state-read-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+	}
+	if issue := hostagentdomain.DecideHostUpdateAdmission(activeJournals); issue != nil {
+		if issue.Code == "host-update-operation-active" {
+			return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, *issue), nil
+		}
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", *issue)
+	}
 	operationID, err := service.identifiers.NewRequestCorrelationIdentifier("host-update-operation")
 	if err != nil {
 		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "not-admitted", hostagentdomain.Issue{Code: "host-update-operation-id-unavailable", Message: "Host Agent could not allocate an update operation identifier", Retryable: hostagentdomain.Bool(true), Dependency: "host-agent"})
@@ -166,6 +201,12 @@ func (service *HostUpdateApplicationService) ExecuteHostUpdateCommand(ctx contex
 			}
 			if readErr == nil {
 				return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: "request-id-reused-with-different-command", Message: "requestId already belongs to a different Host update command"}), nil
+			}
+			activeJournals, activeReadErr := service.repository.ReadActiveHostUpdateJournals(ctx)
+			if activeReadErr == nil {
+				if issue := hostagentdomain.DecideHostUpdateAdmission(activeJournals); issue != nil && issue.Code == "host-update-operation-active" {
+					return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, *issue), nil
+				}
 			}
 		}
 		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "host-state-store-write-outcome-unknown", Message: "Host Agent could not determine whether the update was durably admitted", Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})

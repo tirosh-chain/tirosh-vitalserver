@@ -114,6 +114,25 @@ stale object나 empty state를 반환하지 않는다.
 | C31 `StagedUpdateHandoff` | Host staging queue 안에서 C30의 상대 위치를 가리키는 durable handoff item |
 | C52 `HostLocalAdministrationEndpointDescriptor` | Host Agent가 공개한 OS-local Unix socket/Windows named pipe 주소. next updater는 이 descriptor 이외의 completion target을 선택하지 않음 |
 | C55 `StagedUpdateLayerEffectReceipt` | C26-declared executor가 고정 protocol apply/rollback 뒤 기록하는 typed layer outcome. process exit/log은 C55를 대체하지 못함 |
+| Host Update Operation Ownership (C80) | 현재 installation identity/revision에 대해 active Update Journal이 없다는 `idle` 또는 유일한 active owner를 Host Agent가 명시적으로 제공하는 Host-local coordination read |
+
+## Active update ownership
+
+Host Agent는 `requested`, `bootstrap-staged`, `handoff-pending`, `applying`
+Update Journal 전체를 active owner로 취급한다. Host SQLite의 partial unique
+index가 이 상태의 journal을 최대 하나로 제한하고, application admission
+policy도 기존 owner를 읽고 검증한 뒤 두 번째 update command를 거부한다.
+
+`GET /v1/platform/update-operation-ownership`은 이 상태를 다른 Host
+lifecycle workflow에 제공한다. `available` read 안의 `state=idle`만 update
+owner가 없다는 의미다. endpoint 부재, state-store read 실패, decode 실패,
+installation identity/revision 불일치는 install/remove 허가로 변환하지
+않는다.
+
+이 계약은 coordination read의 첫 단계다. Host Installation Manager가
+실제 preflight/remove 전에 이 read를 소비하고, 이후 cancel/wait/interrupt
+명령과 child updater process ownership을 연결하는 작업은 별도 application
+workflow로 이어진다.
 
 Host-local routes는 `contracts/openapi/control.v1.json`에 `x-network-scope:
 host-local`로 명시했다.

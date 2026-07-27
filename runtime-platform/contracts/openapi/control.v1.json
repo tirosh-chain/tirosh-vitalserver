@@ -1559,6 +1559,37 @@
         }
       }
     },
+    "/v1/platform/update-operation-ownership": {
+      "get": {
+        "operationId": "getHostUpdateOperationOwnership",
+        "summary": "Read the explicit Host update operation owner for the current installation",
+        "description": "Host-local lifecycle coordination read. Only an available value with state idle permits another installation lifecycle to proceed; missing, invalid, failed, and unavailable reads are not idle.",
+        "x-owner": "host-agent-update-journal",
+        "x-network-scope": "host-local",
+        "responses": {
+          "200": {
+            "description": "Explicit idle or active Host update operation ownership read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostUpdateOperationOwnershipReadResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Host update ownership provider is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostUpdateOperationOwnershipReadResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/platform/update-bundles:import": {
       "post": {
         "operationId": "importHostUpdateBundle",
@@ -2231,6 +2262,12 @@
         "allOf": [
           { "$ref": "../json-schema/v1/read-result.schema.json" },
           { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/host-update-journal.schema.json" } } }
+        ]
+      },
+      "HostUpdateOperationOwnershipReadResult": {
+        "allOf": [
+          { "$ref": "../json-schema/v1/read-result.schema.json" },
+          { "type": "object", "properties": { "value": { "$ref": "../json-schema/v1/host-update-operation-ownership.schema.json" } } }
         ]
       },
       "HostUpdateBundleReadResult": {

@@ -269,6 +269,18 @@ func TestHostFacadeImportsAndReadsAnExplicitUpdateBundleWithoutClaimingTrustVeri
 	}
 }
 
+func TestHostUpdateOwnershipRouteReportsUnavailableWithoutItsOwnerModule(t *testing.T) {
+	handler := hostagentcontrolhttpapi.NewHostAgentControlHTTPServerWithModules(hostagentcontrolhttpapi.HostAgentControlHTTPModules{})
+	request := httptest.NewRequest(http.MethodGet, "/v1/platform/update-operation-ownership", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"state":"unavailable"`) || !strings.Contains(response.Body.String(), `"code":"host-update-unavailable"`) {
+		t.Fatalf("ownership status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func writeHTTPUpdateBundle(t *testing.T) string {
 	t.Helper()
 	directory := filepath.Join(t.TempDir(), "release")

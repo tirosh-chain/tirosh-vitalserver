@@ -754,6 +754,15 @@
       "schemas": [
         "json-schema/v1/vital-replay-corpus-manifest.schema.json"
       ]
+    },
+    {
+      "id": "C80",
+      "name": "HostUpdateOperationOwnership",
+      "owner": "Host Agent",
+      "boundary": "explicit Host-local projection of idle or one active durable Update Journal owner for an exact installation identity and revision",
+      "schemas": [
+        "json-schema/v1/host-update-operation-ownership.schema.json"
+      ]
     }
   ]
 }

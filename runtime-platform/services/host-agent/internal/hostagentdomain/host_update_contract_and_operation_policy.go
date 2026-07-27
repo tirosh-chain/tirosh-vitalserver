@@ -158,6 +158,22 @@ type HostUpdateJournal struct {
 	ExecutionDigest           string                  `json:"-"`
 }
 
+// HostUpdateOperationOwnership is the Host Agent-owned public projection used
+// by other Host lifecycle workflows before they mutate an installation.
+// "idle" is an explicit successful owner query, not absence inferred by a
+// consumer. "active" identifies the one durable Update Journal owner.
+type HostUpdateOperationOwnership struct {
+	SchemaVersion        string `json:"schemaVersion"`
+	InstallationID       string `json:"installationId"`
+	InstallationRevision int    `json:"installationRevision"`
+	State                string `json:"state"`
+	UpdateID             string `json:"updateId,omitempty"`
+	OperationID          string `json:"operationId,omitempty"`
+	RequestID            string `json:"requestId,omitempty"`
+	UpdateState          string `json:"updateState,omitempty"`
+	JournalRevision      int    `json:"journalRevision,omitempty"`
+}
+
 func ValidUpdateTarget(target UpdateTarget) bool {
 	if target.Architecture != "arm64" && target.Architecture != "amd64" {
 		return false
@@ -296,6 +312,104 @@ func NewHostUpdateJournal(id string, operation Operation, command HostUpdateComm
 		UpdatedAt:                    at,
 		CommandDigest:                operation.CommandDigest,
 	}
+}
+
+// DecideHostUpdateAdmission preserves one durable update owner at a time.
+// The repository supplies every explicitly active journal; this pure policy
+// validates those owner records rather than treating an empty or malformed
+// read as permission to admit another update.
+func DecideHostUpdateAdmission(activeJournals []HostUpdateJournal) *Issue {
+	for _, journal := range activeJournals {
+		if issue := ValidateHostUpdateJournal(journal); issue != nil {
+			return &Issue{
+				Code:       "active-host-update-state-invalid",
+				Message:    "Host Agent cannot admit an update while an active update owner record is invalid",
+				Retryable:  Bool(false),
+				Dependency: "host-state-store",
+			}
+		}
+		if !HostUpdateJournalIsActive(journal) {
+			return &Issue{
+				Code:       "active-host-update-query-invalid",
+				Message:    "Host Agent active-update query returned a terminal update journal",
+				Retryable:  Bool(false),
+				Dependency: "host-state-store",
+			}
+		}
+		return &Issue{
+			Code:      "host-update-operation-active",
+			Message:   "another Host update operation owns the Host update workflow",
+			Retryable: Bool(false),
+		}
+	}
+	return nil
+}
+
+// HostUpdateJournalIsActive names the non-terminal states that retain update
+// ownership. It is shared by admission policy and repository query tests so
+// terminal failure, interruption, and success remain distinct from activity.
+func HostUpdateJournalIsActive(journal HostUpdateJournal) bool {
+	switch journal.State {
+	case "requested", "bootstrap-staged", "handoff-pending", "applying":
+		return true
+	default:
+		return false
+	}
+}
+
+// ProjectHostUpdateOperationOwnership derives one complete public ownership
+// fact from Host-owned installation and journal state. More than one active
+// journal is invalid even if an infrastructure constraint should prevent it.
+func ProjectHostUpdateOperationOwnership(installation PlatformInstallation, activeJournals []HostUpdateJournal) (HostUpdateOperationOwnership, *Issue) {
+	if issue := ValidatePlatformInstallation(installation); issue != nil {
+		return HostUpdateOperationOwnership{}, &Issue{
+			Code:       "host-installation-state-invalid",
+			Message:    issue.Message,
+			Retryable:  Bool(false),
+			Dependency: "host-state-store",
+		}
+	}
+	if len(activeJournals) > 1 {
+		return HostUpdateOperationOwnership{}, &Issue{
+			Code:       "multiple-active-host-updates",
+			Message:    "Host state contains more than one active update owner",
+			Retryable:  Bool(false),
+			Dependency: "host-state-store",
+		}
+	}
+	ownership := HostUpdateOperationOwnership{
+		SchemaVersion:        SchemaVersion,
+		InstallationID:       installation.ID,
+		InstallationRevision: installation.ResourceRevision,
+		State:                "idle",
+	}
+	if len(activeJournals) == 0 {
+		return ownership, nil
+	}
+	journal := activeJournals[0]
+	if issue := ValidateHostUpdateJournal(journal); issue != nil {
+		return HostUpdateOperationOwnership{}, &Issue{
+			Code:       "active-host-update-state-invalid",
+			Message:    issue.Message,
+			Retryable:  Bool(false),
+			Dependency: "host-state-store",
+		}
+	}
+	if !HostUpdateJournalIsActive(journal) || journal.InstallationID != installation.ID || journal.ExpectedInstallationRevision != installation.ResourceRevision {
+		return HostUpdateOperationOwnership{}, &Issue{
+			Code:       "active-host-update-owner-mismatch",
+			Message:    "active update owner does not match the current Host installation identity and revision",
+			Retryable:  Bool(false),
+			Dependency: "host-state-store",
+		}
+	}
+	ownership.State = "active"
+	ownership.UpdateID = journal.ID
+	ownership.OperationID = journal.OperationID
+	ownership.RequestID = journal.RequestID
+	ownership.UpdateState = journal.State
+	ownership.JournalRevision = journal.JournalRevision
+	return ownership, nil
 }
 
 // ValidateHostUpdateJournal validates the complete Host-owned durable record

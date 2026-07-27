@@ -14,6 +14,7 @@ type HostUpdateStateRepository interface {
 	ReadHostOperation(context.Context, string) (hostagentdomain.Operation, error)
 	ReadHostUpdateJournal(context.Context, string) (hostagentdomain.HostUpdateJournal, error)
 	ReadHostUpdateJournalByRequestID(context.Context, string) (hostagentdomain.HostUpdateJournal, error)
+	ReadActiveHostUpdateJournals(context.Context) ([]hostagentdomain.HostUpdateJournal, error)
 	ReadRecoverableHostUpdateJournals(context.Context) ([]hostagentdomain.HostUpdateJournal, error)
 	PersistNewHostUpdate(context.Context, hostagentdomain.Operation, hostagentdomain.HostUpdateJournal) error
 	PersistHostUpdateProgress(context.Context, hostagentdomain.Operation, hostagentdomain.HostUpdateJournal) error

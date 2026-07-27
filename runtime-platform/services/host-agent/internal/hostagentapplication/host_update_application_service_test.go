@@ -139,6 +139,113 @@ func TestUpdateStagesExactlyOnceAndOnlyNextUpdaterCanSettleIt(t *testing.T) {
 	}
 }
 
+func TestUpdateRejectsSecondRequestWhileDurableUpdateOwnsInstallation(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, _ := newUpdateService(t, bootstrapper)
+
+	first, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-owner", 1))
+	if rejection != nil || admissionFailure != nil || first.Journal.State != "handoff-pending" {
+		t.Fatalf("first update outcome=%+v rejection=%+v admissionFailure=%+v", first, rejection, admissionFailure)
+	}
+	second, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-conflict", 1))
+	if admissionFailure != nil || rejection == nil || rejection.Issue.Code != "host-update-operation-active" {
+		t.Fatalf("second update outcome=%+v rejection=%+v admissionFailure=%+v", second, rejection, admissionFailure)
+	}
+	if bootstrapper.calls != 1 || bootstrapper.handoffCalls != 1 {
+		t.Fatalf("conflicting update reached effects: stage=%d handoff=%d", bootstrapper.calls, bootstrapper.handoffCalls)
+	}
+}
+
+func TestUpdateOwnershipReadDistinguishesIdleActiveAndTerminal(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, _ := newUpdateService(t, bootstrapper)
+
+	idle := service.ReadHostUpdateOperationOwnership(context.Background())
+	idleOwnership, ok := idle.Value.(hostagentdomain.HostUpdateOperationOwnership)
+	if idle.State != "available" || !ok || idleOwnership.State != "idle" || idleOwnership.InstallationID != "host-installation" || idleOwnership.InstallationRevision != 1 {
+		t.Fatalf("idle ownership read=%+v value=%+v", idle, idle.Value)
+	}
+	admitted, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-ownership-read", 1))
+	if rejection != nil || admissionFailure != nil {
+		t.Fatalf("admit update rejection=%+v admissionFailure=%+v", rejection, admissionFailure)
+	}
+	active := service.ReadHostUpdateOperationOwnership(context.Background())
+	activeOwnership, ok := active.Value.(hostagentdomain.HostUpdateOperationOwnership)
+	if active.State != "available" || !ok || activeOwnership.State != "active" || activeOwnership.UpdateID != admitted.Journal.ID || activeOwnership.OperationID != admitted.Operation.ID || activeOwnership.JournalRevision != admitted.Journal.JournalRevision {
+		t.Fatalf("active ownership read=%+v value=%+v", active, active.Value)
+	}
+	report := successReport(admitted.Journal)
+	completed, rejection, admissionFailure := service.CompleteHostUpdateExecution(context.Background(), hostagentdomain.UpdateCompletionCommand{
+		SchemaVersion:           "v1",
+		UpdateID:                admitted.Journal.ID,
+		ExpectedJournalRevision: admitted.Journal.JournalRevision,
+		Report:                  report,
+	})
+	if rejection != nil || admissionFailure != nil || completed.Journal.State != "succeeded" {
+		t.Fatalf("complete update outcome=%+v rejection=%+v admissionFailure=%+v", completed, rejection, admissionFailure)
+	}
+	terminal := service.ReadHostUpdateOperationOwnership(context.Background())
+	terminalOwnership, ok := terminal.Value.(hostagentdomain.HostUpdateOperationOwnership)
+	if terminal.State != "available" || !ok || terminalOwnership.State != "idle" || terminalOwnership.InstallationRevision != 2 {
+		t.Fatalf("terminal ownership read=%+v value=%+v", terminal, terminal.Value)
+	}
+}
+
+func TestTerminalUpdateReleasesAdmissionForNextInstallationRevision(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, _ := newUpdateService(t, bootstrapper)
+	first, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-first-terminal", 1))
+	if rejection != nil || admissionFailure != nil {
+		t.Fatalf("first update rejection=%+v admissionFailure=%+v", rejection, admissionFailure)
+	}
+	report := successReport(first.Journal)
+	completed, rejection, admissionFailure := service.CompleteHostUpdateExecution(context.Background(), hostagentdomain.UpdateCompletionCommand{
+		SchemaVersion:           "v1",
+		UpdateID:                first.Journal.ID,
+		ExpectedJournalRevision: first.Journal.JournalRevision,
+		Report:                  report,
+	})
+	if rejection != nil || admissionFailure != nil || completed.Journal.State != "succeeded" {
+		t.Fatalf("complete first update outcome=%+v rejection=%+v admissionFailure=%+v", completed, rejection, admissionFailure)
+	}
+	second, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-next-revision", 2))
+	if rejection != nil || admissionFailure != nil || second.Journal.State != "handoff-pending" {
+		t.Fatalf("next-revision update outcome=%+v rejection=%+v admissionFailure=%+v", second, rejection, admissionFailure)
+	}
+}
+
+func TestSQLiteRejectsSecondActiveUpdateOwnerAtomically(t *testing.T) {
+	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
+	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "staged"}
+	service, repository := newUpdateService(t, bootstrapper)
+	first, rejection, admissionFailure := service.ExecuteHostUpdateCommand(context.Background(), updateCommand("update-request-durable-owner", 1))
+	if rejection != nil || admissionFailure != nil {
+		t.Fatalf("first update rejection=%+v admissionFailure=%+v", rejection, admissionFailure)
+	}
+
+	command := updateCommand("update-request-direct-conflict", 1)
+	digest, err := hostagentdomain.HostUpdateCommandDigest(command)
+	if err != nil {
+		t.Fatalf("digest conflicting command: %v", err)
+	}
+	at := hostagentdomain.Timestamp(clock.Now())
+	operation := hostagentdomain.NewHostUpdateOperation("host-update-operation-direct-conflict", command, at, digest)
+	operation, err = hostagentdomain.TransitionOperation(operation, "accepted", at, nil)
+	if err == nil {
+		operation, err = hostagentdomain.TransitionOperation(operation, "running", at, nil)
+	}
+	if err != nil {
+		t.Fatalf("prepare conflicting operation: %v", err)
+	}
+	journal := hostagentdomain.NewHostUpdateJournal("host-update-direct-conflict", operation, command, at)
+	if err := repository.PersistNewHostUpdate(context.Background(), operation, journal); !errors.Is(err, hostagentapplication.ErrHostAgentOwnedResourceConflict) {
+		t.Fatalf("second active owner write error=%v first=%+v", err, first.Journal)
+	}
+}
+
 func TestUpdateBootstrapUnavailableIsExplicitTerminalFailure(t *testing.T) {
 	clock := fixedClock{now: time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)}
 	bootstrapper := &fakeUpdateBootstrapper{clock: clock, state: "unavailable"}

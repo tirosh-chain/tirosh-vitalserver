@@ -387,6 +387,21 @@
             }
           ]
         },
+        "HostUpdateOperationOwnershipReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/host-update-operation-ownership.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
         "HostUpdateWorkflowOutcome": {
           "additionalProperties": false,
           "properties": {
@@ -1395,6 +1410,37 @@
           "summary": "Atomically import one Host-local offline release bundle directory",
           "x-network-scope": "host-local",
           "x-owner": "host-update-bundle-store"
+        }
+      },
+      "/v1/platform/update-operation-ownership": {
+        "get": {
+          "description": "Host-local lifecycle coordination read. Only an available value with state idle permits another installation lifecycle to proceed; missing, invalid, failed, and unavailable reads are not idle.",
+          "operationId": "getHostUpdateOperationOwnership",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HostUpdateOperationOwnershipReadResult"
+                  }
+                }
+              },
+              "description": "Explicit idle or active Host update operation ownership read"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HostUpdateOperationOwnershipReadResult"
+                  }
+                }
+              },
+              "description": "Host update ownership provider is unavailable"
+            }
+          },
+          "summary": "Read the explicit Host update operation owner for the current installation",
+          "x-network-scope": "host-local",
+          "x-owner": "host-agent-update-journal"
         }
       },
       "/v1/platform/updates": {
@@ -16771,6 +16817,113 @@
         "updatedAt"
       ],
       "title": "HostUpdateJournal",
+      "type": "object"
+    },
+    "json-schema/v1/host-update-operation-ownership.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-operation-ownership",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "updateId"
+                  ]
+                },
+                {
+                  "required": [
+                    "operationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "requestId"
+                  ]
+                },
+                {
+                  "required": [
+                    "updateState"
+                  ]
+                },
+                {
+                  "required": [
+                    "journalRevision"
+                  ]
+                }
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "state": {
+                "const": "active"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "updateId",
+              "operationId",
+              "requestId",
+              "updateState",
+              "journalRevision"
+            ]
+          }
+        }
+      ],
+      "description": "The Host Agent-owned explicit projection of whether one durable Host Update Journal currently owns an installation. Consumers must not infer idle from a missing, failed, unavailable, or invalid read.",
+      "properties": {
+        "installationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "installationRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "journalRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "operationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "state": {
+          "enum": [
+            "idle",
+            "active"
+          ]
+        },
+        "updateId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "updateState": {
+          "enum": [
+            "requested",
+            "bootstrap-staged",
+            "handoff-pending",
+            "applying"
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "installationId",
+        "installationRevision",
+        "state"
+      ],
+      "title": "HostUpdateOperationOwnership",
       "type": "object"
     },
     "json-schema/v1/host-update-trust-store.schema.json": {
