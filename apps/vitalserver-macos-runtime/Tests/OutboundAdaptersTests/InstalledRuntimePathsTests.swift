@@ -40,6 +40,14 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.centralCommandLog.path, "/Library/Application Support/VitalServerHelper/logs/command.log")
         XCTAssertEqual(paths.guestRuntimeSettings.path, "/Library/Application Support/VitalServerHelper/vm/data/deploy/runtime-settings.json")
         XCTAssertEqual(
+            paths.updateBootstrapTrustStore.path,
+            "/Library/Application Support/VitalServerHelper/config/update-bootstrap-trust-store.json"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapStagingDirectory.path,
+            "/Library/Application Support/VitalServerHelper/update-bootstrap"
+        )
+        XCTAssertEqual(
             paths.standardUninstallRetainedDataRoot.path,
             "/Library/Application Support/VitalServerHelper-retained-uninstall-data"
         )
@@ -56,6 +64,14 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.runtimeHome.path, "/tmp/product/vm")
         XCTAssertEqual(paths.backupsDirectory.path, "/tmp/product/backups")
         XCTAssertEqual(paths.runtimeStatus.path, "/tmp/product/status/runtime-status.json")
+        XCTAssertEqual(
+            paths.updateBootstrapTrustStore.path,
+            "/tmp/product/config/update-bootstrap-trust-store.json"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapStagingDirectory.path,
+            "/tmp/product/update-bootstrap"
+        )
         XCTAssertEqual(
             paths.standardUninstallRetainedDataRoot.path,
             "/tmp/product-retained-uninstall-data"

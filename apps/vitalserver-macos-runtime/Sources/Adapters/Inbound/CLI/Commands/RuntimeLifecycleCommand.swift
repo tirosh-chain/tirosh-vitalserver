@@ -15,6 +15,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case verifyBundle(URL)
     case stageBundle(URL)
     case applyBundle(RuntimeApplyBundleCommand)
+    case applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand)
     case rollback(RuntimeRollbackCommand)
     case redisBackup
     case redisRestore(URL)
@@ -74,6 +75,10 @@ extension RuntimeLifecycleCommand {
             ))
         case "apply-bundle":
             return .applyBundle(try parseApplyBundleCommand(remaining))
+        case "apply-update-bootstrap":
+            return .applyUpdateBootstrap(
+                try parseApplyUpdateBootstrapCommand(remaining)
+            )
         case "rollback":
             return .rollback(parseRollbackCommand(remaining))
         case "redis-backup":
@@ -193,6 +198,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
       vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
+      vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime redis-restore <archive.tar.gz>
@@ -257,6 +263,36 @@ extension RuntimeLifecycleCommand {
         return RuntimeApplyBundleCommand(
             bundleURL: URL(fileURLWithPath: bundlePath),
             trustIntent: intent
+        )
+    }
+
+    private static func parseApplyUpdateBootstrapCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeApplyUpdateBootstrapCommand {
+        let usage = "usage: vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>"
+        guard let bundlePath = arguments.first,
+              !bundlePath.isEmpty,
+              bundlePath != "--request-id" else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        var requestId: String?
+        var index = 1
+        while index < arguments.count {
+            let argument = arguments[index]
+            guard argument == "--request-id",
+                  index + 1 < arguments.count,
+                  requestId == nil else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+            requestId = arguments[index + 1]
+            index += 2
+        }
+        guard let requestId, !requestId.isEmpty else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return RuntimeApplyUpdateBootstrapCommand(
+            bundleURL: URL(fileURLWithPath: bundlePath),
+            requestId: requestId
         )
     }
 

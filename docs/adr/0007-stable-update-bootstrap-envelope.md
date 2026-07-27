@@ -157,11 +157,20 @@ path are implemented and tested. The installed Host now also has strict
 bootstrap-directory readers and a pure exact-closure policy: the envelope and
 its two declared artifacts must be the only regular files, duplicate or unsafe
 paths and symbolic links are rejected, and missing, inspection, listing, read,
-and decode failures remain distinct. The production command that safely
-materializes a selected release archive, loads the installed trust store,
-verifies and admits the envelope, and executes the handoff workflow remains
-implementation work. This paragraph must be updated as each owner becomes
-executable.
+and decode failures remain distinct. The installed CLI now exposes
+`runtime apply-update-bootstrap <bundle> --request-id <id>`. Its Host
+composition materializes an archive or explicit bundle directory, requires the
+installed product release and an absent journal for the envelope ID, loads the
+installed trust store, verifies the exact authenticated closure, persists
+admission, atomically stages the bundle, launches only the staged executable
+with the fixed handoff invocation, reads the correlated completion receipt, and
+atomically settles the succeeded journal with the next installed release
+revision. An existing journal is an explicit collision: this entry point does
+not guess whether it should retry, resume, or replace that state. Archive
+materialization cleanup failure is also reported instead of being hidden.
+Package assembly of the release-process-owned trust-store payload and an
+explicit recovery/resume command for already persisted non-terminal journals
+remain implementation work.
 
 Release automation calls:
 

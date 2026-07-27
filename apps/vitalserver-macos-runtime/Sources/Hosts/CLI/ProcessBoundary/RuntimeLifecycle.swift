@@ -163,6 +163,8 @@ struct RuntimeLifecycle {
             _ = try stageBundle(bundleURL)
         case .applyBundle(let command):
             try applyBundle(command)
+        case .applyUpdateBootstrap(let command):
+            try applyUpdateBootstrap(command)
         case .rollback(let command):
             try rollback(command)
         case .redisBackup:

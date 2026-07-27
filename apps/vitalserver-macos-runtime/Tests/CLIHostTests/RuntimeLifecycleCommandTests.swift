@@ -215,6 +215,18 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 trustIntent: .allowUnsignedDevelopmentBundle
             ))
         )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "apply-update-bootstrap",
+                bundleURL.path,
+                "--request-id",
+                "request-1",
+            ]),
+            .applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand(
+                bundleURL: bundleURL,
+                requestId: "request-1"
+            ))
+        )
     }
 
     func testApplyBundleRejectsUnknownOrMisplacedUnsignedDevelopmentIntent() {
@@ -234,6 +246,32 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             ]),
             expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
         )
+    }
+
+    func testApplyUpdateBootstrapRequiresExactlyOneExplicitRequestID() {
+        let usage = "usage: vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>"
+        for arguments in [
+            ["apply-update-bootstrap"],
+            ["apply-update-bootstrap", ""],
+            ["apply-update-bootstrap", "--request-id", "request-1"],
+            ["apply-update-bootstrap", "/tmp/update.tar.gz"],
+            ["apply-update-bootstrap", "/tmp/update.tar.gz", "--request-id"],
+            ["apply-update-bootstrap", "/tmp/update.tar.gz", "--request-id", ""],
+            ["apply-update-bootstrap", "/tmp/update.tar.gz", "--unknown", "request-1"],
+            [
+                "apply-update-bootstrap",
+                "/tmp/update.tar.gz",
+                "--request-id",
+                "request-1",
+                "--request-id",
+                "request-2",
+            ],
+        ] {
+            assertMissingArgument(
+                try RuntimeLifecycleCommand.parse(arguments),
+                expectedMessage: usage
+            )
+        }
     }
 
     func testParsesOptionalRollbackPath() throws {

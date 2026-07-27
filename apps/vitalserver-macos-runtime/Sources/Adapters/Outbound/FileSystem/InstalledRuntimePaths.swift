@@ -144,6 +144,19 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         productRoot.appendingPathComponent("bundles")
     }
 
+    public var updateBootstrapTrustStore: URL {
+        productRoot
+            .appendingPathComponent("config", isDirectory: true)
+            .appendingPathComponent("update-bootstrap-trust-store.json")
+    }
+
+    public var updateBootstrapStagingDirectory: URL {
+        productRoot.appendingPathComponent(
+            "update-bootstrap",
+            isDirectory: true
+        )
+    }
+
     public var nginxDirectory: URL {
         productRoot.appendingPathComponent("nginx")
     }

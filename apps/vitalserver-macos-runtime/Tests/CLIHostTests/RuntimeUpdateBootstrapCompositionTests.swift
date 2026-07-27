@@ -1,0 +1,296 @@
+import Application
+import Bootstrap
+import Contracts
+import CryptoKit
+import Domain
+import Foundation
+import InboundAdapters
+import OutboundAdapters
+@testable import CLIHost
+import XCTest
+
+final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
+    func testVerifiedBundleHandsOffAndAtomicallySettlesInstalledRelease() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(productRoot: root.appendingPathComponent("product"))
+        let bundle = root.appendingPathComponent("incoming-update")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(
+            at: installed.updateBootstrapTrustStore.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        _ = try SQLiteHostRuntimeStateDatabase(
+            url: installed.runtimeStateDatabase
+        ).initialize()
+        let repository = makeRepository(installed)
+        try repository.settlePackageInstallRelease(
+            try InstalledProductReleasePolicy.makePackageInstall(
+                productId: Constants.Product.identifier,
+                productVersion: "0.2.1",
+                runtimeVersion: "0.2.1",
+                installOperationId: "install-1",
+                settledAt: "2026-07-27T00:00:00Z"
+            )
+        )
+
+        let privateKey = Curve25519.Signing.PrivateKey()
+        try writeTrustStore(
+            privateKey.publicKey.rawRepresentation,
+            to: installed.updateBootstrapTrustStore
+        )
+        try writeSignedBundle(bundle, privateKey: privateKey)
+
+        let runner = SuccessfulUpdateBootstrapRunner()
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installed.runtimeHome,
+                installed: installed,
+                config: installed.vmConfig,
+                pidFile: installed.pidFile
+            ),
+            clock: UpdateBootstrapFixedClock(),
+            commandRunner: runner
+        )
+
+        try lifecycle.applyUpdateBootstrap(
+            RuntimeApplyUpdateBootstrapCommand(
+                bundleURL: bundle,
+                requestId: "request-1"
+            )
+        )
+
+        guard case .loaded(let journal) =
+            repository.loadUpdateBootstrapJournal(id: "update-0.2.2") else {
+            return XCTFail("expected persisted update journal")
+        }
+        XCTAssertEqual(journal.state, .succeeded)
+        XCTAssertEqual(journal.requestId, "request-1")
+        guard case .loaded(let release) =
+            repository.loadInstalledProductRelease() else {
+            return XCTFail("expected installed release")
+        }
+        XCTAssertEqual(release.productVersion, "0.2.2")
+        XCTAssertEqual(release.runtimeVersion, "0.2.2")
+        XCTAssertEqual(release.releaseRevision, 2)
+        XCTAssertEqual(release.source, .update)
+        XCTAssertEqual(runner.invocations.count, 1)
+    }
+
+    private func makeRepository(
+        _ installed: InstalledRuntimePaths
+    ) -> SQLiteUpdateBootstrapJournalRepository {
+        SQLiteUpdateBootstrapJournalRepository(
+            databaseURL: installed.runtimeStateDatabase,
+            validate: ValidateUpdateBootstrapJournalUseCase().validate,
+            validateRelease: InstalledProductReleasePolicy.validate,
+            validateSettlement: InstalledProductReleasePolicy.validate
+        )
+    }
+
+    private func writeTrustStore(_ publicKey: Data, to url: URL) throws {
+        let store = UpdateBootstrapTrustStore(
+            schemaVersion: "v1",
+            keys: [
+                TrustedUpdatePublisherKey(
+                    id: "release-key-1",
+                    algorithm: .ed25519,
+                    publicKey: publicKey.base64EncodedString()
+                ),
+            ]
+        )
+        try JSONEncoder().encode(store).write(to: url, options: .atomic)
+    }
+
+    private func writeSignedBundle(
+        _ root: URL,
+        privateKey: Curve25519.Signing.PrivateKey
+    ) throws {
+        let updaterData = Data("#!/bin/sh\nexit 0\n".utf8)
+        let specificationData = Data("{\"update\":\"0.2.2\"}\n".utf8)
+        let updater = UpdateBootstrapArtifact(
+            id: "next-updater",
+            relativePath: "payload/bin/vitalserver-update",
+            sha256: sha256(updaterData),
+            sizeBytes: updaterData.count,
+            mediaType: "application/octet-stream"
+        )
+        let specification = UpdateBootstrapArtifact(
+            id: "update-specification",
+            relativePath: "payload/update-specification.json",
+            sha256: sha256(specificationData),
+            sizeBytes: specificationData.count,
+            mediaType: "application/json"
+        )
+        let unsigned = envelope(
+            updater: updater,
+            specification: specification,
+            signedSHA256: String(repeating: "0", count: 64),
+            signature: "unsigned"
+        )
+        let payload = try UpdateBootstrapCanonicalPayloadEncoder().encode(unsigned)
+        let signedSHA256 = sha256(payload)
+        let signature = try privateKey.signature(for: payload)
+            .base64EncodedString()
+        let signed = envelope(
+            updater: updater,
+            specification: specification,
+            signedSHA256: signedSHA256,
+            signature: signature
+        )
+
+        let updaterURL = root.appendingPathComponent(updater.relativePath)
+        let specificationURL = root.appendingPathComponent(
+            specification.relativePath
+        )
+        try FileManager.default.createDirectory(
+            at: updaterURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: specificationURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try updaterData.write(to: updaterURL)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: updaterURL.path
+        )
+        XCTAssertTrue(
+            FileManager.default.isExecutableFile(atPath: updaterURL.path)
+        )
+        try specificationData.write(to: specificationURL)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(signed).write(
+            to: root.appendingPathComponent(
+                UpdateBootstrapBundleLayout.envelopeRelativePath
+            ),
+            options: .atomic
+        )
+    }
+
+    private func envelope(
+        updater: UpdateBootstrapArtifact,
+        specification: UpdateBootstrapArtifact,
+        signedSHA256: String,
+        signature: String
+    ) -> UpdateBootstrapEnvelope {
+        UpdateBootstrapEnvelope(
+            schemaVersion: "v1",
+            id: "update-0.2.2",
+            productId: Constants.Product.identifier,
+            target: UpdateBootstrapTarget(
+                platform: .macos,
+                architecture: .arm64
+            ),
+            targetRelease: UpdateBootstrapRelease(
+                productVersion: "0.2.2",
+                runtimeVersion: "0.2.2"
+            ),
+            layerOrder: [.container, .guestRuntime, .hostPlatform],
+            nextUpdaterArtifact: updater,
+            specification: specification,
+            signature: UpdateBootstrapSignature(
+                algorithm: .ed25519,
+                keyId: "release-key-1",
+                signedSha256: signedSHA256,
+                value: signature
+            ),
+            issuedAt: "2026-07-27T00:00:00Z"
+        )
+    }
+
+    private func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+}
+
+private struct UpdateBootstrapFixedClock: RuntimeClock {
+    let now = Date(timeIntervalSince1970: 1_785_110_400)
+}
+
+private final class SuccessfulUpdateBootstrapRunner: RuntimeCommandRunner {
+    private(set) var invocations: [UpdateBootstrapHandoffInvocation] = []
+
+    func run(
+        _ executable: String,
+        arguments: [String]
+    ) -> RuntimeProcessResult {
+        guard arguments.count == 3,
+              arguments[0] == "execute",
+              arguments[1] == "--invocation" else {
+            return RuntimeProcessResult(
+                exitCode: 64,
+                stdout: "",
+                stderr: "unexpected invocation"
+            )
+        }
+        let invocationURL = URL(fileURLWithPath: arguments[2])
+        do {
+            let invocation = try JSONDecoder().decode(
+                UpdateBootstrapHandoffInvocation.self,
+                from: Data(contentsOf: invocationURL)
+            )
+            invocations.append(invocation)
+            let stagedRoot = invocationURL
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+            let reportData = Data("{\"result\":\"succeeded\"}\n".utf8)
+            let reportRelativePath = "handoff/report.json"
+            let reportURL = stagedRoot.appendingPathComponent(reportRelativePath)
+            try reportData.write(to: reportURL, options: .atomic)
+            let receipt = UpdateBootstrapCompletionReceipt(
+                schemaVersion: "v1",
+                updateId: invocation.updateId,
+                requestId: invocation.requestId,
+                bootstrapEnvelopeId: invocation.bootstrapEnvelopeId,
+                updateSpecificationSHA256:
+                    invocation.updateSpecificationSHA256,
+                expectedJournalRevision: invocation.expectedJournalRevision,
+                outcome: .succeeded,
+                reportRelativePath: reportRelativePath,
+                reportSHA256: SHA256.hash(data: reportData)
+                    .map { String(format: "%02x", $0) }
+                    .joined(),
+                failureReason: nil,
+                finishedAt: "2026-07-27T00:10:00Z"
+            )
+            let receiptURL = stagedRoot.appendingPathComponent(
+                invocation.completionReceiptRelativePath
+            )
+            try JSONEncoder().encode(receipt).write(
+                to: receiptURL,
+                options: .atomic
+            )
+            return RuntimeProcessResult(
+                exitCode: 0,
+                stdout: "updated\n",
+                stderr: ""
+            )
+        } catch {
+            return RuntimeProcessResult(
+                exitCode: 70,
+                stdout: "",
+                stderr: String(describing: error)
+            )
+        }
+    }
+
+    func runWritingOutput(
+        _ executable: String,
+        arguments: [String],
+        output: URL
+    ) -> RuntimeProcessResult {
+        RuntimeProcessResult(
+            exitCode: 64,
+            stdout: "",
+            stderr: "unexpected output-file invocation"
+        )
+    }
+}
