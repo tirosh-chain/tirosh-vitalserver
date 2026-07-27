@@ -248,9 +248,9 @@ class MacOSCleanHostReleaseEvidenceRunnerTests(unittest.TestCase):
             self.root / "c78-direct-upload.json",
             self.root / "c78-post-reboot.json",
         )
-        for path, document in zip(
-            paths, (first_boot, direct_upload, post_reboot), strict=True
-        ):
+        documents = (first_boot, direct_upload, post_reboot)
+        self.assertEqual(len(paths), len(documents))
+        for path, document in zip(paths, documents):
             path.write_text(json.dumps(document), encoding="utf-8")
         return paths
 
