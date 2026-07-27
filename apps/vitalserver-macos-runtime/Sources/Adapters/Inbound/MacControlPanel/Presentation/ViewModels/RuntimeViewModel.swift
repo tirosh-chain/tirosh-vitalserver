@@ -466,19 +466,22 @@ public final class RuntimeViewModel: ObservableObject {
         }
     }
 
-    func hideVitalDBBed(bedID: String) async {
+    @discardableResult
+    func hideVitalDBBed(bedID: String) async -> Bool {
         await runVitalDBBedVisibilityAction(successMessage: "Bed hidden.") {
             try await controlClient.hideVitalDBBeds(.init(bedIDs: [bedID]))
         }
     }
 
-    func unhideVitalDBBed(bedID: String) async {
+    @discardableResult
+    func unhideVitalDBBed(bedID: String) async -> Bool {
         await runVitalDBBedVisibilityAction(successMessage: "Bed visible.") {
             try await controlClient.unhideVitalDBBeds(.init(bedIDs: [bedID]))
         }
     }
 
-    func deleteVitalDBBed(bedID: String) async {
+    @discardableResult
+    func deleteVitalDBBed(bedID: String) async -> Bool {
         await runVitalDBBedVisibilityAction(successMessage: "Hidden bed deleted.") {
             try await controlClient.deleteVitalDBBeds(.init(bedIDs: [bedID]))
         }
@@ -504,7 +507,7 @@ public final class RuntimeViewModel: ObservableObject {
     private func runVitalDBBedVisibilityAction(
         successMessage: String,
         action: () async throws -> RuntimeVitalBedHistory
-    ) async {
+    ) async -> Bool {
         isRunningVitalDBVisibilityAction = true
         vitalDBVisibilityActionMessage = "Updating VitalDB visibility..."
         defer { isRunningVitalDBVisibilityAction = false }
@@ -512,8 +515,10 @@ public final class RuntimeViewModel: ObservableObject {
             let bedHistory = try await action()
             vitalBeds = bedHistory
             vitalDBVisibilityActionMessage = successMessage
+            return true
         } catch {
             vitalDBVisibilityActionMessage = error.localizedDescription
+            return false
         }
     }
 

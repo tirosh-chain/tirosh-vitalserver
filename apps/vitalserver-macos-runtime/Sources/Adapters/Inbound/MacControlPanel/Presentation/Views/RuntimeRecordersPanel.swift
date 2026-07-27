@@ -4,11 +4,6 @@ import RuntimeControl
 import SwiftUI
 import Errors
 
-struct RuntimeRecorderTableLayout {
-    static let headerMinimumHeight: CGFloat = 28
-    static let rowMinimumHeight: CGFloat = 52
-}
-
 struct RuntimeRecordersPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
@@ -23,6 +18,7 @@ struct RuntimeRecordersPanel: View {
     @State private var recorderVrcodePendingDeletion: String?
     private let activityChartDataBuilder = RuntimeRecorderActivityChartDataBuilder()
     private let displayPolicy = RuntimeVitalRecorderDisplayPolicy()
+    private let observabilityDisplayPolicy = RuntimeRecorderObservabilityDisplayPolicy()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -259,7 +255,7 @@ struct RuntimeRecordersPanel: View {
             tableHeader(AppConstants.Labels.anomaly, minWidth: 190)
             tableHeader("IP", minWidth: 230)
         }
-        .frame(minHeight: RuntimeRecorderTableLayout.headerMinimumHeight, alignment: .center)
+        .frame(minHeight: RuntimeVitalHistoryTableLayout.headerMinimumHeight, alignment: .center)
         .padding(10)
     }
 
@@ -273,7 +269,12 @@ struct RuntimeRecordersPanel: View {
                     tableRecorderIdentity(recorder, minWidth: 170)
                     tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 180)
                     tableValue(viewModel.presentationFormatter.systemTimeAgeText(recorder.lastSeenAt), minWidth: 140)
-                    tableValue(recorderOperationalHealthSummary(recorder.observability), minWidth: 220)
+                    tableValue(
+                        observabilityDisplayPolicy.operationalHealthSummary(
+                            recorder.observability
+                        ),
+                        minWidth: 220
+                    )
                     tableValue(recorderAnomalyText(recorder), minWidth: 190)
                     tableIPValue(recorder, minWidth: 230)
                 }
@@ -281,7 +282,7 @@ struct RuntimeRecordersPanel: View {
             }
             .buttonStyle(.plain)
         }
-        .frame(minHeight: RuntimeRecorderTableLayout.rowMinimumHeight, alignment: .center)
+        .frame(minHeight: RuntimeVitalHistoryTableLayout.rowMinimumHeight, alignment: .center)
         .padding(10)
         .background(selectedRecorder?.vrcode == recorder.vrcode ? Color.accentColor.opacity(0.10) : Color.clear)
     }
@@ -743,457 +744,11 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func recorderObservability(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        return VStack(alignment: .leading, spacing: 10) {
-            detailSectionTitle("Health report")
-            if let detail = viewModel.recorderObservabilityDetails[recorder.vrcode] {
-                recorderObservabilityDetail(detail, recorder: recorder)
-            } else {
-                Text("Loading health detail...")
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .task(id: recorder.vrcode) {
-            async let detail: Void = viewModel.refreshRecorderObservabilityDetail(vrcode: recorder.vrcode)
-            async let incidents: Void = viewModel.refreshRecorderObservabilityIncidents(
-                query: recorderObservabilityIncidentQuery(vrcode: recorder.vrcode)
-            )
-            _ = await (detail, incidents)
-        }
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private func recorderObservabilityDetail(
-        _ detail: RuntimeRecorderObservabilityDetail,
-        recorder: RuntimeVitalRecorderRecord
-    ) -> some View {
-        if detail.vrcode != recorder.vrcode {
-            Text("Health detail identity does not match the selected Recorder.")
-                .foregroundStyle(.red)
-        } else if detail.state == .unavailable {
-            Text("Health detail read failed: \(detail.readError ?? "No failure detail was provided.")")
-                .foregroundStyle(.red)
-        } else {
-            if recorderObservabilitySummaryMismatch(detail, recorder: recorder) {
-                Text("Recorder list and health detail report different support or report states.")
-                    .foregroundStyle(.red)
-            }
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-                detailRow("Support", recorderObservabilityDetailSupportText(detail))
-                detailRow("Report", recorderObservabilityDetailReportText(detail))
-                detailRow(
-                    "Last report",
-                    viewModel.presentationFormatter.systemTimeText(detail.report.receivedAt)
-                )
-                detailRow(
-                    "Operational health",
-                    recorderOperationalHealthText(detail.operationalHealth)
-                )
-                detailRow("Evidence health", recorderObservabilityEvidenceHealthText(detail.evidenceHealth))
-                detailRow("Incident assessment", recorderObservabilityIncidentStateText(detail.incidentState))
-                detailRow(
-                    "Temperature",
-                    recorderObservabilityReadingText(
-                        detail.readings.temperatureCelsius,
-                        suffix: " °C"
-                    )
-                )
-                detailRow(
-                    "Memory available",
-                    recorderObservabilityByteReadingText(detail.readings.memoryAvailableBytes)
-                )
-                detailRow(
-                    "Memory total",
-                    recorderObservabilityByteReadingText(detail.readings.memoryTotalBytes)
-                )
-                detailRow(
-                    "Root storage used",
-                    recorderObservabilityReadingText(
-                        detail.readings.rootUsedPercent,
-                        suffix: "%"
-                    )
-                )
-                detailRow(
-                    "Data storage used",
-                    recorderObservabilityReadingText(
-                        detail.readings.dataUsedPercent,
-                        suffix: "%"
-                    )
-                )
-                detailRow(
-                    "Recorder service",
-                    recorderObservabilityReadingText(detail.readings.recorderActiveState)
-                )
-                detailRow(
-                    "Publisher",
-                    recorderObservabilityReadingText(detail.readings.publisherActiveState)
-                )
-                detailRow(
-                    "Publisher buffer",
-                    recorderObservabilityByteReadingText(detail.readings.publisherBufferBytes)
-                        + " / "
-                        + recorderObservabilityByteReadingText(
-                            detail.readings.publisherBufferLimitBytes
-                        )
-                )
-                detailRow("Profile", detail.profile.state.rawValue)
-                detailRow("Boot", recorderObservabilityBootText(detail))
-                detailRow("Read issues", String(detail.report.readIssueCount))
-            }
-            recorderCurrentIncidentState(detail.incidentState)
-            if !detail.operationalHealth.issues.isEmpty {
-                Text("Latest reported issues")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .padding(.top, 4)
-                ForEach(detail.operationalHealth.issues, id: \.code) { issue in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(issue.title)
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                        Text(issue.detail)
-                            .font(.caption)
-                    }
-                    .foregroundStyle(
-                        issue.severity == .critical ? Color.red : Color.orange
-                    )
-                }
-                if detail.report.state != "current" {
-                    Text(
-                        "These issues came from the latest report; "
-                            + "current device state is unknown."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-            }
-            if !detail.readIssues.isEmpty {
-                Text("Telemetry read issues")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .padding(.top, 4)
-            }
-            ForEach(Array(detail.readIssues.enumerated()), id: \.offset) { _, issue in
-                Text("\(issue.field): \(issue.state) — \(issue.detail)")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-            if !detail.readings.networkInterfaces.isEmpty {
-                Text("Network interfaces")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                ForEach(detail.readings.networkInterfaces, id: \.name) { networkInterface in
-                    Text(recorderObservabilityNetworkText(networkInterface))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-            }
-            recorderIncidentHistory(vrcode: recorder.vrcode)
-        }
-    }
-
-    @ViewBuilder
-    private func recorderCurrentIncidentState(
-        _ incidentState: RuntimeRecorderObservabilityIncidentState
-    ) -> some View {
-        switch incidentState.state {
-        case "notReported":
-            Text("Current incident assessment has not been reported by this Recorder.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case "invalid":
-            Text("Current incident assessment is invalid.")
-                .font(.caption)
-                .foregroundStyle(.red)
-        case "reported":
-            if incidentState.bootLoopState == "warning" || incidentState.bootLoopState == "critical" {
-                Text("Current boot-loop assessment: \(incidentState.bootLoopState ?? "unknown").")
-                    .font(.caption)
-                    .foregroundStyle(incidentState.bootLoopState == "critical" ? Color.red : Color.orange)
-            }
-            if incidentState.repeatedUndervoltageState == "warning"
-                || incidentState.repeatedUndervoltageState == "critical" {
-                Text("Current repeated-undervoltage assessment: \(incidentState.repeatedUndervoltageState ?? "unknown").")
-                    .font(.caption)
-                    .foregroundStyle(incidentState.repeatedUndervoltageState == "critical" ? Color.red : Color.orange)
-            }
-        default:
-            Text("Current incident assessment state: \(incidentState.state).")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private func recorderIncidentHistory(vrcode: String) -> some View {
-        let query = recorderObservabilityIncidentQuery(vrcode: vrcode)
-        if let page = viewModel.recorderObservabilityIncidentPage(query: query) {
-            Text("Recent reported incidents")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .padding(.top, 4)
-            if page.state == .unavailable {
-                Text("Incident history is unavailable: \(page.readError ?? "No failure detail was provided.")")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            } else if page.incidents.isEmpty {
-                Text("No reported incident records in the last 30 days.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(page.incidents, id: \.incidentId) { incident in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(incident.code) — \(incident.severity)")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                        Text(incident.summary)
-                            .font(.caption)
-                        Text("Reported \(viewModel.presentationFormatter.systemTimeText(incident.receivedAt))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .foregroundStyle(incident.severity == "critical" ? Color.red : Color.orange)
-                }
-            }
-        }
-    }
-
-    private func recorderObservabilityIncidentQuery(
-        vrcode: String,
-        now: Date = Date()
-    ) -> RuntimeRecorderObservabilityIncidentQuery {
-        let formatter = ISO8601DateFormatter()
-        let until = formatter.string(from: now)
-        let from = formatter.string(
-            from: Calendar.current.date(byAdding: .day, value: -30, to: now) ?? now
+        RuntimeRecorderHealthSection(
+            viewModel: viewModel,
+            vrcode: recorder.vrcode,
+            recorderSummary: recorder.observability
         )
-        return RuntimeRecorderObservabilityIncidentQuery(
-            vrcode: vrcode,
-            from: from,
-            until: until,
-            type: nil,
-            cursor: nil,
-            limit: 20
-        )
-    }
-
-    private func recorderObservabilitySummaryMismatch(
-        _ detail: RuntimeRecorderObservabilityDetail,
-        recorder: RuntimeVitalRecorderRecord
-    ) -> Bool {
-        guard let summary = recorder.observability else {
-            return false
-        }
-        return summary.supportState.rawValue != detail.support.state
-            || summary.reportState.rawValue != detail.report.state
-            || (
-                summary.operationalHealthState != nil
-                    && summary.operationalHealthState != detail.operationalHealth.state
-            )
-    }
-
-    private func recorderObservabilityDetailSupportText(
-        _ detail: RuntimeRecorderObservabilityDetail
-    ) -> String {
-        switch detail.support.state {
-        case "supported":
-            return "Supported"
-        case "unsupported":
-            return "Not available on this version"
-        default:
-            return "Support unknown"
-        }
-    }
-
-    private func recorderObservabilityDetailReportText(
-        _ detail: RuntimeRecorderObservabilityDetail
-    ) -> String {
-        if detail.support.state == "unsupported" {
-            return "Not applicable"
-        }
-        switch detail.report.state {
-        case "awaitingFirstReport":
-            return "Waiting for first report"
-        case "current":
-            return "Current"
-        case "stale":
-            return "Stale"
-        case "missing":
-            return "Missing"
-        case "readFailed":
-            return "Unavailable"
-        default:
-            return "Not evaluated"
-        }
-    }
-
-    private func recorderObservabilityReadingText(
-        _ reading: RuntimeRecorderObservabilityReading,
-        suffix: String = ""
-    ) -> String {
-        guard reading.state == .ok else {
-            return reading.state.rawValue
-                + (reading.detail.map { " — \($0)" } ?? "")
-        }
-        guard let value = reading.value else {
-            return "invalid — scalar value expected"
-        }
-        switch value {
-        case .bool(let value):
-            return "\(value)\(suffix)"
-        case .int(let value):
-            return "\(value)\(suffix)"
-        case .double(let value):
-            return "\(value)\(suffix)"
-        case .string(let value):
-            return "\(value)\(suffix)"
-        case .null, .array, .object:
-            return "invalid — scalar value expected"
-        }
-    }
-
-    private func recorderObservabilityByteReadingText(
-        _ reading: RuntimeRecorderObservabilityReading
-    ) -> String {
-        guard reading.state == .ok, let value = reading.value else {
-            return recorderObservabilityReadingText(reading)
-        }
-        let bytes: Int64?
-        switch value {
-        case .int(let value):
-            bytes = Int64(value)
-        case .double(let value) where value.isFinite:
-            bytes = Int64(value)
-        default:
-            bytes = nil
-        }
-        guard let bytes, bytes >= 0 else {
-            return "invalid — byte value expected"
-        }
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
-
-    private func recorderObservabilityNetworkText(
-        _ networkInterface: RuntimeRecorderObservabilityNetworkInterface
-    ) -> String {
-        let state = recorderObservabilityReadingText(networkInterface.operState)
-        let carrier = recorderObservabilityReadingText(networkInterface.carrier)
-        let rxErrors = recorderObservabilityReadingText(networkInterface.rxErrors)
-        let txErrors = recorderObservabilityReadingText(networkInterface.txErrors)
-        return "\(networkInterface.name): \(state), carrier \(carrier), "
-            + "RX errors \(rxErrors), TX errors \(txErrors)"
-    }
-
-    private func recorderObservabilityBootText(
-        _ detail: RuntimeRecorderObservabilityDetail
-    ) -> String {
-        switch detail.boot.state {
-        case "started":
-            return "Started "
-                + viewModel.presentationFormatter.systemTimeText(detail.boot.startedAt)
-        case "shutdownClean":
-            return "Clean shutdown "
-                + viewModel.presentationFormatter.systemTimeText(
-                    detail.boot.cleanShutdownAt
-                )
-        default:
-            return detail.boot.orderingState == "nonOrderable"
-                ? "Reported, but order cannot be established across boot evidence"
-                : "Not reported"
-        }
-    }
-
-    private func recorderObservabilityEvidenceHealthText(
-        _ evidenceHealth: RuntimeRecorderObservabilityEvidenceHealth
-    ) -> String {
-        guard evidenceHealth.state != "notReported" else {
-            return "Not reported"
-        }
-        return evidenceHealth.state + (evidenceHealth.detail.map { " — \($0)" } ?? "")
-    }
-
-    private func recorderObservabilityIncidentStateText(
-        _ incidentState: RuntimeRecorderObservabilityIncidentState
-    ) -> String {
-        guard incidentState.state == "reported" else {
-            return incidentState.state
-        }
-        let states = [incidentState.bootLoopState, incidentState.repeatedUndervoltageState]
-            .compactMap { $0 }
-            .filter { $0 != "none" }
-        return states.isEmpty ? "No active reported assessment" : states.joined(separator: ", ")
-    }
-
-    private func recorderObservabilitySupportText(
-        _ observability: RuntimeRecorderObservability?
-    ) -> String {
-        switch observability?.supportState {
-        case .supported:
-            return "Supported"
-        case .unsupported:
-            return "Not available on this version"
-        case .unknown, nil:
-            return "Support unknown"
-        }
-    }
-
-    private func recorderObservabilityReportText(
-        _ observability: RuntimeRecorderObservability?
-    ) -> String {
-        if observability?.supportState == .unsupported {
-            return "Not applicable"
-        }
-        switch observability?.reportState {
-        case .awaitingFirstReport:
-            return "Waiting for first report"
-        case .current:
-            return "Current"
-        case .stale:
-            return "Stale"
-        case .missing:
-            return "Missing"
-        case .readFailed:
-            return "Unavailable"
-        case .notEvaluated, nil:
-            return "Not evaluated"
-        }
-    }
-
-    private func recorderOperationalHealthSummary(
-        _ observability: RuntimeRecorderObservability?
-    ) -> String {
-        let report = recorderObservabilityReportText(observability)
-        let count = observability?.operationalIssueCount ?? 0
-        let health: String
-        switch observability?.operationalHealthState {
-        case .healthy:
-            health = "Healthy"
-        case .warning:
-            health = "Warning (\(count))"
-        case .critical:
-            health = "Critical (\(count))"
-        case .unknown, nil:
-            health = "Unknown"
-        }
-        return "\(health) · report \(report)"
-    }
-
-    private func recorderOperationalHealthText(
-        _ health: RuntimeRecorderOperationalHealth
-    ) -> String {
-        switch health.state {
-        case .healthy:
-            return "Healthy"
-        case .warning:
-            return "Warning — \(health.issueCount) reported issue(s)"
-        case .critical:
-            return "Critical — \(health.issueCount) reported issue(s)"
-        case .unknown:
-            return health.issueCount > 0
-                ? "Unknown — \(health.issueCount) issue(s) in the latest report"
-                : "Unknown"
-        }
     }
 
     private func recorderRelationshipHistory(_ recorder: RuntimeVitalRecorderRecord) -> some View {

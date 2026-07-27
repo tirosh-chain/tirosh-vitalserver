@@ -9,8 +9,8 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
     private let policy = RuntimeVitalRecorderDisplayPolicy()
 
     func testRecorderTableLayoutReservesHeaderAndTwoLineIPCellHeight() {
-        XCTAssertGreaterThanOrEqual(RuntimeRecorderTableLayout.headerMinimumHeight, 20)
-        XCTAssertGreaterThanOrEqual(RuntimeRecorderTableLayout.rowMinimumHeight, 40)
+        XCTAssertGreaterThanOrEqual(RuntimeVitalHistoryTableLayout.headerMinimumHeight, 20)
+        XCTAssertGreaterThanOrEqual(RuntimeVitalHistoryTableLayout.rowMinimumHeight, 40)
     }
 
     func testRecorderAndBedStatusTextPreservesExplicitStates() {
@@ -59,6 +59,15 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
         XCTAssertTrue(policy.isProductLabRecorder(version: "vitalserver-lab"))
         XCTAssertFalse(policy.isProductLabRecorder(version: "LAB-ABC123"))
         XCTAssertFalse(policy.isProductLabRecorder(version: nil))
+    }
+
+    func testLinkedRecorderHealthRequiresExplicitNonBlankVrcode() {
+        XCTAssertEqual(
+            policy.linkedRecorderHealthVrcode(bed(vrcode: " 06311eba ")),
+            "06311eba"
+        )
+        XCTAssertNil(policy.linkedRecorderHealthVrcode(bed(vrcode: nil)))
+        XCTAssertNil(policy.linkedRecorderHealthVrcode(bed(vrcode: "   ")))
     }
 
     func testRecorderAnomalyTextDistinguishesHistoryFromCurrentZero() {
@@ -146,6 +155,21 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
             latestAnomalyKind: latestAnomalyKind,
             latestAnomalySeverity: nil,
             presentInLatestObservation: presentInLatestObservation
+        )
+    }
+
+    private func bed(vrcode: String?) -> RuntimeVitalBedRecord {
+        RuntimeVitalBedRecord(
+            bedID: "bed-1",
+            name: "OR 1",
+            vrcode: vrcode,
+            status: .online,
+            patientConnected: true,
+            firstSeenAt: nil,
+            lastSeenAt: nil,
+            observationCount: 1,
+            currentAnomalyCount: 0,
+            latestAnomalySeverity: nil
         )
     }
 }

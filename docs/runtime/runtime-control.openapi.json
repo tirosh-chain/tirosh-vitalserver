@@ -5411,6 +5411,13 @@
             ],
             "description": "IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available."
           },
+          "linkedRecorderVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version reported by the VRecorder linked to this bed. Current providers emit this field explicitly; legacy providers may omit it."
+          },
           "linkedRecorderLastSeenAt": {
             "type": [
               "string",

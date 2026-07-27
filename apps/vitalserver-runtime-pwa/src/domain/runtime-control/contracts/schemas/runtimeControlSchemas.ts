@@ -1430,6 +1430,7 @@ const vitalDBBedRecordSchema = z
     vrcode: requiredNullableString,
     linkedRecorderStatus: recorderStatusSchema.nullable(),
     linkedRecorderIP: requiredNullableString,
+    linkedRecorderVersion: requiredNullableString.optional(),
     linkedRecorderLastSeenAt: requiredNullableString,
     status: bedStatusSchema,
     patientConnected: requiredNullableBoolean,

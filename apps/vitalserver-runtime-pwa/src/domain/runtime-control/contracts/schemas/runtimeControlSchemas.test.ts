@@ -1067,6 +1067,26 @@ describe("runtime control contract schemas", () => {
         ]
       }))
     ).toThrow();
+
+    expect(
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        beds: [
+          fullVitalBedRecord({
+            linkedRecorderVersion: undefined
+          })
+        ]
+      })).beds[0]?.linkedRecorderVersion
+    ).toBeUndefined();
+
+    expect(
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        beds: [
+          fullVitalBedRecord({
+            linkedRecorderVersion: "1.18.43"
+          })
+        ]
+      })).beds[0]?.linkedRecorderVersion
+    ).toBe("1.18.43");
   });
 
   it("requires explicit VitalDB read model visibility", () => {
@@ -1825,6 +1845,7 @@ function fullVitalBedRecord(overrides: Record<string, unknown> = {}) {
     vrcode: null,
     linkedRecorderStatus: null,
     linkedRecorderIP: null,
+    linkedRecorderVersion: null,
     linkedRecorderLastSeenAt: null,
     status: "online",
     visibility: "visible",

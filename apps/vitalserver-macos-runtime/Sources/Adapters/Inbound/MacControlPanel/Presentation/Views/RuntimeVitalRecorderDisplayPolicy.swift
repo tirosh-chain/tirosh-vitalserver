@@ -3,6 +3,11 @@ import Foundation
 import RuntimeControl
 import Errors
 
+struct RuntimeVitalHistoryTableLayout {
+    static let headerMinimumHeight: CGFloat = 28
+    static let rowMinimumHeight: CGFloat = 52
+}
+
 public struct RuntimeVitalRecorderDisplayPolicy {
     private static let productLabVersion = "vitalserver-lab"
 
@@ -98,6 +103,17 @@ public struct RuntimeVitalRecorderDisplayPolicy {
 
     public func isProductLabRecorder(version: String?) -> Bool {
         version == Self.productLabVersion
+    }
+
+    public func linkedRecorderHealthVrcode(
+        _ bed: RuntimeVitalBedRecord
+    ) -> String? {
+        guard let vrcode = bed.vrcode?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !vrcode.isEmpty else {
+            return nil
+        }
+        return vrcode
     }
 
     public func recorderAnomalyText(_ recorder: RuntimeVitalRecorderRecord) -> String {

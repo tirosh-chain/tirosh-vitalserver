@@ -487,6 +487,30 @@ The Swift Helper ViewModel keeps `vitalBeds` as a distinct published read
 result; Recorder panels may link to beds for display, but they must read those
 links from the Bed read result rather than the Recorder history payload.
 
+The Beds presentation renders `RuntimeVitalBedHistory.state`, `summary`, and
+`readError` directly. A failed Bed read is not an empty successful list, and a
+partially loaded read keeps its retained rows together with the reported issue.
+When a selected Bed explicitly reports a non-blank `vrcode`, the presentation
+may request that Recorder's observability detail and incident history through
+the Recorder-owned endpoints. It must not copy observability into the Bed
+contract or join the Recorder list to manufacture Bed or linked-recorder state.
+No Recorder health request is made when the Bed does not report a `vrcode`, and
+Recorder detail or incident failures remain scoped to the linked Recorder
+health section.
+
+The Recorder and Bed tabs share the same list composition rules for search,
+sort, visibility filtering, refresh, status-first rows, selection, row height,
+and detail-card structure. Sorting is a presentation-only operation over the
+reported records and keeps missing names, links, and timestamps distinct. The
+Recorder History toggle remains Recorder-only because its contract explicitly
+provides `presentInLatestObservation`; the Bed presentation must not construct
+an equivalent current/history state from Bed status.
+
+Current Bed providers emit `linkedRecorderVersion` explicitly. Runtime clients
+accept its absence only as a documented legacy wire migration and display that
+absence as not reported; they do not classify a missing version as a Vital
+Recorder or Product Lab source.
+
 CLI automation uses the same boundary. `vitalserver-vm runtime lab-*` commands call Guest Control `/runtime/lab/*` and print the returned Product Lab contracts as JSON. The Host CLI must not read Lab fixture files, TestKit state files, or container-local process state to infer session state.
 
 Swift Helper navigation now treats Lab as a primary product section. Observability and Logs move toward diagnostics/More surfaces, while Lab scenario creation, session control, and `.vital` replay use the Runtime Control Product Lab client contract instead of direct TestKit container calls.
