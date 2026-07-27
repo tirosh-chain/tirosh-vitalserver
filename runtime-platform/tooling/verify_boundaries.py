@@ -267,6 +267,15 @@ FORBIDDEN_LEGACY_MARKERS: Sequence[str] = (
     "github.com/tirosh/vitalserver-",
 )
 
+# Runtime Platform's installed Host reads only the stable Update Bootstrap
+# Envelope.  These legacy manifest gates require an installed updater to
+# understand the evolving product specification and would silently restore
+# the compatibility problem that the bundle-owned next updater removes.
+FORBIDDEN_LEGACY_UPDATE_GATE_MARKERS: Sequence[str] = (
+    "minUpdaterVersion",
+    "requiresTwoPhaseUpdate",
+)
+
 FORBIDDEN_LEGACY_RELATIVE_PATH = re.compile(r"(?:\.\./)+(?:apps|packages)/")
 TEMPORARY_WORK_ORDER_PATH_COMPONENT = re.compile(r"^phase(?:[-_].*|\d.*)?$", re.IGNORECASE)
 
@@ -648,6 +657,34 @@ def validate_no_legacy_coupling(root: Path) -> List[Violation]:
     return violations
 
 
+def validate_no_legacy_update_gates(root: Path) -> List[Violation]:
+    """Keep evolving product-update policy out of the installed Host baseline."""
+
+    violations = []
+    for path in iter_production_files(root):
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            # The legacy-coupling check reports the typed unreadable-file
+            # violation once; do not duplicate that evidence here.
+            continue
+        for marker in FORBIDDEN_LEGACY_UPDATE_GATE_MARKERS:
+            if marker in content:
+                violations.append(
+                    Violation(
+                        code="legacy-update-gate-not-allowed",
+                        path=path,
+                        message=(
+                            "installed Runtime Platform code and configuration must not use "
+                            "{0}; the Host verifies the stable bootstrap envelope and the "
+                            "bundle-owned next updater interprets the product update specification"
+                        ).format(marker),
+                    )
+                )
+                break
+    return violations
+
+
 def validate(root: Path) -> List[Violation]:
     """Run every independent implementation-root boundary check."""
 
@@ -672,6 +709,7 @@ def validate(root: Path) -> List[Violation]:
     violations.extend(validate_no_symlinks(root))
     violations.extend(validate_no_temporary_work_order_paths(root))
     violations.extend(validate_no_legacy_coupling(root))
+    violations.extend(validate_no_legacy_update_gates(root))
     return violations
 
 

@@ -759,6 +759,14 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 b"host-update-handoff-supervisor",
                 (release_root / "bin/host-update-handoff-supervisor").read_bytes(),
             )
+            self.assertEqual(
+                self.c58_path.read_bytes(),
+                (release_root / "config/update-trust-store.json").read_bytes(),
+            )
+            self.assertFalse(
+                (release_root / "bin/host-updater").exists(),
+                "the evolving updater belongs to a signed release bundle, not the installed Host baseline",
+            )
             self.assertEqual(b"platformctl", (release_root / "bin/platformctl").read_bytes())
             self.assertEqual(b"virtual-machine-supervisor", (release_root / "bin/macos-virtual-machine-supervisor").read_bytes())
             self.assertEqual(b"kernel", (release_root / "vm/assets/Image").read_bytes())

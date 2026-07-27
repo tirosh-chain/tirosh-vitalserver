@@ -154,6 +154,24 @@ reusing a key ID for different bytes, changing the reviewed source store, or
 signing with a private key that does not match the selected packaged public
 key is rejected before bundle publication.
 
+## Installed product baseline
+
+Runtime Platform is a clean-install product root, not an in-place extension of
+the legacy macOS Helper. Its installed update baseline contains the Host
+Agent's stable envelope verifier and journal, the Update Handoff Supervisor,
+the public Host Update Trust Store, and the Runtime Console import/apply
+interface. The installed baseline deliberately does not contain a current
+`host-updater` executable: every signed release bundle supplies the exact next
+updater that owns that bundle's Product Update Specification.
+
+The legacy Helper's `minUpdaterVersion` and `requiresTwoPhaseUpdate` policy
+remains outside this product root as historical product code. Runtime Platform
+does not call it, package it, or migrate its update state. The independent-root
+boundary check rejects either legacy gate if it is introduced into Runtime
+Platform production code or configuration. A future Helper-to-Runtime-Platform
+transition, if required, is a separately specified migration and must not
+become a fallback update path.
+
 `../delivery/support-matrix.v1.json` names macOS arm64 as the first planned
 clean-install target and records Windows/Linux as planned consumers of the
 same C25–C31 contracts. `planned` is not an install, package, or clean-host
