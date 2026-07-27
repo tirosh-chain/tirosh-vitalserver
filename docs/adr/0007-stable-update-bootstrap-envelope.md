@@ -60,7 +60,7 @@ updater. The installed Host treats it as authenticated opaque bytes.
 | update operation lease and handoff journal | installed Host | Durable source of truth for admission and handoff status |
 | layer order, commands, migrations, health gates, rollback | staged next updater | Reads the release-owned specification; never inferred by the installed Host |
 | layer effect result | the adapter responsible for that layer | Reports an explicit result to the next updater |
-| installed release settlement | installed Host | Changes only from a correlated terminal next-updater result |
+| installed product release | installed Host SQLite | Revision 1 is written from an explicit package-install operation; later revisions change only with a correlated terminal next-updater result |
 
 The UI formats these explicit states. It does not infer success from process
 exit, files appearing, services becoming reachable, or the absence of an error.
@@ -106,7 +106,10 @@ authority.
 ## 구현 상태
 
 The Swift `Contracts` and `Domain` modules define the strict v1 envelope and
-pure target/layer/artifact policy. The Application verification use case keeps
+pure target/layer/artifact policy. The verified closure is an explicit contract,
+and pure admission policy creates revision-one `admitted` journal state only
+when its update identity, signed payload digest, and complete artifact set match
+the envelope. The Application verification use case keeps
 unavailable, failed, invalid, and mismatched results distinct. Outbound adapters
 produce the cross-platform canonical payload, verify real Ed25519 signatures,
 stream artifact digests, and reject non-regular files. The installed publisher
@@ -116,11 +119,15 @@ distinct. A strict Host-owned journal contract and pure state machine now
 separate admitted, handoff-pending, running, succeeded, failed, and interrupted
 states; terminal receipts must match the journal revision, request, envelope,
 and specification digest. Host SQLite schema v9 owns the journal and singleton
-installed-release documents. A succeeded journal revision and its correlated
-installed release are committed in one immediate transaction with optimistic
-revision validation; a stale writer or either write failure changes neither
-fact. No JSON state-file fallback is used. Bootstrap staging now copies into an
-attempt-specific temporary
+installed-product-release document. A fresh package installation writes
+revision 1 with package-install provenance. A succeeded update journal revision
+and its correlated next installed-product-release revision are committed in one
+immediate transaction with optimistic revision validation; a stale writer or
+either write failure changes neither fact. The Platform Agent reads this SQLite
+owner for Helper runtime-version presentation and preserves missing or failed
+reads as explicit issues. `runtime-version.json` remains an installation
+projection during the transition, but is not a fallback for authoritative
+product release state. Bootstrap staging now copies into an attempt-specific temporary
 directory and atomically publishes an immutable update-ID workspace; an
 existing final workspace is an explicit conflict and is never deleted or
 replaced. The fixed v1 handoff invocation is created only from a persisted
@@ -143,12 +150,14 @@ existing release artifact, and provides a separate verification command that
 checks the publisher signature, closure, sizes, and digests. The signing
 implementation uses the cross-platform Python `cryptography` API rather than a
 host `openssl` executable, whose Ed25519 capability differs across macOS,
-Windows, and Linux installations. The installed-release settlement contracts,
-pure policy, application port, SQLite repository, and handoff workflow are
-implemented and tested. Helper/PWA production composition and presentation
-cutover remain implementation work; the legacy `runtime-version.json` reader
-is not a fallback for this new authoritative settlement. This paragraph must be
-updated as each owner becomes executable.
+Windows, and Linux installations. The installed-product-release contracts,
+pure policy, application ports, SQLite repositories, package-install
+composition, handoff workflow, admission policy, and Helper presentation read
+path are implemented and tested. The production command that reads and safely
+materializes a selected release archive, loads the installed trust store,
+verifies and admits the envelope, and executes the handoff workflow remains
+implementation work. This paragraph must be updated as each owner becomes
+executable.
 
 Release automation calls:
 

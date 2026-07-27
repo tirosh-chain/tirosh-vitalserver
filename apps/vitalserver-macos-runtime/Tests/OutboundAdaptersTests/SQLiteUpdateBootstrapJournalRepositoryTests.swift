@@ -83,12 +83,16 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             from: admitted,
             repository: context.repository
         )
-        let release = try InstalledUpdateReleasePolicy.make(from: succeeded)
+        let release = try InstalledProductReleasePolicy.makeUpdate(
+            current: try baselineRelease(),
+            from: succeeded
+        )
 
         try context.repository.settleSucceededUpdate(
             journal: succeeded,
             release: release,
-            expectedJournalRevision: 3
+            expectedJournalRevision: 3,
+            expectedReleaseRevision: 1
         )
 
         XCTAssertEqual(
@@ -96,7 +100,7 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             .loaded(succeeded)
         )
         XCTAssertEqual(
-            context.repository.loadInstalledUpdateRelease(),
+            context.repository.loadInstalledProductRelease(),
             .loaded(release)
         )
     }
@@ -112,12 +116,18 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             from: admitted,
             repository: context.repository
         )
-        let valid = try InstalledUpdateReleasePolicy.make(from: succeeded)
-        let invalid = InstalledUpdateRelease(
+        let valid = try InstalledProductReleasePolicy.makeUpdate(
+            current: try baselineRelease(),
+            from: succeeded
+        )
+        let invalid = InstalledProductRelease(
             schemaVersion: valid.schemaVersion,
             productId: valid.productId,
             productVersion: "wrong-version",
             runtimeVersion: valid.runtimeVersion,
+            releaseRevision: valid.releaseRevision,
+            source: valid.source,
+            installOperationId: valid.installOperationId,
             updateId: valid.updateId,
             journalId: valid.journalId,
             journalRevision: valid.journalRevision,
@@ -129,7 +139,8 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         XCTAssertThrowsError(try context.repository.settleSucceededUpdate(
             journal: succeeded,
             release: invalid,
-            expectedJournalRevision: 3
+            expectedJournalRevision: 3,
+            expectedReleaseRevision: 1
         ))
         guard case .loaded(let unchanged) =
             context.repository.loadUpdateBootstrapJournal(id: admitted.id)
@@ -139,8 +150,8 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         XCTAssertEqual(unchanged.state, .running)
         XCTAssertEqual(unchanged.journalRevision, 3)
         XCTAssertEqual(
-            context.repository.loadInstalledUpdateRelease(),
-            .missing
+            context.repository.loadInstalledProductRelease(),
+            .loaded(try baselineRelease())
         )
     }
 
@@ -155,12 +166,16 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             from: admitted,
             repository: context.repository
         )
-        let release = try InstalledUpdateReleasePolicy.make(from: succeeded)
+        let release = try InstalledProductReleasePolicy.makeUpdate(
+            current: try baselineRelease(),
+            from: succeeded
+        )
 
         XCTAssertThrowsError(try context.repository.settleSucceededUpdate(
             journal: succeeded,
             release: release,
-            expectedJournalRevision: 2
+            expectedJournalRevision: 2,
+            expectedReleaseRevision: 1
         )) { error in
             XCTAssertEqual(
                 error as? SQLiteUpdateBootstrapJournalRepositoryError,
@@ -179,8 +194,8 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         XCTAssertEqual(unchanged.state, .running)
         XCTAssertEqual(unchanged.journalRevision, 3)
         XCTAssertEqual(
-            context.repository.loadInstalledUpdateRelease(),
-            .missing
+            context.repository.loadInstalledProductRelease(),
+            .loaded(try baselineRelease())
         )
     }
 
@@ -199,14 +214,23 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         }
         let databaseURL = directory.appendingPathComponent("runtime-state.sqlite")
         _ = try SQLiteHostRuntimeStateDatabase(url: databaseURL).initialize()
-        return (
-            SQLiteUpdateBootstrapJournalRepository(
-                databaseURL: databaseURL,
-                validate: ValidateUpdateBootstrapJournalUseCase().validate,
-                validateRelease: InstalledUpdateReleasePolicy.validate,
-                validateSettlement: InstalledUpdateReleasePolicy.validate
-            ),
-            databaseURL
+        let repository = SQLiteUpdateBootstrapJournalRepository(
+            databaseURL: databaseURL,
+            validate: ValidateUpdateBootstrapJournalUseCase().validate,
+            validateRelease: InstalledProductReleasePolicy.validate,
+            validateSettlement: InstalledProductReleasePolicy.validate
+        )
+        try repository.settlePackageInstallRelease(try baselineRelease())
+        return (repository, databaseURL)
+    }
+
+    private func baselineRelease() throws -> InstalledProductRelease {
+        try InstalledProductReleasePolicy.makePackageInstall(
+            productId: "ai.tirosh.vitalserver.helper",
+            productVersion: "0.2.2",
+            runtimeVersion: "0.2.2",
+            installOperationId: "install-1",
+            settledAt: "2026-07-27T00:00:00Z"
         )
     }
 

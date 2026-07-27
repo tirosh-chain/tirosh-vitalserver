@@ -98,6 +98,7 @@ final class RuntimeInstallWorkflowTests: XCTestCase {
         XCTAssertThrowsError(try harness.run(.full))
 
         XCTAssertTrue(harness.executedPlans.contains(.provisionVMDisk))
+        XCTAssertFalse(harness.executedPlans.contains(.settleInstalledProductRelease))
         XCTAssertFalse(harness.stateEvents.contains("state:completed:full:-:runtime install completed:"))
         XCTAssertTrue(harness.stateEvents.contains(
             "state:failed:full:provision-vm-disk:install step failed:install-step-failed:step=provision-vm-disk reason=step failed"
@@ -210,6 +211,9 @@ private final class InstallRuntimeUseCaseHarness {
                 },
                 prepareHostStateStore: { _ in
                     try self.execute(.prepareHostStateStore)
+                },
+                settleInstalledProductRelease: {
+                    try self.execute(.settleInstalledProductRelease)
                 }
             ),
             writer: InstallRuntimeStateWriter(

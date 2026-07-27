@@ -1,13 +1,21 @@
-public struct InstalledUpdateRelease: Codable, Equatable, Sendable {
+public enum InstalledProductReleaseSource: String, Codable, Equatable, Sendable {
+    case packageInstall = "package-install"
+    case update
+}
+
+public struct InstalledProductRelease: Codable, Equatable, Sendable {
     public let schemaVersion: String
     public let productId: String
     public let productVersion: String
     public let runtimeVersion: String
-    public let updateId: String
-    public let journalId: String
-    public let journalRevision: Int
-    public let reportRelativePath: String
-    public let reportSHA256: String
+    public let releaseRevision: Int
+    public let source: InstalledProductReleaseSource
+    public let installOperationId: String?
+    public let updateId: String?
+    public let journalId: String?
+    public let journalRevision: Int?
+    public let reportRelativePath: String?
+    public let reportSHA256: String?
     public let settledAt: String
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -15,6 +23,9 @@ public struct InstalledUpdateRelease: Codable, Equatable, Sendable {
         case productId
         case productVersion
         case runtimeVersion
+        case releaseRevision
+        case source
+        case installOperationId
         case updateId
         case journalId
         case journalRevision
@@ -28,17 +39,23 @@ public struct InstalledUpdateRelease: Codable, Equatable, Sendable {
         productId: String,
         productVersion: String,
         runtimeVersion: String,
-        updateId: String,
-        journalId: String,
-        journalRevision: Int,
-        reportRelativePath: String,
-        reportSHA256: String,
+        releaseRevision: Int,
+        source: InstalledProductReleaseSource,
+        installOperationId: String?,
+        updateId: String?,
+        journalId: String?,
+        journalRevision: Int?,
+        reportRelativePath: String?,
+        reportSHA256: String?,
         settledAt: String
     ) {
         self.schemaVersion = schemaVersion
         self.productId = productId
         self.productVersion = productVersion
         self.runtimeVersion = runtimeVersion
+        self.releaseRevision = releaseRevision
+        self.source = source
+        self.installOperationId = installOperationId
         self.updateId = updateId
         self.journalId = journalId
         self.journalRevision = journalRevision
@@ -51,7 +68,7 @@ public struct InstalledUpdateRelease: Codable, Equatable, Sendable {
         try rejectUnknownUpdateBootstrapKeys(
             decoder,
             allowed: CodingKeys.allCases.map(\.rawValue),
-            type: "InstalledUpdateRelease"
+            type: "InstalledProductRelease"
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
@@ -68,17 +85,35 @@ public struct InstalledUpdateRelease: Codable, Equatable, Sendable {
                 String.self,
                 forKey: .runtimeVersion
             ),
-            updateId: try container.decode(String.self, forKey: .updateId),
-            journalId: try container.decode(String.self, forKey: .journalId),
-            journalRevision: try container.decode(
+            releaseRevision: try container.decode(
+                Int.self,
+                forKey: .releaseRevision
+            ),
+            source: try container.decode(
+                InstalledProductReleaseSource.self,
+                forKey: .source
+            ),
+            installOperationId: try container.decodeIfPresent(
+                String.self,
+                forKey: .installOperationId
+            ),
+            updateId: try container.decodeIfPresent(
+                String.self,
+                forKey: .updateId
+            ),
+            journalId: try container.decodeIfPresent(
+                String.self,
+                forKey: .journalId
+            ),
+            journalRevision: try container.decodeIfPresent(
                 Int.self,
                 forKey: .journalRevision
             ),
-            reportRelativePath: try container.decode(
+            reportRelativePath: try container.decodeIfPresent(
                 String.self,
                 forKey: .reportRelativePath
             ),
-            reportSHA256: try container.decode(
+            reportSHA256: try container.decodeIfPresent(
                 String.self,
                 forKey: .reportSHA256
             ),

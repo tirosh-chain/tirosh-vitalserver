@@ -37,7 +37,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
             "diagnostic_outbox",
             "diagnostic_projection_state",
             "host_runtime_settings",
-            "installed_update_release",
+            "installed_product_release",
             "legacy_state_imports",
             "runtime_endpoint",
             "runtime_metadata",
@@ -197,7 +197,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         """)
         try executeSQL(databaseURL, sql: "DELETE FROM schema_migrations WHERE version >= 7")
         try executeSQL(databaseURL, sql: "UPDATE runtime_metadata SET schema_version = 6")
-        try executeSQL(databaseURL, sql: "DROP TABLE installed_update_release")
+        try executeSQL(databaseURL, sql: "DROP TABLE installed_product_release")
         try executeSQL(databaseURL, sql: "DROP TABLE update_bootstrap_journals")
         try executeSQL(databaseURL, sql: "ALTER TABLE host_runtime_settings DROP COLUMN applied_vm_config_json")
         try executeSQL(databaseURL, sql: "ALTER TABLE host_runtime_settings DROP COLUMN applied_guest_runtime_config_json")

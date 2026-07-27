@@ -36,6 +36,7 @@ public struct RuntimeInstallCompositionOperations<Settings> {
     let configureInstalledVMRuntime: (Settings) throws -> Void
     let createCloudInitSeed: (Settings) throws -> Void
     let writeInstalledRuntimeVersion: () throws -> Void
+    let settleInstalledProductRelease: (String) throws -> Void
     let configureInstalledPermissions: (Settings) throws -> Void
     let startInstalledServices: (Settings) throws -> Void
     let applyStartOnBootPolicy: (Settings) throws -> Void
@@ -72,7 +73,8 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         initializeHostStateStore: @escaping () throws -> Void,
         prepareHostSettings: @escaping (Settings) throws -> Void,
         workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository,
-        operationID: @escaping () -> String
+        operationID: @escaping () -> String,
+        settleInstalledProductRelease: @escaping (String) throws -> Void = { _ in }
     ) {
         self.fileStore = fileStore
         self.now = now
@@ -89,6 +91,7 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         self.configureInstalledVMRuntime = configureInstalledVMRuntime
         self.createCloudInitSeed = createCloudInitSeed
         self.writeInstalledRuntimeVersion = writeInstalledRuntimeVersion
+        self.settleInstalledProductRelease = settleInstalledProductRelease
         self.configureInstalledPermissions = configureInstalledPermissions
         self.startInstalledServices = startInstalledServices
         self.applyStartOnBootPolicy = applyStartOnBootPolicy
@@ -182,7 +185,10 @@ public struct RuntimeInstallComposition<Settings> {
                 waitInstallRuntimeHealth: operations.waitInstallRuntimeHealth,
                 cleanupInstallSettings: operations.cleanupInstallSettings,
                 describeError: RuntimeErrorDescription.describe,
-                prepareHostStateStore: operations.prepareHostSettings
+                prepareHostStateStore: operations.prepareHostSettings,
+                settleInstalledProductRelease: {
+                    try operations.settleInstalledProductRelease(operationID)
+                }
             ),
             writer: InstallRuntimeStateWriter(
                 writeState: { state, mode, currentStep, message, blockers in

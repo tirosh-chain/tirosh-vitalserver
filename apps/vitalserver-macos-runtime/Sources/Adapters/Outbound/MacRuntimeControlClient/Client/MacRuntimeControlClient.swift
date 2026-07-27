@@ -21,6 +21,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         operationLeaseReader: any RuntimeOperationLeaseReading,
         guestAddressProvider: any RuntimeGuestAddressProvider,
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         hostSettingsReader: any RuntimeHostSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker
     ) {
@@ -28,7 +29,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
             releaseInfo: releaseInfo,
             platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
-                vmLifecycleResourceReader: vmLifecycleResourceReader
+                vmLifecycleResourceReader: vmLifecycleResourceReader,
+                installedProductReleaseReader: installedProductReleaseReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader
@@ -53,6 +55,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         operationLeaseReader: any RuntimeOperationLeaseReading,
         guestAddressProvider: any RuntimeGuestAddressProvider,
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         settingsReader: any RuntimeSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker
     ) {
@@ -60,7 +63,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
             releaseInfo: releaseInfo,
             platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
-                vmLifecycleResourceReader: vmLifecycleResourceReader
+                vmLifecycleResourceReader: vmLifecycleResourceReader,
+                installedProductReleaseReader: installedProductReleaseReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader

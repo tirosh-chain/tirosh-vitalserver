@@ -9,6 +9,8 @@ public enum SQLiteUpdateBootstrapJournalRepositoryError:
 {
     case invalidJournal(reason: String)
     case invalidInstalledRelease(reason: String)
+    case installedReleaseAlreadyExists(revision: Int)
+    case installedReleaseMissing
     case missing(id: String)
     case alreadyExists(id: String, revision: Int)
     case staleRevision(id: String, expected: Int, actual: Int)
@@ -18,7 +20,8 @@ public enum SQLiteUpdateBootstrapJournalRepositoryError:
 
 public struct SQLiteUpdateBootstrapJournalRepository:
     UpdateBootstrapJournalRepository,
-    InstalledUpdateReleaseReading,
+    InstalledProductReleaseReading,
+    PackageInstallReleaseWriting,
     SucceededUpdateSettlementWriting,
     @unchecked Sendable
 {
@@ -27,9 +30,9 @@ public struct SQLiteUpdateBootstrapJournalRepository:
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let validate: (UpdateBootstrapJournal) throws -> Void
-    private let validateRelease: (InstalledUpdateRelease) throws -> Void
+    private let validateRelease: (InstalledProductRelease) throws -> Void
     private let validateSettlement: (
-        InstalledUpdateRelease,
+        InstalledProductRelease,
         UpdateBootstrapJournal
     ) throws -> Void
 
@@ -39,9 +42,9 @@ public struct SQLiteUpdateBootstrapJournalRepository:
         encoder: JSONEncoder = JSONEncoder(),
         decoder: JSONDecoder = JSONDecoder(),
         validate: @escaping (UpdateBootstrapJournal) throws -> Void,
-        validateRelease: @escaping (InstalledUpdateRelease) throws -> Void,
+        validateRelease: @escaping (InstalledProductRelease) throws -> Void,
         validateSettlement: @escaping (
-            InstalledUpdateRelease,
+            InstalledProductRelease,
             UpdateBootstrapJournal
         ) throws -> Void
     ) {
@@ -173,8 +176,8 @@ public struct SQLiteUpdateBootstrapJournalRepository:
         }
     }
 
-    public func loadInstalledUpdateRelease(
-    ) -> InstalledUpdateReleaseReadResult {
+    public func loadInstalledProductRelease(
+    ) -> InstalledProductReleaseReadResult {
         do {
             return try connection.withReadOnlyDatabase { db in
                 _ = try SQLiteHostRuntimeStateSchema.validate(db)
@@ -183,7 +186,7 @@ public struct SQLiteUpdateBootstrapJournalRepository:
                         db,
                         sql: """
                         SELECT document_json
-                        FROM installed_update_release
+                        FROM installed_product_release
                         WHERE singleton_id = 1
                         """
                     )
@@ -191,7 +194,7 @@ public struct SQLiteUpdateBootstrapJournalRepository:
                     return .missing
                 }
                 let release = try decoder.decode(
-                    InstalledUpdateRelease.self,
+                    InstalledProductRelease.self,
                     from: Data(document.utf8)
                 )
                 try validateRelease(release)
@@ -199,15 +202,51 @@ public struct SQLiteUpdateBootstrapJournalRepository:
             }
         } catch {
             return .failed(
-                reason: "installed update release SQLite read failed path=\(databaseURL.path) reason=\(error)"
+                reason: "installed product release SQLite read failed path=\(databaseURL.path) reason=\(error)"
+            )
+        }
+    }
+
+    public func settlePackageInstallRelease(
+        _ release: InstalledProductRelease
+    ) throws {
+        do {
+            try validateRelease(release)
+        } catch {
+            throw SQLiteUpdateBootstrapJournalRepositoryError
+                .invalidInstalledRelease(reason: String(describing: error))
+        }
+        guard release.source == .packageInstall else {
+            throw SQLiteUpdateBootstrapJournalRepositoryError
+                .invalidInstalledRelease(reason: "release source is not package-install")
+        }
+
+        do {
+            try connection.withWritableDatabase { db in
+                _ = try SQLiteHostRuntimeStateSchema.validate(db)
+                try connection.withImmediateTransaction(db) {
+                    if let revision = try installedReleaseRevision(db) {
+                        throw SQLiteUpdateBootstrapJournalRepositoryError
+                            .installedReleaseAlreadyExists(revision: revision)
+                    }
+                    try insertInstalledRelease(db, release: release)
+                }
+            }
+        } catch let error as SQLiteUpdateBootstrapJournalRepositoryError {
+            throw error
+        } catch {
+            throw SQLiteUpdateBootstrapJournalRepositoryError.writeFailed(
+                path: databaseURL.path,
+                reason: String(describing: error)
             )
         }
     }
 
     public func settleSucceededUpdate(
         journal: UpdateBootstrapJournal,
-        release: InstalledUpdateRelease,
-        expectedJournalRevision: Int
+        release: InstalledProductRelease,
+        expectedJournalRevision: Int,
+        expectedReleaseRevision: Int
     ) throws {
         do {
             try validate(journal)
@@ -228,6 +267,28 @@ public struct SQLiteUpdateBootstrapJournalRepository:
             try connection.withWritableDatabase { db in
                 _ = try SQLiteHostRuntimeStateSchema.validate(db)
                 try connection.withImmediateTransaction(db) {
+                    guard let actualReleaseRevision =
+                        try installedReleaseRevision(db) else {
+                        throw SQLiteUpdateBootstrapJournalRepositoryError
+                            .installedReleaseMissing
+                    }
+                    guard actualReleaseRevision == expectedReleaseRevision else {
+                        throw SQLiteUpdateBootstrapJournalRepositoryError
+                            .staleRevision(
+                                id: "installed-product-release",
+                                expected: expectedReleaseRevision,
+                                actual: actualReleaseRevision
+                            )
+                    }
+                    guard release.releaseRevision
+                        == expectedReleaseRevision + 1 else {
+                        throw SQLiteUpdateBootstrapJournalRepositoryError
+                            .invalidNextRevision(
+                                id: "installed-product-release",
+                                expected: expectedReleaseRevision + 1,
+                                actual: release.releaseRevision
+                            )
+                    }
                     let existingRevision =
                         try SQLiteHostRuntimeStateStatement.scalarInt(
                             db,
@@ -248,10 +309,6 @@ public struct SQLiteUpdateBootstrapJournalRepository:
                         decoding: try encoder.encode(journal),
                         as: UTF8.self
                     )
-                    let releaseDocument = String(
-                        decoding: try encoder.encode(release),
-                        as: UTF8.self
-                    )
                     try SQLiteHostRuntimeStateStatement.execute(
                         db,
                         sql: """
@@ -270,32 +327,7 @@ public struct SQLiteUpdateBootstrapJournalRepository:
                             .text(journal.id),
                         ]
                     )
-                    try SQLiteHostRuntimeStateStatement.execute(
-                        db,
-                        sql: """
-                        INSERT INTO installed_update_release(
-                          singleton_id,
-                          update_id,
-                          journal_id,
-                          journal_revision,
-                          document_json,
-                          settled_at
-                        ) VALUES (1, ?, ?, ?, ?, ?)
-                        ON CONFLICT(singleton_id) DO UPDATE SET
-                          update_id = excluded.update_id,
-                          journal_id = excluded.journal_id,
-                          journal_revision = excluded.journal_revision,
-                          document_json = excluded.document_json,
-                          settled_at = excluded.settled_at
-                        """,
-                        bindings: [
-                            .text(release.updateId),
-                            .text(release.journalId),
-                            .int(release.journalRevision),
-                            .text(releaseDocument),
-                            .text(release.settledAt),
-                        ]
-                    )
+                    try updateInstalledRelease(db, release: release)
                 }
             }
         } catch let error as SQLiteUpdateBootstrapJournalRepositoryError {
@@ -306,6 +338,74 @@ public struct SQLiteUpdateBootstrapJournalRepository:
                 reason: String(describing: error)
             )
         }
+    }
+
+    private func installedReleaseRevision(
+        _ db: OpaquePointer
+    ) throws -> Int? {
+        try SQLiteHostRuntimeStateStatement.scalarInt(
+            db,
+            sql: """
+            SELECT release_revision
+            FROM installed_product_release
+            WHERE singleton_id = 1
+            """
+        )
+    }
+
+    private func insertInstalledRelease(
+        _ db: OpaquePointer,
+        release: InstalledProductRelease
+    ) throws {
+        let document = String(
+            decoding: try encoder.encode(release),
+            as: UTF8.self
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            INSERT INTO installed_product_release(
+              singleton_id,
+              release_revision,
+              source,
+              document_json,
+              settled_at
+            ) VALUES (1, ?, ?, ?, ?)
+            """,
+            bindings: [
+                .int(release.releaseRevision),
+                .text(release.source.rawValue),
+                .text(document),
+                .text(release.settledAt),
+            ]
+        )
+    }
+
+    private func updateInstalledRelease(
+        _ db: OpaquePointer,
+        release: InstalledProductRelease
+    ) throws {
+        let document = String(
+            decoding: try encoder.encode(release),
+            as: UTF8.self
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            UPDATE installed_product_release
+            SET release_revision = ?,
+                source = ?,
+                document_json = ?,
+                settled_at = ?
+            WHERE singleton_id = 1
+            """,
+            bindings: [
+                .int(release.releaseRevision),
+                .text(release.source.rawValue),
+                .text(document),
+                .text(release.settledAt),
+            ]
+        )
     }
 
     private func read(

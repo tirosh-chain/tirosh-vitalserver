@@ -91,7 +91,7 @@ enum SQLiteHostRuntimeStateSchema {
             "runtime_endpoint",
             "host_runtime_settings",
             "update_bootstrap_journals",
-            "installed_update_release",
+            "installed_product_release",
         ] {
             let count = try SQLiteHostRuntimeStateStatement.scalarInt(
                 db,
@@ -615,11 +615,10 @@ enum SQLiteHostRuntimeStateSchema {
         try SQLiteHostRuntimeStateStatement.execute(
             db,
             sql: """
-            CREATE TABLE installed_update_release (
+            CREATE TABLE installed_product_release (
               singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
-              update_id TEXT NOT NULL CHECK(length(update_id) > 0),
-              journal_id TEXT NOT NULL CHECK(length(journal_id) > 0),
-              journal_revision INTEGER NOT NULL CHECK(journal_revision > 0),
+              release_revision INTEGER NOT NULL CHECK(release_revision > 0),
+              source TEXT NOT NULL CHECK(source IN ('package-install', 'update')),
               document_json TEXT NOT NULL CHECK(length(document_json) > 0),
               settled_at TEXT NOT NULL CHECK(length(settled_at) > 0)
             )

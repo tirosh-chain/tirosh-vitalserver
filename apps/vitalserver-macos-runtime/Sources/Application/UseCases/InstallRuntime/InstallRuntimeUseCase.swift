@@ -60,6 +60,7 @@ public enum InstallRuntimeStepExecutionPlan: Equatable, Sendable {
     case startInstalledServices
     case applyStartOnBootPolicy
     case waitInstallRuntimeHealth
+    case settleInstalledProductRelease
     case cleanupInstallSettings
     case unsupported(message: String)
 }
@@ -133,6 +134,8 @@ public struct InstallRuntimeUseCase {
             return .applyStartOnBootPolicy
         case .waitInstallRuntimeHealth:
             return .waitInstallRuntimeHealth
+        case .settleInstalledProductRelease:
+            return .settleInstalledProductRelease
         case .cleanupInstallSettings:
             return .cleanupInstallSettings
         default:

@@ -130,7 +130,7 @@ private struct SavedJournal: Equatable {
 private final class HandoffWorkflowHarness {
     var saved: [SavedJournal] = []
     var events: [String] = []
-    var settledRelease: InstalledUpdateRelease?
+    var settledRelease: InstalledProductRelease?
     var settledExpectedRevision: Int?
 
     private let launchError: Error?
@@ -170,7 +170,7 @@ private final class HandoffWorkflowHarness {
         let advance = AdvanceUpdateBootstrapJournalUseCase()
         let makeInvocation = MakeUpdateBootstrapHandoffInvocationUseCase()
         let settle = SettleUpdateBootstrapHandoffUseCase()
-        let makeRelease = MakeInstalledUpdateReleaseUseCase()
+        let makeRelease = MakeInstalledProductReleaseUseCase()
         return UpdateBootstrapHandoffWorkflowOperations(
             saveJournal: { [self] journal, expectedRevision in
                 if failPersistence, journal.state == .failed {
@@ -227,15 +227,20 @@ private final class HandoffWorkflowHarness {
                 try settle.execute(journal: $0, receiptRead: $1)
             },
             makeInstalledRelease: {
-                try makeRelease.make(from: $0)
+                try makeRelease.makeUpdate(
+                    from: $0,
+                    currentRelease: .loaded(try self.baselineRelease())
+                )
             },
-            settleSucceeded: { [self] _, release, expectedRevision in
+            settleSucceeded: {
+                [self] _, release, expectedRevision, expectedReleaseRevision in
                 events.append("settle-installed-release")
                 if let settlementError {
                     throw settlementError
                 }
                 settledRelease = release
                 settledExpectedRevision = expectedRevision
+                XCTAssertEqual(expectedReleaseRevision, 1)
             },
             fail: { [self] in
                 if let failTransitionError {
@@ -249,6 +254,16 @@ private final class HandoffWorkflowHarness {
             },
             now: { "2026-07-27T06:05:00Z" },
             describeFailure: { String(describing: $0) }
+        )
+    }
+
+    private func baselineRelease() throws -> InstalledProductRelease {
+        try InstalledProductReleasePolicy.makePackageInstall(
+            productId: "com.tirosh.vitalserver-helper",
+            productVersion: "0.2.1",
+            runtimeVersion: "0.2.1",
+            installOperationId: "install-1",
+            settledAt: "2026-07-27T05:00:00Z"
         )
     }
 

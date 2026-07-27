@@ -26,6 +26,7 @@ public actor MacRuntimeControlReadWorker {
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading = UnavailableRuntimeVMLifecycleResourceReader(
             reason: "runtime VM lifecycle owner unavailable for default read worker"
         ),
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         hostSettingsReader: any RuntimeHostSettingsReading
     ) {
         let fileReader = SystemRuntimeHostFileReader()
@@ -33,7 +34,8 @@ public actor MacRuntimeControlReadWorker {
             releaseInfo: releaseInfo,
             platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
-                vmLifecycleResourceReader: vmLifecycleResourceReader
+                vmLifecycleResourceReader: vmLifecycleResourceReader,
+                installedProductReleaseReader: installedProductReleaseReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader,
@@ -61,6 +63,7 @@ public actor MacRuntimeControlReadWorker {
         ),
         guestAddressProvider: any RuntimeGuestAddressProvider,
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         settingsReader: any RuntimeSettingsReading
     ) {
         let fileReader = SystemRuntimeHostFileReader()
@@ -68,7 +71,8 @@ public actor MacRuntimeControlReadWorker {
             releaseInfo: releaseInfo,
             platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
-                vmLifecycleResourceReader: vmLifecycleResourceReader
+                vmLifecycleResourceReader: vmLifecycleResourceReader,
+                installedProductReleaseReader: installedProductReleaseReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader,

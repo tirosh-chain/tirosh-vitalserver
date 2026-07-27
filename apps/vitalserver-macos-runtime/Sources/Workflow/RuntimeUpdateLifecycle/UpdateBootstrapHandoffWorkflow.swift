@@ -81,10 +81,11 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
     ) throws -> UpdateBootstrapJournal
     public let makeInstalledRelease: (
         UpdateBootstrapJournal
-    ) throws -> InstalledUpdateRelease
+    ) throws -> InstalledProductRelease
     public let settleSucceeded: (
         UpdateBootstrapJournal,
-        InstalledUpdateRelease,
+        InstalledProductRelease,
+        Int,
         Int
     ) throws -> Void
     public let fail: (
@@ -132,10 +133,11 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
         ) throws -> UpdateBootstrapJournal,
         makeInstalledRelease: @escaping (
             UpdateBootstrapJournal
-        ) throws -> InstalledUpdateRelease,
+        ) throws -> InstalledProductRelease,
         settleSucceeded: @escaping (
             UpdateBootstrapJournal,
-            InstalledUpdateRelease,
+            InstalledProductRelease,
+            Int,
             Int
         ) throws -> Void,
         fail: @escaping (
@@ -248,7 +250,8 @@ public struct UpdateBootstrapHandoffWorkflow {
                 try operations.settleSucceeded(
                     settled,
                     release,
-                    running.journalRevision
+                    running.journalRevision,
+                    release.releaseRevision - 1
                 )
             } else {
                 try save(

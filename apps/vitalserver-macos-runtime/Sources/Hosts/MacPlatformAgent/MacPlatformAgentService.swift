@@ -80,12 +80,17 @@ public final class MacPlatformAgentService {
             databaseURL: installedPaths.runtimeStateDatabase,
             transitionDecider: RuntimeHostSettingsActivationUseCase()
         )
+        let installedProductReleaseReader = SQLiteInstalledProductReleaseReader(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            validate: ValidateInstalledProductReleaseUseCase().validate
+        )
         let readWorker = MacRuntimeControlReadWorker(
             releaseInfo: .generated,
             operationLeaseReader: operationLeaseController,
             workflowOperationStateReader: workflowOperationStateRepository,
             guestAddressProvider: runtimeEndpointStore,
             vmLifecycleResourceReader: vmLifecycleController,
+            installedProductReleaseReader: installedProductReleaseReader,
             hostSettingsReader: hostSettingsRepository
         )
         let commandWorker = MacRuntimeControlCommandWorker(
@@ -98,6 +103,7 @@ public final class MacPlatformAgentService {
             operationLeaseReader: operationLeaseController,
             guestAddressProvider: runtimeEndpointStore,
             vmLifecycleResourceReader: vmLifecycleController,
+            installedProductReleaseReader: installedProductReleaseReader,
             hostSettingsReader: hostSettingsRepository,
             commandWorker: commandWorker
         )

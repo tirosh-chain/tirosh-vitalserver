@@ -36,6 +36,7 @@ struct RuntimeHostStatusOwnerReaderBundle {
         runtimeLauncherPath: String = RuntimeControlClientConstants.Paths.launcher,
         fileStore: RuntimeFileStore,
         guestAddressProvider: (any RuntimeGuestAddressProvider)? = nil,
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         runtimeVersionFile: URL = InstalledRuntimePaths.defaultInstalled.runtimeDirectory
             .appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion),
         backupsDirectory: URL = InstalledRuntimePaths.defaultInstalled.backupsDirectory,
@@ -56,7 +57,10 @@ struct RuntimeHostStatusOwnerReaderBundle {
                 plistPath: InstalledRuntimePaths.defaultInstalled.proxyLaunchDaemon.path,
                 fileStore: fileStore
             ),
-            runtimeVersionReader: RuntimeHostVersionReader(
+            runtimeVersionReader: installedProductReleaseReader.map {
+                RuntimeHostInstalledProductReleaseVersionReader(reader: $0)
+                    as any RuntimeVersionReading
+            } ?? RuntimeHostVersionReader(
                 versionFile: runtimeVersionFile,
                 fileStore: fileStore
             ),
@@ -70,6 +74,33 @@ struct RuntimeHostStatusOwnerReaderBundle {
                 )
             )
         )
+    }
+}
+
+struct RuntimeHostInstalledProductReleaseVersionReader: RuntimeVersionReading {
+    let reader: any InstalledProductReleaseReading
+
+    func loadRuntimeVersionRead() -> RuntimeVersionRead {
+        switch reader.loadInstalledProductRelease() {
+        case .loaded(let release):
+            return RuntimeVersionRead(version: release.runtimeVersion, issue: nil)
+        case .missing:
+            return RuntimeVersionRead(
+                version: nil,
+                issue: PlatformStateReadIssue(
+                    source: "installedProductRelease",
+                    message: "installed product release is missing"
+                )
+            )
+        case .failed(let reason):
+            return RuntimeVersionRead(
+                version: nil,
+                issue: PlatformStateReadIssue(
+                    source: "installedProductRelease",
+                    message: reason
+                )
+            )
+        }
     }
 }
 
