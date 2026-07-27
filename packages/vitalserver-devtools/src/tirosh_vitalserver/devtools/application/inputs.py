@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.core.update_bootstrap_bundle_models import (
+    BuildUpdateBootstrapBundleInput,
+    VerifyUpdateBootstrapBundleInput,
+)
 from tirosh_vitalserver.devtools.core.update_bundle_models import BuildUpdateBundleInput
 from tirosh_vitalserver.devtools.core.upstream_vitalserver_contract import (
     VerificationMode,
@@ -371,6 +375,7 @@ class VerifyUpdateBundleInput:
 
 __all__ = [
     "ApplySmokeReleaseUpdateBundleInput",
+    "BuildUpdateBootstrapBundleInput",
     "BuildUpdateBundleInput",
     "CloudInitInput",
     "ComposeCommandInput",
@@ -408,5 +413,6 @@ __all__ = [
     "RuntimeWaitInput",
     "UbuntuBootAssetsInput",
     "VerifyReleaseUpdateBundleInput",
+    "VerifyUpdateBootstrapBundleInput",
     "VerifyUpdateBundleInput",
 ]

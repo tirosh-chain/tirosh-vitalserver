@@ -4,6 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.adapters.update_bundle import (
+    bootstrap_bundle_service,
+)
 from tirosh_vitalserver.devtools.application import inputs as usecase_inputs
 from tirosh_vitalserver.devtools.application.usecases import (
     build_config as build_config_usecases,
@@ -37,6 +40,9 @@ from tirosh_vitalserver.devtools.application.usecases import (
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     toolchain as toolchain_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    update_bootstrap_bundle as update_bootstrap_bundle_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     update_bundle as update_bundle_usecases,
@@ -709,6 +715,91 @@ def main() -> int:
         )
     )
 
+    update_bootstrap_bundle = subparsers.add_parser(
+        "update-bootstrap-bundle",
+        help="build a signed stable bootstrap bundle for Helper 0.2.2+",
+    )
+    update_bootstrap_bundle.add_argument("--update-id", required=True)
+    update_bootstrap_bundle.add_argument("--product-version", required=True)
+    update_bootstrap_bundle.add_argument("--runtime-version", required=True)
+    update_bootstrap_bundle.add_argument(
+        "--target-platform",
+        choices=["macos", "windows", "linux"],
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--target-architecture",
+        choices=["arm64", "amd64"],
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--layer",
+        choices=["container", "guest-runtime", "host-platform"],
+        action="append",
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--next-updater",
+        type=Path,
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--specification",
+        type=Path,
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument("--publisher-key-id", required=True)
+    update_bootstrap_bundle.add_argument(
+        "--publisher-private-key",
+        type=Path,
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--issued-at",
+        required=True,
+        help="canonical UTC timestamp, for example 2026-07-27T00:00:00Z",
+    )
+    update_bootstrap_bundle.add_argument("--output", type=Path, required=True)
+    update_bootstrap_bundle.set_defaults(
+        handler=lambda args: update_bootstrap_bundle_usecases.build(
+            usecase_inputs.BuildUpdateBootstrapBundleInput(
+                update_id=args.update_id,
+                product_version=args.product_version,
+                runtime_version=args.runtime_version,
+                target_platform=args.target_platform,
+                target_architecture=args.target_architecture,
+                layer_order=args.layer,
+                next_updater=args.next_updater,
+                specification=args.specification,
+                publisher_key_id=args.publisher_key_id,
+                publisher_private_key=args.publisher_private_key,
+                issued_at=args.issued_at,
+                output=args.output,
+            ),
+            update_bootstrap_bundle_operations(),
+        )
+    )
+
+    verify_update_bootstrap_bundle = subparsers.add_parser(
+        "verify-update-bootstrap-bundle",
+        help="verify a signed stable bootstrap bundle and its artifact closure",
+    )
+    verify_update_bootstrap_bundle.add_argument("--bundle", type=Path, required=True)
+    verify_update_bootstrap_bundle.add_argument(
+        "--publisher-public-key",
+        type=Path,
+        required=True,
+    )
+    verify_update_bootstrap_bundle.set_defaults(
+        handler=lambda args: update_bootstrap_bundle_usecases.verify(
+            usecase_inputs.VerifyUpdateBootstrapBundleInput(
+                bundle=args.bundle,
+                publisher_public_key=args.publisher_public_key,
+            ),
+            update_bootstrap_bundle_operations(),
+        )
+    )
+
     release_update_bundle = subparsers.add_parser(
         "release-update-bundle",
         help="build a release update bundle from release.json",
@@ -1118,6 +1209,14 @@ def proxy_input(args: argparse.Namespace) -> usecase_inputs.HostProxyInput:
         nginx_bin=args.nginx_bin,
         nginx_conf=args.nginx_conf,
         nginx_prefix=args.nginx_prefix,
+    )
+
+
+def update_bootstrap_bundle_operations(
+) -> update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations:
+    return update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations(
+        build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
+        verify_bundle=bootstrap_bundle_service.verify_bootstrap_bundle,
     )
 
 

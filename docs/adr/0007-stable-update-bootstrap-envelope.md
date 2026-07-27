@@ -130,9 +130,43 @@ Application settlement use case accepts only a receipt correlated by the
 journal state machine. The durable handoff workflow persists admitted,
 handoff-pending, and running revisions before dispatch, then persists the
 correlated terminal revision. Operation failure, failure-transition failure,
-and failure-persistence failure remain distinct. Installed-release settlement,
-release composition, and Helper/PWA wiring remain implementation work. This
-paragraph must be updated as each owner becomes executable.
+and failure-persistence failure remain distinct. Release tooling now composes
+the envelope, staged next updater, and opaque specification into one exact
+three-file archive closure. It signs the Swift-compatible canonical payload
+with Ed25519, refuses symlink or non-regular inputs, refuses to replace an
+existing release artifact, and provides a separate verification command that
+checks the publisher signature, closure, sizes, and digests. The signing
+implementation uses the cross-platform Python `cryptography` API rather than a
+host `openssl` executable, whose Ed25519 capability differs across macOS,
+Windows, and Linux installations. Installed-release settlement and Helper/PWA
+wiring remain implementation work. This paragraph must be updated as each
+owner becomes executable.
+
+Release automation calls:
+
+```sh
+vitalserver-devtools update-bootstrap-bundle \
+  --update-id <stable-id> \
+  --product-version <version> \
+  --runtime-version <version> \
+  --target-platform <macos|windows|linux> \
+  --target-architecture <arm64|amd64> \
+  --layer <ordered-layer> \
+  --next-updater <executable> \
+  --specification <json> \
+  --publisher-key-id <installed-trust-key-id> \
+  --publisher-private-key <unencrypted-ed25519-pkcs8-pem> \
+  --issued-at <canonical-utc> \
+  --output <new-tar-gz-path>
+
+vitalserver-devtools verify-update-bootstrap-bundle \
+  --bundle <tar-gz-path> \
+  --publisher-public-key <ed25519-spki-pem>
+```
+
+The private key path is an explicit release-publisher input. The tool neither
+searches for a key nor falls back to another signer. Secret storage and key
+materialization remain responsibilities of the release environment.
 
 ## 결과
 

@@ -232,7 +232,7 @@ class materialized_bundle:
                     for member in archive.getmembers()
                 ]
             )
-            archive.extractall(temporary)
+            archive.extractall(temporary, filter="data")
         return temporary / root_name
 
     def __exit__(self, *args: object) -> None:
