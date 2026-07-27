@@ -20,13 +20,15 @@ final class UpdateBootstrapHandoffWorkflowTests: XCTestCase {
             SavedJournal(state: .admitted, revision: 1, expectedRevision: nil),
             SavedJournal(state: .handoffPending, revision: 2, expectedRevision: 1),
             SavedJournal(state: .running, revision: 3, expectedRevision: 2),
-            SavedJournal(state: .succeeded, revision: 4, expectedRevision: 3),
         ])
+        XCTAssertEqual(harness.settledRelease?.journalRevision, 4)
+        XCTAssertEqual(harness.settledExpectedRevision, 3)
         XCTAssertEqual(harness.events, [
             "stage",
             "write-invocation",
             "launch",
             "read-receipt:/updates/update-42/handoff/completion-receipt.json",
+            "settle-installed-release",
         ])
     }
 
@@ -47,6 +49,28 @@ final class UpdateBootstrapHandoffWorkflowTests: XCTestCase {
             revision: 4,
             expectedRevision: 3
         ))
+    }
+
+    func testSettlementFailurePersistsFailureFromRunningState() {
+        let harness = HandoffWorkflowHarness(
+            settlementError: TestWorkflowError.settlement
+        )
+
+        XCTAssertThrowsError(try UpdateBootstrapHandoffWorkflow().run(
+            input: harness.input,
+            operations: harness.operations()
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapHandoffWorkflowError,
+                .operationFailed(reason: "settlement")
+            )
+        }
+        XCTAssertEqual(harness.saved.last, SavedJournal(
+            state: .failed,
+            revision: 4,
+            expectedRevision: 3
+        ))
+        XCTAssertNil(harness.settledRelease)
     }
 
     func testFailurePersistencePreservesBothFailures() {
@@ -92,6 +116,7 @@ final class UpdateBootstrapHandoffWorkflowTests: XCTestCase {
 
 private enum TestWorkflowError: Error {
     case launch
+    case settlement
     case transition
     case persistence
 }
@@ -105,17 +130,22 @@ private struct SavedJournal: Equatable {
 private final class HandoffWorkflowHarness {
     var saved: [SavedJournal] = []
     var events: [String] = []
+    var settledRelease: InstalledUpdateRelease?
+    var settledExpectedRevision: Int?
 
     private let launchError: Error?
+    private let settlementError: Error?
     private let failPersistence: Bool
     private let failTransitionError: Error?
 
     init(
         launchError: Error? = nil,
+        settlementError: Error? = nil,
         failPersistence: Bool = false,
         failTransitionError: Error? = nil
     ) {
         self.launchError = launchError
+        self.settlementError = settlementError
         self.failPersistence = failPersistence
         self.failTransitionError = failTransitionError
     }
@@ -140,6 +170,7 @@ private final class HandoffWorkflowHarness {
         let advance = AdvanceUpdateBootstrapJournalUseCase()
         let makeInvocation = MakeUpdateBootstrapHandoffInvocationUseCase()
         let settle = SettleUpdateBootstrapHandoffUseCase()
+        let makeRelease = MakeInstalledUpdateReleaseUseCase()
         return UpdateBootstrapHandoffWorkflowOperations(
             saveJournal: { [self] journal, expectedRevision in
                 if failPersistence, journal.state == .failed {
@@ -194,6 +225,17 @@ private final class HandoffWorkflowHarness {
             },
             settle: {
                 try settle.execute(journal: $0, receiptRead: $1)
+            },
+            makeInstalledRelease: {
+                try makeRelease.make(from: $0)
+            },
+            settleSucceeded: { [self] _, release, expectedRevision in
+                events.append("settle-installed-release")
+                if let settlementError {
+                    throw settlementError
+                }
+                settledRelease = release
+                settledExpectedRevision = expectedRevision
             },
             fail: { [self] in
                 if let failTransitionError {

@@ -72,6 +72,118 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         )
     }
 
+    func testAtomicallySettlesSucceededJournalAndInstalledRelease() throws {
+        let context = try makeContext()
+        let admitted = journal()
+        try context.repository.saveUpdateBootstrapJournal(
+            admitted,
+            expectedRevision: nil
+        )
+        let succeeded = try prepareSucceededJournal(
+            from: admitted,
+            repository: context.repository
+        )
+        let release = try InstalledUpdateReleasePolicy.make(from: succeeded)
+
+        try context.repository.settleSucceededUpdate(
+            journal: succeeded,
+            release: release,
+            expectedJournalRevision: 3
+        )
+
+        XCTAssertEqual(
+            context.repository.loadUpdateBootstrapJournal(id: admitted.id),
+            .loaded(succeeded)
+        )
+        XCTAssertEqual(
+            context.repository.loadInstalledUpdateRelease(),
+            .loaded(release)
+        )
+    }
+
+    func testInvalidReleaseDoesNotAdvanceJournal() throws {
+        let context = try makeContext()
+        let admitted = journal()
+        try context.repository.saveUpdateBootstrapJournal(
+            admitted,
+            expectedRevision: nil
+        )
+        let succeeded = try prepareSucceededJournal(
+            from: admitted,
+            repository: context.repository
+        )
+        let valid = try InstalledUpdateReleasePolicy.make(from: succeeded)
+        let invalid = InstalledUpdateRelease(
+            schemaVersion: valid.schemaVersion,
+            productId: valid.productId,
+            productVersion: "wrong-version",
+            runtimeVersion: valid.runtimeVersion,
+            updateId: valid.updateId,
+            journalId: valid.journalId,
+            journalRevision: valid.journalRevision,
+            reportRelativePath: valid.reportRelativePath,
+            reportSHA256: valid.reportSHA256,
+            settledAt: valid.settledAt
+        )
+
+        XCTAssertThrowsError(try context.repository.settleSucceededUpdate(
+            journal: succeeded,
+            release: invalid,
+            expectedJournalRevision: 3
+        ))
+        guard case .loaded(let unchanged) =
+            context.repository.loadUpdateBootstrapJournal(id: admitted.id)
+        else {
+            return XCTFail("expected running journal")
+        }
+        XCTAssertEqual(unchanged.state, .running)
+        XCTAssertEqual(unchanged.journalRevision, 3)
+        XCTAssertEqual(
+            context.repository.loadInstalledUpdateRelease(),
+            .missing
+        )
+    }
+
+    func testStaleSettlementChangesNeitherJournalNorInstalledRelease() throws {
+        let context = try makeContext()
+        let admitted = journal()
+        try context.repository.saveUpdateBootstrapJournal(
+            admitted,
+            expectedRevision: nil
+        )
+        let succeeded = try prepareSucceededJournal(
+            from: admitted,
+            repository: context.repository
+        )
+        let release = try InstalledUpdateReleasePolicy.make(from: succeeded)
+
+        XCTAssertThrowsError(try context.repository.settleSucceededUpdate(
+            journal: succeeded,
+            release: release,
+            expectedJournalRevision: 2
+        )) { error in
+            XCTAssertEqual(
+                error as? SQLiteUpdateBootstrapJournalRepositoryError,
+                .staleRevision(
+                    id: admitted.id,
+                    expected: 2,
+                    actual: 3
+                )
+            )
+        }
+        guard case .loaded(let unchanged) =
+            context.repository.loadUpdateBootstrapJournal(id: admitted.id)
+        else {
+            return XCTFail("expected running journal")
+        }
+        XCTAssertEqual(unchanged.state, .running)
+        XCTAssertEqual(unchanged.journalRevision, 3)
+        XCTAssertEqual(
+            context.repository.loadInstalledUpdateRelease(),
+            .missing
+        )
+    }
+
     private func makeContext() throws -> (
         repository: SQLiteUpdateBootstrapJournalRepository,
         databaseURL: URL
@@ -90,9 +202,56 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         return (
             SQLiteUpdateBootstrapJournalRepository(
                 databaseURL: databaseURL,
-                validate: ValidateUpdateBootstrapJournalUseCase().validate
+                validate: ValidateUpdateBootstrapJournalUseCase().validate,
+                validateRelease: InstalledUpdateReleasePolicy.validate,
+                validateSettlement: InstalledUpdateReleasePolicy.validate
             ),
             databaseURL
+        )
+    }
+
+    private func prepareSucceededJournal(
+        from admitted: UpdateBootstrapJournal,
+        repository: SQLiteUpdateBootstrapJournalRepository
+    ) throws -> UpdateBootstrapJournal {
+        let pending = try UpdateBootstrapJournalStateMachine.transition(
+            journal: admitted,
+            event: .verifiedAndStaged(
+                updaterRelativePath: "payload/next-updater",
+                specificationRelativePath: "payload/update-specification.json",
+                observedAt: "2026-07-27T00:01:00Z"
+            )
+        )
+        let running = try UpdateBootstrapJournalStateMachine.transition(
+            journal: pending,
+            event: .handoffStarted(observedAt: "2026-07-27T00:02:00Z")
+        )
+        try repository.saveUpdateBootstrapJournal(
+            pending,
+            expectedRevision: admitted.journalRevision
+        )
+        try repository.saveUpdateBootstrapJournal(
+            running,
+            expectedRevision: pending.journalRevision
+        )
+        return try UpdateBootstrapJournalStateMachine.transition(
+            journal: running,
+            event: .completed(
+                UpdateBootstrapCompletionReceipt(
+                    schemaVersion: "v1",
+                    updateId: admitted.id,
+                    requestId: admitted.requestId,
+                    bootstrapEnvelopeId: admitted.envelope.id,
+                    updateSpecificationSHA256:
+                        admitted.envelope.specification.sha256,
+                    expectedJournalRevision: running.journalRevision,
+                    outcome: .succeeded,
+                    reportRelativePath: "handoff/report.json",
+                    reportSHA256: String(repeating: "d", count: 64),
+                    failureReason: nil,
+                    finishedAt: "2026-07-27T00:03:00Z"
+                )
+            )
         )
     }
 

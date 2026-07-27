@@ -79,6 +79,14 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
         UpdateBootstrapJournal,
         UpdateBootstrapCompletionReceiptReadResult
     ) throws -> UpdateBootstrapJournal
+    public let makeInstalledRelease: (
+        UpdateBootstrapJournal
+    ) throws -> InstalledUpdateRelease
+    public let settleSucceeded: (
+        UpdateBootstrapJournal,
+        InstalledUpdateRelease,
+        Int
+    ) throws -> Void
     public let fail: (
         UpdateBootstrapJournal,
         String,
@@ -122,6 +130,14 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
             UpdateBootstrapJournal,
             UpdateBootstrapCompletionReceiptReadResult
         ) throws -> UpdateBootstrapJournal,
+        makeInstalledRelease: @escaping (
+            UpdateBootstrapJournal
+        ) throws -> InstalledUpdateRelease,
+        settleSucceeded: @escaping (
+            UpdateBootstrapJournal,
+            InstalledUpdateRelease,
+            Int
+        ) throws -> Void,
         fail: @escaping (
             UpdateBootstrapJournal,
             String,
@@ -139,6 +155,8 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
         self.launch = launch
         self.readReceipt = readReceipt
         self.settle = settle
+        self.makeInstalledRelease = makeInstalledRelease
+        self.settleSucceeded = settleSucceeded
         self.fail = fail
         self.now = now
         self.describeFailure = describeFailure
@@ -225,11 +243,20 @@ public struct UpdateBootstrapHandoffWorkflow {
                 running,
                 operations.readReceipt(receiptURL)
             )
-            try save(
-                settled,
-                expectedRevision: running.journalRevision,
-                operations: operations
-            )
+            if settled.state == .succeeded {
+                let release = try operations.makeInstalledRelease(settled)
+                try operations.settleSucceeded(
+                    settled,
+                    release,
+                    running.journalRevision
+                )
+            } else {
+                try save(
+                    settled,
+                    expectedRevision: running.journalRevision,
+                    operations: operations
+                )
+            }
             return UpdateBootstrapHandoffWorkflowOutput(
                 journal: settled,
                 updaterExitCode: process.exitCode

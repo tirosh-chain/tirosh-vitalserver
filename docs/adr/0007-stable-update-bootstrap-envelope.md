@@ -115,9 +115,12 @@ failure, decode failure, policy violation, and public-key decode failure
 distinct. A strict Host-owned journal contract and pure state machine now
 separate admitted, handoff-pending, running, succeeded, failed, and interrupted
 states; terminal receipts must match the journal revision, request, envelope,
-and specification digest. Host SQLite schema v8 owns the journal document and
-uses optimistic revisions to reject stale writers; no JSON state-file fallback
-is used. Bootstrap staging now copies into an attempt-specific temporary
+and specification digest. Host SQLite schema v9 owns the journal and singleton
+installed-release documents. A succeeded journal revision and its correlated
+installed release are committed in one immediate transaction with optimistic
+revision validation; a stale writer or either write failure changes neither
+fact. No JSON state-file fallback is used. Bootstrap staging now copies into an
+attempt-specific temporary
 directory and atomically publishes an immutable update-ID workspace; an
 existing final workspace is an explicit conflict and is never deleted or
 replaced. The fixed v1 handoff invocation is created only from a persisted
@@ -130,7 +133,9 @@ Application settlement use case accepts only a receipt correlated by the
 journal state machine. The durable handoff workflow persists admitted,
 handoff-pending, and running revisions before dispatch, then persists the
 correlated terminal revision. Operation failure, failure-transition failure,
-and failure-persistence failure remain distinct. Release tooling now composes
+and failure-persistence failure remain distinct. A settlement failure
+transitions the last persisted running journal to an explicit failed revision
+rather than leaving an uncommitted success visible. Release tooling now composes
 the envelope, staged next updater, and opaque specification into one exact
 three-file archive closure. It signs the Swift-compatible canonical payload
 with Ed25519, refuses symlink or non-regular inputs, refuses to replace an
@@ -138,9 +143,12 @@ existing release artifact, and provides a separate verification command that
 checks the publisher signature, closure, sizes, and digests. The signing
 implementation uses the cross-platform Python `cryptography` API rather than a
 host `openssl` executable, whose Ed25519 capability differs across macOS,
-Windows, and Linux installations. Installed-release settlement and Helper/PWA
-wiring remain implementation work. This paragraph must be updated as each
-owner becomes executable.
+Windows, and Linux installations. The installed-release settlement contracts,
+pure policy, application port, SQLite repository, and handoff workflow are
+implemented and tested. Helper/PWA production composition and presentation
+cutover remain implementation work; the legacy `runtime-version.json` reader
+is not a fallback for this new authoritative settlement. This paragraph must be
+updated as each owner becomes executable.
 
 Release automation calls:
 
