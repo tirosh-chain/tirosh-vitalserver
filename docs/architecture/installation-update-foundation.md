@@ -1,10 +1,10 @@
 # Installation and update foundation
 
-> 상태: **C25–C31 + C52/C55 실행·portable acceptance 및 C47 macOS PKG
-> composition 완료.** C47은 실제 Guest bootstrap artifact와 Host Agent,
-> Edge Proxy, Update Handoff Supervisor를 하나의 PKG에 조립·검증한다.
-> release-owned Guest/Container/Host artifact replacement executor와 clean-host
-> 설치·update platform package activation은 후속 delivery work이며 C24에서는
+> 상태: **서명된 bootstrap, durable handoff, next-updater 실행, 세 Product
+> layer의 effect executor 및 complete-bundle composition acceptance 완료.**
+> macOS PKG composition은 실제 Guest bootstrap artifact, Host Agent, Edge
+> Proxy, Update Handoff Supervisor를 하나의 PKG에 조립·검증한다. 실제
+> clean-host 설치, layer activation, rollback, uninstall delivery proof는
 > 계속 `pending`이다.
 
 Installation and update foundation은 update를 “새 파일을 덮어쓴다”가 아니라 서로 다른 호환성 언어를

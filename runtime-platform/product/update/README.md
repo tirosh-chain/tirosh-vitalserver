@@ -37,14 +37,15 @@ release key, it produces one new bundle directory containing the complete
 payload bytes; it does not trust caller-supplied integrity values. Reusing an
 existing output directory is rejected rather than silently replacing a bundle.
 
-For the current macOS arm64 Guest Product activation path,
-`tooling/guest-product-release-update-composer` prepares that generic payload.
-It consumes one release-process-only source selection document, copies the
-selected next updater, Guest Product archive(s), and C55 executor as regular
-immutable payload files, and generates C61 plus C26 from their resulting
-digests. It then emits the `ReleaseBundleComposition` that the generic signer
-uses for C25. This keeps C61/C59 knowledge out of the generic signing tool and
-keeps source filesystem paths out of deployed contracts.
+For the current macOS arm64 Product update path,
+`tooling/product-update-composer` prepares that generic payload. It consumes
+one release-process-only source selection document and composes the selected
+Container, Guest Runtime, and Host Platform transitions in that order. It
+copies the next updater, selected archives, and each layer effect executor as
+regular immutable payload files, generates the layer-specific configurations
+and Product Update Specification from their resulting digests, then emits the
+`ReleaseBundleComposition` consumed by the generic signer. Source filesystem
+paths do not enter deployed contracts.
 
 `tooling/guest-product-release-archive-composer` is the preceding release
 artifact step. It turns a selected release tree into the exact tar+gzip media

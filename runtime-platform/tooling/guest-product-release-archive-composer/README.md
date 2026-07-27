@@ -14,7 +14,7 @@ replacement are rejected.
 The tool does not choose the release ID, read `/opt/vitalserver/current`,
 activate the archive, or sign an update. The release process supplies its
 result as the explicit apply or rollback archive source to
-`guest-product-release-update-composer`.
+`product-update-composer`.
 
 ```sh
 guest-product-release-archive-composer \
