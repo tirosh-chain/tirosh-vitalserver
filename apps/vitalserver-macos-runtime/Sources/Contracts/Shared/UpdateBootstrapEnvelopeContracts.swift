@@ -248,7 +248,7 @@ private struct UpdateBootstrapContractKey: CodingKey, Hashable {
     }
 }
 
-private func rejectUnknownUpdateBootstrapKeys(
+func rejectUnknownUpdateBootstrapKeys(
     _ decoder: Decoder,
     allowed: [String],
     type: String

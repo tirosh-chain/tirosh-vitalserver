@@ -109,10 +109,12 @@ The Swift `Contracts` and `Domain` modules define the strict v1 envelope and
 pure target/layer/artifact policy. The Application verification use case keeps
 unavailable, failed, invalid, and mismatched results distinct. Outbound adapters
 produce the cross-platform canonical payload, verify real Ed25519 signatures,
-stream artifact digests, and reject non-regular files. Durable trust-store
-loading, admission/handoff state, staged updater execution, release composition,
-and Helper/PWA wiring remain implementation work. This paragraph must be
-updated as each owner becomes executable.
+stream artifact digests, and reject non-regular files. The installed publisher
+trust store is also a strict contract; its reader keeps unavailable, read
+failure, decode failure, policy violation, and public-key decode failure
+distinct. Durable admission/handoff state, staged updater execution, release
+composition, and Helper/PWA wiring remain implementation work. This paragraph
+must be updated as each owner becomes executable.
 
 ## 결과
 
