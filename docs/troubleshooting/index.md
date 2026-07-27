@@ -189,6 +189,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-186 | Recorder send_data가 durable admission 전에 억제되어 waveform/activity가 누락될 수 있음 | Recorder ingress / Data delivery | active | [Recorder send_data가 durable admission 전에 억제됨](186_recorder-send-data-suppressed-before-durable-admission.md) |
 | TS-187 | Standard uninstall 보존 자료가 product root를 다시 만들어 fresh install을 막음 | Uninstall / Packaging | implemented; package verification pending | [Standard uninstall retained data blocks fresh package install](187_standard-uninstall-retained-data-blocks-fresh-install.md) |
 | TS-188 | integrity 확인 성공이 trusted publisher 인증으로 오해되어 0.2.1 unsigned bundle apply가 열릴 수 있음 | Update / Packaging | active | [Update bundle integrity is mistaken for publisher authenticity](188_update_bundle_integrity_mistaken_for_publisher_trust.md) |
+| TS-189 | Linux portable gate가 mocked macOS command를 실제 system path로 검증하다 실패함 | Packaging / Local development | resolved | [Portable CI declares macOS system tools as test fixtures](189_portable_ci_declares_macos_system_tools.md) |
 
 ## Follow-up 규칙
 
