@@ -99,7 +99,19 @@ type ComposeReleaseBundleRequest struct {
 	CompositionPath  string
 	PayloadDirectory string
 	PrivateKeyPath   string
+	TrustStorePath   string
 	OutputDirectory  string
+}
+
+type trustedUpdateKey struct {
+	ID        string `json:"id"`
+	Algorithm string `json:"algorithm"`
+	PublicKey string `json:"publicKey"`
+}
+
+type hostUpdateTrustStore struct {
+	SchemaVersion string             `json:"schemaVersion"`
+	Keys          []trustedUpdateKey `json:"keys"`
 }
 
 type SignedReleaseBundle struct {
@@ -126,6 +138,9 @@ func ComposeReleaseBundle(request ComposeReleaseBundleRequest) (SignedReleaseBun
 	}
 	privateKey, err := readPrivateKey(request.PrivateKeyPath)
 	if err != nil {
+		return SignedReleaseBundle{}, err
+	}
+	if err := verifySigningKeyIsTrusted(request.TrustStorePath, composition.SigningKeyID, privateKey.Public().(ed25519.PublicKey)); err != nil {
 		return SignedReleaseBundle{}, err
 	}
 	nextUpdater, err := artifactFromPayload(payloadDirectory, composition.NextUpdater)
@@ -180,6 +195,43 @@ func ComposeReleaseBundle(request ComposeReleaseBundleRequest) (SignedReleaseBun
 		return SignedReleaseBundle{}, err
 	}
 	return SignedReleaseBundle{BundleDirectory: bundleDirectory, Envelope: envelope, ContentManifest: manifest}, nil
+}
+
+func verifySigningKeyIsTrusted(path string, keyID string, signingPublicKey ed25519.PublicKey) error {
+	contents, err := readRegularFile(path, 1<<20)
+	if err != nil {
+		return fmt.Errorf("read Host update trust store: %w", err)
+	}
+	var store hostUpdateTrustStore
+	if err := decodeExactly(contents, &store); err != nil {
+		return fmt.Errorf("decode Host update trust store: %w", err)
+	}
+	if store.SchemaVersion != schemaVersion || len(store.Keys) == 0 || len(store.Keys) > 128 {
+		return fmt.Errorf("Host update trust store schemaVersion and one to 128 keys are required")
+	}
+	seenIDs := map[string]bool{}
+	seenKeys := map[string]bool{}
+	var selected *trustedUpdateKey
+	for index := range store.Keys {
+		key := &store.Keys[index]
+		decoded, decodeErr := base64.StdEncoding.DecodeString(key.PublicKey)
+		if !validIdentifier(key.ID) || key.Algorithm != "ed25519" || decodeErr != nil || len(decoded) != ed25519.PublicKeySize || seenIDs[key.ID] || seenKeys[key.PublicKey] {
+			return fmt.Errorf("Host update trust store contains an invalid or duplicate public key")
+		}
+		seenIDs[key.ID] = true
+		seenKeys[key.PublicKey] = true
+		if key.ID == keyID {
+			selected = key
+		}
+	}
+	if selected == nil {
+		return fmt.Errorf("signing key id %q is not provisioned in the Host update trust store", keyID)
+	}
+	expected := base64.StdEncoding.EncodeToString(signingPublicKey)
+	if selected.PublicKey != expected {
+		return fmt.Errorf("private signing key does not match trusted public key %q", keyID)
+	}
+	return nil
 }
 
 func readReleaseBundleComposition(path string) (ReleaseBundleComposition, error) {

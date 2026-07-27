@@ -52,8 +52,11 @@ release-composer \
   --composition /absolute/release/prepared-product-update/release-bundle-composition.json \
   --payload-directory /absolute/release/prepared-product-update/payload \
   --private-key /absolute/release/release-key.base64 \
+  --trust-store /absolute/release/update-trust-store.json \
   --output-directory /absolute/release/signed-bundles
 ```
 
 Both output directories must be new. Neither tool replaces existing release
-evidence.
+evidence. The signer rejects a private key whose derived public key is not
+present under the declared signing key ID in the selected Host Update Trust
+Store.

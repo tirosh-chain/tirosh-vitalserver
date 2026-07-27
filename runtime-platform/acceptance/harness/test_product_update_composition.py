@@ -153,6 +153,15 @@ class ProductUpdateCompositionAcceptance(unittest.TestCase):
         # A 64-byte Ed25519 private-key value is sufficient for this isolated
         # release-tool proof; production keys are C58-selected trust material.
         signing_key.write_text(base64.b64encode(b"r" * 64).decode("ascii"), encoding="ascii")
+        trust_store = self.test_work / "update-trust-store.json"
+        trust_store.write_text(json.dumps({
+            "schemaVersion": "v1",
+            "keys": [{
+                "id": "release-key-2026",
+                "algorithm": "ed25519",
+                "publicKey": base64.b64encode(b"r" * 32).decode("ascii"),
+            }],
+        }), encoding="utf-8")
         signed_parent = self.test_work / "signed"
         signed_parent.mkdir()
         signed = subprocess.run(
@@ -161,6 +170,7 @@ class ProductUpdateCompositionAcceptance(unittest.TestCase):
                 "--composition", result["releaseBundleCompositionPath"],
                 "--payload-directory", result["payloadDirectory"],
                 "--private-key", str(signing_key),
+                "--trust-store", str(trust_store),
                 "--output-directory", str(signed_parent),
             ],
             capture_output=True,

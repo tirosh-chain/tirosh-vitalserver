@@ -50,10 +50,29 @@ func releaseBundleFixture(t *testing.T) (ComposeReleaseBundleRequest, ReleaseBun
 	if err := os.WriteFile(privateKeyPath, []byte(base64.StdEncoding.EncodeToString(privateKey)), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	trustStorePath := filepath.Join(root, "update-trust-store.json")
+	trustStore := hostUpdateTrustStore{
+		SchemaVersion: "v1",
+		Keys: []trustedUpdateKey{{
+			ID: "release-key-2026", Algorithm: "ed25519",
+			PublicKey: base64.StdEncoding.EncodeToString(publicKey),
+		}},
+	}
+	trustStoreBytes, err := json.Marshal(trustStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(trustStorePath, trustStoreBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	composition := ReleaseBundleComposition{SchemaVersion: "v1", BundleID: "release-bundle-020", ProductID: "vitalserver-runtime-platform", Target: UpdateTarget{Platform: "macos", Architecture: "arm64"}, TargetRelease: TargetRelease{ProductVersion: "0.2.0", RuntimeVersion: "0.2.0"}, LayerOrder: []string{"guest-runtime", "container", "host-platform"}, NextUpdater: ReleaseArtifactDeclaration{ID: "host-updater-020", RelativePath: "payload/host-updater", MediaType: "application/octet-stream"}, Specification: ReleaseArtifactDeclaration{ID: "product-update-020", RelativePath: "payload/product-update.json", MediaType: "application/json"}, SigningKeyID: "release-key-2026", IssuedAt: "2026-07-17T00:00:00Z"}
 	compositionPath := filepath.Join(root, "release-bundle-composition.json")
 	writeCompositionJSON(t, compositionPath, composition)
-	return ComposeReleaseBundleRequest{CompositionPath: compositionPath, PayloadDirectory: payloadDirectory, PrivateKeyPath: privateKeyPath, OutputDirectory: outputDirectory}, composition, publicKey, root
+	return ComposeReleaseBundleRequest{
+		CompositionPath: compositionPath, PayloadDirectory: payloadDirectory,
+		PrivateKeyPath: privateKeyPath, TrustStorePath: trustStorePath,
+		OutputDirectory: outputDirectory,
+	}, composition, publicKey, root
 }
 
 func TestComposeReleaseBundleCreatesVerifiedDeterministicC25Bundle(t *testing.T) {
@@ -100,6 +119,31 @@ func TestComposeReleaseBundleRejectsPayloadTraversal(t *testing.T) {
 	writeCompositionJSON(t, request.CompositionPath, composition)
 	if _, err := ComposeReleaseBundle(request); err == nil {
 		t.Fatal("expected unsafe release artifact path to be rejected")
+	}
+}
+
+func TestComposeReleaseBundleRejectsSigningKeyNotProvisionedForHosts(t *testing.T) {
+	request, _, _, root := releaseBundleFixture(t)
+	otherPublicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := json.Marshal(hostUpdateTrustStore{
+		SchemaVersion: "v1",
+		Keys: []trustedUpdateKey{{
+			ID: "release-key-2026", Algorithm: "ed25519",
+			PublicKey: base64.StdEncoding.EncodeToString(otherPublicKey),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.TrustStorePath = filepath.Join(root, "mismatched-trust-store.json")
+	if err := os.WriteFile(request.TrustStorePath, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ComposeReleaseBundle(request); err == nil {
+		t.Fatal("expected unprovisioned signing key to be rejected")
 	}
 }
 

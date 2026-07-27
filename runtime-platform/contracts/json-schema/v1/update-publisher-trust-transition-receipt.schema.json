@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-publisher-trust-transition-receipt",
+  "title": "UpdatePublisherTrustTransitionReceipt",
+  "description": "Release-process evidence for provisioning, rotating, or revoking public Update Bootstrap Envelope verification keys. It identifies trust-store bytes and key IDs only; private signing material is forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "transitionId",
+    "action",
+    "resultTrustStoreSha256",
+    "resultKeyCount",
+    "addedKeyIds",
+    "removedKeyIds",
+    "retainedKeyIds",
+    "transitionedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "transitionId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "action": {
+      "type": "string",
+      "enum": ["provision", "rotate", "revoke"]
+    },
+    "sourceTrustStoreSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "resultTrustStoreSha256": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256" },
+    "resultKeyCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 128
+    },
+    "addedKeyIds": {
+      "type": "array",
+      "maxItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+    },
+    "removedKeyIds": {
+      "type": "array",
+      "maxItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+    },
+    "retainedKeyIds": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" }
+    },
+    "transitionedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "provision" } }, "required": ["action"] },
+      "then": {
+        "not": { "required": ["sourceTrustStoreSha256"] },
+        "properties": {
+          "addedKeyIds": { "minItems": 1, "maxItems": 1 },
+          "removedKeyIds": { "maxItems": 0 },
+          "retainedKeyIds": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "action": { "const": "rotate" } }, "required": ["action"] },
+      "then": {
+        "required": ["sourceTrustStoreSha256"],
+        "properties": {
+          "addedKeyIds": { "minItems": 1, "maxItems": 1 },
+          "removedKeyIds": { "maxItems": 0 },
+          "retainedKeyIds": { "minItems": 1 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "action": { "const": "revoke" } }, "required": ["action"] },
+      "then": {
+        "required": ["sourceTrustStoreSha256"],
+        "properties": {
+          "addedKeyIds": { "maxItems": 0 },
+          "removedKeyIds": { "minItems": 1, "maxItems": 1 },
+          "retainedKeyIds": { "minItems": 1 }
+        }
+      }
+    }
+  ]
+}

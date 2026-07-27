@@ -26426,6 +26426,170 @@
       "title": "UpdateExecutionReport",
       "type": "object"
     },
+    "json-schema/v1/update-publisher-trust-transition-receipt.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-publisher-trust-transition-receipt",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "provision"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "sourceTrustStoreSha256"
+              ]
+            },
+            "properties": {
+              "addedKeyIds": {
+                "maxItems": 1,
+                "minItems": 1
+              },
+              "removedKeyIds": {
+                "maxItems": 0
+              },
+              "retainedKeyIds": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "rotate"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "addedKeyIds": {
+                "maxItems": 1,
+                "minItems": 1
+              },
+              "removedKeyIds": {
+                "maxItems": 0
+              },
+              "retainedKeyIds": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sourceTrustStoreSha256"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "revoke"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "addedKeyIds": {
+                "maxItems": 0
+              },
+              "removedKeyIds": {
+                "maxItems": 1,
+                "minItems": 1
+              },
+              "retainedKeyIds": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sourceTrustStoreSha256"
+            ]
+          }
+        }
+      ],
+      "description": "Release-process evidence for provisioning, rotating, or revoking public Update Bootstrap Envelope verification keys. It identifies trust-store bytes and key IDs only; private signing material is forbidden.",
+      "properties": {
+        "action": {
+          "enum": [
+            "provision",
+            "rotate",
+            "revoke"
+          ],
+          "type": "string"
+        },
+        "addedKeyIds": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          },
+          "maxItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "removedKeyIds": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          },
+          "maxItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "resultKeyCount": {
+          "maximum": 128,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "resultTrustStoreSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "retainedKeyIds": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          },
+          "maxItems": 128,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sourceTrustStoreSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "transitionId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "transitionedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "transitionId",
+        "action",
+        "resultTrustStoreSha256",
+        "resultKeyCount",
+        "addedKeyIds",
+        "removedKeyIds",
+        "retainedKeyIds",
+        "transitionedAt"
+      ],
+      "title": "UpdatePublisherTrustTransitionReceipt",
+      "type": "object"
+    },
     "json-schema/v1/vital-replay-corpus-manifest.schema.json": {
       "$defs": {
         "CorpusEntry": {

@@ -136,6 +136,24 @@ small C25 boundary: if its schema, signature, artifact, or trust evidence
 cannot be verified, the Host returns a typed failed/unavailable bootstrap
 receipt and does not attempt an old-spec parser or another update path.
 
+## Publisher trust lifecycle
+
+The Host package contains only the public C58 Host Update Trust Store.
+`tooling/update-trust-store-manager` is the release-process owner for initial
+provisioning, overlap rotation, and revocation. It emits a C83
+`UpdatePublisherTrustTransitionReceipt` binding the exact input/output store
+digests and affected key IDs; private keys are not valid input to that
+boundary.
+
+Rotation is deliberately two release-process transitions, not an updater
+bridge. First, a release signed by an already trusted key installs an overlap
+store containing both old and new public keys. After that release is observed,
+later bundles may use the new signing key. A subsequent bundle signed by the
+new key may install a store with the old key removed. Removing the final key,
+reusing a key ID for different bytes, changing the reviewed source store, or
+signing with a private key that does not match the selected packaged public
+key is rejected before bundle publication.
+
 `../delivery/support-matrix.v1.json` names macOS arm64 as the first planned
 clean-install target and records Windows/Linux as planned consumers of the
 same C25–C31 contracts. `planned` is not an install, package, or clean-host

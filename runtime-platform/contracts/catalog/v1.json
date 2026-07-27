@@ -781,6 +781,15 @@
       "schemas": [
         "json-schema/v1/host-update-interruption-confirmation.schema.json"
       ]
+    },
+    {
+      "id": "C83",
+      "name": "UpdatePublisherTrustTransitionReceipt",
+      "owner": "Release process",
+      "boundary": "public Update Bootstrap Envelope verification-key provisioning, overlap rotation, and revocation evidence; private signing material never crosses this boundary",
+      "schemas": [
+        "json-schema/v1/update-publisher-trust-transition-receipt.schema.json"
+      ]
     }
   ]
 }

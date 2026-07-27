@@ -14,9 +14,14 @@ func main() {
 	compositionPath := flag.String("composition", "", "required release bundle composition JSON path")
 	payloadDirectory := flag.String("payload-directory", "", "required source payload directory")
 	privateKeyPath := flag.String("private-key", "", "required base64 Ed25519 private key path")
+	trustStorePath := flag.String("trust-store", "", "required Host Update Trust Store containing the matching public key")
 	outputDirectory := flag.String("output-directory", "", "required empty bundle output parent directory")
 	flag.Parse()
-	result, err := releasebundle.ComposeReleaseBundle(releasebundle.ComposeReleaseBundleRequest{CompositionPath: *compositionPath, PayloadDirectory: *payloadDirectory, PrivateKeyPath: *privateKeyPath, OutputDirectory: *outputDirectory})
+	result, err := releasebundle.ComposeReleaseBundle(releasebundle.ComposeReleaseBundleRequest{
+		CompositionPath: *compositionPath, PayloadDirectory: *payloadDirectory,
+		PrivateKeyPath: *privateKeyPath, TrustStorePath: *trustStorePath,
+		OutputDirectory: *outputDirectory,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "compose release bundle: %v\n", err)
 		os.Exit(1)

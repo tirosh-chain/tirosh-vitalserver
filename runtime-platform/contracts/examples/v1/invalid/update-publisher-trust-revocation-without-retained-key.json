@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "transitionId": "release-key-revocation-2026",
+  "action": "revoke",
+  "sourceTrustStoreSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "resultTrustStoreSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "resultKeyCount": 1,
+  "addedKeyIds": [],
+  "removedKeyIds": ["vitalserver-release-key-2026"],
+  "retainedKeyIds": [],
+  "transitionedAt": "2026-07-27T00:00:00Z"
+}

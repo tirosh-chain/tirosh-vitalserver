@@ -802,6 +802,16 @@
       "valid": false
     },
     {
+      "path": "valid/update-publisher-trust-transition-receipt.json",
+      "schema": "update-publisher-trust-transition-receipt.schema.json",
+      "valid": true
+    },
+    {
+      "path": "invalid/update-publisher-trust-revocation-without-retained-key.json",
+      "schema": "update-publisher-trust-transition-receipt.schema.json",
+      "valid": false
+    },
+    {
       "path": "valid/guest-product-release-manager-configuration.json",
       "schema": "guest-product-release-management.schema.json",
       "valid": true
