@@ -153,7 +153,11 @@ host `openssl` executable, whose Ed25519 capability differs across macOS,
 Windows, and Linux installations. The installed-product-release contracts,
 pure policy, application ports, SQLite repositories, package-install
 composition, handoff workflow, admission policy, and Helper presentation read
-path are implemented and tested. The production command that reads and safely
+path are implemented and tested. The installed Host now also has strict
+bootstrap-directory readers and a pure exact-closure policy: the envelope and
+its two declared artifacts must be the only regular files, duplicate or unsafe
+paths and symbolic links are rejected, and missing, inspection, listing, read,
+and decode failures remain distinct. The production command that safely
 materializes a selected release archive, loads the installed trust store,
 verifies and admits the envelope, and executes the handoff workflow remains
 implementation work. This paragraph must be updated as each owner becomes
