@@ -192,6 +192,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-189 | Linux portable gate가 mocked macOS command를 실제 system path로 검증하다 실패함 | Packaging / Local development | resolved | [Portable CI declares macOS system tools as test fixtures](189_portable_ci_declares_macos_system_tools.md) |
 | TS-190 | active Host update 중 reinstall/repair/remove가 시작될 수 있음 | Update / Packaging / Uninstall | active | [Installation or removal starts during an active Host update](190_installation_mutation_during_active_host_update.md) |
 | TS-191 | release signing key가 Host trust store에 없거나 조기 revoke되어 bundle 발행/검증이 실패함 | Update / Packaging | active | [Update bundle signing key is not provisioned or was revoked](191_update_bundle_signing_key_not_provisioned_or_revoked.md) |
+| TS-192 | Ubuntu cloud image의 빈 `/boot`를 Guest kernel source로 선언해 C42가 패키지 조립을 중단함 | Packaging / Guest bootstrap | active | [Ubuntu cloud image has no Guest boot artifacts](192_ubuntu_cloud_image_has_no_guest_boot_artifacts.md) |
 
 ## Follow-up 규칙
 

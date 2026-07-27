@@ -61,3 +61,7 @@ filename으로 추정하거나 empty output을 successful boot로 변환하지 �
 source distribution의 `/boot/vmlinuz`라는 filename을 Host boot-loader artifact role로
 재사용하지 않는다. C42 declaration에는 source representation과 target consumer format을
 각각 명시하고, output path는 `boot/Image`처럼 VZ가 소비하는 artifact role을 나타낸다.
+
+Ubuntu cloud image가 matching kernel/initrd를 root filesystem과 분리해 배포하는 경우의
+source 선택 규칙은 [TS-192](192_ubuntu_cloud_image_has_no_guest_boot_artifacts.md)를
+따른다.
