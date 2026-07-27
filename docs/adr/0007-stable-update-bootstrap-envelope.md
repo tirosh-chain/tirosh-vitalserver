@@ -105,11 +105,14 @@ authority.
 
 ## 구현 상태
 
-The Swift `Contracts` and `Domain` modules now define the strict v1 envelope and
-pure target/layer/artifact policy. Cryptographic verification, durable
-admission/handoff state, staged updater execution, release composition, and
-Helper/PWA wiring remain implementation work. This paragraph must be updated as
-each owner becomes executable.
+The Swift `Contracts` and `Domain` modules define the strict v1 envelope and
+pure target/layer/artifact policy. The Application verification use case keeps
+unavailable, failed, invalid, and mismatched results distinct. Outbound adapters
+produce the cross-platform canonical payload, verify real Ed25519 signatures,
+stream artifact digests, and reject non-regular files. Durable trust-store
+loading, admission/handoff state, staged updater execution, release composition,
+and Helper/PWA wiring remain implementation work. This paragraph must be
+updated as each owner becomes executable.
 
 ## 결과
 

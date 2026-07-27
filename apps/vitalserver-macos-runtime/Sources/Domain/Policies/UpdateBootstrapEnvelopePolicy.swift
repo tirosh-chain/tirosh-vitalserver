@@ -1,4 +1,5 @@
 import Contracts
+import Foundation
 
 public enum UpdateBootstrapEnvelopeValidationError: Error, Equatable, Sendable {
     case unsupportedSchemaVersion(String)
@@ -65,7 +66,7 @@ public enum UpdateBootstrapEnvelopePolicy {
         guard !envelope.signature.value.isEmpty else {
             throw UpdateBootstrapEnvelopeValidationError.emptySignature
         }
-        guard !envelope.issuedAt.isEmpty else {
+        guard isCanonicalTimestamp(envelope.issuedAt) else {
             throw UpdateBootstrapEnvelopeValidationError.invalidIssuedAt(
                 envelope.issuedAt
             )
@@ -100,7 +101,11 @@ public enum UpdateBootstrapEnvelopePolicy {
         guard artifact.relativePath.hasPrefix("payload/"),
               components.count >= 2,
               !components.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }),
-              !artifact.relativePath.contains("\\") else {
+              !artifact.relativePath.contains("\\"),
+              isAllowedASCII(
+                  artifact.relativePath,
+                  allowedPunctuation: "._/-"
+              ) else {
             throw UpdateBootstrapEnvelopeValidationError.invalidArtifactPath(
                 artifactId: artifact.id,
                 relativePath: artifact.relativePath
@@ -118,7 +123,12 @@ public enum UpdateBootstrapEnvelopePolicy {
                 sizeBytes: artifact.sizeBytes
             )
         }
-        guard !artifact.mediaType.isEmpty else {
+        let mediaTypeParts = artifact.mediaType.split(separator: "/")
+        guard mediaTypeParts.count == 2,
+              isAllowedASCII(
+                  artifact.mediaType,
+                  allowedPunctuation: ".+-/"
+              ) else {
             throw UpdateBootstrapEnvelopeValidationError.invalidArtifactMediaType(
                 artifactId: artifact.id
             )
@@ -128,9 +138,7 @@ public enum UpdateBootstrapEnvelopePolicy {
     private static func requireIdentifier(_ value: String, field: String) throws {
         guard !value.isEmpty,
               value.count <= 128,
-              value.allSatisfy({ character in
-                  character.isLetter || character.isNumber || "-._".contains(character)
-              }) else {
+              isAllowedASCII(value, allowedPunctuation: "-._") else {
             throw UpdateBootstrapEnvelopeValidationError.invalidIdentifier(
                 field: field,
                 value: value
@@ -139,7 +147,9 @@ public enum UpdateBootstrapEnvelopePolicy {
     }
 
     private static func requireVersion(_ value: String, field: String) throws {
-        guard !value.isEmpty, value.count <= 128 else {
+        guard !value.isEmpty,
+              value.count <= 128,
+              isAllowedASCII(value, allowedPunctuation: ".+-_") else {
             throw UpdateBootstrapEnvelopeValidationError.invalidReleaseVersion(
                 field: field,
                 value: value
@@ -151,5 +161,36 @@ public enum UpdateBootstrapEnvelopePolicy {
         value.count == 64 && value.allSatisfy {
             $0.isNumber || ("a"..."f").contains(String($0))
         }
+    }
+
+    private static func isAllowedASCII(
+        _ value: String,
+        allowedPunctuation: String
+    ) -> Bool {
+        value.unicodeScalars.allSatisfy { scalar in
+            let code = scalar.value
+            let isUppercaseLetter = (65...90).contains(code)
+            let isLowercaseLetter = (97...122).contains(code)
+            let isDigit = (48...57).contains(code)
+            return isUppercaseLetter
+                || isLowercaseLetter
+                || isDigit
+                || allowedPunctuation.unicodeScalars.contains(scalar)
+        }
+    }
+
+    private static func isCanonicalTimestamp(_ value: String) -> Bool {
+        guard value.count == 20,
+              value[value.index(value.startIndex, offsetBy: 4)] == "-",
+              value[value.index(value.startIndex, offsetBy: 7)] == "-",
+              value[value.index(value.startIndex, offsetBy: 10)] == "T",
+              value[value.index(value.startIndex, offsetBy: 13)] == ":",
+              value[value.index(value.startIndex, offsetBy: 16)] == ":",
+              value.hasSuffix("Z") else {
+            return false
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value) != nil
     }
 }

@@ -69,14 +69,42 @@ final class UpdateBootstrapEnvelopePolicyTests: XCTestCase {
         }
     }
 
+    func testRejectsNonASCIISignedIdentifier() {
+        XCTAssertThrowsError(try UpdateBootstrapEnvelopePolicy.validate(
+            envelope(id: "helper-update-한글"),
+            expectedProductId: "ai.tirosh.vitalserver.helper",
+            expectedTarget: UpdateBootstrapTarget(platform: .macos, architecture: .arm64)
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapEnvelopeValidationError,
+                .invalidIdentifier(field: "id", value: "helper-update-한글")
+            )
+        }
+    }
+
+    func testRejectsNonCanonicalIssuedAt() {
+        XCTAssertThrowsError(try UpdateBootstrapEnvelopePolicy.validate(
+            envelope(issuedAt: "2026-07-27 00:00:00+00:00"),
+            expectedProductId: "ai.tirosh.vitalserver.helper",
+            expectedTarget: UpdateBootstrapTarget(platform: .macos, architecture: .arm64)
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapEnvelopeValidationError,
+                .invalidIssuedAt("2026-07-27 00:00:00+00:00")
+            )
+        }
+    }
+
     private func envelope(
+        id: String = "helper-release-bootstrap-022",
         productId: String = "ai.tirosh.vitalserver.helper",
         layerOrder: [UpdateLayer] = [.guestRuntime, .container, .hostPlatform],
-        nextUpdaterArtifact: UpdateBootstrapArtifact? = nil
+        nextUpdaterArtifact: UpdateBootstrapArtifact? = nil,
+        issuedAt: String = "2026-07-27T00:00:00Z"
     ) -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
             schemaVersion: "v1",
-            id: "helper-release-bootstrap-022",
+            id: id,
             productId: productId,
             target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
             targetRelease: UpdateBootstrapRelease(
@@ -98,7 +126,7 @@ final class UpdateBootstrapEnvelopePolicyTests: XCTestCase {
                 signedSha256: String(repeating: "c", count: 64),
                 value: "signature"
             ),
-            issuedAt: "2026-07-27T00:00:00Z"
+            issuedAt: issuedAt
         )
     }
 
