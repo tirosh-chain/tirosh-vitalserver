@@ -2,37 +2,28 @@ import Application
 import Contracts
 import Foundation
 
-public struct UpdateBootstrapHandoffWorkflowInput: Equatable, Sendable {
-    public let admittedJournal: UpdateBootstrapJournal
-    public let verification: VerifiedUpdateBootstrapClosure
-    public let staging: UpdateBootstrapStagingInput
+public struct ResumeUpdateBootstrapHandoffWorkflowInput:
+    Equatable,
+    Sendable
+{
+    public let pendingJournal: UpdateBootstrapJournal
+    public let stagedRoot: URL
 
     public init(
-        admittedJournal: UpdateBootstrapJournal,
-        verification: VerifiedUpdateBootstrapClosure,
-        staging: UpdateBootstrapStagingInput
+        pendingJournal: UpdateBootstrapJournal,
+        stagedRoot: URL
     ) {
-        self.admittedJournal = admittedJournal
-        self.verification = verification
-        self.staging = staging
+        self.pendingJournal = pendingJournal
+        self.stagedRoot = stagedRoot
     }
 }
 
-public struct UpdateBootstrapHandoffWorkflowOutput: Equatable, Sendable {
-    public let journal: UpdateBootstrapJournal
-    public let updaterExitCode: Int32
-
-    public init(journal: UpdateBootstrapJournal, updaterExitCode: Int32) {
-        self.journal = journal
-        self.updaterExitCode = updaterExitCode
-    }
-}
-
-public enum UpdateBootstrapHandoffWorkflowError: Error, Equatable, Sendable {
-    case journalPersistenceFailed(
-        state: UpdateBootstrapJournalState,
-        reason: String
-    )
+public enum ResumeUpdateBootstrapHandoffWorkflowError:
+    Error,
+    Equatable,
+    Sendable
+{
+    case runningJournalPersistenceFailed(reason: String)
     case operationFailed(reason: String)
     case operationAndFailureTransitionFailed(
         operationReason: String,
@@ -44,18 +35,8 @@ public enum UpdateBootstrapHandoffWorkflowError: Error, Equatable, Sendable {
     )
 }
 
-public struct UpdateBootstrapHandoffWorkflowOperations {
-    public let saveJournal: (UpdateBootstrapJournal, Int?) throws -> Void
-    public let stage: (
-        UpdateBootstrapStagingInput
-    ) throws -> StagedUpdateBootstrapBundle
-    public let verifiedAndStaged: (
-        UpdateBootstrapJournal,
-        VerifiedUpdateBootstrapClosure,
-        String,
-        String,
-        String
-    ) throws -> UpdateBootstrapJournal
+public struct ResumeUpdateBootstrapHandoffWorkflowOperations {
+    public let saveJournal: (UpdateBootstrapJournal, Int) throws -> Void
     public let handoffStarted: (
         UpdateBootstrapJournal,
         String
@@ -105,17 +86,7 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
     public let describeFailure: (Error) -> String
 
     public init(
-        saveJournal: @escaping (UpdateBootstrapJournal, Int?) throws -> Void,
-        stage: @escaping (
-            UpdateBootstrapStagingInput
-        ) throws -> StagedUpdateBootstrapBundle,
-        verifiedAndStaged: @escaping (
-            UpdateBootstrapJournal,
-            VerifiedUpdateBootstrapClosure,
-            String,
-            String,
-            String
-        ) throws -> UpdateBootstrapJournal,
+        saveJournal: @escaping (UpdateBootstrapJournal, Int) throws -> Void,
         handoffStarted: @escaping (
             UpdateBootstrapJournal,
             String
@@ -165,8 +136,6 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
         describeFailure: @escaping (Error) -> String
     ) {
         self.saveJournal = saveJournal
-        self.stage = stage
-        self.verifiedAndStaged = verifiedAndStaged
         self.handoffStarted = handoffStarted
         self.makeInvocation = makeInvocation
         self.writeInvocation = writeInvocation
@@ -183,80 +152,41 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
     }
 }
 
-public struct UpdateBootstrapHandoffWorkflow {
+public struct ResumeUpdateBootstrapHandoffWorkflow {
     public init() {}
 
     public func run(
-        input: UpdateBootstrapHandoffWorkflowInput,
-        operations: UpdateBootstrapHandoffWorkflowOperations
+        input: ResumeUpdateBootstrapHandoffWorkflowInput,
+        operations: ResumeUpdateBootstrapHandoffWorkflowOperations
     ) throws -> UpdateBootstrapHandoffWorkflowOutput {
-        try save(
-            input.admittedJournal,
-            expectedRevision: nil,
-            operations: operations
+        let running = try operations.handoffStarted(
+            input.pendingJournal,
+            operations.now()
         )
-
-        let staged: StagedUpdateBootstrapBundle
         do {
-            staged = try operations.stage(input.staging)
-        } catch {
-            throw failureAfterPersistedState(
-                journal: input.admittedJournal,
-                operationError: error,
-                operations: operations
-            )
-        }
-
-        let pending: UpdateBootstrapJournal
-        do {
-            pending = try operations.verifiedAndStaged(
-                input.admittedJournal,
-                input.verification,
-                input.admittedJournal.envelope.nextUpdaterArtifact.relativePath,
-                input.admittedJournal.envelope.specification.relativePath,
-                operations.now()
+            try operations.saveJournal(
+                running,
+                input.pendingJournal.journalRevision
             )
         } catch {
-            throw failureAfterPersistedState(
-                journal: input.admittedJournal,
-                operationError: error,
-                operations: operations
-            )
+            throw ResumeUpdateBootstrapHandoffWorkflowError
+                .runningJournalPersistenceFailed(
+                    reason: operations.describeFailure(error)
+                )
         }
-        try save(
-            pending,
-            expectedRevision: input.admittedJournal.journalRevision,
-            operations: operations
-        )
-
-        let running: UpdateBootstrapJournal
-        do {
-            running = try operations.handoffStarted(pending, operations.now())
-        } catch {
-            throw failureAfterPersistedState(
-                journal: pending,
-                operationError: error,
-                operations: operations
-            )
-        }
-        try save(
-            running,
-            expectedRevision: pending.journalRevision,
-            operations: operations
-        )
 
         do {
             let invocation = try operations.makeInvocation(running)
             let written = try operations.writeInvocation(
                 invocation,
-                staged.root
+                input.stagedRoot
             )
             let process = try operations.launch(
                 invocation,
                 written.url,
-                staged.root
+                input.stagedRoot
             )
-            let receiptURL = staged.root.appendingPathComponent(
+            let receiptURL = input.stagedRoot.appendingPathComponent(
                 invocation.completionReceiptRelativePath
             )
             let settled = try operations.settle(
@@ -271,7 +201,7 @@ public struct UpdateBootstrapHandoffWorkflow {
                 settled,
                 operations.readReport(
                     completion.reportRelativePath,
-                    staged.root
+                    input.stagedRoot
                 )
             )
             if settled.state == .succeeded {
@@ -283,10 +213,9 @@ public struct UpdateBootstrapHandoffWorkflow {
                     release.releaseRevision - 1
                 )
             } else {
-                try save(
+                try operations.saveJournal(
                     settled,
-                    expectedRevision: running.journalRevision,
-                    operations: operations
+                    running.journalRevision
                 )
             }
             return UpdateBootstrapHandoffWorkflowOutput(
@@ -294,34 +223,19 @@ public struct UpdateBootstrapHandoffWorkflow {
                 updaterExitCode: process.exitCode
             )
         } catch {
-            throw failureAfterPersistedState(
-                journal: running,
+            throw failureAfterRunningState(
+                running,
                 operationError: error,
                 operations: operations
             )
         }
     }
 
-    private func save(
+    private func failureAfterRunningState(
         _ journal: UpdateBootstrapJournal,
-        expectedRevision: Int?,
-        operations: UpdateBootstrapHandoffWorkflowOperations
-    ) throws {
-        do {
-            try operations.saveJournal(journal, expectedRevision)
-        } catch {
-            throw UpdateBootstrapHandoffWorkflowError.journalPersistenceFailed(
-                state: journal.state,
-                reason: operations.describeFailure(error)
-            )
-        }
-    }
-
-    private func failureAfterPersistedState(
-        journal: UpdateBootstrapJournal,
         operationError: Error,
-        operations: UpdateBootstrapHandoffWorkflowOperations
-    ) -> UpdateBootstrapHandoffWorkflowError {
+        operations: ResumeUpdateBootstrapHandoffWorkflowOperations
+    ) -> ResumeUpdateBootstrapHandoffWorkflowError {
         let operationReason = operations.describeFailure(operationError)
         let failed: UpdateBootstrapJournal
         do {
@@ -337,7 +251,10 @@ public struct UpdateBootstrapHandoffWorkflow {
             )
         }
         do {
-            try operations.saveJournal(failed, journal.journalRevision)
+            try operations.saveJournal(
+                failed,
+                journal.journalRevision
+            )
             return .operationFailed(reason: operationReason)
         } catch {
             return .operationAndFailurePersistenceFailed(

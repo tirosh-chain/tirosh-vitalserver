@@ -59,6 +59,245 @@ extension RuntimeLifecycle {
         bundleRoot: URL,
         requestId: String
     ) throws -> UpdateBootstrapHandoffWorkflowOutput {
+        let verifiedBundle = try loadAndVerifyUpdateBootstrapClosure(
+            bundleRoot: bundleRoot
+        )
+        let envelope = verifiedBundle.envelope
+        let verification = verifiedBundle.verification
+
+        let repository = updateBootstrapJournalRepository()
+        let currentRelease = try RequireUpdateBootstrapAdmissionStateUseCase()
+            .requireNewAdmission(
+                installedRelease: repository.loadInstalledProductRelease(),
+                journalId: envelope.id,
+                journal: repository.loadUpdateBootstrapJournal(id: envelope.id)
+            )
+        try ValidateInstalledProductReleaseUseCase().validate(currentRelease)
+
+        let admittedAt = updateBootstrapTimestamp()
+        let journal = try AdmitUpdateBootstrapUseCase().admit(
+            envelope: envelope,
+            verification: verification,
+            operationId: UUID().uuidString.lowercased(),
+            requestId: requestId,
+            admittedAt: admittedAt
+        )
+        let advance = AdvanceUpdateBootstrapJournalUseCase()
+        let invocationWriter = updateBootstrapInvocationWriter()
+        let launcher = updateBootstrapProcessLauncher()
+        let receiptReader = updateBootstrapReceiptReader()
+
+        return try UpdateBootstrapHandoffWorkflow().run(
+            input: UpdateBootstrapHandoffWorkflowInput(
+                admittedJournal: journal,
+                verification: verification,
+                staging: UpdateBootstrapStagingInput(
+                    updateId: envelope.id,
+                    stagingAttemptId: UUID().uuidString.lowercased(),
+                    sourceBundle: bundleRoot
+                )
+            ),
+            operations: UpdateBootstrapHandoffWorkflowOperations(
+                saveJournal: repository.saveUpdateBootstrapJournal,
+                stage: immutableUpdateBootstrapStager().stage,
+                verifiedAndStaged: advance.verifiedAndStaged,
+                handoffStarted: advance.handoffStarted,
+                makeInvocation:
+                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
+                writeInvocation: invocationWriter.write,
+                launch: launcher.launch,
+                readReceipt: receiptReader.readCompletionReceipt,
+                settle: SettleUpdateBootstrapHandoffUseCase().execute,
+                readReport:
+                    updateBootstrapReportReader().readCompletionReport,
+                verifyReport:
+                    VerifyUpdateBootstrapCompletionReportUseCase().verify,
+                makeInstalledRelease: { settledJournal in
+                    try MakeInstalledProductReleaseUseCase().makeUpdate(
+                        from: settledJournal,
+                        currentRelease:
+                            repository.loadInstalledProductRelease()
+                    )
+                },
+                settleSucceeded: { settled, release, journalRevision, releaseRevision in
+                    try repository.settleSucceededUpdate(
+                        journal: settled,
+                        release: release,
+                        expectedJournalRevision: journalRevision,
+                        expectedReleaseRevision: releaseRevision
+                    )
+                },
+                fail: advance.failed,
+                now: updateBootstrapTimestamp,
+                describeFailure: { String(describing: $0) }
+            )
+        )
+    }
+
+    func resumeUpdateBootstrapHandoff(
+        _ command: RuntimeUpdateBootstrapRecoveryCommand
+    ) throws {
+        let repository = updateBootstrapJournalRepository()
+        let pending = try RequireUpdateBootstrapRecoveryStateUseCase()
+            .requireJournal(
+                id: command.updateId,
+                action: .resumeHandoff,
+                journalRead: repository.loadUpdateBootstrapJournal(
+                    id: command.updateId
+                )
+            )
+        let stagedRoot = installedPaths.updateBootstrapStagingDirectory
+            .appendingPathComponent(pending.id, isDirectory: true)
+        let verifiedBundle = try loadAndVerifyUpdateBootstrapClosure(
+            bundleRoot: stagedRoot
+        )
+        try ValidateUpdateBootstrapRecoveryClosureUseCase().validate(
+            journal: pending,
+            stagedEnvelope: verifiedBundle.envelope,
+            verification: verifiedBundle.verification
+        )
+
+        let advance = AdvanceUpdateBootstrapJournalUseCase()
+        let output = try ResumeUpdateBootstrapHandoffWorkflow().run(
+            input: ResumeUpdateBootstrapHandoffWorkflowInput(
+                pendingJournal: pending,
+                stagedRoot: stagedRoot
+            ),
+            operations: ResumeUpdateBootstrapHandoffWorkflowOperations(
+                saveJournal: { journal, expectedRevision in
+                    try repository.saveUpdateBootstrapJournal(
+                        journal,
+                        expectedRevision: expectedRevision
+                    )
+                },
+                handoffStarted: advance.handoffStarted,
+                makeInvocation:
+                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
+                writeInvocation: updateBootstrapInvocationWriter().write,
+                launch: updateBootstrapProcessLauncher().launch,
+                readReceipt:
+                    updateBootstrapReceiptReader().readCompletionReceipt,
+                settle: SettleUpdateBootstrapHandoffUseCase().execute,
+                readReport:
+                    updateBootstrapReportReader().readCompletionReport,
+                verifyReport:
+                    VerifyUpdateBootstrapCompletionReportUseCase().verify,
+                makeInstalledRelease: { settledJournal in
+                    try MakeInstalledProductReleaseUseCase().makeUpdate(
+                        from: settledJournal,
+                        currentRelease:
+                            repository.loadInstalledProductRelease()
+                    )
+                },
+                settleSucceeded: { settled, release, journalRevision, releaseRevision in
+                    try repository.settleSucceededUpdate(
+                        journal: settled,
+                        release: release,
+                        expectedJournalRevision: journalRevision,
+                        expectedReleaseRevision: releaseRevision
+                    )
+                },
+                fail: advance.failed,
+                now: updateBootstrapTimestamp,
+                describeFailure: { String(describing: $0) }
+            )
+        )
+        print("update bootstrap handoff resumed")
+        print("journal: \(output.journal.id)")
+        print("state: \(output.journal.state.rawValue)")
+        print("updater exit code: \(output.updaterExitCode)")
+    }
+
+    func settleUpdateBootstrapHandoff(
+        _ command: RuntimeUpdateBootstrapRecoveryCommand
+    ) throws {
+        let repository = updateBootstrapJournalRepository()
+        let running = try RequireUpdateBootstrapRecoveryStateUseCase()
+            .requireJournal(
+                id: command.updateId,
+                action: .settleHandoff,
+                journalRead: repository.loadUpdateBootstrapJournal(
+                    id: command.updateId
+                )
+            )
+        let stagedRoot = installedPaths.updateBootstrapStagingDirectory
+            .appendingPathComponent(running.id, isDirectory: true)
+        let settled = try SettleRunningUpdateBootstrapWorkflow().run(
+            input: SettleRunningUpdateBootstrapWorkflowInput(
+                runningJournal: running,
+                stagedRoot: stagedRoot
+            ),
+            operations: SettleRunningUpdateBootstrapWorkflowOperations(
+                makeInvocation:
+                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
+                readReceipt:
+                    updateBootstrapReceiptReader().readCompletionReceipt,
+                settle: SettleUpdateBootstrapHandoffUseCase().execute,
+                readReport:
+                    updateBootstrapReportReader().readCompletionReport,
+                verifyReport:
+                    VerifyUpdateBootstrapCompletionReportUseCase().verify,
+                saveJournal: { journal, expectedRevision in
+                    try repository.saveUpdateBootstrapJournal(
+                        journal,
+                        expectedRevision: expectedRevision
+                    )
+                },
+                makeInstalledRelease: { settledJournal in
+                    try MakeInstalledProductReleaseUseCase().makeUpdate(
+                        from: settledJournal,
+                        currentRelease:
+                            repository.loadInstalledProductRelease()
+                    )
+                },
+                settleSucceeded: { settled, release, journalRevision, releaseRevision in
+                    try repository.settleSucceededUpdate(
+                        journal: settled,
+                        release: release,
+                        expectedJournalRevision: journalRevision,
+                        expectedReleaseRevision: releaseRevision
+                    )
+                }
+            )
+        )
+        print("update bootstrap handoff settled")
+        print("journal: \(settled.id)")
+        print("state: \(settled.state.rawValue)")
+    }
+
+    func failUpdateBootstrap(
+        _ command: RuntimeFailUpdateBootstrapCommand
+    ) throws {
+        let repository = updateBootstrapJournalRepository()
+        let current = try RequireUpdateBootstrapRecoveryStateUseCase()
+            .requireJournal(
+                id: command.updateId,
+                action: .failNonTerminal,
+                journalRead: repository.loadUpdateBootstrapJournal(
+                    id: command.updateId
+                )
+            )
+        let failed = try AdvanceUpdateBootstrapJournalUseCase().failed(
+            journal: current,
+            reason: command.reason,
+            observedAt: updateBootstrapTimestamp()
+        )
+        try repository.saveUpdateBootstrapJournal(
+            failed,
+            expectedRevision: current.journalRevision
+        )
+        print("update bootstrap marked failed")
+        print("journal: \(failed.id)")
+        print("state: \(failed.state.rawValue)")
+        print("reason: \(command.reason)")
+    }
+
+    private func loadAndVerifyUpdateBootstrapClosure(
+        bundleRoot: URL
+    ) throws -> (
+        envelope: UpdateBootstrapEnvelope,
+        verification: VerifiedUpdateBootstrapClosure
+    ) {
         let envelopeRead = FileUpdateBootstrapEnvelopeReader(
             bundleRoot: bundleRoot,
             fileStore: fileStore
@@ -71,15 +310,6 @@ extension RuntimeLifecycle {
             envelopeRead: envelopeRead,
             entriesRead: entriesRead
         )
-
-        let repository = updateBootstrapJournalRepository()
-        let currentRelease = try RequireUpdateBootstrapAdmissionStateUseCase()
-            .requireNewAdmission(
-                installedRelease: repository.loadInstalledProductRelease(),
-                journalId: envelope.id,
-                journal: repository.loadUpdateBootstrapJournal(id: envelope.id)
-            )
-        try ValidateInstalledProductReleaseUseCase().validate(currentRelease)
 
         let publicKeys = try UpdateBootstrapTrustStoreReader(
             validate: UpdateBootstrapTrustStorePolicy.validate
@@ -108,23 +338,23 @@ extension RuntimeLifecycle {
             )
         )
 
-        let admittedAt = updateBootstrapTimestamp()
-        let journal = try AdmitUpdateBootstrapUseCase().admit(
-            envelope: envelope,
-            verification: verification,
-            operationId: UUID().uuidString.lowercased(),
-            requestId: requestId,
-            admittedAt: admittedAt
-        )
-        let advance = AdvanceUpdateBootstrapJournalUseCase()
-        let invocationWriter = UpdateBootstrapHandoffInvocationWriter(
+        return (envelope, verification)
+    }
+
+    private func updateBootstrapInvocationWriter(
+    ) -> UpdateBootstrapHandoffInvocationWriter {
+        UpdateBootstrapHandoffInvocationWriter(
             operations: UpdateBootstrapHandoffInvocationWriteOperations(
                 pathState: fileStore.pathState,
                 createDirectory: fileStore.createDirectory,
                 writeData: fileStore.writeData
             )
         )
-        let launcher = UpdateBootstrapHandoffProcessLauncher(
+    }
+
+    private func updateBootstrapProcessLauncher(
+    ) -> UpdateBootstrapHandoffProcessLauncher {
+        UpdateBootstrapHandoffProcessLauncher(
             operations: UpdateBootstrapHandoffProcessLaunchOperations(
                 fileState: { url in
                     fileStore.fileState(atPath: url.path)
@@ -134,51 +364,22 @@ extension RuntimeLifecycle {
                 }
             )
         )
-        let receiptReader = UpdateBootstrapCompletionReceiptReader(
+    }
+
+    private func updateBootstrapReceiptReader(
+    ) -> UpdateBootstrapCompletionReceiptReader {
+        UpdateBootstrapCompletionReceiptReader(
             pathState: fileStore.pathState,
             readData: fileStore.readData
         )
+    }
 
-        return try UpdateBootstrapHandoffWorkflow().run(
-            input: UpdateBootstrapHandoffWorkflowInput(
-                admittedJournal: journal,
-                verification: verification,
-                staging: UpdateBootstrapStagingInput(
-                    updateId: envelope.id,
-                    stagingAttemptId: UUID().uuidString.lowercased(),
-                    sourceBundle: bundleRoot
-                )
-            ),
-            operations: UpdateBootstrapHandoffWorkflowOperations(
-                saveJournal: repository.saveUpdateBootstrapJournal,
-                stage: immutableUpdateBootstrapStager().stage,
-                verifiedAndStaged: advance.verifiedAndStaged,
-                handoffStarted: advance.handoffStarted,
-                makeInvocation:
-                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
-                writeInvocation: invocationWriter.write,
-                launch: launcher.launch,
-                readReceipt: receiptReader.readCompletionReceipt,
-                settle: SettleUpdateBootstrapHandoffUseCase().execute,
-                makeInstalledRelease: { settledJournal in
-                    try MakeInstalledProductReleaseUseCase().makeUpdate(
-                        from: settledJournal,
-                        currentRelease:
-                            repository.loadInstalledProductRelease()
-                    )
-                },
-                settleSucceeded: { settled, release, journalRevision, releaseRevision in
-                    try repository.settleSucceededUpdate(
-                        journal: settled,
-                        release: release,
-                        expectedJournalRevision: journalRevision,
-                        expectedReleaseRevision: releaseRevision
-                    )
-                },
-                fail: advance.failed,
-                now: updateBootstrapTimestamp,
-                describeFailure: { String(describing: $0) }
-            )
+    private func updateBootstrapReportReader(
+    ) -> UpdateBootstrapCompletionReportReader {
+        UpdateBootstrapCompletionReportReader(
+            pathState: fileStore.pathState,
+            readData: fileStore.readData,
+            sha256: updateBootstrapSHA256
         )
     }
 

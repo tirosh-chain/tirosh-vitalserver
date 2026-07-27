@@ -165,6 +165,12 @@ struct RuntimeLifecycle {
             try applyBundle(command)
         case .applyUpdateBootstrap(let command):
             try applyUpdateBootstrap(command)
+        case .resumeUpdateBootstrapHandoff(let command):
+            try resumeUpdateBootstrapHandoff(command)
+        case .settleUpdateBootstrapHandoff(let command):
+            try settleUpdateBootstrapHandoff(command)
+        case .failUpdateBootstrap(let command):
+            try failUpdateBootstrap(command)
         case .rollback(let command):
             try rollback(command)
         case .redisBackup:

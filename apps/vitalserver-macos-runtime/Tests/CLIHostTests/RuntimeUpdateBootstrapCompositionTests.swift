@@ -80,6 +80,294 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         XCTAssertEqual(runner.invocations.count, 1)
     }
 
+    func testResumesOnlyVerifiedPendingStagedHandoff() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(
+            productRoot: root.appendingPathComponent("product")
+        )
+        let staged = installed.updateBootstrapStagingDirectory
+            .appendingPathComponent("update-0.2.2")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let repository = try prepareInstalledRelease(at: installed)
+        let privateKey = Curve25519.Signing.PrivateKey()
+        try writeTrustStore(
+            privateKey.publicKey.rawRepresentation,
+            to: installed.updateBootstrapTrustStore
+        )
+        try writeSignedBundle(staged, privateKey: privateKey)
+        let envelope = try JSONDecoder().decode(
+            UpdateBootstrapEnvelope.self,
+            from: Data(
+                contentsOf: staged.appendingPathComponent(
+                    UpdateBootstrapBundleLayout.envelopeRelativePath
+                )
+            )
+        )
+        let admitted = recoveryJournal(
+            envelope: envelope,
+            state: .admitted,
+            revision: 1
+        )
+        let pending = recoveryJournal(
+            envelope: envelope,
+            state: .handoffPending,
+            revision: 2
+        )
+        try repository.saveUpdateBootstrapJournal(
+            admitted,
+            expectedRevision: nil
+        )
+        try repository.saveUpdateBootstrapJournal(
+            pending,
+            expectedRevision: admitted.journalRevision
+        )
+
+        let runner = SuccessfulUpdateBootstrapRunner()
+        let lifecycle = makeLifecycle(
+            installed: installed,
+            runner: runner
+        )
+        try lifecycle.resumeUpdateBootstrapHandoff(
+            RuntimeUpdateBootstrapRecoveryCommand(
+                updateId: "update-0.2.2"
+            )
+        )
+
+        guard case .loaded(let journal) =
+            repository.loadUpdateBootstrapJournal(id: "update-0.2.2") else {
+            return XCTFail("expected recovered journal")
+        }
+        XCTAssertEqual(journal.state, .succeeded)
+        XCTAssertEqual(runner.invocations.count, 1)
+    }
+
+    func testSettlesRunningReceiptWithoutRelaunchingUpdater() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(
+            productRoot: root.appendingPathComponent("product")
+        )
+        let staged = installed.updateBootstrapStagingDirectory
+            .appendingPathComponent("update-0.2.2")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let repository = try prepareInstalledRelease(at: installed)
+        let privateKey = Curve25519.Signing.PrivateKey()
+        try writeTrustStore(
+            privateKey.publicKey.rawRepresentation,
+            to: installed.updateBootstrapTrustStore
+        )
+        try writeSignedBundle(staged, privateKey: privateKey)
+        let envelope = try JSONDecoder().decode(
+            UpdateBootstrapEnvelope.self,
+            from: Data(
+                contentsOf: staged.appendingPathComponent(
+                    UpdateBootstrapBundleLayout.envelopeRelativePath
+                )
+            )
+        )
+        let admitted = recoveryJournal(
+            envelope: envelope,
+            state: .admitted,
+            revision: 1
+        )
+        let pending = recoveryJournal(
+            envelope: envelope,
+            state: .handoffPending,
+            revision: 2
+        )
+        let running = recoveryJournal(
+            envelope: envelope,
+            state: .running,
+            revision: 3
+        )
+        try repository.saveUpdateBootstrapJournal(
+            admitted,
+            expectedRevision: nil
+        )
+        try repository.saveUpdateBootstrapJournal(
+            pending,
+            expectedRevision: admitted.journalRevision
+        )
+        try repository.saveUpdateBootstrapJournal(
+            running,
+            expectedRevision: pending.journalRevision
+        )
+        let handoff = staged.appendingPathComponent("handoff")
+        try FileManager.default.createDirectory(
+            at: handoff,
+            withIntermediateDirectories: true
+        )
+        let report = Data("{\"result\":\"succeeded\"}\n".utf8)
+        try report.write(
+            to: handoff.appendingPathComponent("report.json")
+        )
+        let receipt = UpdateBootstrapCompletionReceipt(
+            schemaVersion: "v1",
+            updateId: running.id,
+            requestId: running.requestId,
+            bootstrapEnvelopeId: running.envelope.id,
+            updateSpecificationSHA256:
+                running.envelope.specification.sha256,
+            expectedJournalRevision: running.journalRevision,
+            outcome: .succeeded,
+            reportRelativePath: "handoff/report.json",
+            reportSHA256: sha256(report),
+            failureReason: nil,
+            finishedAt: "2026-07-27T00:10:00Z"
+        )
+        try JSONEncoder().encode(receipt).write(
+            to: handoff.appendingPathComponent(
+                "completion-receipt.json"
+            )
+        )
+
+        let runner = SuccessfulUpdateBootstrapRunner()
+        let lifecycle = makeLifecycle(
+            installed: installed,
+            runner: runner
+        )
+        try lifecycle.settleUpdateBootstrapHandoff(
+            RuntimeUpdateBootstrapRecoveryCommand(
+                updateId: running.id
+            )
+        )
+
+        guard case .loaded(let journal) =
+            repository.loadUpdateBootstrapJournal(id: running.id) else {
+            return XCTFail("expected settled journal")
+        }
+        XCTAssertEqual(journal.state, .succeeded)
+        XCTAssertEqual(runner.invocations.count, 0)
+    }
+
+    func testExplicitlyFailsPersistedNonTerminalJournalWithReason() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(
+            productRoot: root.appendingPathComponent("product")
+        )
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        let repository = try prepareInstalledRelease(at: installed)
+        let privateKey = Curve25519.Signing.PrivateKey()
+        let bundle = root.appendingPathComponent("bundle")
+        try writeSignedBundle(bundle, privateKey: privateKey)
+        let envelope = try JSONDecoder().decode(
+            UpdateBootstrapEnvelope.self,
+            from: Data(
+                contentsOf: bundle.appendingPathComponent(
+                    UpdateBootstrapBundleLayout.envelopeRelativePath
+                )
+            )
+        )
+        let admitted = recoveryJournal(
+            envelope: envelope,
+            state: .admitted,
+            revision: 1
+        )
+        try repository.saveUpdateBootstrapJournal(
+            admitted,
+            expectedRevision: nil
+        )
+
+        let lifecycle = makeLifecycle(
+            installed: installed,
+            runner: SuccessfulUpdateBootstrapRunner()
+        )
+        try lifecycle.failUpdateBootstrap(
+            RuntimeFailUpdateBootstrapCommand(
+                updateId: admitted.id,
+                reason: "operator confirmed source bundle was lost"
+            )
+        )
+
+        guard case .loaded(let journal) =
+            repository.loadUpdateBootstrapJournal(id: admitted.id) else {
+            return XCTFail("expected failed journal")
+        }
+        XCTAssertEqual(journal.state, .failed)
+        XCTAssertEqual(
+            journal.failureReason,
+            "operator confirmed source bundle was lost"
+        )
+    }
+
+    private func prepareInstalledRelease(
+        at installed: InstalledRuntimePaths
+    ) throws -> SQLiteUpdateBootstrapJournalRepository {
+        try FileManager.default.createDirectory(
+            at: installed.updateBootstrapTrustStore
+                .deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        _ = try SQLiteHostRuntimeStateDatabase(
+            url: installed.runtimeStateDatabase
+        ).initialize()
+        let repository = makeRepository(installed)
+        try repository.settlePackageInstallRelease(
+            try InstalledProductReleasePolicy.makePackageInstall(
+                productId: Constants.Product.identifier,
+                productVersion: "0.2.1",
+                runtimeVersion: "0.2.1",
+                installOperationId: "install-1",
+                settledAt: "2026-07-27T00:00:00Z"
+            )
+        )
+        return repository
+    }
+
+    private func makeLifecycle(
+        installed: InstalledRuntimePaths,
+        runner: SuccessfulUpdateBootstrapRunner
+    ) -> RuntimeLifecycle {
+        RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installed.runtimeHome,
+                installed: installed,
+                config: installed.vmConfig,
+                pidFile: installed.pidFile
+            ),
+            clock: UpdateBootstrapFixedClock(),
+            commandRunner: runner
+        )
+    }
+
+    private func recoveryJournal(
+        envelope: UpdateBootstrapEnvelope,
+        state: UpdateBootstrapJournalState,
+        revision: Int
+    ) -> UpdateBootstrapJournal {
+        let isAdmitted = state == .admitted
+        return UpdateBootstrapJournal(
+            schemaVersion: "v1",
+            id: envelope.id,
+            journalRevision: revision,
+            operationId: "operation-1",
+            requestId: "request-1",
+            envelope: envelope,
+            bootstrapSignedSHA256: envelope.signature.signedSha256,
+            state: state,
+            stagedUpdaterRelativePath:
+                isAdmitted
+                ? nil : envelope.nextUpdaterArtifact.relativePath,
+            stagedSpecificationRelativePath:
+                isAdmitted ? nil : envelope.specification.relativePath,
+            completion: nil,
+            failureReason: nil,
+            createdAt: "2026-07-27T00:00:00Z",
+            updatedAt: "2026-07-27T00:01:00Z"
+        )
+    }
+
     private func makeRepository(
         _ installed: InstalledRuntimePaths
     ) -> SQLiteUpdateBootstrapJournalRepository {

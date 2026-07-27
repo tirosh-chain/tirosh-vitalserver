@@ -192,6 +192,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-189 | Linux portable gate가 mocked macOS command를 실제 system path로 검증하다 실패함 | Packaging / Local development | resolved | [Portable CI declares macOS system tools as test fixtures](189_portable_ci_declares_macos_system_tools.md) |
 | TS-190 | macOS 기본 OpenSSL이 Ed25519 update signing을 지원하지 않음 | Packaging / Update / Local development | resolved | [macOS OpenSSL cannot create an Ed25519 update signing key](190_macos_openssl_ed25519_release_signing_unavailable.md) |
 | TS-191 | PKG/DMG build에 stable updater 공개키 trust store가 없거나 invalid함 | Packaging / Update / Local development | active | [Release package bootstrap trust store is missing or invalid](191_release_package_bootstrap_trust_store_missing_or_invalid.md) |
+| TS-192 | stable update가 중단된 뒤 journal 상태별 명시 복구가 필요함 | Update / Host runtime / Recovery | active | [Update bootstrap journal requires explicit recovery](192_update_bootstrap_journal_requires_explicit_recovery.md) |
 
 ## Follow-up 규칙
 

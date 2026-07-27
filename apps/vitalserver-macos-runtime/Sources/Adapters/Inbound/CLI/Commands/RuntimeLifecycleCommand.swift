@@ -16,6 +16,13 @@ public enum RuntimeLifecycleCommand: Equatable {
     case stageBundle(URL)
     case applyBundle(RuntimeApplyBundleCommand)
     case applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand)
+    case resumeUpdateBootstrapHandoff(
+        RuntimeUpdateBootstrapRecoveryCommand
+    )
+    case settleUpdateBootstrapHandoff(
+        RuntimeUpdateBootstrapRecoveryCommand
+    )
+    case failUpdateBootstrap(RuntimeFailUpdateBootstrapCommand)
     case rollback(RuntimeRollbackCommand)
     case redisBackup
     case redisRestore(URL)
@@ -78,6 +85,26 @@ extension RuntimeLifecycleCommand {
         case "apply-update-bootstrap":
             return .applyUpdateBootstrap(
                 try parseApplyUpdateBootstrapCommand(remaining)
+            )
+        case "resume-update-bootstrap-handoff":
+            return .resumeUpdateBootstrapHandoff(
+                try parseUpdateBootstrapRecoveryCommand(
+                    remaining,
+                    usage:
+                        "usage: vitalserver-vm runtime resume-update-bootstrap-handoff <update-id>"
+                )
+            )
+        case "settle-update-bootstrap-handoff":
+            return .settleUpdateBootstrapHandoff(
+                try parseUpdateBootstrapRecoveryCommand(
+                    remaining,
+                    usage:
+                        "usage: vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>"
+                )
+            )
+        case "fail-update-bootstrap":
+            return .failUpdateBootstrap(
+                try parseFailUpdateBootstrapCommand(remaining)
             )
         case "rollback":
             return .rollback(parseRollbackCommand(remaining))
@@ -199,6 +226,9 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
       vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
       vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>
+      vitalserver-vm runtime resume-update-bootstrap-handoff <update-id>
+      vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>
+      vitalserver-vm runtime fail-update-bootstrap <update-id> --reason <reason>
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime redis-restore <archive.tar.gz>
@@ -293,6 +323,35 @@ extension RuntimeLifecycleCommand {
         return RuntimeApplyUpdateBootstrapCommand(
             bundleURL: URL(fileURLWithPath: bundlePath),
             requestId: requestId
+        )
+    }
+
+    private static func parseUpdateBootstrapRecoveryCommand(
+        _ arguments: [String],
+        usage: String
+    ) throws -> RuntimeUpdateBootstrapRecoveryCommand {
+        guard arguments.count == 1,
+              let updateId = arguments.first,
+              !updateId.isEmpty else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return RuntimeUpdateBootstrapRecoveryCommand(updateId: updateId)
+    }
+
+    private static func parseFailUpdateBootstrapCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeFailUpdateBootstrapCommand {
+        let usage =
+            "usage: vitalserver-vm runtime fail-update-bootstrap <update-id> --reason <reason>"
+        guard arguments.count == 3,
+              !arguments[0].isEmpty,
+              arguments[1] == "--reason",
+              !arguments[2].isEmpty else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return RuntimeFailUpdateBootstrapCommand(
+            updateId: arguments[0],
+            reason: arguments[2]
         )
     }
 

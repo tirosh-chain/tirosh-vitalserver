@@ -274,6 +274,64 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         }
     }
 
+    func testParsesExplicitUpdateBootstrapRecoveryCommands() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "resume-update-bootstrap-handoff",
+                "update-42",
+            ]),
+            .resumeUpdateBootstrapHandoff(
+                RuntimeUpdateBootstrapRecoveryCommand(
+                    updateId: "update-42"
+                )
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "settle-update-bootstrap-handoff",
+                "update-42",
+            ]),
+            .settleUpdateBootstrapHandoff(
+                RuntimeUpdateBootstrapRecoveryCommand(
+                    updateId: "update-42"
+                )
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "fail-update-bootstrap",
+                "update-42",
+                "--reason",
+                "operator abandoned interrupted admission",
+            ]),
+            .failUpdateBootstrap(
+                RuntimeFailUpdateBootstrapCommand(
+                    updateId: "update-42",
+                    reason: "operator abandoned interrupted admission"
+                )
+            )
+        )
+    }
+
+    func testUpdateBootstrapRecoveryCommandsRequireExactlyOneUpdateID() {
+        for arguments in [
+            ["resume-update-bootstrap-handoff"],
+            ["resume-update-bootstrap-handoff", ""],
+            ["resume-update-bootstrap-handoff", "update-42", "extra"],
+            ["settle-update-bootstrap-handoff"],
+            ["settle-update-bootstrap-handoff", ""],
+            ["settle-update-bootstrap-handoff", "update-42", "extra"],
+            ["fail-update-bootstrap"],
+            ["fail-update-bootstrap", "update-42"],
+            ["fail-update-bootstrap", "update-42", "--reason", ""],
+            ["fail-update-bootstrap", "update-42", "--unknown", "reason"],
+        ] {
+            XCTAssertThrowsError(
+                try RuntimeLifecycleCommand.parse(arguments)
+            )
+        }
+    }
+
     func testParsesOptionalRollbackPath() throws {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["rollback"]), .rollback(.latestBackup))
         XCTAssertEqual(

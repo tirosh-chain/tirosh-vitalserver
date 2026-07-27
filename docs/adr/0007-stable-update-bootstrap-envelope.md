@@ -174,8 +174,19 @@ contract, installs the exact bytes at
 `/Library/Application Support/VitalServerHelper/config/update-bootstrap-trust-store.json`,
 and reads the expanded PKG payload back from the DMG to prove that it matches
 the release input. It neither creates a default key nor derives a public key
-from private signing material. An explicit recovery/resume command for already
-persisted non-terminal journals remains implementation work.
+from private signing material. Persisted non-terminal journals now have
+state-specific operator commands. `resume-update-bootstrap-handoff` accepts
+only `handoff-pending`, re-reads the exact staged closure, and repeats
+publisher, target, artifact, and journal correlation verification before it
+persists `running` and dispatches the updater.
+`settle-update-bootstrap-handoff` accepts only `running`, reads and correlates
+an existing receipt, verifies the referenced report file digest, and settles
+without launching the updater again. A missing receipt or invalid report
+leaves a recovered `running` journal unchanged. An operator can explicitly
+terminate any non-terminal journal with
+`fail-update-bootstrap <id> --reason <reason>`; the reason is required and the
+update ID is not silently reusable. These commands require an exact journal
+ID and never select the latest journal as fallback.
 
 Release automation calls:
 

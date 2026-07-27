@@ -28,6 +28,7 @@ final class UpdateBootstrapHandoffWorkflowTests: XCTestCase {
             "write-invocation",
             "launch",
             "read-receipt:/updates/update-42/handoff/completion-receipt.json",
+            "read-report:handoff/report.json",
             "settle-installed-release",
         ])
     }
@@ -226,6 +227,15 @@ private final class HandoffWorkflowHarness {
             settle: {
                 try settle.execute(journal: $0, receiptRead: $1)
             },
+            readReport: { [self] path, _ in
+                events.append("read-report:\(path)")
+                return .loaded(
+                    path: path,
+                    sha256: String(repeating: "c", count: 64)
+                )
+            },
+            verifyReport:
+                VerifyUpdateBootstrapCompletionReportUseCase().verify,
             makeInstalledRelease: {
                 try makeRelease.makeUpdate(
                     from: $0,
