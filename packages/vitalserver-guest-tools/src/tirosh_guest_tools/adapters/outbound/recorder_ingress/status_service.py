@@ -393,6 +393,8 @@ def _validated_observability_detail(
     report = document.get("report")
     profile = document.get("profile")
     boot = document.get("boot")
+    evidence_health = document.get("evidenceHealth")
+    incident_state = document.get("incidentState")
     operational_health = document.get("operationalHealth")
     readings = document.get("readings")
     read_issues = document.get("readIssues")
@@ -418,12 +420,21 @@ def _validated_observability_detail(
         "invalid",
     }:
         raise _observability_contract_error("detail profile is invalid")
-    if not isinstance(boot, dict) or boot.get("state") not in {
-        "notReported",
-        "started",
-        "shutdownClean",
-    }:
+    if (
+        not isinstance(boot, dict)
+        or boot.get("state")
+        not in {"notReported", "started", "shutdownClean", "nonOrderable"}
+        or boot.get("orderingState")
+        not in {"ordered", "nonOrderable", "unknown"}
+        or not {
+            "bootId",
+            "startedAt",
+            "cleanShutdownAt",
+        }.issubset(boot)
+    ):
         raise _observability_contract_error("detail boot is invalid")
+    _validate_evidence_health(evidence_health)
+    _validate_incident_state(incident_state)
     _validate_operational_health(operational_health)
     if not isinstance(readings, dict):
         raise _observability_contract_error("detail readings is invalid")
@@ -506,6 +517,81 @@ def _validate_operational_health(value: object) -> None:
             raise _observability_contract_error(
                 f"operational health issue {index} is invalid"
             )
+
+
+def _validate_evidence_health(value: object) -> None:
+    if not isinstance(value, dict) or value.get("state") not in {
+        "notReported",
+        "healthy",
+        "degraded",
+        "failed",
+        "stale",
+        "unsupported",
+        "invalid",
+    }:
+        raise _observability_contract_error("evidence health is invalid")
+    checked_at = value.get("checkedAt")
+    check_count = value.get("checkCount")
+    detail = value.get("detail")
+    if (
+        ("checkedAt" not in value or checked_at is not None)
+        and not isinstance(checked_at, str)
+    ) or (
+        not isinstance(check_count, int)
+        or isinstance(check_count, bool)
+        or check_count < 0
+    ) or (
+        ("detail" not in value or detail is not None)
+        and not isinstance(detail, str)
+    ):
+        raise _observability_contract_error("evidence health is invalid")
+
+
+def _validate_incident_state(value: object) -> None:
+    if not isinstance(value, dict) or value.get("state") not in {
+        "notReported",
+        "reported",
+        "invalid",
+    }:
+        raise _observability_contract_error("incident state is invalid")
+    nullable_strings = {
+        "policyVersion": None,
+        "bootLoopState": {"none", "warning", "critical", "unknown"},
+        "repeatedUndervoltageState": {
+            "none",
+            "warning",
+            "critical",
+            "unknown",
+        },
+        "evidenceState": {
+            "healthy",
+            "degraded",
+            "failed",
+            "stale",
+            "unsupported",
+        },
+    }
+    for field, allowed in nullable_strings.items():
+        field_value = value.get(field)
+        if field not in value or (
+            field_value is not None
+            and (
+                not isinstance(field_value, str)
+                or (allowed is not None and field_value not in allowed)
+            )
+        ):
+            raise _observability_contract_error("incident state is invalid")
+    for field in ("consecutiveUnexpectedBoots", "undervoltageBootsConsidered"):
+        field_value = value.get(field)
+        if field not in value or (
+            field_value is not None
+            and (
+                not isinstance(field_value, int)
+                or isinstance(field_value, bool)
+                or field_value < 0
+            )
+        ):
+            raise _observability_contract_error("incident state is invalid")
 
 
 def _validate_observability_summary(summary: object) -> None:
@@ -635,9 +721,25 @@ def _empty_observability_detail(
         },
         "boot": {
             "state": "notReported",
+            "orderingState": "unknown",
             "bootId": None,
             "startedAt": None,
             "cleanShutdownAt": None,
+        },
+        "evidenceHealth": {
+            "state": "notReported",
+            "checkedAt": None,
+            "checkCount": 0,
+            "detail": None,
+        },
+        "incidentState": {
+            "state": "notReported",
+            "policyVersion": None,
+            "bootLoopState": None,
+            "repeatedUndervoltageState": None,
+            "evidenceState": None,
+            "consecutiveUnexpectedBoots": None,
+            "undervoltageBootsConsidered": None,
         },
         "operationalHealth": {
             "state": "unknown",
