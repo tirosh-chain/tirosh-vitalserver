@@ -1,0 +1,155 @@
+import Contracts
+
+public enum UpdateBootstrapEnvelopeValidationError: Error, Equatable, Sendable {
+    case unsupportedSchemaVersion(String)
+    case invalidIdentifier(field: String, value: String)
+    case productMismatch(expected: String, actual: String)
+    case targetMismatch(expected: UpdateBootstrapTarget, actual: UpdateBootstrapTarget)
+    case invalidReleaseVersion(field: String, value: String)
+    case emptyLayerOrder
+    case tooManyLayers(Int)
+    case duplicateLayer(UpdateLayer)
+    case hostPlatformMustBeLast
+    case invalidArtifactPath(artifactId: String, relativePath: String)
+    case invalidArtifactSHA256(artifactId: String, sha256: String)
+    case invalidArtifactSize(artifactId: String, sizeBytes: Int)
+    case invalidArtifactMediaType(artifactId: String)
+    case invalidSignatureKeyId(String)
+    case invalidSignatureSHA256(String)
+    case emptySignature
+    case invalidIssuedAt(String)
+}
+
+public enum UpdateBootstrapEnvelopePolicy {
+    public static func validate(
+        _ envelope: UpdateBootstrapEnvelope,
+        expectedProductId: String,
+        expectedTarget: UpdateBootstrapTarget
+    ) throws {
+        guard envelope.schemaVersion == "v1" else {
+            throw UpdateBootstrapEnvelopeValidationError.unsupportedSchemaVersion(
+                envelope.schemaVersion
+            )
+        }
+        try requireIdentifier(envelope.id, field: "id")
+        try requireIdentifier(envelope.productId, field: "productId")
+        guard envelope.productId == expectedProductId else {
+            throw UpdateBootstrapEnvelopeValidationError.productMismatch(
+                expected: expectedProductId,
+                actual: envelope.productId
+            )
+        }
+        guard envelope.target == expectedTarget else {
+            throw UpdateBootstrapEnvelopeValidationError.targetMismatch(
+                expected: expectedTarget,
+                actual: envelope.target
+            )
+        }
+        try requireVersion(
+            envelope.targetRelease.productVersion,
+            field: "targetRelease.productVersion"
+        )
+        try requireVersion(
+            envelope.targetRelease.runtimeVersion,
+            field: "targetRelease.runtimeVersion"
+        )
+        try validateLayerOrder(envelope.layerOrder)
+        try validateArtifact(envelope.nextUpdaterArtifact)
+        try validateArtifact(envelope.specification)
+        try requireIdentifier(envelope.signature.keyId, field: "signature.keyId")
+        guard isSHA256(envelope.signature.signedSha256) else {
+            throw UpdateBootstrapEnvelopeValidationError.invalidSignatureSHA256(
+                envelope.signature.signedSha256
+            )
+        }
+        guard !envelope.signature.value.isEmpty else {
+            throw UpdateBootstrapEnvelopeValidationError.emptySignature
+        }
+        guard !envelope.issuedAt.isEmpty else {
+            throw UpdateBootstrapEnvelopeValidationError.invalidIssuedAt(
+                envelope.issuedAt
+            )
+        }
+    }
+
+    private static func validateLayerOrder(_ layers: [UpdateLayer]) throws {
+        guard !layers.isEmpty else {
+            throw UpdateBootstrapEnvelopeValidationError.emptyLayerOrder
+        }
+        guard layers.count <= 3 else {
+            throw UpdateBootstrapEnvelopeValidationError.tooManyLayers(layers.count)
+        }
+        var observed = Set<UpdateLayer>()
+        for layer in layers {
+            guard observed.insert(layer).inserted else {
+                throw UpdateBootstrapEnvelopeValidationError.duplicateLayer(layer)
+            }
+        }
+        if let hostIndex = layers.firstIndex(of: .hostPlatform),
+           hostIndex != layers.index(before: layers.endIndex) {
+            throw UpdateBootstrapEnvelopeValidationError.hostPlatformMustBeLast
+        }
+    }
+
+    private static func validateArtifact(_ artifact: UpdateBootstrapArtifact) throws {
+        try requireIdentifier(artifact.id, field: "artifact.id")
+        let components = artifact.relativePath.split(
+            separator: "/",
+            omittingEmptySubsequences: false
+        )
+        guard artifact.relativePath.hasPrefix("payload/"),
+              components.count >= 2,
+              !components.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }),
+              !artifact.relativePath.contains("\\") else {
+            throw UpdateBootstrapEnvelopeValidationError.invalidArtifactPath(
+                artifactId: artifact.id,
+                relativePath: artifact.relativePath
+            )
+        }
+        guard isSHA256(artifact.sha256) else {
+            throw UpdateBootstrapEnvelopeValidationError.invalidArtifactSHA256(
+                artifactId: artifact.id,
+                sha256: artifact.sha256
+            )
+        }
+        guard artifact.sizeBytes > 0 else {
+            throw UpdateBootstrapEnvelopeValidationError.invalidArtifactSize(
+                artifactId: artifact.id,
+                sizeBytes: artifact.sizeBytes
+            )
+        }
+        guard !artifact.mediaType.isEmpty else {
+            throw UpdateBootstrapEnvelopeValidationError.invalidArtifactMediaType(
+                artifactId: artifact.id
+            )
+        }
+    }
+
+    private static func requireIdentifier(_ value: String, field: String) throws {
+        guard !value.isEmpty,
+              value.count <= 128,
+              value.allSatisfy({ character in
+                  character.isLetter || character.isNumber || "-._".contains(character)
+              }) else {
+            throw UpdateBootstrapEnvelopeValidationError.invalidIdentifier(
+                field: field,
+                value: value
+            )
+        }
+    }
+
+    private static func requireVersion(_ value: String, field: String) throws {
+        guard !value.isEmpty, value.count <= 128 else {
+            throw UpdateBootstrapEnvelopeValidationError.invalidReleaseVersion(
+                field: field,
+                value: value
+            )
+        }
+    }
+
+    private static func isSHA256(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy {
+            $0.isNumber || ("a"..."f").contains(String($0))
+        }
+    }
+}

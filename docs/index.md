@@ -147,6 +147,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 | [Troubleshooting](troubleshooting/index.md) | PoC와 패키징 중 확인한 증상과 조치 |
 | [ADR 0002](adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary |
 | [ADR 0003](adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model |
+| [ADR 0007](adr/0007-stable-update-bootstrap-envelope.md) | Helper 0.2.2 이후 상세 update spec 변경에 종속되지 않는 stable bootstrap envelope와 상태 owner |
 | [ADR 0004](adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 구분 |
 | [ADR 0005](adr/0005-vital-file-versioned-compatibility-and-canonical-model.md) | Vital File version reader, canonical model, v3 writer, upload/replay streaming 경계 |
 
