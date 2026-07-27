@@ -88,7 +88,10 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         let databaseURL = directory.appendingPathComponent("runtime-state.sqlite")
         _ = try SQLiteHostRuntimeStateDatabase(url: databaseURL).initialize()
         return (
-            SQLiteUpdateBootstrapJournalRepository(databaseURL: databaseURL),
+            SQLiteUpdateBootstrapJournalRepository(
+                databaseURL: databaseURL,
+                validate: ValidateUpdateBootstrapJournalUseCase().validate
+            ),
             databaseURL
         )
     }

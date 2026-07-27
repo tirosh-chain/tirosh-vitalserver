@@ -1,6 +1,5 @@
 import Application
 import Contracts
-import Domain
 import Foundation
 
 public enum SQLiteUpdateBootstrapJournalRepositoryError:
@@ -8,7 +7,7 @@ public enum SQLiteUpdateBootstrapJournalRepositoryError:
     Equatable,
     Sendable
 {
-    case invalidJournal(UpdateBootstrapJournalValidationError)
+    case invalidJournal(reason: String)
     case missing(id: String)
     case alreadyExists(id: String, revision: Int)
     case staleRevision(id: String, expected: Int, actual: Int)
@@ -24,12 +23,14 @@ public struct SQLiteUpdateBootstrapJournalRepository:
     private let connection: SQLiteHostRuntimeStateConnection
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let validate: (UpdateBootstrapJournal) throws -> Void
 
     public init(
         databaseURL: URL,
         busyTimeoutMilliseconds: Int32 = 5_000,
         encoder: JSONEncoder = JSONEncoder(),
-        decoder: JSONDecoder = JSONDecoder()
+        decoder: JSONDecoder = JSONDecoder(),
+        validate: @escaping (UpdateBootstrapJournal) throws -> Void
     ) {
         self.databaseURL = databaseURL
         self.connection = SQLiteHostRuntimeStateConnection(
@@ -38,6 +39,7 @@ public struct SQLiteUpdateBootstrapJournalRepository:
         )
         self.encoder = encoder
         self.decoder = decoder
+        self.validate = validate
     }
 
     public func loadUpdateBootstrapJournal(
@@ -74,9 +76,11 @@ public struct SQLiteUpdateBootstrapJournalRepository:
         expectedRevision: Int?
     ) throws {
         do {
-            try UpdateBootstrapJournalPolicy.validate(journal)
-        } catch let error as UpdateBootstrapJournalValidationError {
-            throw SQLiteUpdateBootstrapJournalRepositoryError.invalidJournal(error)
+            try validate(journal)
+        } catch {
+            throw SQLiteUpdateBootstrapJournalRepositoryError.invalidJournal(
+                reason: String(describing: error)
+            )
         }
 
         do {
@@ -172,7 +176,7 @@ public struct SQLiteUpdateBootstrapJournalRepository:
                     UpdateBootstrapJournal.self,
                     from: Data(document.utf8)
                 )
-                try UpdateBootstrapJournalPolicy.validate(journal)
+                try validate(journal)
                 return .loaded(journal)
             }
         } catch {

@@ -1,17 +1,22 @@
 import Contracts
-import Domain
 import Foundation
 
 public enum UpdateBootstrapTrustStoreLoadError: Error, Equatable, Sendable {
     case unavailable(path: String)
     case readFailed(path: String, reason: String)
     case decodeFailed(path: String, reason: String)
-    case invalid(UpdateBootstrapTrustStoreValidationError)
+    case invalid(reason: String)
     case publicKeyDecodeFailed(keyId: String)
 }
 
 public struct UpdateBootstrapTrustStoreReader {
-    public init() {}
+    private let validate: (UpdateBootstrapTrustStore) throws -> Void
+
+    public init(
+        validate: @escaping (UpdateBootstrapTrustStore) throws -> Void
+    ) {
+        self.validate = validate
+    }
 
     public func loadPublicKeys(from url: URL) throws -> [String: Data] {
         let data: Data
@@ -41,9 +46,11 @@ public struct UpdateBootstrapTrustStoreReader {
         }
 
         do {
-            try UpdateBootstrapTrustStorePolicy.validate(store)
-        } catch let error as UpdateBootstrapTrustStoreValidationError {
-            throw UpdateBootstrapTrustStoreLoadError.invalid(error)
+            try validate(store)
+        } catch {
+            throw UpdateBootstrapTrustStoreLoadError.invalid(
+                reason: String(describing: error)
+            )
         }
 
         var keys: [String: Data] = [:]

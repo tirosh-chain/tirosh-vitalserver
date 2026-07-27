@@ -1,3 +1,4 @@
+import Application
 import Foundation
 import OutboundAdapters
 import XCTest
@@ -13,7 +14,7 @@ final class UpdateBootstrapTrustStoreReaderTests: XCTestCase {
             try? FileManager.default.removeItem(at: file)
         }
 
-        let keys = try UpdateBootstrapTrustStoreReader().loadPublicKeys(from: file)
+        let keys = try reader().loadPublicKeys(from: file)
 
         XCTAssertEqual(keys["release-key"], Data(repeating: 0, count: 32))
     }
@@ -23,7 +24,7 @@ final class UpdateBootstrapTrustStoreReaderTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
 
         XCTAssertThrowsError(
-            try UpdateBootstrapTrustStoreReader().loadPublicKeys(from: file)
+            try reader().loadPublicKeys(from: file)
         ) { error in
             XCTAssertEqual(
                 error as? UpdateBootstrapTrustStoreLoadError,
@@ -39,7 +40,7 @@ final class UpdateBootstrapTrustStoreReaderTests: XCTestCase {
         }
 
         XCTAssertThrowsError(
-            try UpdateBootstrapTrustStoreReader().loadPublicKeys(from: file)
+            try reader().loadPublicKeys(from: file)
         ) { error in
             guard case .decodeFailed(let path, _) =
                     error as? UpdateBootstrapTrustStoreLoadError else {
@@ -54,5 +55,10 @@ final class UpdateBootstrapTrustStoreReaderTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
         try Data(text.utf8).write(to: file)
         return file
+    }
+
+    private func reader() -> UpdateBootstrapTrustStoreReader {
+        let validator = ValidateUpdateBootstrapTrustStoreUseCase()
+        return UpdateBootstrapTrustStoreReader(validate: validator.validate)
     }
 }

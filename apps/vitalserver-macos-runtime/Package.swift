@@ -65,7 +65,7 @@ let package = Package(
         ),
         .target(
             name: "OutboundAdapters",
-            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl"],
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl"],
             path: "Sources/Adapters/Outbound",
             linkerSettings: [
                 .linkedLibrary("sqlite3")
