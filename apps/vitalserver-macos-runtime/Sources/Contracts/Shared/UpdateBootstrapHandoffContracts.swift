@@ -1,3 +1,5 @@
+import Foundation
+
 public struct UpdateBootstrapHandoffInvocation: Codable, Equatable, Sendable {
     public let schemaVersion: String
     public let updateId: String
@@ -92,5 +94,13 @@ public struct UpdateBootstrapHandoffInvocation: Codable, Equatable, Sendable {
                 forKey: .completionReceiptRelativePath
             )
         )
+    }
+}
+
+public struct WrittenUpdateBootstrapHandoffInvocation: Equatable, Sendable {
+    public let url: URL
+
+    public init(url: URL) {
+        self.url = url
     }
 }

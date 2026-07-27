@@ -127,9 +127,12 @@ persistence is exclusive, and the process adapter can execute only the staged
 updater with the fixed `execute --invocation` argument shape. A strict receipt
 reader preserves missing, inspection, read, and decode failures, while the
 Application settlement use case accepts only a receipt correlated by the
-journal state machine. End-to-end workflow composition, installed-release
-settlement, release composition, and Helper/PWA wiring remain implementation
-work. This paragraph must be updated as each owner becomes executable.
+journal state machine. The durable handoff workflow persists admitted,
+handoff-pending, and running revisions before dispatch, then persists the
+correlated terminal revision. Operation failure, failure-transition failure,
+and failure-persistence failure remain distinct. Installed-release settlement,
+release composition, and Helper/PWA wiring remain implementation work. This
+paragraph must be updated as each owner becomes executable.
 
 ## 결과
 

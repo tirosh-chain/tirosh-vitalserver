@@ -24,14 +24,6 @@ public struct UpdateBootstrapHandoffInvocationWriteOperations {
     }
 }
 
-public struct WrittenUpdateBootstrapHandoffInvocation: Equatable, Sendable {
-    public let url: URL
-
-    public init(url: URL) {
-        self.url = url
-    }
-}
-
 public struct UpdateBootstrapHandoffInvocationWriter {
     public static let relativePath = "handoff/invocation.json"
 
