@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -61,10 +60,7 @@ func (StagedNextUpdaterProcessRunner) Dispatch(ctx context.Context, input hostup
 
 func runNextUpdaterExecution(ctx context.Context, input hostupdatehandoffsupervisordomain.StagedNextUpdaterDispatchInput) error {
 	arguments := []string{"--mode", "execute", "--invocation", input.InvocationPath, "--report", input.ExecutionReportPath, "--layer-effect-receipt-directory", input.LayerEffectReceiptPath, "--layer-effect-timeout", fmt.Sprintf("%dms", input.LayerEffectTimeoutMilliseconds)}
-	command := exec.CommandContext(ctx, input.NextUpdaterPath, arguments...)
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if err := command.Run(); err != nil {
+	if err := runConfinedProcess(ctx, input.NextUpdaterPath, arguments, io.Discard, io.Discard); err != nil {
 		return hostupdatehandoffsupervisordomain.DispatchFailure{State: "failed", Issue: hostupdatehandoffsupervisordomain.DispatchIssue{Code: "next-updater-process-failed", Message: err.Error(), Dependency: "staged-next-updater"}}
 	}
 	return nil
@@ -72,12 +68,9 @@ func runNextUpdaterExecution(ctx context.Context, input hostupdatehandoffsupervi
 
 func runNextUpdaterCompletion(ctx context.Context, input hostupdatehandoffsupervisordomain.StagedNextUpdaterDispatchInput) ([]byte, error) {
 	arguments := []string{"--mode", "complete", "--invocation", input.InvocationPath, "--report", input.ExecutionReportPath, "--completion-descriptor", input.CompletionDescriptorPath, "--completion-timeout", fmt.Sprintf("%dms", input.CompletionTimeoutMilliseconds)}
-	command := exec.CommandContext(ctx, input.NextUpdaterPath, arguments...)
 	var standardOutput limitedBuffer
 	standardOutput.limit = maximumCompletionCommandBytes
-	command.Stdout = &standardOutput
-	command.Stderr = io.Discard
-	if err := command.Run(); err != nil {
+	if err := runConfinedProcess(ctx, input.NextUpdaterPath, arguments, &standardOutput, io.Discard); err != nil {
 		return nil, hostupdatehandoffsupervisordomain.DispatchFailure{State: "failed", Issue: hostupdatehandoffsupervisordomain.DispatchIssue{Code: "next-updater-process-failed", Message: err.Error(), Dependency: "staged-next-updater"}}
 	}
 	if standardOutput.exceeded {

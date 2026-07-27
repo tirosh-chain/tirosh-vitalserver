@@ -157,8 +157,11 @@ SQLite transaction으로 `interrupted` 처리한다. 다른 installation 또는
 
 Update Handoff Supervisor는 C52 Host-local transport로 C80 ownership을
 C56의 명시적 poll interval마다 읽는다. exact update의 interruption이
-관찰되면 next updater context를 cancel하고 process `Wait`가 끝날 때까지
-ownership을 유지한다. 종료 뒤 C82 confirmation이 Host Agent에서
+관찰되면 macOS/Linux에서는 전용 process group, Windows에서는 생성 시점에
+결합한 kill-on-close Job Object 전체를 종료하고 direct process `Wait`가
+끝날 때까지 ownership을 유지한다. next updater parent만 종료하면 C55
+layer-effect executor가 계속 mutation을 수행할 수 있으므로 C82 termination
+evidence가 될 수 없다. process tree 종료 뒤 C82 confirmation이 Host Agent에서
 accepted된 경우에만 interruption 처리가 완료된다. completion 제출과
 interruption 요청이 경합해 next updater가 먼저 오류로 종료되더라도,
 Supervisor는 마지막 ownership read로 accepted interruption을 다시
@@ -214,3 +217,4 @@ evidence로 바꾼다.
 | SQLite JSON은 decode되지만 bootstrap digest/receipt/report가 서로 맞지 않음 | JSON decode만으로 Host-owned state를 신뢰함 | C29 cross-field validation 후 `invalid`/admission failure로 노출 | decode 성공과 유효한 owned state를 같은 의미로 취급하지 않는다 |
 | 재시작 후 updater가 무엇을 하던 중인지 알 수 없음 | Host가 process/layer internal state를 소유하지 않음 | `applying`은 유지하고 C28 또는 별도 운영 policy를 요구 | Host는 Guest/next-updater internals를 추측하지 않는다 |
 | future spec을 old updater가 parse하려 함 | C25와 C26 경계가 섞임 | next updater module만 C26 parser를 import | evolution은 stable bootstrap handoff로 처리한다 |
+| interruption 후에도 layer effect가 계속 실행됨 | supervisor가 next updater parent만 종료하고 descendant executor를 소유하지 않음 | Unix process group 또는 Windows creation-time Job Object 전체를 종료하고 direct process를 wait한 뒤 C82 제출 | cancellation evidence는 mutation process tree 전체의 종료를 증명해야 한다 |
