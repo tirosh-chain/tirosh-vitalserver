@@ -27,6 +27,10 @@ class LinuxHostPackageCompositionError(RuntimeError):
     """Raised when a selected release cannot be represented as a safe DEB."""
 
 
+_HOST_ADMINISTRATION_DESCRIPTOR_PATH = "/opt/vitalserver-runtime-platform/control/host-agent.local.json"
+_HOST_ADMINISTRATION_TIMEOUT_MILLISECONDS = 5000
+
+
 @dataclass(frozen=True)
 class LinuxHostPackageComposition:
     manifest_path: Path
@@ -218,14 +222,14 @@ def _postinst_script(composition: LinuxHostPackageComposition, manifest: Mapping
 set -eu
 case "${{1:-configure}}" in
   configure)
-    "{manager}" --mode preflight --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --request-id "{package}-preflight" --installation-id "{installation}" --release-id "{release}" --systemctl "{systemctl}"
-    "{manager}" --mode quiesce --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --systemctl "{systemctl}"
-    "{manager}" --mode activate --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --systemctl "{systemctl}"
-    exec "{manager}" --mode finalize --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --systemctl "{systemctl}"
+    "{manager}" --mode preflight --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --request-id "{package}-preflight" --installation-id "{installation}" --release-id "{release}" --host-administration-descriptor "{host_administration_descriptor}" --host-administration-timeout-milliseconds {host_administration_timeout} --systemctl "{systemctl}"
+    "{manager}" --mode quiesce --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --host-administration-descriptor "{host_administration_descriptor}" --host-administration-timeout-milliseconds {host_administration_timeout} --systemctl "{systemctl}"
+    "{manager}" --mode activate --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --host-administration-descriptor "{host_administration_descriptor}" --host-administration-timeout-milliseconds {host_administration_timeout} --systemctl "{systemctl}"
+    exec "{manager}" --mode finalize --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --host-administration-descriptor "{host_administration_descriptor}" --host-administration-timeout-milliseconds {host_administration_timeout} --systemctl "{systemctl}"
     ;;
   *) exit 0 ;;
 esac
-""".format(manager=manager, manifest=manifest_path, journal=composition.installation_journal_path, receipt=composition.installation_receipt_path, package=composition.package_name, installation=installation, release=release, systemctl=composition.systemctl_executable_path)
+""".format(manager=manager, manifest=manifest_path, journal=composition.installation_journal_path, receipt=composition.installation_receipt_path, package=composition.package_name, installation=installation, release=release, host_administration_descriptor=_HOST_ADMINISTRATION_DESCRIPTOR_PATH, host_administration_timeout=_HOST_ADMINISTRATION_TIMEOUT_MILLISECONDS, systemctl=composition.systemctl_executable_path)
 
 
 def _prerm_script(composition: LinuxHostPackageComposition, manifest: Mapping[str, Any]) -> str:
@@ -237,7 +241,7 @@ def _prerm_script(composition: LinuxHostPackageComposition, manifest: Mapping[st
 set -eu
 case "${{1:-remove}}" in
   remove)
-    exec "{manager}" --mode remove --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --request-id "{package}-remove-preserve" --installation-id "{installation}" --release-id "{release}" --data-disposition preserve-mutable-data --removal-journal "{removal_journal}" --removal-receipt "{removal_receipt}" --package-manager-completion-manager "{completion_manager}" --package-manager-completion-manifest "{completion_manifest}" --systemctl "{systemctl}"
+    exec "{manager}" --mode remove --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --request-id "{package}-remove-preserve" --installation-id "{installation}" --release-id "{release}" --data-disposition preserve-mutable-data --removal-journal "{removal_journal}" --removal-receipt "{removal_receipt}" --package-manager-completion-manager "{completion_manager}" --package-manager-completion-manifest "{completion_manifest}" --host-administration-descriptor "{host_administration_descriptor}" --host-administration-timeout-milliseconds {host_administration_timeout} --systemctl "{systemctl}"
     ;;
   upgrade)
     echo "direct Debian package upgrades are unsupported; use the signed staged Host Updater" >&2
@@ -245,7 +249,7 @@ case "${{1:-remove}}" in
     ;;
   *) exit 0 ;;
 esac
-""".format(manager=manager, manifest=manifest_path, journal=composition.installation_journal_path, receipt=composition.installation_receipt_path, package=composition.package_name, installation=_required_string(manifest, "installationId", "C48"), release=_required_string(release, "id", "C48 release"), removal_journal=composition.removal_journal_path, removal_receipt=composition.removal_receipt_path, completion_manager=composition.package_manager_completion_manager_path, completion_manifest=composition.package_manager_completion_manifest_path, systemctl=composition.systemctl_executable_path)
+""".format(manager=manager, manifest=manifest_path, journal=composition.installation_journal_path, receipt=composition.installation_receipt_path, package=composition.package_name, installation=_required_string(manifest, "installationId", "C48"), release=_required_string(release, "id", "C48 release"), removal_journal=composition.removal_journal_path, removal_receipt=composition.removal_receipt_path, completion_manager=composition.package_manager_completion_manager_path, completion_manifest=composition.package_manager_completion_manifest_path, host_administration_descriptor=_HOST_ADMINISTRATION_DESCRIPTOR_PATH, host_administration_timeout=_HOST_ADMINISTRATION_TIMEOUT_MILLISECONDS, systemctl=composition.systemctl_executable_path)
 
 
 def _postrm_script(composition: LinuxHostPackageComposition, manifest: Mapping[str, Any]) -> str:
@@ -261,12 +265,12 @@ def _postrm_script(composition: LinuxHostPackageComposition, manifest: Mapping[s
 set -eu
 case "${{1:-remove}}" in
   remove)
-    exec "{manager}" --mode complete-removal-after-package-manager --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --removal-journal "{removal_journal}" --removal-receipt "{removal_receipt}" --systemctl "{systemctl}"
+    exec "{manager}" --mode complete-removal-after-package-manager --manifest "{manifest}" --journal "{journal}" --receipt "{receipt}" --removal-journal "{removal_journal}" --removal-receipt "{removal_receipt}" --host-administration-descriptor "{host_administration_descriptor}" --host-administration-timeout-milliseconds {host_administration_timeout} --systemctl "{systemctl}"
     ;;
   purge|abort-remove|abort-install|disappear) exit 0 ;;
   *) exit 0 ;;
 esac
-""".format(manager=composition.package_manager_completion_manager_path, manifest=composition.package_manager_completion_manifest_path, journal=composition.installation_journal_path, receipt=composition.installation_receipt_path, removal_journal=composition.removal_journal_path, removal_receipt=composition.removal_receipt_path, systemctl=composition.systemctl_executable_path)
+""".format(manager=composition.package_manager_completion_manager_path, manifest=composition.package_manager_completion_manifest_path, journal=composition.installation_journal_path, receipt=composition.installation_receipt_path, removal_journal=composition.removal_journal_path, removal_receipt=composition.removal_receipt_path, host_administration_descriptor=_HOST_ADMINISTRATION_DESCRIPTOR_PATH, host_administration_timeout=_HOST_ADMINISTRATION_TIMEOUT_MILLISECONDS, systemctl=composition.systemctl_executable_path)
 
 
 def _validate_declared_release_files(root: Path, immutable: Mapping[str, Any]) -> None:

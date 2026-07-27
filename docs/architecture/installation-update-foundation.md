@@ -131,10 +131,18 @@ owner가 없다는 의미다. endpoint 부재, state-store read 실패, decode �
 installation identity/revision 불일치는 install/remove 허가로 변환하지
 않는다.
 
-이 계약은 coordination read의 첫 단계다. Host Installation Manager가
-실제 preflight/remove 전에 이 read를 소비하고, 이후 cancel/wait/interrupt
-명령과 child updater process ownership을 연결하는 작업은 별도 application
-workflow로 이어진다.
+Host Installation Manager는 same-release reinstall/repair와 remove를
+admit하기 전에 이 read를 소비한다. 정확한 current installation의
+`available/idle`만 허용하며 active, missing, invalid, failed, unavailable,
+identity/revision mismatch는 C50/C54 persistence와 effect 전에 차단한다.
+C49가 clean Host를 증명한 fresh install은 아직 C80 owner인 Host Agent가
+존재하지 않으므로 이 read를 요구하지 않는다.
+
+이 구현은 fail-closed coordination read이며 원자적 lifecycle claim은 아니다.
+idle read 직후 update admission이 들어오는 TOCTOU 구간이 남는다. 다음
+coordination 단계는 installation/removal claim 획득과 update admission을
+Host-owned SQLite transaction에서 상호 배타적으로 만들어야 한다. read
+guard만으로 경쟁이 해결됐다고 해석하지 않는다.
 
 취소 요청은 `POST
 /v1/platform/updates/{updateId}:request-interruption`으로 제출한다. Host
@@ -218,3 +226,4 @@ evidence로 바꾼다.
 | 재시작 후 updater가 무엇을 하던 중인지 알 수 없음 | Host가 process/layer internal state를 소유하지 않음 | `applying`은 유지하고 C28 또는 별도 운영 policy를 요구 | Host는 Guest/next-updater internals를 추측하지 않는다 |
 | future spec을 old updater가 parse하려 함 | C25와 C26 경계가 섞임 | next updater module만 C26 parser를 import | evolution은 stable bootstrap handoff로 처리한다 |
 | interruption 후에도 layer effect가 계속 실행됨 | supervisor가 next updater parent만 종료하고 descendant executor를 소유하지 않음 | Unix process group 또는 Windows creation-time Job Object 전체를 종료하고 direct process를 wait한 뒤 C82 제출 | cancellation evidence는 mutation process tree 전체의 종료를 증명해야 한다 |
+| update 중 package reinstall/remove가 시작됨 | Installation Manager가 Host update owner를 읽지 않거나 read 실패를 idle로 간주함 | C52를 통해 C80을 읽고 exact `available/idle`만 effect 전에 admit | dependency failure, identity mismatch, active ownership은 설치 가능 상태가 아니며 read guard 이후의 TOCTOU는 별도 atomic claim으로 닫는다 |

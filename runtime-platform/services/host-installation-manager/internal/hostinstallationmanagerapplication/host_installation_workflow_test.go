@@ -66,6 +66,30 @@ type hostInstallationReceiptStoreFake struct {
 	writes []hostinstallationmanagerdomain.HostInstallationReceipt
 }
 
+type hostUpdateOperationOwnershipReaderFake struct {
+	observation hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation
+	err         error
+	calls       int
+}
+
+func (fake *hostUpdateOperationOwnershipReaderFake) ReadHostUpdateOperationOwnership(context.Context) (hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation, error) {
+	fake.calls++
+	if fake.err != nil {
+		return hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation{}, fake.err
+	}
+	if fake.observation.ReadState != "" {
+		return fake.observation, nil
+	}
+	return hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation{
+		SchemaVersion: "v1",
+		ReadState:     hostinstallationmanagerdomain.HostUpdateOwnershipReadAvailable,
+		ObservedAt:    "2026-07-18T03:00:00Z",
+		Ownership: &hostinstallationmanagerdomain.HostUpdateOperationOwnership{
+			SchemaVersion: "v1", InstallationID: "vitalserver-runtime-platform", InstallationRevision: 1, State: "idle",
+		},
+	}, nil
+}
+
 type hostProductRemovalJournalStoreFake struct {
 	journal hostinstallationmanagerdomain.HostProductRemovalJournal
 	writes  []hostinstallationmanagerdomain.HostProductRemovalJournal
@@ -247,6 +271,26 @@ func workflowFootprint(manifest hostinstallationmanagerdomain.HostProductInstall
 	return footprint
 }
 
+func workflowInstalledFootprint(manifest hostinstallationmanagerdomain.HostProductInstallationManifest) hostinstallationmanagerdomain.HostInstallationFootprint {
+	footprint := workflowFootprint(manifest)
+	footprint.PackageReceipt = hostinstallationmanagerdomain.HostInstallationPackageReceiptObservation{State: "installed", Identifier: manifest.Package.Identifier, ProductVersion: manifest.Package.ProductVersion, PackageManagerReceiptState: "installed"}
+	footprint.ReleaseCatalog = hostinstallationmanagerdomain.HostInstallationReleaseCatalogObservation{State: "only-expected-release", ReleaseCatalogPath: manifest.ImmutablePayload.ReleaseCatalogPath, ReleaseIDs: []string{manifest.Release.ID}}
+	footprint.ImmutableRelease.State = "matching"
+	footprint.Activation = hostinstallationmanagerdomain.HostInstallationActivationObservation{State: "points-to-expected-release", CurrentReleaseLinkPath: manifest.Activation.CurrentReleaseLinkPath, ObservedTargetPath: manifest.Activation.ExpectedReleaseRootPath}
+	footprint.InstallationTransaction.State = hostinstallationmanagerdomain.HostInstallationJournalCompleted
+	if footprint.OperatorApplication != nil {
+		footprint.OperatorApplication.State = "matching"
+	}
+	for index := range footprint.RequiredServices {
+		footprint.RequiredServices[index].State = "registered"
+		footprint.RequiredServices[index].DefinitionState = "matching"
+	}
+	for index := range footprint.MutableStores {
+		footprint.MutableStores[index].State = "compatible"
+	}
+	return footprint
+}
+
 func TestObserveHostInstallationFootprintReturnsOnlyHostObservation(t *testing.T) {
 	manifest := workflowManifest()
 	observed := workflowFootprint(manifest)
@@ -260,6 +304,7 @@ func TestObserveHostInstallationFootprintReturnsOnlyHostObservation(t *testing.T
 		hostInstallationFootprintObserverFake{footprint: observed},
 		journalStore,
 		receiptStore,
+		&hostUpdateOperationOwnershipReaderFake{},
 		activator,
 		quiescer,
 		reconciler,
@@ -308,7 +353,7 @@ func TestExecuteHostInstallationPreflightWritesJournalOnlyForAdmittedCleanInstal
 	receiptStore := &hostInstallationReceiptStoreFake{}
 	activator := &hostProductReleaseActivatorFake{}
 	quiescer := &hostProductServiceQuiescerFake{}
-	workflow, err := NewHostInstallationWorkflow(hostInstallationManifestReaderFake{manifest: manifest}, hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)}, journalStore, receiptStore, activator, quiescer, &hostProductServiceReconcilerFake{}, fixedHostInstallationClock{})
+	workflow, err := NewHostInstallationWorkflow(hostInstallationManifestReaderFake{manifest: manifest}, hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)}, journalStore, receiptStore, &hostUpdateOperationOwnershipReaderFake{}, activator, quiescer, &hostProductServiceReconcilerFake{}, fixedHostInstallationClock{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,6 +375,7 @@ func TestExecuteHostInstallationPreflightReplacesOnlyAdmittedLegacyBlockedReceip
 		hostInstallationFootprintObserverFake{footprint: footprint},
 		journalStore,
 		receiptStore,
+		&hostUpdateOperationOwnershipReaderFake{},
 		&hostProductReleaseActivatorFake{},
 		&hostProductServiceQuiescerFake{},
 		&hostProductServiceReconcilerFake{},
@@ -355,13 +401,70 @@ func TestExecuteHostInstallationPreflightBlocksDirectUpdateWithoutPersistingProd
 	receiptStore := &hostInstallationReceiptStoreFake{}
 	activator := &hostProductReleaseActivatorFake{}
 	quiescer := &hostProductServiceQuiescerFake{}
-	workflow, err := NewHostInstallationWorkflow(hostInstallationManifestReaderFake{manifest: manifest}, hostInstallationFootprintObserverFake{footprint: footprint}, journalStore, receiptStore, activator, quiescer, &hostProductServiceReconcilerFake{}, fixedHostInstallationClock{})
+	workflow, err := NewHostInstallationWorkflow(hostInstallationManifestReaderFake{manifest: manifest}, hostInstallationFootprintObserverFake{footprint: footprint}, journalStore, receiptStore, &hostUpdateOperationOwnershipReaderFake{}, activator, quiescer, &hostProductServiceReconcilerFake{}, fixedHostInstallationClock{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	receipt, err := workflow.ExecuteHostInstallationPreflight(context.Background(), workflowPreflightRequest(manifest), "manifest", "journal", "receipt")
 	if err != nil || receipt.State != hostinstallationmanagerdomain.HostInstallationReceiptBlocked || receipt.Issue == nil || receipt.Issue.Code != "direct-version-upgrade-requires-staged-updater" || len(journalStore.writes) != 0 || len(receiptStore.writes) != 0 || activator.calls != 0 {
 		t.Fatalf("receipt=%+v journalWrites=%d receiptWrites=%d activations=%d err=%v", receipt, len(journalStore.writes), len(receiptStore.writes), activator.calls, err)
+	}
+}
+
+func TestExecuteHostInstallationPreflightBlocksActiveUpdateBeforeWritingTransaction(t *testing.T) {
+	manifest := workflowManifest()
+	ownershipReader := &hostUpdateOperationOwnershipReaderFake{observation: hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation{
+		SchemaVersion: "v1",
+		ReadState:     hostinstallationmanagerdomain.HostUpdateOwnershipReadAvailable,
+		ObservedAt:    "2026-07-18T03:00:00Z",
+		Ownership: &hostinstallationmanagerdomain.HostUpdateOperationOwnership{
+			SchemaVersion: "v1", InstallationID: manifest.InstallationID, InstallationRevision: 2, State: "active",
+			UpdateID: "update-1", OperationID: "operation-1", RequestID: "update-request-1", UpdateState: "applying", JournalRevision: 5,
+		},
+	}}
+	journalStore := &hostInstallationJournalStoreFake{}
+	receiptStore := &hostInstallationReceiptStoreFake{}
+	workflow, err := NewHostInstallationWorkflow(
+		hostInstallationManifestReaderFake{manifest: manifest},
+		hostInstallationFootprintObserverFake{footprint: workflowInstalledFootprint(manifest)},
+		journalStore,
+		receiptStore,
+		ownershipReader,
+		&hostProductReleaseActivatorFake{},
+		&hostProductServiceQuiescerFake{},
+		&hostProductServiceReconcilerFake{},
+		fixedHostInstallationClock{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := workflow.ExecuteHostInstallationPreflight(context.Background(), workflowPreflightRequest(manifest), "manifest", "journal", "receipt")
+	if err != nil || receipt.State != hostinstallationmanagerdomain.HostInstallationReceiptBlocked || receipt.Issue == nil || receipt.Issue.Code != "active-host-update-blocks-installation" || ownershipReader.calls != 1 || len(journalStore.writes) != 0 || len(receiptStore.writes) != 0 {
+		t.Fatalf("receipt=%+v ownershipCalls=%d journalWrites=%d receiptWrites=%d err=%v", receipt, ownershipReader.calls, len(journalStore.writes), len(receiptStore.writes), err)
+	}
+}
+
+func TestCleanInstallUsesC49ProofWithoutReadingAbsentHostAgentOwnership(t *testing.T) {
+	manifest := workflowManifest()
+	ownershipReader := &hostUpdateOperationOwnershipReaderFake{err: errors.New("Host Agent is not installed")}
+	journalStore := &hostInstallationJournalStoreFake{}
+	workflow, err := NewHostInstallationWorkflow(
+		hostInstallationManifestReaderFake{manifest: manifest},
+		hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)},
+		journalStore,
+		&hostInstallationReceiptStoreFake{},
+		ownershipReader,
+		&hostProductReleaseActivatorFake{},
+		&hostProductServiceQuiescerFake{},
+		&hostProductServiceReconcilerFake{},
+		fixedHostInstallationClock{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := workflow.ExecuteHostInstallationPreflight(context.Background(), workflowPreflightRequest(manifest), "manifest", "journal", "receipt")
+	if err != nil || receipt.State != hostinstallationmanagerdomain.HostInstallationReceiptPreflightAdmitted || ownershipReader.calls != 0 || len(journalStore.writes) != 1 {
+		t.Fatalf("receipt=%+v ownershipCalls=%d journalWrites=%d err=%v", receipt, ownershipReader.calls, len(journalStore.writes), err)
 	}
 }
 
@@ -381,7 +484,7 @@ func TestExecuteHostProductServiceQuiescenceAdvancesOnlyPreflightVerifiedJournal
 	receiptStore := &hostInstallationReceiptStoreFake{}
 	activator := &hostProductReleaseActivatorFake{}
 	quiescer := &hostProductServiceQuiescerFake{}
-	workflow, err := NewHostInstallationWorkflow(hostInstallationManifestReaderFake{manifest: manifest}, hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)}, journalStore, receiptStore, activator, quiescer, &hostProductServiceReconcilerFake{}, fixedHostInstallationClock{})
+	workflow, err := NewHostInstallationWorkflow(hostInstallationManifestReaderFake{manifest: manifest}, hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)}, journalStore, receiptStore, &hostUpdateOperationOwnershipReaderFake{}, activator, quiescer, &hostProductServiceReconcilerFake{}, fixedHostInstallationClock{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +510,7 @@ func TestExecuteHostProductServiceQuiescencePersistsFailure(t *testing.T) {
 	receiptStore := &hostInstallationReceiptStoreFake{}
 	activator := &hostProductReleaseActivatorFake{}
 	quiescer := &hostProductServiceQuiescerFake{err: errors.New("launchctl failed")}
-	workflow, err := NewHostInstallationWorkflow(hostInstallationManifestReaderFake{manifest: manifest}, hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)}, journalStore, receiptStore, activator, quiescer, &hostProductServiceReconcilerFake{}, fixedHostInstallationClock{})
+	workflow, err := NewHostInstallationWorkflow(hostInstallationManifestReaderFake{manifest: manifest}, hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)}, journalStore, receiptStore, &hostUpdateOperationOwnershipReaderFake{}, activator, quiescer, &hostProductServiceReconcilerFake{}, fixedHostInstallationClock{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,6 +543,7 @@ func TestExecuteHostProductReleaseActivationCompletesExactQuiescedTransaction(t 
 		hostInstallationFootprintObserverFake{footprint: footprint},
 		journalStore,
 		receiptStore,
+		&hostUpdateOperationOwnershipReaderFake{},
 		activator,
 		quiescer,
 		&hostProductServiceReconcilerFake{},
@@ -482,6 +586,7 @@ func TestExecuteHostProductServiceFinalizationCompletesActivatedTransaction(t *t
 		hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)},
 		journalStore,
 		receiptStore,
+		&hostUpdateOperationOwnershipReaderFake{},
 		activator,
 		quiescer,
 		reconciler,
@@ -523,6 +628,7 @@ func TestExecuteHostInstallationRecoveryCompletesInterruptedServiceQuiescence(t 
 		hostInstallationFootprintObserverFake{footprint: footprint},
 		journalStore,
 		receiptStore,
+		&hostUpdateOperationOwnershipReaderFake{},
 		activator,
 		quiescer,
 		reconciler,
@@ -560,6 +666,7 @@ func TestExecuteHostInstallationRecoveryMarksPreflightOnlyTransactionRecoveredWi
 		hostInstallationFootprintObserverFake{footprint: workflowFootprint(manifest)},
 		journalStore,
 		receiptStore,
+		&hostUpdateOperationOwnershipReaderFake{},
 		activator,
 		quiescer,
 		reconciler,
@@ -572,6 +679,55 @@ func TestExecuteHostInstallationRecoveryMarksPreflightOnlyTransactionRecoveredWi
 	receipt, err := workflow.ExecuteHostInstallationRecovery(context.Background(), "manifest", "journal", "receipt")
 	if err != nil || receipt.State != hostinstallationmanagerdomain.HostInstallationReceiptRecovered || journalStore.journal.State != hostinstallationmanagerdomain.HostInstallationJournalRecovered || activator.calls != 0 || reconciler.calls != 0 {
 		t.Fatalf("receipt=%+v journal=%+v activations=%d reconciliations=%d err=%v", receipt, journalStore.journal, activator.calls, reconciler.calls, err)
+	}
+}
+
+func TestExecuteHostProductRemovalBlocksActiveUpdateBeforeAnyRemovalEffect(t *testing.T) {
+	manifest := workflowManifest()
+	initial := workflowInstalledFootprint(manifest)
+	ownershipReader := &hostUpdateOperationOwnershipReaderFake{observation: hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation{
+		SchemaVersion: "v1",
+		ReadState:     hostinstallationmanagerdomain.HostUpdateOwnershipReadAvailable,
+		ObservedAt:    "2026-07-18T03:00:00Z",
+		Ownership: &hostinstallationmanagerdomain.HostUpdateOperationOwnership{
+			SchemaVersion: "v1", InstallationID: manifest.InstallationID, InstallationRevision: 2, State: "active",
+			UpdateID: "update-1", OperationID: "operation-1", RequestID: "update-request-1", UpdateState: "handoff-pending", JournalRevision: 4,
+		},
+	}}
+	removalJournalStore := &hostProductRemovalJournalStoreFake{}
+	removalReceiptStore := &hostProductRemovalReceiptStoreFake{}
+	quiescer := &hostProductServiceQuiescerFake{}
+	removalEffects := &hostProductRemovalEffectsFake{}
+	workflow, err := NewHostInstallationWorkflowWithRemoval(
+		hostInstallationManifestReaderFake{manifest: manifest},
+		hostInstallationFootprintObserverFake{footprint: initial},
+		&hostInstallationJournalStoreFake{},
+		&hostInstallationReceiptStoreFake{},
+		ownershipReader,
+		&hostProductReleaseActivatorFake{},
+		quiescer,
+		&hostProductServiceReconcilerFake{},
+		removalJournalStore,
+		removalReceiptStore,
+		removalEffects,
+		fixedHostInstallationClock{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := hostinstallationmanagerdomain.HostProductRemovalRequest{
+		SchemaVersion: "v1", DocumentKind: "host-product-removal-request", ID: "remove-request-active-update",
+		InstallationID: manifest.InstallationID, ExpectedReleaseID: manifest.Release.ID,
+		DataDisposition: hostinstallationmanagerdomain.HostProductRemovalDataDispositionPreserveMutableData,
+		RequestedAt:     "2026-07-18T03:00:00Z",
+	}
+	receipt, err := workflow.ExecuteHostProductRemoval(
+		context.Background(), request, "manifest", initial.InstallationTransaction.JournalPath, initial.InstallationTransaction.ReceiptPath,
+		"/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/current-removal-transaction.json",
+		"/Library/Application Support/VitalServerRuntimePlatform/data/installation-manager/latest-removal-receipt.json",
+	)
+	if err != nil || receipt.State != hostinstallationmanagerdomain.HostProductRemovalReceiptBlocked || receipt.Issue == nil || receipt.Issue.Code != "active-host-update-blocks-removal" || ownershipReader.calls != 1 || len(removalJournalStore.writes) != 0 || len(removalReceiptStore.writes) != 0 || quiescer.calls != 0 || removalEffects.serviceDefinitions != 0 {
+		t.Fatalf("receipt=%+v ownerCalls=%d removalWrites=%d receiptWrites=%d quiesce=%d effects=%+v err=%v", receipt, ownershipReader.calls, len(removalJournalStore.writes), len(removalReceiptStore.writes), quiescer.calls, removalEffects, err)
 	}
 }
 
@@ -608,6 +764,7 @@ func TestExecuteHostProductRemovalPreservesMutableDataAndProvesOnlyProductConten
 		observer,
 		journalStore,
 		&hostInstallationReceiptStoreFake{},
+		&hostUpdateOperationOwnershipReaderFake{},
 		&hostProductReleaseActivatorFake{},
 		quiescer,
 		&hostProductServiceReconcilerFake{},
@@ -668,6 +825,7 @@ func TestExecuteHostProductRemovalPurgesAllDeclaredMutableDataWithoutRecreatingE
 		hostInstallationFootprintObserverFake{footprints: []hostinstallationmanagerdomain.HostInstallationFootprint{initial, completed}, calls: &observerCalls},
 		&hostInstallationJournalStoreFake{},
 		&hostInstallationReceiptStoreFake{},
+		&hostUpdateOperationOwnershipReaderFake{},
 		&hostProductReleaseActivatorFake{},
 		&hostProductServiceQuiescerFake{},
 		&hostProductServiceReconcilerFake{},
@@ -733,7 +891,7 @@ func TestExecuteHostProductRemovalHandsPackageReceiptBackToOperatingSystemOwner(
 	workflow, err := NewHostInstallationWorkflowWithRemoval(
 		hostInstallationManifestReaderFake{manifest: manifest},
 		hostInstallationFootprintObserverFake{footprints: []hostinstallationmanagerdomain.HostInstallationFootprint{initial, pending}, calls: &observerCalls},
-		&hostInstallationJournalStoreFake{}, &hostInstallationReceiptStoreFake{}, &hostProductReleaseActivatorFake{},
+		&hostInstallationJournalStoreFake{}, &hostInstallationReceiptStoreFake{}, &hostUpdateOperationOwnershipReaderFake{}, &hostProductReleaseActivatorFake{},
 		&hostProductServiceQuiescerFake{}, &hostProductServiceReconcilerFake{}, removalJournalStore,
 		removalReceiptStore, removalEffects, fixedHostInstallationClock{},
 	)
@@ -789,7 +947,7 @@ func TestCompleteHostProductRemovalAfterPackageManagerWritesTerminalLinuxEvidenc
 	workflow, err := NewHostInstallationWorkflowWithRemoval(
 		hostInstallationManifestReaderFake{manifest: manifest},
 		hostInstallationFootprintObserverFake{footprint: footprint},
-		&hostInstallationJournalStoreFake{}, &hostInstallationReceiptStoreFake{}, &hostProductReleaseActivatorFake{},
+		&hostInstallationJournalStoreFake{}, &hostInstallationReceiptStoreFake{}, &hostUpdateOperationOwnershipReaderFake{}, &hostProductReleaseActivatorFake{},
 		&hostProductServiceQuiescerFake{}, &hostProductServiceReconcilerFake{}, removalJournalStore,
 		removalReceiptStore, &hostProductRemovalEffectsFake{}, fixedHostInstallationClock{},
 	)
@@ -829,6 +987,7 @@ func TestExecuteHostProductRemovalPreservesFailureJournalAndReceipt(t *testing.T
 		hostInstallationFootprintObserverFake{footprint: initial},
 		&hostInstallationJournalStoreFake{},
 		&hostInstallationReceiptStoreFake{},
+		&hostUpdateOperationOwnershipReaderFake{},
 		&hostProductReleaseActivatorFake{},
 		&hostProductServiceQuiescerFake{},
 		&hostProductServiceReconcilerFake{},

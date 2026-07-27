@@ -21,6 +21,7 @@ import (
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/hostproductinstallationmanifestfile"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/hostproductremovaljournalfile"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/hostproductremovalreceiptfile"
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/hostupdateoperationownershipclient"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/linuxhostinstallationfootprint"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/linuxhostproductreleaseactivation"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/adapters/linuxhostproductremoval"
@@ -74,6 +75,8 @@ func main() {
 	artifactSHA256 := flag.String("artifact-sha256", "", "required C68 Host Platform archive SHA-256")
 	recoveryID := flag.String("recovery-id", "", "required C68 explicit staged-update recovery identifier")
 	recoveryAction := flag.String("recovery-action", "", "required C68 recovery action: reconcile-current-release")
+	hostAdministrationDescriptorPath := flag.String("host-administration-descriptor", "", "required absolute C52 Host-local administration endpoint descriptor path")
+	hostAdministrationTimeoutMilliseconds := flag.Int("host-administration-timeout-milliseconds", 0, "required positive C80 ownership request timeout")
 	flag.Parse()
 	if *mode == "staged-update" {
 		executeStagedHostPlatformUpdate(*stagedOperationID, *stagedUpdateID, *stagedOperation, *expectedActiveReleaseID, *targetReleaseID, *activeManifestPath, *artifactPath, *artifactSHA256, *launchctlExecutablePath, *systemctlExecutablePath, *fsutilExecutablePath, *commandExecutablePath, *scExecutablePath)
@@ -83,8 +86,8 @@ func main() {
 		executeStagedHostPlatformRecovery(*stagedOperationID, *recoveryID, *recoveryAction, *activeManifestPath, *launchctlExecutablePath, *systemctlExecutablePath, *fsutilExecutablePath, *commandExecutablePath, *scExecutablePath)
 		return
 	}
-	if *mode == "" || *manifestPath == "" {
-		fmt.Fprintln(os.Stderr, "mode and manifest are required")
+	if *mode == "" || *manifestPath == "" || *hostAdministrationDescriptorPath == "" || *hostAdministrationTimeoutMilliseconds <= 0 {
+		fmt.Fprintln(os.Stderr, "mode, manifest, host-administration-descriptor, and positive host-administration-timeout-milliseconds are required")
 		os.Exit(2)
 	}
 	if *mode != "observe-footprint" && (*journalPath == "" || *receiptPath == "") {
@@ -102,7 +105,12 @@ func main() {
 			os.Exit(2)
 		}
 	}
-	workflow, err := newHostInstallationWorkflowForPlatform(manifest.Platform, *pkgutilExecutablePath, *launchctlExecutablePath, *dpkgQueryExecutablePath, *systemctlExecutablePath, *registryExecutablePath, *scExecutablePath, *fsutilExecutablePath, *commandExecutablePath)
+	updateOwnershipReader, err := hostupdateoperationownershipclient.New(*hostAdministrationDescriptorPath, time.Duration(*hostAdministrationTimeoutMilliseconds)*time.Millisecond)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "configure Host update ownership reader: %v\n", err)
+		os.Exit(2)
+	}
+	workflow, err := newHostInstallationWorkflowForPlatform(manifest.Platform, updateOwnershipReader, *pkgutilExecutablePath, *launchctlExecutablePath, *dpkgQueryExecutablePath, *systemctlExecutablePath, *registryExecutablePath, *scExecutablePath, *fsutilExecutablePath, *commandExecutablePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "configure Host Installation Manager: %v\n", err)
 		os.Exit(2)
@@ -297,7 +305,7 @@ func executeStagedHostPlatformRecovery(operationID, recoveryID, recoveryAction, 
 	}
 }
 
-func newHostInstallationWorkflowForPlatform(platform string, pkgutilExecutablePath string, launchctlExecutablePath string, dpkgQueryExecutablePath string, systemctlExecutablePath string, registryExecutablePath string, scExecutablePath string, fsutilExecutablePath string, commandExecutablePath string) (*hostinstallationmanagerapplication.HostInstallationWorkflow, error) {
+func newHostInstallationWorkflowForPlatform(platform string, updateOwnershipReader hostinstallationmanagerapplication.HostUpdateOperationOwnershipReader, pkgutilExecutablePath string, launchctlExecutablePath string, dpkgQueryExecutablePath string, systemctlExecutablePath string, registryExecutablePath string, scExecutablePath string, fsutilExecutablePath string, commandExecutablePath string) (*hostinstallationmanagerapplication.HostInstallationWorkflow, error) {
 	common := func(
 		footprintObserver hostinstallationmanagerapplication.HostInstallationFootprintObserver,
 		releaseActivator hostinstallationmanagerapplication.HostProductReleaseActivator,
@@ -310,6 +318,7 @@ func newHostInstallationWorkflowForPlatform(platform string, pkgutilExecutablePa
 			footprintObserver,
 			hostinstallationjournalfile.HostInstallationJournalFileStore{},
 			hostinstallationreceiptfile.HostInstallationReceiptFileStore{},
+			updateOwnershipReader,
 			releaseActivator,
 			serviceQuiescer,
 			serviceReconciler,

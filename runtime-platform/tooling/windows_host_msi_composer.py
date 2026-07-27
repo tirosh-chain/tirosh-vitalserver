@@ -41,6 +41,8 @@ class WindowsHostMSICompositionError(RuntimeError):
 
 
 _WINDOWS_PRODUCT_ROOT = r"C:\ProgramData\VitalServerRuntimePlatform"
+_HOST_ADMINISTRATION_DESCRIPTOR_PATH = _WINDOWS_PRODUCT_ROOT + r"\control\host-agent.local.json"
+_HOST_ADMINISTRATION_TIMEOUT_MILLISECONDS = 5000
 _WIX_NAMESPACE = "http://wixtoolset.org/schemas/v4/wxs"
 _WIX_UTIL_EXTENSION = "WixToolset.Util.wixext"
 _WIX_ARCHITECTURE = "x64"
@@ -338,10 +340,12 @@ def _write_lifecycle_custom_actions(package: ElementTree.Element, composition: W
     immutable = _required_object(manifest, "immutablePayload", "C48")
     manager = '"[#' + manager_file_id + ']"'
     manifest_path = _quoted(_required_string(immutable, "manifestPath", "C48 immutablePayload"))
-    common = " --manifest {manifest} --journal {journal} --receipt {receipt}".format(
+    common = " --manifest {manifest} --journal {journal} --receipt {receipt} --host-administration-descriptor {host_administration_descriptor} --host-administration-timeout-milliseconds {host_administration_timeout}".format(
         manifest=manifest_path,
         journal=_quoted(composition.installation_journal_path),
         receipt=_quoted(composition.installation_receipt_path),
+        host_administration_descriptor=_quoted(_HOST_ADMINISTRATION_DESCRIPTOR_PATH),
+        host_administration_timeout=_HOST_ADMINISTRATION_TIMEOUT_MILLISECONDS,
     )
     request = " --request-id {request} --installation-id {installation} --release-id {release}".format(
         request=_quoted(_required_string(_required_object(manifest, "package", "C48"), "identifier", "C48 package") + "-msi-install"),
@@ -355,7 +359,7 @@ def _write_lifecycle_custom_actions(package: ElementTree.Element, composition: W
         "C50Activate": manager + " --mode activate" + common,
         "C50Finalize": manager + " --mode finalize" + common,
         "C54Remove": manager + " --mode remove" + common + " --request-id " + _quoted(_required_string(_required_object(manifest, "package", "C48"), "identifier", "C48 package") + "-msi-remove") + " --installation-id " + _quoted(_required_string(manifest, "installationId", "C48")) + " --release-id " + _quoted(_required_string(_required_object(manifest, "release", "C48"), "id", "C48 release")) + " --data-disposition preserve-mutable-data --removal-journal " + _quoted(composition.removal_journal_path) + " --removal-receipt " + _quoted(composition.removal_receipt_path) + " --package-manager-completion-manager " + _quoted(composition.package_manager_completion_manager_path) + " --package-manager-completion-manifest " + _quoted(composition.package_manager_completion_manifest_path),
-        "C54PackageManagerCompletion": _quoted(composition.package_manager_completion_manager_path) + " --mode complete-removal-after-package-manager --manifest " + _quoted(composition.package_manager_completion_manifest_path) + " --journal " + _quoted(composition.installation_journal_path) + " --receipt " + _quoted(composition.installation_receipt_path) + " --removal-journal " + _quoted(composition.removal_journal_path) + " --removal-receipt " + _quoted(composition.removal_receipt_path),
+        "C54PackageManagerCompletion": _quoted(composition.package_manager_completion_manager_path) + " --mode complete-removal-after-package-manager --manifest " + _quoted(composition.package_manager_completion_manifest_path) + " --journal " + _quoted(composition.installation_journal_path) + " --receipt " + _quoted(composition.installation_receipt_path) + " --removal-journal " + _quoted(composition.removal_journal_path) + " --removal-receipt " + _quoted(composition.removal_receipt_path) + " --host-administration-descriptor " + _quoted(_HOST_ADMINISTRATION_DESCRIPTOR_PATH) + " --host-administration-timeout-milliseconds " + str(_HOST_ADMINISTRATION_TIMEOUT_MILLISECONDS),
     }
     for action_id, command in commands.items():
         ElementTree.SubElement(package, _tag("SetProperty"), {"Id": action_id, "Value": command, "Before": action_id, "Sequence": "execute"})

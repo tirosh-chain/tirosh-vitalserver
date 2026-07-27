@@ -35,6 +35,13 @@ Current commands:
   preflight itself has no service effect, but only when its own
   manager-owned C48 journal directories are the sole remaining mutable
   footprint. Host Agent or VM data remains an explicit cleanup boundary.
+  Before admitting a same-release reinstall or repair, it reads C80 Host
+  Update Operation Ownership through the C52 Host-local administration
+  descriptor. Only an exact, current-installation `available/idle` result is
+  admitted. Missing, invalid, failed, unavailable, mismatched, or active
+  ownership blocks before C50 persistence or service effects. A C49-proven
+  clean Host does not require C80 because no installed Host Agent exists to
+  own that contract.
 - `quiesce` accepts only the exact preflight-verified transaction, first
 	persists `services-quiescing`, stops the C48-declared native services, and
 	then advances the journal to `activation-pending`. Each platform adapter
@@ -71,6 +78,8 @@ Current commands:
   the exact declared immutable release remains. In both cases the manager
   prepares C54's durable completion transport, returns control to the package
   manager, and never recursively removes its receipt or claims a clean Host.
+  Every removal admission requires the same exact C80 `available/idle`
+  observation before C54 persistence or destructive effects.
 - `staged-update` is the C68 version-changing release transaction. It reads
   and proves the active `current` C48 before it accepts the archive, persists
   its operation and candidate below that active C48's Installation Manager
@@ -129,6 +138,13 @@ absent state.
 The staged Host Updater remains the only boundary for a version-changing
 release. This manager must not parse C26 or convert a direct PKG overwrite
 into an update.
+
+The C80 read is an explicit fail-closed admission guard, not yet an atomic
+cross-process lifecycle claim. An update can still race with installation or
+removal after the idle read. The follow-up coordination contract must make
+claim acquisition and update admission mutually exclusive in the Host-owned
+SQLite transaction; callers must not treat this guard as proof that the
+time-of-check/time-of-use race is solved.
 
 There is no automatic stale-state cleanup. C54 is an explicit operator command
 and must not be hidden in a package script. It accepts only the C48-declared
