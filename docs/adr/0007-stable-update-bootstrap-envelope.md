@@ -117,9 +117,15 @@ separate admitted, handoff-pending, running, succeeded, failed, and interrupted
 states; terminal receipts must match the journal revision, request, envelope,
 and specification digest. Host SQLite schema v8 owns the journal document and
 uses optimistic revisions to reject stale writers; no JSON state-file fallback
-is used. Staged updater execution, release composition, and Helper/PWA wiring
-remain implementation work. This paragraph must be updated as each owner
-becomes executable.
+is used. Bootstrap staging now copies into an attempt-specific temporary
+directory and atomically publishes an immutable update-ID workspace; an
+existing final workspace is an explicit conflict and is never deleted or
+replaced. The fixed v1 handoff invocation is created only from a persisted
+`running` journal and carries correlation identities, digests, and relative
+artifact paths rather than arbitrary commands. Invocation document
+persistence, staged process execution, terminal receipt settlement, release
+composition, and Helper/PWA wiring remain implementation work. This paragraph
+must be updated as each owner becomes executable.
 
 ## 결과
 
