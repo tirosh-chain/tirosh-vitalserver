@@ -14,6 +14,7 @@ final class RuntimeInstallServiceStarterTests: XCTestCase {
         ))
 
         XCTAssertEqual(events.values, [
+            "start:\(RuntimeManagedService.updateHandoffSupervisor.label)",
             "log:start after install disabled",
         ])
     }
@@ -28,6 +29,7 @@ final class RuntimeInstallServiceStarterTests: XCTestCase {
         ))
 
         XCTAssertEqual(events.values, [
+            "start:\(RuntimeManagedService.updateHandoffSupervisor.label)",
             "start:\(RuntimeManagedService.sleepPrevention.label)",
             "start:\(RuntimeManagedService.platformAgent.label)",
             "start:\(RuntimeManagedService.vm.label)",
@@ -48,7 +50,13 @@ final class RuntimeInstallServiceStarterTests: XCTestCase {
         ))
 
         XCTAssertFalse(events.values.contains("start:\(RuntimeManagedService.sleepPrevention.label)"))
-        XCTAssertEqual(events.values.first, "start:\(RuntimeManagedService.platformAgent.label)")
+        XCTAssertEqual(
+            events.values.prefix(2),
+            [
+                "start:\(RuntimeManagedService.updateHandoffSupervisor.label)",
+                "start:\(RuntimeManagedService.platformAgent.label)",
+            ]
+        )
     }
 
     private func makeStarter(events: EventLog) -> RuntimeInstallServiceStarter {

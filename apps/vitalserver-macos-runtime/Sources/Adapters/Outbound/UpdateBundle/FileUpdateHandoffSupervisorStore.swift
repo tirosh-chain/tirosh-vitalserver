@@ -1,4 +1,3 @@
-import Application
 import Contracts
 import Foundation
 
@@ -16,9 +15,14 @@ public enum FileUpdateHandoffSupervisorStoreError:
 
 public struct FileUpdateHandoffSupervisorStore {
     public let root: URL
+    private let validate: (UpdateHandoffJobDocument) throws -> Void
 
-    public init(root: URL) {
+    public init(
+        root: URL,
+        validate: @escaping (UpdateHandoffJobDocument) throws -> Void
+    ) {
         self.root = root
+        self.validate = validate
     }
 
     public func load(jobId: String) throws -> UpdateHandoffJobDocument {
@@ -54,7 +58,7 @@ public struct FileUpdateHandoffSupervisorStore {
         expectedRevision: Int?
     ) throws {
         do {
-            try ValidateUpdateHandoffJobUseCase().validate(job)
+            try validate(job)
         } catch {
             throw FileUpdateHandoffSupervisorStoreError.invalidJob(
                 jobId: job.jobId,

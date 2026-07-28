@@ -42,7 +42,7 @@ struct UpdateHandoffSupervisorHost {
             printJob(job)
         case "cancel":
             let root = try requiredURL("--root", options)
-            let store = FileUpdateHandoffSupervisorStore(root: root)
+            let store = makeStore(root: root)
             let jobId = try required("--job-id", options)
             let requested = try UpdateHandoffSupervisorWorkflow()
                 .requestCancellation(
@@ -52,7 +52,7 @@ struct UpdateHandoffSupervisorHost {
             printJob(requested)
         case "wait":
             let root = try requiredURL("--root", options)
-            let store = FileUpdateHandoffSupervisorStore(root: root)
+            let store = makeStore(root: root)
             let jobId = try required("--job-id", options)
             let attempts = Int(options["--attempts"] ?? "120") ?? 120
             let interval = Int(options["--interval-ms"] ?? "500") ?? 500
@@ -71,7 +71,7 @@ struct UpdateHandoffSupervisorHost {
     }
 
     private func serveOnce(root: URL) throws {
-        let store = FileUpdateHandoffSupervisorStore(root: root)
+        let store = makeStore(root: root)
         let operations = makeOperations(root: root)
         for job in try store.loadAll() where !job.state.isTerminal {
             _ = try UpdateHandoffSupervisorWorkflow().reconcile(
@@ -84,7 +84,7 @@ struct UpdateHandoffSupervisorHost {
     private func makeOperations(
         root: URL
     ) -> UpdateHandoffSupervisorWorkflowOperations {
-        let store = FileUpdateHandoffSupervisorStore(root: root)
+        let store = makeStore(root: root)
         let controller = SystemUpdateHandoffChildProcessController(
             supervisorExecutable: URL(
                 fileURLWithPath: CommandLine.arguments[0]
@@ -110,6 +110,13 @@ struct UpdateHandoffSupervisorHost {
             makeId: { UUID().uuidString.lowercased() },
             now: now,
             describeFailure: { String(describing: $0) }
+        )
+    }
+
+    private func makeStore(root: URL) -> FileUpdateHandoffSupervisorStore {
+        FileUpdateHandoffSupervisorStore(
+            root: root,
+            validate: ValidateUpdateHandoffJobUseCase().validate
         )
     }
 

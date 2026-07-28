@@ -24,6 +24,19 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         URL(fileURLWithPath: "/usr/local/bin/vitalserver-vm")
     }
 
+    public var updateHandoffSupervisorExecutable: URL {
+        URL(
+            fileURLWithPath:
+                "/usr/local/bin/vitalserver-update-handoff-supervisor"
+        )
+    }
+
+    public var updateHandoffJobsDirectory: URL {
+        productRoot
+            .appendingPathComponent("update-handoff", isDirectory: true)
+            .appendingPathComponent("jobs", isDirectory: true)
+    }
+
     public var uninstaller: URL {
         URL(fileURLWithPath: "/usr/local/bin/tirosh-vitalserver-uninstall")
     }
@@ -347,6 +360,13 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var proxyLaunchDaemon: URL {
         URL(fileURLWithPath: "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist")
+    }
+
+    public var updateHandoffSupervisorLaunchDaemon: URL {
+        URL(
+            fileURLWithPath:
+                "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.update-handoff-supervisor.plist"
+        )
     }
 
     public var automaticBackupLaunchDaemon: URL {

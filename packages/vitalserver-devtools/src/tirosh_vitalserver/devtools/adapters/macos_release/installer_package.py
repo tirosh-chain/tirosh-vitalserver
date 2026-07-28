@@ -51,6 +51,9 @@ RESET_TROUBLESHOOTING_CLI_NAME = "vitalserver-troubleshooting-reset-for-reinstal
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
 UPSTREAM_REDIS_SAVE_CLI_NAME = "vitalserver-troubleshooting-upstream-redis-save"
 UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
+UPDATE_HANDOFF_SUPERVISOR_PRODUCT_NAME = (
+    "vitalserver-update-handoff-supervisor"
+)
 DMG_PROCESS_INSPECTION_TIMEOUT_SECONDS = 10
 DMG_OUTPUT_RELEASE_GRACE_ATTEMPTS = 40
 DMG_OUTPUT_TERMINATE_ATTEMPTS = 8
@@ -700,6 +703,23 @@ def stage_pkg_root(context: PackageContext) -> None:
     )
     assert_virtualization_entitlement(
         package_path(context, package_install_value(context, "vm_cli"))
+    )
+    supervisor_source = (
+        context.runtime_cli.parent / UPDATE_HANDOFF_SUPERVISOR_PRODUCT_NAME
+    )
+    supervisor_destination = package_path(
+        context,
+        package_install_value(context, "update_handoff_supervisor"),
+    )
+    copy_executable(supervisor_source, supervisor_destination)
+    run(
+        [
+            "codesign",
+            "--force",
+            "--sign",
+            "-",
+            str(supervisor_destination),
+        ]
     )
 
     packaging_dir = context.runtime_dir / "Support/Packaging"

@@ -300,6 +300,13 @@ def release_dmg_artifact_report(
             installer_pkg_name=settings.outputs.dmg_installer_pkg_name,
             install_home_path=settings_install_home(settings),
             install_product_root_path=settings_install_prefix(settings),
+            update_handoff_supervisor_path=(
+                settings.install.update_handoff_supervisor
+            ),
+            update_handoff_supervisor_plist_path=(
+                f"{settings.install.launch_daemons_dir}/"
+                f"{settings.launchd.update_handoff_supervisor.installed_plist}"
+            ),
             expected_update_bootstrap_trust_store=resolve_path(
                 root,
                 input.update_bootstrap_trust_store,
@@ -411,6 +418,8 @@ def inspect_dmg_layout(
     installer_pkg_name: str,
     install_home_path: str,
     install_product_root_path: str,
+    update_handoff_supervisor_path: str,
+    update_handoff_supervisor_plist_path: str,
     expected_update_bootstrap_trust_store: Path,
 ) -> list[PreflightCheck]:
     checks: list[PreflightCheck] = []
@@ -440,6 +449,12 @@ def inspect_dmg_layout(
                     installer_pkg=installer_pkg,
                     install_home_path=install_home_path,
                     install_product_root_path=install_product_root_path,
+                    update_handoff_supervisor_path=(
+                        update_handoff_supervisor_path
+                    ),
+                    update_handoff_supervisor_plist_path=(
+                        update_handoff_supervisor_plist_path
+                    ),
                     expected_update_bootstrap_trust_store=(
                         expected_update_bootstrap_trust_store
                     ),
@@ -491,6 +506,8 @@ def inspect_dmg_installer_pkg_payload(
     installer_pkg: Path,
     install_home_path: str,
     install_product_root_path: str,
+    update_handoff_supervisor_path: str,
+    update_handoff_supervisor_plist_path: str,
     expected_update_bootstrap_trust_store: Path,
 ) -> list[PreflightCheck]:
     try:
@@ -519,6 +536,14 @@ def inspect_dmg_installer_pkg_payload(
                     expected=expected_update_bootstrap_trust_store,
                 )
             )
+            checks.extend(
+                verify_dmg_pkg_update_handoff_supervisor(
+                    payload=payload,
+                    executable_path=update_handoff_supervisor_path,
+                    plist_path=update_handoff_supervisor_plist_path,
+                    jobs_path=f"{install_product_root_path}/update-handoff/jobs",
+                )
+            )
             return checks
     except (OSError, RuntimeError) as error:
         return [
@@ -529,6 +554,49 @@ def inspect_dmg_installer_pkg_payload(
                 detail=f"{installer_pkg}: {error}",
             )
         ]
+
+
+def verify_dmg_pkg_update_handoff_supervisor(
+    *,
+    payload: Path,
+    executable_path: str,
+    plist_path: str,
+    jobs_path: str,
+) -> list[PreflightCheck]:
+    executable = payload / executable_path.strip("/")
+    plist = payload / plist_path.strip("/")
+    checks = [
+        check_required_executable_file(
+            executable,
+            "dmg-payload-update-handoff-supervisor",
+        ),
+        check_required_payload_file(
+            plist,
+            "dmg-payload-update-handoff-supervisor-plist",
+        ),
+    ]
+    if any(check.blocks for check in checks):
+        return checks
+    checks.extend(
+        [
+            check_text_contains(
+                plist,
+                "dmg-payload-update-handoff-supervisor-service-command",
+                f"<string>{executable_path}</string>",
+            ),
+            check_text_contains(
+                plist,
+                "dmg-payload-update-handoff-supervisor-jobs-owner",
+                f"<string>{jobs_path}</string>",
+            ),
+            check_text_contains(
+                plist,
+                "dmg-payload-update-handoff-supervisor-keepalive",
+                "<key>KeepAlive</key>\n  <true/>",
+            ),
+        ]
+    )
+    return checks
 
 
 def verify_dmg_pkg_rootfs_material(

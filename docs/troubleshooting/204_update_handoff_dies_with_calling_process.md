@@ -34,12 +34,13 @@ The `vitalserver-update-handoff-supervisor` executable and its
 `serve`, `serve-once`, `enqueue`, `wait`, `cancel`, and internal `run-child`
 commands implement this boundary.
 
-This source change does **not** yet install or start the supervisor as a
-launchd service and does not route the existing stable-bootstrap launcher
-through it. Packaging must install the executable, register a continuously
-restarted service, provide its durable jobs directory, and switch the
-bootstrap composition to the supervisor client before release delivery can
-claim caller-independent handoff.
+The Helper package installs that executable and a dedicated KeepAlive launchd
+service. The stable-bootstrap composition persists a deterministic job under
+the product-owned update handoff directory before it starts or restarts the
+service. The caller may wait for the explicit terminal job evidence, but the
+updater process tree is owned by the supervisor and therefore survives the
+caller's lifetime. A loaded service is only availability evidence; it is never
+treated as update success.
 
 ## Prevention
 

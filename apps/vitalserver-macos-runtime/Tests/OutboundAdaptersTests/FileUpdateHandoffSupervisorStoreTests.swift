@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -8,11 +9,11 @@ final class FileUpdateHandoffSupervisorStoreTests: XCTestCase {
     func testPersistsAndLoadsJobAcrossStoreInstances() throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let first = FileUpdateHandoffSupervisorStore(root: root)
+        let first = makeStore(root)
         let job = queued()
         try first.save(job, expectedRevision: nil)
 
-        let restarted = FileUpdateHandoffSupervisorStore(root: root)
+        let restarted = makeStore(root)
 
         XCTAssertEqual(try restarted.load(jobId: job.jobId), job)
         XCTAssertEqual(try restarted.loadAll(), [job])
@@ -21,7 +22,7 @@ final class FileUpdateHandoffSupervisorStoreTests: XCTestCase {
     func testRejectsStaleRevisionInsteadOfOverwritingOwnedState() throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = FileUpdateHandoffSupervisorStore(root: root)
+        let store = makeStore(root)
         let job = queued()
         try store.save(job, expectedRevision: nil)
         let launching = try UpdateHandoffJobStateMachine.transition(
@@ -46,6 +47,13 @@ final class FileUpdateHandoffSupervisorStoreTests: XCTestCase {
             )
         }
         XCTAssertEqual(try store.load(jobId: "job-1").state, .queued)
+    }
+
+    private func makeStore(_ root: URL) -> FileUpdateHandoffSupervisorStore {
+        FileUpdateHandoffSupervisorStore(
+            root: root,
+            validate: ValidateUpdateHandoffJobUseCase().validate
+        )
     }
 
     private func temporaryRoot() -> URL {

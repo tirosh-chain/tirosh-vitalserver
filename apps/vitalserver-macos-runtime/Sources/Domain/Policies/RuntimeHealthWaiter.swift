@@ -100,6 +100,10 @@ public enum RuntimeHealthWaiter {
     ) -> RuntimeFailureReason {
         let stateToken = serviceStateFailureToken(state)
         switch service {
+        case .updateHandoffSupervisor:
+            return .unknown(
+                "update-handoff-supervisor-service-\(stateToken)"
+            )
         case .platformAgent:
             return .unknown("platform-agent-service-\(stateToken)")
         case .vm:

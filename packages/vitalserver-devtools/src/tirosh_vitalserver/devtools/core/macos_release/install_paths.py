@@ -40,6 +40,12 @@ def settings_install_platform_agent(settings: MacOSReleaseSettings) -> str:
     )
 
 
+def settings_install_update_handoff_jobs(
+    settings: MacOSReleaseSettings,
+) -> str:
+    return f"{settings_install_prefix(settings)}/update-handoff/jobs"
+
+
 def settings_install_nginx_prefix(settings: MacOSReleaseSettings) -> str:
     return f"{settings_install_prefix(settings)}/nginx"
 
@@ -73,6 +79,10 @@ def install_app_bundle(context: PackageContext) -> str:
 
 def install_platform_agent(context: PackageContext) -> str:
     return settings_install_platform_agent(context.settings)
+
+
+def install_update_handoff_jobs(context: PackageContext) -> str:
+    return settings_install_update_handoff_jobs(context.settings)
 
 
 def install_nginx_prefix(context: PackageContext) -> str:

@@ -54,7 +54,11 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
                 pidFile: installed.pidFile
             ),
             clock: UpdateBootstrapFixedClock(),
-            commandRunner: runner
+            commandRunner: runner,
+            serviceManager: UpdateHandoffTestServiceManager(
+                jobsRoot: installed.updateHandoffJobsDirectory,
+                runner: runner
+            )
         )
 
         try lifecycle.applyUpdateBootstrap(
@@ -349,7 +353,11 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
                 pidFile: installed.pidFile
             ),
             clock: UpdateBootstrapFixedClock(),
-            commandRunner: runner
+            commandRunner: runner,
+            serviceManager: UpdateHandoffTestServiceManager(
+                jobsRoot: installed.updateHandoffJobsDirectory,
+                runner: runner
+            )
         )
     }
 
@@ -615,5 +623,110 @@ private final class SuccessfulUpdateBootstrapRunner: RuntimeCommandRunner {
             stdout: "",
             stderr: "unexpected output-file invocation"
         )
+    }
+}
+
+private final class UpdateHandoffTestServiceManager: RuntimeServiceManager {
+    private let jobsRoot: URL
+    private let runner: SuccessfulUpdateBootstrapRunner
+    private var loaded: Set<String> = []
+
+    init(jobsRoot: URL, runner: SuccessfulUpdateBootstrapRunner) {
+        self.jobsRoot = jobsRoot
+        self.runner = runner
+    }
+
+    func state(service: RuntimeManagedService) -> RuntimeServiceState {
+        loaded.contains(service.label) ? .loaded : .notLoaded
+    }
+
+    func start(
+        service: RuntimeManagedService,
+        plist: String
+    ) -> RuntimeProcessResult {
+        guard service == .updateHandoffSupervisor else {
+            return success()
+        }
+        do {
+            try completeQueuedJobs()
+            loaded.insert(service.label)
+            return success()
+        } catch {
+            return RuntimeProcessResult(
+                exitCode: 70,
+                stdout: "",
+                stderr: String(describing: error)
+            )
+        }
+    }
+
+    func restart(service: RuntimeManagedService) -> RuntimeProcessResult {
+        success()
+    }
+
+    func stop(service: RuntimeManagedService) -> RuntimeProcessResult {
+        loaded.remove(service.label)
+        return success()
+    }
+
+    func setEnabled(
+        service: RuntimeManagedService,
+        enabled: Bool
+    ) -> RuntimeProcessResult {
+        success()
+    }
+
+    private func completeQueuedJobs() throws {
+        let store = FileUpdateHandoffSupervisorStore(
+            root: jobsRoot,
+            validate: ValidateUpdateHandoffJobUseCase().validate
+        )
+        let manager = ManageUpdateHandoffJobUseCase()
+        for queued in try store.loadAll() where queued.state == .queued {
+            let claimed = try manager.launchClaimed(
+                job: queued,
+                launchId: "test-launch",
+                observedAt: "2026-07-27T00:09:58Z"
+            )
+            try store.save(claimed, expectedRevision: queued.revision)
+            let child = UpdateHandoffChildIdentity(
+                launchId: "test-launch",
+                processId: 42,
+                processGroupId: 42,
+                startedAt: "2026-07-27T00:09:59Z"
+            )
+            let running = try manager.childStarted(
+                job: claimed,
+                child: child,
+                observedAt: "2026-07-27T00:09:59Z"
+            )
+            try store.save(running, expectedRevision: claimed.revision)
+            let process = runner.run(
+                queued.updaterPath,
+                arguments: [
+                    "execute",
+                    "--invocation",
+                    queued.invocationPath,
+                ]
+            )
+            let completed = try manager.childCompleted(
+                job: running,
+                receipt: UpdateHandoffChildCompletionReceipt(
+                    jobId: queued.jobId,
+                    launchId: "test-launch",
+                    processId: 42,
+                    processGroupId: 42,
+                    exitCode: process.exitCode,
+                    launchFailureReason: process.executionIssue?.message,
+                    finishedAt: "2026-07-27T00:10:00Z"
+                ),
+                observedAt: "2026-07-27T00:10:00Z"
+            )
+            try store.save(completed, expectedRevision: running.revision)
+        }
+    }
+
+    private func success() -> RuntimeProcessResult {
+        RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 }

@@ -38,6 +38,7 @@ public struct RuntimeInstallServiceStarter {
     }
 
     public func start(input: RuntimeInstallServiceStartInput) throws {
+        try operations.startLaunchdService(.updateHandoffSupervisor)
         guard input.startAfterInstall else {
             operations.log("start after install disabled")
             return

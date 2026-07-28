@@ -29,6 +29,7 @@ enum RuntimeUpdateBootstrapCompositionError: Error, Equatable {
         path: String,
         cleanupReason: String
     )
+    case handoffJobConflict(jobId: String, reason: String)
 }
 
 extension RuntimeLifecycle {
@@ -189,7 +190,7 @@ extension RuntimeLifecycle {
         )
         let advance = AdvanceUpdateBootstrapJournalUseCase()
         let invocationWriter = updateBootstrapInvocationWriter()
-        let launcher = updateBootstrapProcessLauncher()
+        let launcher = durableUpdateBootstrapHandoffLauncher()
         let receiptReader = updateBootstrapReceiptReader()
 
         return try UpdateBootstrapHandoffWorkflow().run(
@@ -213,6 +214,7 @@ extension RuntimeLifecycle {
                 launch: { invocation, invocationURL, stagedBundleRoot in
                     try heartbeatRuntimeOperationLease(lease)
                     let result = try launcher.launch(
+                        jobId: updateHandoffJobId(invocation),
                         invocation: invocation,
                         invocationURL: invocationURL,
                         stagedBundleRoot: stagedBundleRoot
@@ -288,7 +290,14 @@ extension RuntimeLifecycle {
                 makeInvocation:
                     MakeUpdateBootstrapHandoffInvocationUseCase().execute,
                 writeInvocation: updateBootstrapInvocationWriter().write,
-                launch: updateBootstrapProcessLauncher().launch,
+                launch: { invocation, invocationURL, stagedBundleRoot in
+                    try durableUpdateBootstrapHandoffLauncher().launch(
+                        jobId: updateHandoffJobId(invocation),
+                        invocation: invocation,
+                        invocationURL: invocationURL,
+                        stagedBundleRoot: stagedBundleRoot
+                    )
+                },
                 readReceipt:
                     updateBootstrapReceiptReader().readCompletionReceipt,
                 settle: SettleUpdateBootstrapHandoffUseCase().execute,
@@ -466,16 +475,71 @@ extension RuntimeLifecycle {
         )
     }
 
-    private func updateBootstrapProcessLauncher(
-    ) -> UpdateBootstrapHandoffProcessLauncher {
-        UpdateBootstrapHandoffProcessLauncher(
-            operations: UpdateBootstrapHandoffProcessLaunchOperations(
+    private func durableUpdateBootstrapHandoffLauncher(
+    ) -> DurableUpdateBootstrapHandoffLauncher {
+        let store = FileUpdateHandoffSupervisorStore(
+            root: installedPaths.updateHandoffJobsDirectory,
+            validate: ValidateUpdateHandoffJobUseCase().validate
+        )
+        let workflow = UpdateHandoffSupervisorWorkflow()
+        let manager = ManageUpdateHandoffJobUseCase()
+        return DurableUpdateBootstrapHandoffLauncher(
+            operations: DurableUpdateBootstrapHandoffLaunchOperations(
                 fileState: { url in
                     fileStore.fileState(atPath: url.path)
                 },
-                run: { executable, arguments in
-                    runProcess(executable, arguments: arguments)
+                submit: { jobId, invocation, invocationURL, updaterURL in
+                    let queued = manager.enqueue(
+                        jobId: jobId,
+                        updateId: invocation.updateId,
+                        operationId: invocation.operationId,
+                        invocationPath: invocationURL.path,
+                        updaterPath: updaterURL.path,
+                        observedAt: updateBootstrapTimestamp()
+                    )
+                    do {
+                        try store.save(queued, expectedRevision: nil)
+                        return queued
+                    } catch FileUpdateHandoffSupervisorStoreError
+                        .jobAlreadyExists {
+                        let existing = try store.load(jobId: jobId)
+                        guard existing.updateId == invocation.updateId,
+                              existing.operationId == invocation.operationId,
+                              existing.invocationPath == invocationURL.path,
+                              existing.updaterPath == updaterURL.path else {
+                            throw RuntimeUpdateBootstrapCompositionError
+                                .handoffJobConflict(
+                                    jobId: jobId,
+                                    reason:
+                                        "persisted job does not match invocation"
+                                )
+                        }
+                        return existing
+                    }
+                },
+                startSupervisor: {
+                    try restartOrStartLaunchdService(
+                        .updateHandoffSupervisor
+                    )
+                },
+                waitForTerminal: { jobId in
+                    try workflow.wait(
+                        jobId: jobId,
+                        attempts: 86_400,
+                        load: { try store.load(jobId: jobId) },
+                        pause: { sleeper.sleep(forTimeInterval: 0.25) }
+                    )
                 }
+            )
+        )
+    }
+
+    private func updateHandoffJobId(
+        _ invocation: UpdateBootstrapHandoffInvocation
+    ) -> String {
+        updateBootstrapSHA256(
+            Data(
+                "\(invocation.updateId)\u{0}\(invocation.operationId)".utf8
             )
         )
     }

@@ -407,6 +407,8 @@ public struct WatchdogRuntimeUseCase {
 
     private func restartServiceName(_ service: RuntimeManagedService) -> String {
         switch service {
+        case .updateHandoffSupervisor:
+            return "update-handoff-supervisor"
         case .platformAgent:
             return "Platform Agent"
         case .vm:

@@ -22,6 +22,7 @@ product_root = "/Library/Application Support/VitalServerHelper"
 applications_dir = "/Applications"
 launch_daemons_dir = "/Library/LaunchDaemons"
 vm_cli = "/usr/local/bin/vitalserver-vm"
+update_handoff_supervisor = "/usr/local/bin/vitalserver-update-handoff-supervisor"
 proxy_runner = "/usr/local/bin/vitalserver-proxy-run"
 uninstaller = "/usr/local/bin/tirosh-vitalserver-uninstall"
 install_settings_json = "/private/tmp/tirosh-vitalserver-install.json"
@@ -41,6 +42,10 @@ installed_plist = "ai.tirosh.vitalserver.helper.vm.plist"
 [macos.launchd.platform_agent]
 template_file = "ai.tirosh.vitalserver.helper.platform-agent.plist.template"
 installed_plist = "ai.tirosh.vitalserver.helper.platform-agent.plist"
+
+[macos.launchd.update_handoff_supervisor]
+template_file = "ai.tirosh.vitalserver.helper.update-handoff-supervisor.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.update-handoff-supervisor.plist"
 
 [macos.launchd.proxy]
 template_file = "ai.tirosh.vitalserver.helper.proxy.plist.template"

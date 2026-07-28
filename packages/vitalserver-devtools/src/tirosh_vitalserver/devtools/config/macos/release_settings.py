@@ -102,6 +102,11 @@ def load_macos_install(config: TomlTable) -> MacOSInstallConfig:
             path="macos.install",
         ),
         vm_cli=required_string(config, "vm_cli", path="macos.install"),
+        update_handoff_supervisor=required_string(
+            config,
+            "update_handoff_supervisor",
+            path="macos.install",
+        ),
         proxy_runner=required_string(config, "proxy_runner", path="macos.install"),
         uninstaller=required_string(config, "uninstaller", path="macos.install"),
         install_settings_json=required_string(
@@ -150,6 +155,14 @@ def load_macos_launchd(config: TomlTable) -> MacOSLaunchdConfig:
         platform_agent=load_macos_launchd_template(
             nested_section(config, "platform_agent", parent_path="macos.launchd"),
             path="macos.launchd.platform_agent",
+        ),
+        update_handoff_supervisor=load_macos_launchd_template(
+            nested_section(
+                config,
+                "update_handoff_supervisor",
+                parent_path="macos.launchd",
+            ),
+            path="macos.launchd.update_handoff_supervisor",
         ),
         vm=load_macos_launchd_template(
             nested_section(config, "vm", parent_path="macos.launchd"),

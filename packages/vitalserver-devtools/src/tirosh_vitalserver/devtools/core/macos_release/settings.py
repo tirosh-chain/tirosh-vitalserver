@@ -12,6 +12,7 @@ class MacOSInstallConfig:
     applications_dir: str
     launch_daemons_dir: str
     vm_cli: str
+    update_handoff_supervisor: str
     proxy_runner: str
     uninstaller: str
     install_settings_json: str
@@ -36,6 +37,7 @@ class MacOSLaunchdTemplateConfig:
 @dataclass(frozen=True)
 class MacOSLaunchdConfig:
     platform_agent: MacOSLaunchdTemplateConfig
+    update_handoff_supervisor: MacOSLaunchdTemplateConfig
     vm: MacOSLaunchdTemplateConfig
     proxy: MacOSLaunchdTemplateConfig
     guest_log_sync: MacOSLaunchdTemplateConfig
