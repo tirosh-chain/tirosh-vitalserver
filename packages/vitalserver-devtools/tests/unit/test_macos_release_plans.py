@@ -691,6 +691,11 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
     runtime_cli = tmp_path / "vitalserver-vm"
     runtime_cli.write_text("vm", encoding="utf-8")
     runtime_cli.chmod(0o755)
+    update_handoff_supervisor = (
+        tmp_path / "vitalserver-update-handoff-supervisor"
+    )
+    update_handoff_supervisor.write_text("supervisor", encoding="utf-8")
+    update_handoff_supervisor.chmod(0o755)
     rootfs_base = tmp_path / "rootfs-base.raw.gz"
     rootfs_base.write_text("rootfs", encoding="utf-8")
     rootfs_manifest = rootfs_artifact_manifest_path(rootfs_base)
@@ -1070,6 +1075,36 @@ def write_expanded_dmg_pkg_payload(destination: Path) -> Path:
         payload
         / "Library/Application Support/VitalServerHelper/config"
         / "update-bootstrap-trust-store.json"
+    )
+    supervisor = (
+        payload / "usr/local/bin/vitalserver-update-handoff-supervisor"
+    )
+    supervisor.parent.mkdir(parents=True, exist_ok=True)
+    supervisor.write_text("#!/bin/sh\n", encoding="utf-8")
+    supervisor.chmod(0o755)
+    supervisor_plist = (
+        payload
+        / "Library/LaunchDaemons/"
+        "ai.tirosh.vitalserver.helper.update-handoff-supervisor.plist"
+    )
+    supervisor_plist.parent.mkdir(parents=True, exist_ok=True)
+    supervisor_plist.write_text(
+        """
+<plist>
+<dict>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/vitalserver-update-handoff-supervisor</string>
+    <string>run</string>
+    <string>--jobs-root</string>
+    <string>/Library/Application Support/VitalServerHelper/update-handoff/jobs</string>
+  </array>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+""".lstrip(),
+        encoding="utf-8",
     )
     return payload
 
