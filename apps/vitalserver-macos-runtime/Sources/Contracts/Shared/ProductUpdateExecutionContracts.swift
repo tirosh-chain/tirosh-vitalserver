@@ -3,6 +3,8 @@ import Foundation
 public enum ProductUpdateExecutionContract {
     public static let schemaVersion =
         "vitalserver.product-update-execution/v1"
+    public static let layerEffectInvocationSchemaVersion =
+        "vitalserver.product-update-layer-effect-invocation/v1"
 }
 
 public struct ProductUpdateIssue: Codable, Equatable, Sendable {
@@ -105,6 +107,110 @@ public struct ProductUpdateLayerEffectRequest: Equatable, Sendable {
         self.effectExecutor = effectExecutor
         self.operation = operation
         self.artifact = artifact
+    }
+}
+
+public struct ProductUpdateLayerEffectInvocation:
+    Codable, Equatable, Sendable
+{
+    public let schemaVersion: String
+    public let updateId: String
+    public let layer: UpdateLayer
+    public let effectExecutorId: String
+    public let operation: ProductUpdateLayerEffectOperation
+    public let artifactRelativePath: String
+    public let artifactSHA256: String
+    public let configurationRelativePath: String
+    public let configurationSHA256: String
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion
+        case updateId
+        case layer
+        case effectExecutorId
+        case operation
+        case artifactRelativePath
+        case artifactSHA256 = "artifactSha256"
+        case configurationRelativePath
+        case configurationSHA256 = "configurationSha256"
+    }
+
+    public init(request: ProductUpdateLayerEffectRequest) {
+        schemaVersion =
+            ProductUpdateExecutionContract.layerEffectInvocationSchemaVersion
+        updateId = request.updateId
+        layer = request.layer
+        effectExecutorId = request.effectExecutor.id
+        operation = request.operation
+        artifactRelativePath = request.artifact.relativePath
+        artifactSHA256 = request.artifact.sha256
+        configurationRelativePath =
+            request.effectExecutor.configurationArtifact.relativePath
+        configurationSHA256 =
+            request.effectExecutor.configurationArtifact.sha256
+    }
+
+    public init(
+        schemaVersion: String,
+        updateId: String,
+        layer: UpdateLayer,
+        effectExecutorId: String,
+        operation: ProductUpdateLayerEffectOperation,
+        artifactRelativePath: String,
+        artifactSHA256: String,
+        configurationRelativePath: String,
+        configurationSHA256: String
+    ) {
+        self.schemaVersion = schemaVersion
+        self.updateId = updateId
+        self.layer = layer
+        self.effectExecutorId = effectExecutorId
+        self.operation = operation
+        self.artifactRelativePath = artifactRelativePath
+        self.artifactSHA256 = artifactSHA256
+        self.configurationRelativePath = configurationRelativePath
+        self.configurationSHA256 = configurationSHA256
+    }
+
+    public init(from decoder: Decoder) throws {
+        try rejectUnknownUpdateBootstrapKeys(
+            decoder,
+            allowed: CodingKeys.allCases.map(\.rawValue),
+            type: "ProductUpdateLayerEffectInvocation"
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            schemaVersion: try container.decode(
+                String.self,
+                forKey: .schemaVersion
+            ),
+            updateId: try container.decode(String.self, forKey: .updateId),
+            layer: try container.decode(UpdateLayer.self, forKey: .layer),
+            effectExecutorId: try container.decode(
+                String.self,
+                forKey: .effectExecutorId
+            ),
+            operation: try container.decode(
+                ProductUpdateLayerEffectOperation.self,
+                forKey: .operation
+            ),
+            artifactRelativePath: try container.decode(
+                String.self,
+                forKey: .artifactRelativePath
+            ),
+            artifactSHA256: try container.decode(
+                String.self,
+                forKey: .artifactSHA256
+            ),
+            configurationRelativePath: try container.decode(
+                String.self,
+                forKey: .configurationRelativePath
+            ),
+            configurationSHA256: try container.decode(
+                String.self,
+                forKey: .configurationSHA256
+            )
+        )
     }
 }
 

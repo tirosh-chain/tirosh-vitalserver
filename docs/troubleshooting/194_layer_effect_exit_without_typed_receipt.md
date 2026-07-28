@@ -41,3 +41,13 @@ Effect execution and effect evidence are separate contracts. The process
 adapter owns invocation and receipt reading. Pure policy owns correlation and
 outcome validity. The workflow sequences only validated outcomes and never
 repairs missing evidence with a default state.
+
+## Implemented guard
+
+`vitalserver-update-runner` writes one versioned layer-effect invocation to a
+fixed staged path and calls the digest-verified executor without a shell. It
+then reads only the fixed receipt path and strictly decodes
+`ProductUpdateLayerEffectReceipt`. A missing or malformed receipt after exit
+zero is returned as unavailable; a non-zero exit without a readable receipt is
+returned as failed. Correlation and success semantics are validated separately
+by pure policy before the workflow advances.

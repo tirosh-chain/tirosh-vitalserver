@@ -197,7 +197,7 @@ requires `host-platform` to be final. Layer artifacts, rollback artifacts,
 effect executors, and executor configuration are distinct immutable payload
 members with explicit paths, sizes, media types, and SHA-256 digests. This
 planning boundary does not execute effects; process execution and typed layer
-effect receipt aggregation remain a separate adapter responsibility.
+effect receipt aggregation are separate adapter responsibilities.
 
 The bundle-owned execution workflow now consumes only the pure execution plan
 and explicit layer-effect execution results. It issues `apply` requests in the
@@ -208,9 +208,22 @@ with their explicitly declared rollback artifacts. Missing executor evidence,
 adapter unavailability, process failure, invalid correlation, unsupported
 rollback, and rollback failure remain different typed outcomes. The workflow
 aggregates them into one correlated `ProductUpdateExecutionReport`; it never
-uses a process exit code or missing receipt as success. Filesystem
-materialization, fixed process arguments, atomic report publication, and the
-standalone next-updater executable remain outside this pure workflow.
+uses a process exit code or missing receipt as success.
+
+The standalone `vitalserver-update-runner` now owns the outer execution
+boundary. It accepts only
+`execute --invocation <absolute-handoff-invocation-path>`, derives the staged
+bundle root from the fixed `handoff/invocation.json` layout, strictly decodes
+that invocation, bounds the document size, and verifies the specification
+SHA-256 before decoding it. Before every apply or rollback it re-verifies the
+declared artifact, executor configuration, and executable bytes. It invokes
+the executable directly—never through a shell—with only
+`execute --request <fixed-path> --receipt <fixed-path>`. Exit zero without a
+strict typed receipt is explicit unavailability, not success. The runner
+atomically publishes the correlated execution report first and the Host
+completion receipt last; neither document may replace an existing path.
+Packaging the runner as the authenticated next-updater artifact and concrete
+release-owned executors remain release-composition responsibilities.
 
 Release automation calls:
 

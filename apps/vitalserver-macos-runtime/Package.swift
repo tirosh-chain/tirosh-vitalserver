@@ -25,6 +25,10 @@ let package = Package(
             targets: ["MacPlatformAgentService"]
         ),
         .executable(
+            name: "vitalserver-update-runner",
+            targets: ["UpdateRunnerHost"]
+        ),
+        .executable(
             name: "vitalserver-troubleshooting-reset-for-reinstall",
             targets: ["TroubleshootingResetForReinstall"]
         ),
@@ -119,6 +123,16 @@ let package = Package(
             path: "Sources/Hosts/MacPlatformAgentService"
         ),
         .executableTarget(
+            name: "UpdateRunnerHost",
+            dependencies: [
+                "Contracts",
+                "Application",
+                "Workflow",
+                "OutboundAdapters",
+            ],
+            path: "Sources/Hosts/UpdateRunner"
+        ),
+        .executableTarget(
             name: "TroubleshootingResetForReinstall",
             path: "Sources/Hosts/Troubleshooting/ResetForReinstall"
         ),
@@ -196,6 +210,10 @@ let package = Package(
                 "Bootstrap",
                 "CLIHost",
             ]
+        ),
+        .testTarget(
+            name: "UpdateRunnerHostTests",
+            dependencies: ["UpdateRunnerHost"]
         ),
         .testTarget(
             name: "MacControlPanelHostTests",
