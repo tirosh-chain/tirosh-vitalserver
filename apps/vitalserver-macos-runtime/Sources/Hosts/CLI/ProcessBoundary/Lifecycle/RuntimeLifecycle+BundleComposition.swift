@@ -79,7 +79,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    private func acquireRuntimeOperationLease(_ operation: RuntimeOperation) throws -> RuntimeOperationLeaseDocument {
+    func acquireRuntimeOperationLease(_ operation: RuntimeOperation) throws -> RuntimeOperationLeaseDocument {
         let document = makeRuntimeOperationLeaseDocument(operation)
         try runtimeOperationLeaseOwner().acquire(document)
         return document
@@ -105,7 +105,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    private func heartbeatRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
+    func heartbeatRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
         let timestamps = runtimeOperationLeaseTimestamps(now: clock.now)
         try runtimeOperationLeaseOwner().heartbeat(
             operationId: document.operationId,
@@ -122,7 +122,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    private func releaseRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
+    func releaseRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
         try runtimeOperationLeaseOwner().release(operationId: document.operationId)
     }
 

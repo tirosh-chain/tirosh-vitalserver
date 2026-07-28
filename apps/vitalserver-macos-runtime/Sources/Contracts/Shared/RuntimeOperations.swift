@@ -9,6 +9,7 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
     case verifyBundle
     case stageBundle
     case applyBundle
+    case applyUpdateBootstrap
     case prepareUpdateShutdown
     case activateGuestUpdate
     case rollback
@@ -45,6 +46,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             self = .stageBundle
         case "apply-bundle":
             self = .applyBundle
+        case "apply-update-bootstrap":
+            self = .applyUpdateBootstrap
         case "prepare-update-shutdown":
             self = .prepareUpdateShutdown
         case "activate-guest-update", "activate-update":
@@ -100,6 +103,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             return "stage-bundle"
         case .applyBundle:
             return "apply-bundle"
+        case .applyUpdateBootstrap:
+            return "apply-update-bootstrap"
         case .prepareUpdateShutdown:
             return "prepare-update-shutdown"
         case .activateGuestUpdate:

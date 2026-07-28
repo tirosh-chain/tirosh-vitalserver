@@ -45,6 +45,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         try writeSignedBundle(bundle, privateKey: privateKey)
 
         let runner = SuccessfulUpdateBootstrapRunner()
+        let leaseOwner = UpdateBootstrapOperationLeaseOwnerSpy()
         let lifecycle = RuntimeLifecycle(
             paths: LauncherPaths(
                 home: installed.runtimeHome,
@@ -53,7 +54,8 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
                 pidFile: installed.pidFile
             ),
             clock: UpdateBootstrapFixedClock(),
-            commandRunner: runner
+            commandRunner: runner,
+            runtimeOperationLeaseOwnerFactory: { leaseOwner }
         )
 
         try lifecycle.applyUpdateBootstrap(
@@ -78,6 +80,15 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         XCTAssertEqual(release.releaseRevision, 2)
         XCTAssertEqual(release.source, .update)
         XCTAssertEqual(runner.invocations.count, 1)
+        XCTAssertEqual(leaseOwner.acquired.count, 1)
+        XCTAssertEqual(
+            leaseOwner.acquired.first?.operation,
+            .applyUpdateBootstrap
+        )
+        XCTAssertEqual(leaseOwner.released, [
+            leaseOwner.acquired[0].operationId,
+        ])
+        XCTAssertFalse(leaseOwner.heartbeats.isEmpty)
     }
 
     func testResumesOnlyVerifiedPendingStagedHandoff() throws {
@@ -501,6 +512,35 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
 
 private struct UpdateBootstrapFixedClock: RuntimeClock {
     let now = Date(timeIntervalSince1970: 1_785_110_400)
+}
+
+private final class UpdateBootstrapOperationLeaseOwnerSpy:
+    RuntimeOperationLeaseOwner,
+    @unchecked Sendable
+{
+    private(set) var acquired: [RuntimeOperationLeaseDocument] = []
+    private(set) var heartbeats: [String] = []
+    private(set) var released: [String] = []
+
+    func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
+        acquired.last.map(RuntimeOperationLeaseLoadResult.loaded) ?? .missing
+    }
+
+    func acquire(_ document: RuntimeOperationLeaseDocument) throws {
+        acquired.append(document)
+    }
+
+    func heartbeat(
+        operationId: String,
+        heartbeatAt: String,
+        expiresAt: String?
+    ) throws {
+        heartbeats.append(operationId)
+    }
+
+    func release(operationId: String) throws {
+        released.append(operationId)
+    }
 }
 
 private final class SuccessfulUpdateBootstrapRunner: RuntimeCommandRunner {

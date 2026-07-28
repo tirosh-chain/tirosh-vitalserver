@@ -281,6 +281,14 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeOperation.repairServices.rawValue, "repair-services")
         XCTAssertEqual(RuntimeOperation(rawValue: "prepare-update-shutdown"), .prepareUpdateShutdown)
         XCTAssertEqual(RuntimeOperation.prepareUpdateShutdown.rawValue, "prepare-update-shutdown")
+        XCTAssertEqual(
+            RuntimeOperation(rawValue: "apply-update-bootstrap"),
+            .applyUpdateBootstrap
+        )
+        XCTAssertEqual(
+            RuntimeOperation.applyUpdateBootstrap.rawValue,
+            "apply-update-bootstrap"
+        )
         XCTAssertEqual(RuntimeOperation(rawValue: "runtime-data-backup"), .runtimeDataBackup)
         XCTAssertEqual(RuntimeOperation.runtimeDataBackup.rawValue, "runtime-data-backup")
         XCTAssertEqual(RuntimeOperation(rawValue: "automatic-backup"), .automaticBackup)

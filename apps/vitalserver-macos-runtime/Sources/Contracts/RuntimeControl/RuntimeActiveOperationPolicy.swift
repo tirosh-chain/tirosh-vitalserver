@@ -13,7 +13,8 @@ public enum RuntimeActiveOperationPolicy {
 
     public static func isUpdateOperation(_ operation: RuntimeOperation?) -> Bool {
         switch operation {
-        case .applyBundle, .prepareUpdateShutdown, .activateGuestUpdate:
+        case .applyBundle, .applyUpdateBootstrap, .prepareUpdateShutdown,
+             .activateGuestUpdate:
             return true
         default:
             return false

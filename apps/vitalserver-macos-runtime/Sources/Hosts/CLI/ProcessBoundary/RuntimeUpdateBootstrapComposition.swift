@@ -9,6 +9,15 @@ import OutboundAdapters
 import Workflow
 
 enum RuntimeUpdateBootstrapCompositionError: Error, Equatable {
+    case operationSucceededButLeaseReleaseFailed(
+        operationId: String,
+        reason: String
+    )
+    case operationAndLeaseReleaseFailed(
+        operationReason: String,
+        operationId: String,
+        releaseReason: String
+    )
     case operationSucceededButMaterializedBundleCleanupFailed(
         path: String,
         reason: String
@@ -57,13 +66,50 @@ extension RuntimeLifecycle {
     func applyUpdateBootstrap(
         _ command: RuntimeApplyUpdateBootstrapCommand
     ) throws {
+        let lease = try acquireRuntimeOperationLease(.applyUpdateBootstrap)
+        do {
+            try applyUpdateBootstrapWithOwnedLease(command, lease: lease)
+            do {
+                try releaseRuntimeOperationLease(lease)
+            } catch {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .operationSucceededButLeaseReleaseFailed(
+                        operationId: lease.operationId,
+                        reason: String(describing: error)
+                    )
+            }
+        } catch let operationError {
+            if case RuntimeUpdateBootstrapCompositionError
+                .operationSucceededButLeaseReleaseFailed = operationError {
+                throw operationError
+            }
+            do {
+                try releaseRuntimeOperationLease(lease)
+            } catch let releaseError {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .operationAndLeaseReleaseFailed(
+                        operationReason: String(describing: operationError),
+                        operationId: lease.operationId,
+                        releaseReason: String(describing: releaseError)
+                    )
+            }
+            throw operationError
+        }
+    }
+
+    private func applyUpdateBootstrapWithOwnedLease(
+        _ command: RuntimeApplyUpdateBootstrapCommand,
+        lease: RuntimeOperationLeaseDocument
+    ) throws {
+        try heartbeatRuntimeOperationLease(lease)
         let materialized = try materializeRuntimeUpdateBundle(
             command.bundleURL
         )
         do {
             let output = try executeUpdateBootstrap(
                 bundleRoot: materialized.bundleURL,
-                requestId: command.requestId
+                requestId: command.requestId,
+                lease: lease
             )
             try cleanupMaterializedUpdateBootstrapBundle(materialized)
             print("update bootstrap handoff completed")
@@ -90,7 +136,8 @@ extension RuntimeLifecycle {
 
     private func executeUpdateBootstrap(
         bundleRoot: URL,
-        requestId: String
+        requestId: String,
+        lease: RuntimeOperationLeaseDocument
     ) throws -> UpdateBootstrapHandoffWorkflowOutput {
         let verifiedBundle = try loadAndVerifyUpdateBootstrapClosure(
             bundleRoot: bundleRoot
@@ -138,7 +185,16 @@ extension RuntimeLifecycle {
                 makeInvocation:
                     MakeUpdateBootstrapHandoffInvocationUseCase().execute,
                 writeInvocation: invocationWriter.write,
-                launch: launcher.launch,
+                launch: { invocation, invocationURL, stagedBundleRoot in
+                    try heartbeatRuntimeOperationLease(lease)
+                    let result = try launcher.launch(
+                        invocation: invocation,
+                        invocationURL: invocationURL,
+                        stagedBundleRoot: stagedBundleRoot
+                    )
+                    try heartbeatRuntimeOperationLease(lease)
+                    return result
+                },
                 readReceipt: receiptReader.readCompletionReceipt,
                 settle: SettleUpdateBootstrapHandoffUseCase().execute,
                 readReport:

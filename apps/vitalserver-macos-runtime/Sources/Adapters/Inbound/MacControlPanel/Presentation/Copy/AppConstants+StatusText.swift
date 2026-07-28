@@ -539,6 +539,8 @@ public extension AppConstants {
                 return "Stage Bundle"
             case "apply-bundle":
                 return "Apply Bundle"
+            case "apply-update-bootstrap":
+                return "Apply Product Update"
             case "activate-guest-update", "activate-update":
                 return "Activate Guest Update"
             case "rollback":

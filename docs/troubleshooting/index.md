@@ -197,6 +197,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-194 | layer effect process가 typed receipt 없이 종료됨 | Update / Next updater / Layer effect | resolved | [Layer effect process exits without a typed receipt](194_layer_effect_exit_without_typed_receipt.md) |
 | TS-195 | bootstrap bundle에서 specification 소유 payload가 누락됨 | Update / Release composition / Bundle closure | resolved | [Bootstrap bundle omits specification-owned payload](195_bootstrap_bundle_omits_specification_payload.md) |
 | TS-196 | Helper UI/API가 stable bootstrap 대신 legacy update engine을 호출함 | Update / Runtime Control / Host adapter | resolved | [Helper UI uses the legacy update bundle engine](196_helper_ui_uses_legacy_update_bundle_engine.md) |
+| TS-197 | stable bootstrap update가 Host operation lease를 우회함 | Update / Operation ownership / SQLite | resolved | [Stable update bypasses the Host operation lease](197_stable_update_bypasses_operation_lease.md) |
 
 ## Follow-up 규칙
 
