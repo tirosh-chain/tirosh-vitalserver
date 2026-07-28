@@ -14,6 +14,9 @@
 - Rebooting after a successful Guest Runtime update can replace the active
   release with the package baseline, or bootstrap can fail because the active
   link no longer targets that baseline.
+- VM compile fails at `initial-update-owner-artifacts` with
+  `Guest Runtime source must not contain symlinks:
+  /opt/tirosh/guest-tools/venv/lib64`.
 
 ## Cause
 
@@ -22,6 +25,12 @@ product build did not produce an explicit initial owner contract and bootstrap
 did not consume one. A separate pre-bootstrap filesystem command also treated
 the active symlink as installation state. That made filesystem shape, rather
 than the Guest SQLite state owner, decide whether initialization had happened.
+
+The first archive implementation also exposed a packaging mismatch. The
+offline installer used `venv --copies`, but CPython still created the redundant
+Linux compatibility alias `lib64 -> lib`. The release archive correctly
+rejected every symlink, so a fresh VM compile failed before it could compose the
+initial owner contract.
 
 ## Fix direction
 
@@ -34,7 +43,13 @@ bytes:
 - a deterministic archive of the installed Guest Runtime;
 - `deploy/initial-update-owner-state.json`, containing exact release
   identities, SHA-256 digests, relative paths, and content-addressed owner
-  references.
+references.
+
+Before publishing the Guest Tools venv, the offline installer now requires the
+exact CPython compatibility alias `lib64 -> lib` and removes it. Any missing,
+non-symlink, or differently targeted entry is an explicit install failure. The
+archive continues to reject all symlinks; it does not weaken extraction or
+release-unit safety to accommodate the venv layout.
 
 After Guest SQLite migration, bootstrap verifies and imports both archives.
 On the first installation it converts the bootstrap Guest Runtime directory
@@ -60,6 +75,9 @@ pointer, and dangling/invalid immutable state are explicit failures.
   accepted update.
 - Treat VM/rootfs compilation as failed when the initial owner contract or
   either declared archive is missing.
+- Normalize the known CPython `lib64 -> lib` compatibility alias at the
+  installer boundary; never broaden the archive contract to accept arbitrary
+  links.
 
 ## Related cases
 

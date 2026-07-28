@@ -80,6 +80,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(prepareAirgapRootfs.contains("install_guest_tools_for_rootfs_smoke"))
         XCTAssertTrue(prepareAirgapRootfs.contains("python3 \"${DEPLOY_DIR}/install-guest-tools-runtime.py\""))
         XCTAssertTrue(installer.contains("\"venv\",\n                \"--clear\",\n                \"--copies\",\n                str(next_venv),"))
+        XCTAssertTrue(installer.contains("remove_redundant_venv_library_alias(next_venv)"))
         XCTAssertTrue(installer.contains("\"--no-index\""))
         XCTAssertTrue(installer.contains("\"--only-binary=:all:\""))
         XCTAssertTrue(installer.contains("\"--require-hashes\""))

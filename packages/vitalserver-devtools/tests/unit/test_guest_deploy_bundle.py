@@ -609,6 +609,11 @@ def test_guest_tools_runtime_installer_resolves_local_requirements_from_wheelhou
     monkeypatch.setattr(installer, "rewrite_entrypoint_shebangs", lambda **_: None)
     monkeypatch.setattr(
         installer,
+        "remove_redundant_venv_library_alias",
+        lambda _: None,
+    )
+    monkeypatch.setattr(
+        installer,
         "installed_dependency_versions",
         lambda _: {"alembic": "1.16.5", "sqlalchemy": "2.0.51"},
     )
@@ -655,6 +660,49 @@ def test_guest_tools_runtime_installer_rewrites_entrypoints_before_publish(
     assert entrypoint.read_text(encoding="utf-8").startswith(
         f"#!{current_venv / 'bin/python3.12'}\n"
     )
+
+
+def test_guest_tools_runtime_installer_removes_only_expected_library_alias(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "guest_tools_runtime_installer",
+        GUEST_TOOLS_RUNTIME_INSTALLER,
+    )
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    next_venv = tmp_path / "guest-tools/venv.next"
+    (next_venv / "lib").mkdir(parents=True)
+    alias = next_venv / "lib64"
+    alias.symlink_to("lib")
+
+    installer.remove_redundant_venv_library_alias(next_venv)
+
+    assert not alias.exists()
+    assert not alias.is_symlink()
+    assert (next_venv / "lib").is_dir()
+
+
+def test_guest_tools_runtime_installer_rejects_unexpected_library_alias(
+    tmp_path: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "guest_tools_runtime_installer",
+        GUEST_TOOLS_RUNTIME_INSTALLER,
+    )
+    assert spec is not None and spec.loader is not None
+    installer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    next_venv = tmp_path / "guest-tools/venv.next"
+    next_venv.mkdir(parents=True)
+    (next_venv / "lib64").symlink_to("/usr/lib")
+
+    with pytest.raises(
+        installer.GuestToolsInstallError,
+        match="library alias target is invalid",
+    ):
+        installer.remove_redundant_venv_library_alias(next_venv)
 
 
 def test_guest_deploy_material_digest_excludes_only_run_scoped_contracts(
