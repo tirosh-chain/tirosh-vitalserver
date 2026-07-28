@@ -293,12 +293,8 @@
         </label>
         <div class="actions">
           <button id="summaryBundle">Summary</button>
-          <button id="verifyBundle">Check Integrity</button>
-          <button
-            id="applyBundle"
-            disabled
-            title="This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
-          >Apply unavailable in 0.2.1</button>
+          <button id="verifyBundle">Verify Publisher &amp; Payload</button>
+          <button id="applyBundle">Apply Product Update</button>
         </div>
         <label>
           Backup path
@@ -733,7 +729,7 @@
     }
 
     async function applyBundle() {
-      if (!confirm("Apply this update bundle? Runtime services may restart.")) return;
+      if (!confirm("Apply the authenticated product update? Runtime services may restart.")) return;
       await runRuntimeCommand("bundle-applied", () => postJSON("/platform/update-bundles/apply", {
         bundle: localPathReference($("bundlePath").value)
       }));

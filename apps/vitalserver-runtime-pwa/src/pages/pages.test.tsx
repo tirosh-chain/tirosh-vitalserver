@@ -1144,8 +1144,8 @@ describe("runtime console pages", () => {
       target: { value: "/tmp/update.tar.gz" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Inspect" }));
-    fireEvent.click(screen.getByRole("button", { name: "Check Integrity" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply Bundle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Verify Publisher & Payload" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply Product Update" }));
 
     expect(summarize.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
     expect(verify.mutate).toHaveBeenCalledWith("/tmp/update.tar.gz");
@@ -1172,11 +1172,11 @@ describe("runtime console pages", () => {
     fireEvent.change(screen.getByLabelText("Offline bundle"), {
       target: { value: "/tmp/update.tar.gz" }
     });
-    expect(screen.getByRole("button", { name: "Check Integrity" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Apply Bundle" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Verify Publisher & Payload" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Apply Product Update" })).toBeDisabled();
     expect(
       screen.getByText(
-        "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable.",
+        "Stable product update apply is unavailable in this installed build.",
       ),
     ).toBeInTheDocument();
   });

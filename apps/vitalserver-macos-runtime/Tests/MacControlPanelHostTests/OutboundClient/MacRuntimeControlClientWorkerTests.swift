@@ -97,7 +97,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let export = try await client.exportLogs(to: URL(fileURLWithPath: "/tmp/logs.zip"))
         let loadedReleaseInfo = try await client.loadReleaseInfo()
 
-        XCTAssertFalse(client.capabilities.canApplyBundle)
+        XCTAssertTrue(client.capabilities.canApplyBundle)
         XCTAssertEqual(client.loadSettings().proxyPort, 19080)
         XCTAssertEqual(client.loadPlatformState(settings: RuntimeSettings()).installedVersion, "status")
         XCTAssertEqual(healthStatus.installedVersion, "health")

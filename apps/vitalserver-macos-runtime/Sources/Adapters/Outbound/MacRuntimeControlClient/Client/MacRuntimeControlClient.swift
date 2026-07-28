@@ -6,7 +6,7 @@ import Errors
 
 @MainActor
 public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
-    public let capabilities = RuntimeControlCapabilities(canApplyBundle: false)
+    public let capabilities = RuntimeControlCapabilities(canApplyBundle: true)
 
     private let releaseInfo: RuntimeReleaseInfo
     private let platformStateReader: PlatformStateReading

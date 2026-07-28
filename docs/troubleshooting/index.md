@@ -198,6 +198,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-195 | bootstrap bundle에서 specification 소유 payload가 누락됨 | Update / Release composition / Bundle closure | resolved | [Bootstrap bundle omits specification-owned payload](195_bootstrap_bundle_omits_specification_payload.md) |
 | TS-196 | Helper UI/API가 stable bootstrap 대신 legacy update engine을 호출함 | Update / Runtime Control / Host adapter | resolved | [Helper UI uses the legacy update bundle engine](196_helper_ui_uses_legacy_update_bundle_engine.md) |
 | TS-197 | stable bootstrap update가 Host operation lease를 우회함 | Update / Operation ownership / SQLite | resolved | [Stable update bypasses the Host operation lease](197_stable_update_bypasses_operation_lease.md) |
+| TS-198 | stable update 명령 연결 후에도 제품 capability와 UI가 비활성 상태로 남음 | Update / Capability / Presentation | resolved | [Stable update capability remains disabled after integration](198_stable_update_capability_remains_disabled.md) |
 
 ## Follow-up 규칙
 

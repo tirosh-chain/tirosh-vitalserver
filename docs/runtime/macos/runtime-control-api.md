@@ -423,7 +423,7 @@ Content-Type: application/json
 
 {
   "code": "updateApplyUnavailable",
-  "message": "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
+  "message": "Stable product update apply is unavailable in this installed build."
 }
 ```
 
