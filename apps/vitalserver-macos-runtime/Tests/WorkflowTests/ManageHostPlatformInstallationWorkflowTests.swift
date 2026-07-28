@@ -1,14 +1,15 @@
 import Application
 import Contracts
 import Domain
+import Workflow
 import XCTest
 
-final class ManageHostPlatformInstallationUseCaseTests: XCTestCase {
+final class ManageHostPlatformInstallationWorkflowTests: XCTestCase {
   func testExecutePersistsEachExplicitOwnerStateAndSettlesAtomically() throws {
     let repository = HostInstallationRepositorySpy(
       manifest: initialManifest()
     )
-    let useCase = ManageHostPlatformInstallationUseCase(
+    let workflow = ManageHostPlatformInstallationWorkflow(
       repository: repository,
       candidateStager: CandidateStagerStub(result: .staged(candidate())),
       serviceReconciler: ServiceReconcilerStub(
@@ -17,7 +18,7 @@ final class ManageHostPlatformInstallationUseCaseTests: XCTestCase {
       failureObservedAt: { "2026-07-29T01:00:03Z" }
     )
 
-    let result = try useCase.execute(command: command())
+    let result = try workflow.execute(command: command())
 
     XCTAssertEqual(result.state, .succeeded)
     XCTAssertEqual(
@@ -42,7 +43,7 @@ final class ManageHostPlatformInstallationUseCaseTests: XCTestCase {
     let staged = try stagedOperation()
     repository.operations[staged.id] = staged
     let stager = CandidateStagerStub(result: .failed(reason: "must not run"))
-    let useCase = ManageHostPlatformInstallationUseCase(
+    let workflow = ManageHostPlatformInstallationWorkflow(
       repository: repository,
       candidateStager: stager,
       serviceReconciler: ServiceReconcilerStub(
@@ -51,7 +52,7 @@ final class ManageHostPlatformInstallationUseCaseTests: XCTestCase {
       failureObservedAt: { "2026-07-29T01:00:03Z" }
     )
 
-    let result = try useCase.execute(command: command())
+    let result = try workflow.execute(command: command())
 
     XCTAssertEqual(result.state, .succeeded)
     XCTAssertEqual(stager.callCount, 0)
@@ -61,7 +62,7 @@ final class ManageHostPlatformInstallationUseCaseTests: XCTestCase {
     let repository = HostInstallationRepositorySpy(
       manifest: initialManifest()
     )
-    let useCase = ManageHostPlatformInstallationUseCase(
+    let workflow = ManageHostPlatformInstallationWorkflow(
       repository: repository,
       candidateStager: CandidateStagerStub(result: .staged(candidate())),
       serviceReconciler: ServiceReconcilerStub(
@@ -70,7 +71,7 @@ final class ManageHostPlatformInstallationUseCaseTests: XCTestCase {
       failureObservedAt: { "2026-07-29T01:00:03Z" }
     )
 
-    XCTAssertThrowsError(try useCase.execute(command: command())) { error in
+    XCTAssertThrowsError(try workflow.execute(command: command())) { error in
       XCTAssertEqual(
         error as? HostPlatformInstallationManagementError,
         .serviceReconciliationFailed("receipt missing")

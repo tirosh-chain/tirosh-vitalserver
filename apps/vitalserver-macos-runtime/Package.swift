@@ -89,7 +89,7 @@ let package = Package(
         ),
         .target(
             name: "OutboundAdapters",
-            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl"],
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl"],
             path: "Sources/Adapters/Outbound",
             linkerSettings: [
                 .linkedLibrary("sqlite3")
@@ -165,7 +165,7 @@ let package = Package(
         .target(
             name: "UpdateLayerEffectExecutor",
             dependencies: ["Contracts"],
-            path: "Sources/UpdateLayerEffectExecutor"
+            path: "Sources/Hosts/UpdateLayerEffectExecutor"
         ),
         .executableTarget(
             name: "ContainerLayerEffectExecutorHost",
@@ -183,6 +183,7 @@ let package = Package(
                 "Contracts",
                 "Domain",
                 "Application",
+                "Workflow",
                 "OutboundAdapters",
             ],
             path: "Sources/Hosts/HostInstallationManager"

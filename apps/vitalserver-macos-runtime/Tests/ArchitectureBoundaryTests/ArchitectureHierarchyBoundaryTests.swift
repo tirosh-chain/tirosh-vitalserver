@@ -5629,6 +5629,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             fileNames,
             [
                 "ExecuteBundleOwnedProductUpdateWorkflow.swift",
+                "ManageHostPlatformInstallationWorkflow.swift",
                 "RuntimeApplyBundleWorkflow.swift",
                 "RuntimeGuestActivationWorkflow.swift",
                 "RuntimeGuestShutdownWorkflow.swift",

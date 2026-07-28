@@ -18,13 +18,14 @@ public enum HostPlatformInstallationPolicyError: Error, Equatable, Sendable {
 }
 
 public enum HostPlatformInstallationPolicy {
-  public static let schemaVersion = "vitalserver.host-platform-installation/v1"
+  public static let schemaVersion =
+    HostPlatformInstallationContract.manifestSchemaVersion
   public static let operationSchemaVersion =
-    "vitalserver.host-platform-installation-operation/v1"
+    HostPlatformInstallationContract.operationSchemaVersion
   public static let serviceRequestSchemaVersion =
-    "vitalserver.host-platform-service-reconciliation/v1"
+    HostPlatformInstallationContract.serviceRequestSchemaVersion
   public static let serviceReceiptSchemaVersion =
-    "vitalserver.host-platform-service-reconciliation-receipt/v1"
+    HostPlatformInstallationContract.serviceReceiptSchemaVersion
 
   public static func makeInitialManifest(
     installationId: String,

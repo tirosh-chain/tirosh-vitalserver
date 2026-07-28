@@ -3,6 +3,7 @@ import Contracts
 import Domain
 import Foundation
 import OutboundAdapters
+import Workflow
 
 private enum HostInstallationManagerCLIError: Error, CustomStringConvertible {
     case invalidArguments(String)
@@ -176,7 +177,7 @@ private enum HostInstallationManagerCommands {
             fileURLWithPath: try arguments.required("--installation-root"),
             isDirectory: true
         )
-        let useCase = ManageHostPlatformInstallationUseCase(
+        let workflow = ManageHostPlatformInstallationWorkflow(
             repository: repository,
             candidateStager: HostPlatformReleaseArchiveCandidateStager(
                 installationRoot: installationRoot
@@ -190,7 +191,7 @@ private enum HostInstallationManagerCommands {
             failureObservedAt: currentTimestamp
         )
         do {
-            let operation = try useCase.execute(command: command)
+            let operation = try workflow.execute(command: command)
             try HostInstallationManagerDocuments.write(
                 operation,
                 path: arguments.required("--operation")

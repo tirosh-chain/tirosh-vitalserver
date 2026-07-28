@@ -1,7 +1,6 @@
 import Application
 import Contracts
 import CryptoKit
-import Domain
 import Foundation
 
 public enum MacOSHostPlatformReleaseServiceReconciliationError:
@@ -476,7 +475,7 @@ public struct MacOSHostPlatformReleaseServiceReconciler:
   ) -> HostPlatformServiceReconciliationReceipt {
     HostPlatformServiceReconciliationReceipt(
       schemaVersion:
-        HostPlatformInstallationPolicy.serviceReceiptSchemaVersion,
+        HostPlatformInstallationContract.serviceReceiptSchemaVersion,
       reconciliationId: request.reconciliationId,
       operationId: request.operationId,
       installationId: request.installationId,

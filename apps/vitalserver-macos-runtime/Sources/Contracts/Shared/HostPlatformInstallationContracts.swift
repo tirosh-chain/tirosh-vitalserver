@@ -5,6 +5,17 @@ public enum HostPlatformReleaseArchiveContract {
     "vitalserver.helper-host-platform-release-manifest/v1"
 }
 
+public enum HostPlatformInstallationContract {
+  public static let manifestSchemaVersion =
+    "vitalserver.host-platform-installation/v1"
+  public static let operationSchemaVersion =
+    "vitalserver.host-platform-installation-operation/v1"
+  public static let serviceRequestSchemaVersion =
+    "vitalserver.host-platform-service-reconciliation/v1"
+  public static let serviceReceiptSchemaVersion =
+    "vitalserver.host-platform-service-reconciliation-receipt/v1"
+}
+
 public struct HostPlatformRelease: Codable, Equatable, Sendable {
   public let id: String
   public let version: String

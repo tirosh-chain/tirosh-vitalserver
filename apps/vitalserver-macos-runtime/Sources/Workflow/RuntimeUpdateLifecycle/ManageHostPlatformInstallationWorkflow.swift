@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 
@@ -16,7 +17,7 @@ public enum HostPlatformInstallationManagementError:
   case serviceReconciliationRejected(String)
 }
 
-public struct RegisterHostPlatformInstallationUseCase: Sendable {
+public struct RegisterHostPlatformInstallationWorkflow: Sendable {
   private let repository: any HostPlatformInstallationRepository
 
   public init(repository: any HostPlatformInstallationRepository) {
@@ -40,7 +41,7 @@ public struct RegisterHostPlatformInstallationUseCase: Sendable {
   }
 }
 
-public struct ManageHostPlatformInstallationUseCase: Sendable {
+public struct ManageHostPlatformInstallationWorkflow: Sendable {
   private let repository: any HostPlatformInstallationRepository
   private let candidateStager: any HostPlatformCandidateStaging
   private let serviceReconciler: any HostPlatformServiceReconciling
