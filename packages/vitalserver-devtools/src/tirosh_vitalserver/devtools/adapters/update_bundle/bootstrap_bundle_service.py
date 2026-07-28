@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import base64
 import binascii
+import gzip
 import json
 import os
 import shutil
 import stat
 import tarfile
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 
 from cryptography.exceptions import InvalidSignature
@@ -120,12 +122,53 @@ def build_bootstrap_bundle(
             json.dumps(envelope, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        with tarfile.open(spec.output, "x:gz") as archive:
-            archive.add(root, arcname=root.name)
+        write_deterministic_tar_gzip(root, spec.output)
         return BuildUpdateBootstrapBundleResult(
             archive=spec.output,
             envelope_sha256=sha256_file(envelope_path),
         )
+
+
+def write_deterministic_tar_gzip(root: Path, output: Path) -> None:
+    try:
+        with (
+            output.open("xb") as raw_archive,
+            gzip.GzipFile(
+                filename="",
+                mode="wb",
+                fileobj=raw_archive,
+                mtime=0,
+            ) as compressed,
+            tarfile.open(fileobj=compressed, mode="w") as archive,
+        ):
+            archive.add(
+                root,
+                arcname=root.name,
+                recursive=False,
+                filter=normalized_tar_info,
+            )
+            for path in sorted(root.rglob("*")):
+                archive.add(
+                    path,
+                    arcname=path.relative_to(root.parent),
+                    recursive=False,
+                    filter=normalized_tar_info,
+                )
+    except (OSError, tarfile.TarError) as error:
+        with suppress(OSError):
+            output.unlink(missing_ok=True)
+        raise DomainError(
+            f"bootstrap bundle archive write failed path={output}: {error}"
+        ) from error
+
+
+def normalized_tar_info(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    info.mtime = 0
+    info.uid = 0
+    info.gid = 0
+    info.uname = ""
+    info.gname = ""
+    return info
 
 
 def verify_bootstrap_bundle(

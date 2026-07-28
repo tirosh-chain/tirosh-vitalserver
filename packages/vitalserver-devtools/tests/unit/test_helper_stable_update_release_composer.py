@@ -125,6 +125,7 @@ def test_same_explicit_inputs_produce_identical_specification(
     )
 
     assert specifications[0] == specifications[1]
+    assert input.output.read_bytes() == second.output.read_bytes()
 
 
 def test_missing_explicit_rollback_is_not_inferred(
