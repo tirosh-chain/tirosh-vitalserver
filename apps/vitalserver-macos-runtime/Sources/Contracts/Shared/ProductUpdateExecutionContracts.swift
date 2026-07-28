@@ -121,6 +121,8 @@ public struct ProductUpdateLayerEffectInvocation:
     public let artifactRelativePath: String
     public let artifactPath: String
     public let artifactSHA256: String
+    public let artifactSizeBytes: Int
+    public let artifactMediaType: String
     public let configurationRelativePath: String
     public let configurationPath: String
     public let configurationSHA256: String
@@ -134,6 +136,8 @@ public struct ProductUpdateLayerEffectInvocation:
         case artifactRelativePath
         case artifactPath
         case artifactSHA256 = "artifactSha256"
+        case artifactSizeBytes
+        case artifactMediaType
         case configurationRelativePath
         case configurationPath
         case configurationSHA256 = "configurationSha256"
@@ -153,6 +157,8 @@ public struct ProductUpdateLayerEffectInvocation:
         artifactRelativePath = request.artifact.relativePath
         self.artifactPath = artifactPath
         artifactSHA256 = request.artifact.sha256
+        artifactSizeBytes = request.artifact.sizeBytes
+        artifactMediaType = request.artifact.mediaType
         configurationRelativePath =
             request.effectExecutor.configurationArtifact.relativePath
         self.configurationPath = configurationPath
@@ -169,6 +175,8 @@ public struct ProductUpdateLayerEffectInvocation:
         artifactRelativePath: String,
         artifactPath: String,
         artifactSHA256: String,
+        artifactSizeBytes: Int,
+        artifactMediaType: String,
         configurationRelativePath: String,
         configurationPath: String,
         configurationSHA256: String
@@ -181,6 +189,8 @@ public struct ProductUpdateLayerEffectInvocation:
         self.artifactRelativePath = artifactRelativePath
         self.artifactPath = artifactPath
         self.artifactSHA256 = artifactSHA256
+        self.artifactSizeBytes = artifactSizeBytes
+        self.artifactMediaType = artifactMediaType
         self.configurationRelativePath = configurationRelativePath
         self.configurationPath = configurationPath
         self.configurationSHA256 = configurationSHA256
@@ -219,6 +229,14 @@ public struct ProductUpdateLayerEffectInvocation:
             artifactSHA256: try container.decode(
                 String.self,
                 forKey: .artifactSHA256
+            ),
+            artifactSizeBytes: try container.decode(
+                Int.self,
+                forKey: .artifactSizeBytes
+            ),
+            artifactMediaType: try container.decode(
+                String.self,
+                forKey: .artifactMediaType
             ),
             configurationRelativePath: try container.decode(
                 String.self,

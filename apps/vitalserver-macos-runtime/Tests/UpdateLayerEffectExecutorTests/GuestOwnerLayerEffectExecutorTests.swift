@@ -119,6 +119,8 @@ func digestMismatchFailsWithoutCallingGuest() async throws {
         artifactRelativePath: fixture.invocation.artifactRelativePath,
         artifactPath: fixture.invocation.artifactPath,
         artifactSHA256: String(repeating: "0", count: 64),
+        artifactSizeBytes: fixture.invocation.artifactSizeBytes,
+        artifactMediaType: fixture.invocation.artifactMediaType,
         configurationRelativePath:
             fixture.invocation.configurationRelativePath,
         configurationPath: fixture.invocation.configurationPath,
@@ -405,6 +407,8 @@ private struct EffectFixture {
                 of: "sha256:",
                 with: ""
             ),
+            artifactSizeBytes: try Data(contentsOf: artifact).count,
+            artifactMediaType: "application/octet-stream",
             configurationRelativePath: "payload/layer/configuration.json",
             configurationPath: configurationURL.path,
             configurationSHA256: sha256(configurationData)
