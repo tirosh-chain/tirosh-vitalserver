@@ -30,7 +30,7 @@ def test_dmg_compile_is_clean_and_cached_target_is_not_a_field_gate() -> None:
 
     cached_recipe = target_recipe(package_makefile, "internal/vm/dmg/dev/cached")
     assert "VM_RECREATE_ROOTFS=true" not in cached_recipe
-    assert "$(MAKE) internal/vm/dmg VM_RELEASE_FILE=\"$(VM_RELEASE_FILE)\"" in (
+    assert '$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)"' in (
         cached_recipe
     )
 
@@ -76,11 +76,10 @@ def test_stable_update_uses_the_helper_host_release_contract_only() -> None:
     assert "host-platform-release-archive-composer" not in makefile
     assert "runtime-platform/tooling" not in artifact_recipe
     assert (
-        "application/vnd.tirosh.vitalserver-helper."
-        "host-platform-release+tar+gzip"
+        "application/vnd.tirosh.vitalserver-helper.host-platform-release+tar+gzip"
     ) in makefile
     assert (
-        '--host-platform-artifact-media-type '
+        "--host-platform-artifact-media-type "
         '"$(VM_UPDATE_HELPER_HOST_PLATFORM_MEDIA_TYPE)"'
     ) in release_recipe
 
@@ -133,7 +132,7 @@ def test_rootfs_seed_is_restored_after_fresh_ubuntu_disk_creation() -> None:
         (
             'ubuntu \\\n--runtime-dir "$(VM_RUNTIME_DIR)"',
             'gzip -dc "$(VM_ROOTFS_SEED)"',
-            'qemu-img check -f raw',
+            "qemu-img check -f raw",
             'mv "$${seed_tmp}" "$(VM_RUNTIME_DIR)/vm-disk.img"',
         ),
     )
@@ -157,12 +156,7 @@ def test_airgap_rootfs_waits_for_launcher_exit_before_mutating_runtime_files() -
     second_guard = recipe.index(no_running_guard, second_wait)
 
     assert (
-        first_stop
-        < first_wait
-        < first_guard
-        < second_stop
-        < second_wait
-        < second_guard
+        first_stop < first_wait < first_guard < second_stop < second_wait < second_guard
     )
     assert recipe.count("macos-runtime-force-stop") >= 2
     assert 'apt_source="network"' in recipe
@@ -198,8 +192,7 @@ def test_diagnostic_runtime_smoke_requires_a_compiled_rootfs() -> None:
     require_recipe = target_recipe(makefile, "internal/vm/golden-rootfs/require")
 
     assert (
-        "internal/vm/golden-rootfs/runtime-smoke: "
-        "internal/vm/golden-rootfs/require"
+        "internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs/require"
     ) in makefile
     assert "run make dist/dmg/dev/compile first" in require_recipe
     assert "internal/vm/docker/images" not in require_recipe
@@ -240,14 +233,11 @@ def test_distribution_review_runs_current_macos_stabilization_contracts() -> Non
     )
 
     for current_product_test in (
-        "packages/vitalserver-devtools/tests/unit/"
-        "test_macos_package_install_policy.py",
+        "packages/vitalserver-devtools/tests/unit/test_macos_package_install_policy.py",
         "packages/vitalserver-devtools/tests/unit/test_macos_package_receipts.py",
         "packages/vitalserver-devtools/tests/unit/test_macos_installed_runtime.py",
-        "packages/vitalserver-devtools/tests/unit/"
-        "test_macos_update_bundle_usecases.py",
-        "packages/vitalserver-devtools/tests/unit/"
-        "test_update_bootstrap_trust_store.py",
+        "packages/vitalserver-devtools/tests/unit/test_macos_update_bundle_usecases.py",
+        "packages/vitalserver-devtools/tests/unit/test_update_bootstrap_trust_store.py",
     ):
         assert current_product_test in review
 
@@ -263,11 +253,10 @@ def test_vm_image_update_does_not_infer_updater_bridge_from_rootfs() -> None:
 
     assert "VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false" in makefile
     assert (
-        "internal/vm/image-update: "
-        "VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE := true"
+        "internal/vm/image-update: VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE := true"
     ) not in makefile
     assert (
-        'VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE='
+        "VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE="
         '"$(VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE)"'
     ) in image_update_contract
 
@@ -277,19 +266,35 @@ def test_public_product_update_uses_signed_stable_three_layer_contract() -> None
     root_makefile = ROOT_MAKEFILE.read_text(encoding="utf-8")
     update = target_recipe(package_makefile, "internal/vm/update")
     verify = target_recipe(package_makefile, "internal/vm/update/verify")
+    host_configuration = target_recipe(
+        package_makefile,
+        "internal/vm/update/host-platform-effect-configuration",
+    )
 
     assert "helper-stable-update-release" in update
     assert "--container-artifact" in update
     assert "--guest-runtime-artifact" in update
     assert "--host-platform-artifact" in update
-    assert update.index("--container-artifact") < update.index(
-        "--guest-runtime-artifact"
-    ) < update.index("--host-platform-artifact")
+    assert (
+        update.index("--container-artifact")
+        < update.index("--guest-runtime-artifact")
+        < update.index("--host-platform-artifact")
+    )
     assert "--publisher-private-key" in update
     assert "--publisher-trust-store" in update
     assert "release-update-bundle" not in update
     assert "verify-update-bootstrap-bundle" in verify
     assert "--publisher-trust-store" in verify
+    assert "helper-host-platform-layer-effect-configuration" in host_configuration
+    assert "--installation-id" in host_configuration
+    assert "--apply-revision" in host_configuration
+    assert "--rollback-revision" in host_configuration
+    assert (
+        "internal/vm/update: internal/vm/release-contract "
+        "internal/vm/update/require-inputs "
+        "internal/vm/update/host-platform-artifact "
+        "internal/vm/update/host-platform-effect-configuration"
+    ) in package_makefile
     assert "dist/update/dev/apply-smoke" in root_makefile
     assert "dist/update/release/apply-smoke" in root_makefile
 
@@ -338,8 +343,7 @@ def target_recipe(makefile: str, target: str) -> str:
     start = next(
         index + 1
         for index, line in enumerate(lines)
-        if line.startswith(f"{target}:")
-        and not line.startswith(f"{target}: override")
+        if line.startswith(f"{target}:") and not line.startswith(f"{target}: override")
     )
     recipe_lines: list[str] = []
     for line in lines[start:]:

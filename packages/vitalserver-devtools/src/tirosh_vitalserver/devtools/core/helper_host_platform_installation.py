@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.helper_host_platform_release import (
     HELPER_HOST_RELEASE_MANIFEST_SCHEMA,
 )
@@ -32,6 +33,15 @@ class HostReleaseIdentity:
     release_id: str
     version: str
     archive_sha256: str
+    slot_relative_path: str
+
+
+@dataclass(frozen=True)
+class HostReleaseTransition:
+    installation_id: str
+    expected_installation_revision: int
+    release_id: str
+    version: str
     slot_relative_path: str
 
 
@@ -137,23 +147,58 @@ def make_layer_effect_configuration(
     database_path: str,
     installation_root: str,
     exchange_root: str,
-    apply: tuple[str, int, str, str, str],
-    rollback: tuple[str, int, str, str, str],
+    apply: HostReleaseTransition,
+    rollback: HostReleaseTransition,
 ) -> dict[str, object]:
-    def transition(value: tuple[str, int, str, str, str]) -> dict[str, object]:
-        (
-            installation_id,
-            revision,
-            release_id,
-            version,
-            slot_relative_path,
-        ) = value
+    required_values = {
+        "effectExecutorId": effect_executor_id,
+        "managerExecutablePath": manager_executable_path,
+        "databasePath": database_path,
+        "installationRootPath": installation_root,
+        "exchangeRootPath": exchange_root,
+        "apply.installationId": apply.installation_id,
+        "apply.releaseId": apply.release_id,
+        "apply.version": apply.version,
+        "apply.slotRelativePath": apply.slot_relative_path,
+        "rollback.installationId": rollback.installation_id,
+        "rollback.releaseId": rollback.release_id,
+        "rollback.version": rollback.version,
+        "rollback.slotRelativePath": rollback.slot_relative_path,
+    }
+    for name, value in required_values.items():
+        if not value:
+            raise DomainError(f"Helper Host layer effect configuration requires {name}")
+    for name, value in {
+        "managerExecutablePath": manager_executable_path,
+        "databasePath": database_path,
+        "installationRootPath": installation_root,
+        "exchangeRootPath": exchange_root,
+    }.items():
+        if not value.startswith("/"):
+            raise DomainError(
+                f"Helper Host layer effect configuration requires absolute {name}"
+            )
+    if apply.expected_installation_revision < 1:
+        raise DomainError("apply installation revision must be positive")
+    if (
+        rollback.expected_installation_revision
+        != apply.expected_installation_revision + 1
+    ):
+        raise DomainError(
+            "rollback installation revision must immediately follow apply revision"
+        )
+    if rollback.installation_id != apply.installation_id:
+        raise DomainError("apply and rollback installation identity must match")
+    if rollback.release_id == apply.release_id:
+        raise DomainError("apply and rollback release identity must differ")
+
+    def transition(value: HostReleaseTransition) -> dict[str, object]:
         return {
-            "installationId": installation_id,
-            "expectedInstallationRevision": revision,
-            "targetReleaseId": release_id,
-            "targetReleaseVersion": version,
-            "targetSlotRelativePath": slot_relative_path,
+            "installationId": value.installation_id,
+            "expectedInstallationRevision": value.expected_installation_revision,
+            "targetReleaseId": value.release_id,
+            "targetReleaseVersion": value.version,
+            "targetSlotRelativePath": value.slot_relative_path,
         }
 
     return {

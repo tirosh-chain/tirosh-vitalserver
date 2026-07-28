@@ -58,8 +58,13 @@ def sha256_file(path: Path) -> str:
 
 
 def write_json_document(path: Path, document: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(document, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as error:
+        raise DomainError(
+            f"Helper Host JSON document write failed path={path}: {error}"
+        ) from error

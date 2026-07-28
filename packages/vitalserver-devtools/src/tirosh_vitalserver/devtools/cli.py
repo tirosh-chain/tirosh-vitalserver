@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.macos_release import (
+    helper_host_platform_installation,
     helper_host_platform_release_archive,
     helper_update_layer_artifacts,
 )
@@ -24,6 +25,9 @@ from tirosh_vitalserver.devtools.application.usecases import (
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_services as guest_services_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    helper_host_platform_effect_configuration as host_effect_config_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     helper_host_platform_release as helper_host_platform_release_usecases,
@@ -187,9 +191,7 @@ def main() -> int:
     nginx_bundle.add_argument("--expected-version")
     nginx_bundle.add_argument("--release-file", type=Path)
     nginx_bundle.set_defaults(
-        handler=lambda args: host_proxy_usecases.build_nginx(
-            nginx_bundle_input(args)
-        )
+        handler=lambda args: host_proxy_usecases.build_nginx(nginx_bundle_input(args))
     )
 
     cloud_init = subparsers.add_parser(
@@ -314,9 +316,7 @@ def main() -> int:
     macos_app.add_argument("--clang-module-cache")
     macos_app.add_argument("--codesign-identity", default="-")
     macos_app.set_defaults(
-        handler=lambda args: macos_app_usecases.build_helper(
-            macos_app_input(args)
-        )
+        handler=lambda args: macos_app_usecases.build_helper(macos_app_input(args))
     )
 
     installed_status = subparsers.add_parser(
@@ -617,9 +617,7 @@ def main() -> int:
     runtime_wait_ip.add_argument("--vm-home", type=Path, required=True)
     runtime_wait_ip.add_argument("--timeout", type=int, required=True)
     runtime_wait_ip.set_defaults(
-        handler=lambda args: macos_runtime_usecases.wait_ip(
-            runtime_wait_input(args)
-        )
+        handler=lambda args: macos_runtime_usecases.wait_ip(runtime_wait_input(args))
     )
 
     runtime_wait_http = subparsers.add_parser(
@@ -629,9 +627,7 @@ def main() -> int:
     runtime_wait_http.add_argument("--vm-home", type=Path, required=True)
     runtime_wait_http.add_argument("--timeout", type=int, required=True)
     runtime_wait_http.set_defaults(
-        handler=lambda args: macos_runtime_usecases.wait_http(
-            runtime_wait_input(args)
-        )
+        handler=lambda args: macos_runtime_usecases.wait_http(runtime_wait_input(args))
     )
 
     runtime_wait_rootfs = subparsers.add_parser(
@@ -893,6 +889,85 @@ def main() -> int:
         )
     )
 
+    helper_host_platform_effect_configuration = subparsers.add_parser(
+        "helper-host-platform-layer-effect-configuration",
+        help=(
+            "compose the explicit Helper Host Platform apply and rollback "
+            "owner configuration"
+        ),
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--effect-executor-id",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--manager-executable-path",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--database-path",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--installation-root",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--exchange-root",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--installation-id",
+        required=True,
+    )
+    for operation in ("apply", "rollback"):
+        helper_host_platform_effect_configuration.add_argument(
+            f"--{operation}-revision",
+            type=int,
+            required=True,
+        )
+        helper_host_platform_effect_configuration.add_argument(
+            f"--{operation}-release-id",
+            required=True,
+        )
+        helper_host_platform_effect_configuration.add_argument(
+            f"--{operation}-release-version",
+            required=True,
+        )
+        helper_host_platform_effect_configuration.add_argument(
+            f"--{operation}-slot-relative-path",
+            required=True,
+        )
+    helper_host_platform_effect_configuration.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+    )
+    helper_host_platform_effect_configuration.set_defaults(
+        handler=lambda args: host_effect_config_usecases.compose(
+            host_effect_config_usecases.HelperHostPlatformEffectConfigurationInput(
+                effect_executor_id=args.effect_executor_id,
+                manager_executable_path=args.manager_executable_path,
+                database_path=args.database_path,
+                installation_root=args.installation_root,
+                exchange_root=args.exchange_root,
+                installation_id=args.installation_id,
+                apply_revision=args.apply_revision,
+                apply_release_id=args.apply_release_id,
+                apply_release_version=args.apply_release_version,
+                apply_slot_relative_path=args.apply_slot_relative_path,
+                rollback_revision=args.rollback_revision,
+                rollback_release_id=args.rollback_release_id,
+                rollback_release_version=args.rollback_release_version,
+                rollback_slot_relative_path=args.rollback_slot_relative_path,
+                output=args.output,
+            ),
+            host_effect_config_usecases.HelperHostPlatformEffectConfigurationOperations(
+                write_document=(helper_host_platform_installation.write_json_document),
+            ),
+        )
+    )
+
     verify_update_bootstrap_bundle = subparsers.add_parser(
         "verify-update-bootstrap-bundle",
         help="verify a signed stable bootstrap bundle and its artifact closure",
@@ -1139,9 +1214,7 @@ def main() -> int:
                 config=args.config,
                 release_file=args.release_file,
                 output=args.output,
-                update_bootstrap_trust_store=(
-                    args.update_bootstrap_trust_store
-                ),
+                update_bootstrap_trust_store=(args.update_bootstrap_trust_store),
             )
         )
     )
@@ -1300,9 +1373,7 @@ def main() -> int:
     proxy_plist = subparsers.add_parser("proxy-plist")
     add_proxy_arguments(proxy_plist)
     proxy_plist.set_defaults(
-        handler=lambda args: host_proxy_usecases.render_launchd_plist(
-            proxy_input(args)
-        )
+        handler=lambda args: host_proxy_usecases.render_launchd_plist(proxy_input(args))
     )
 
     env_bootstrap = subparsers.add_parser("env-bootstrap")
@@ -1324,9 +1395,7 @@ def main() -> int:
     require_uv = subparsers.add_parser("require-uv")
     add_environment_arguments(require_uv)
     require_uv.set_defaults(
-        handler=lambda args: environment_usecases.require_uv(
-            environment_input(args)
-        )
+        handler=lambda args: environment_usecases.require_uv(environment_input(args))
     )
 
     compose = subparsers.add_parser("compose")
@@ -1396,8 +1465,9 @@ def proxy_input(args: argparse.Namespace) -> usecase_inputs.HostProxyInput:
     )
 
 
-def update_bootstrap_bundle_operations(
-) -> update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations:
+def update_bootstrap_bundle_operations() -> (
+    update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations
+):
     return update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations(
         build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
         verify_bundle=(
@@ -1406,8 +1476,9 @@ def update_bootstrap_bundle_operations(
     )
 
 
-def update_bootstrap_trust_store_operations(
-) -> update_bootstrap_trust_store_usecases.UpdateBootstrapTrustStoreOperations:
+def update_bootstrap_trust_store_operations() -> (
+    update_bootstrap_trust_store_usecases.UpdateBootstrapTrustStoreOperations
+):
     return update_bootstrap_trust_store_usecases.UpdateBootstrapTrustStoreOperations(
         read_store=trust_store_service.read_trust_store,
         read_ed25519_public_key=trust_store_service.read_ed25519_public_key,

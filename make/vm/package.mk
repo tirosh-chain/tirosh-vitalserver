@@ -4,7 +4,7 @@
 .PHONY: internal/vm/troubleshooting internal/vm/troubleshooting/verify internal/vm/troubleshooting/dev internal/vm/troubleshooting/dev/verify internal/vm/troubleshooting/release internal/vm/troubleshooting/release/verify
 .PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/artifact-verify internal/vm/dmg/environment-preflight internal/vm/dmg/dev internal/vm/dmg/dev/cached internal/vm/dmg/dev/artifact-verify internal/vm/dmg/dev/compile internal/vm/dmg/dev/review internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/artifact-verify internal/vm/dmg/release/compile internal/vm/dmg/release/review internal/vm/dmg/release/runtime-smoke
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
-.PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release internal/vm/update/smoke internal/vm/update/smoke/dev internal/vm/update/smoke/release internal/vm/update/apply-smoke internal/vm/update/apply-smoke/dev internal/vm/update/apply-smoke/release internal/vm/update/rollback-smoke/dev internal/vm/update/tools internal/vm/update/host-platform-artifact internal/vm/update/require-inputs
+.PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release internal/vm/update/smoke internal/vm/update/smoke/dev internal/vm/update/smoke/release internal/vm/update/apply-smoke internal/vm/update/apply-smoke/dev internal/vm/update/apply-smoke/release internal/vm/update/rollback-smoke/dev internal/vm/update/tools internal/vm/update/host-platform-artifact internal/vm/update/host-platform-effect-configuration internal/vm/update/require-inputs
 .PHONY: internal/vm/image-update internal/vm/image-update/dev internal/vm/image-update/legacy-build internal/vm/image-update/legacy-verify internal/vm/image-update/legacy-apply-smoke
 .PHONY: internal/vm/image-update/release
 .PHONY: internal/vm/update/verify internal/vm/update/verify/dev
@@ -29,6 +29,11 @@ VM_UPDATE_GUEST_RUNTIME_EFFECT_EXECUTOR ?= $(VM_UPDATE_SWIFT_RELEASE_DIR)/vitals
 VM_UPDATE_HOST_PLATFORM_EFFECT_EXECUTOR ?= $(VM_UPDATE_SWIFT_RELEASE_DIR)/vitalserver-host-platform-layer-effect-executor
 VM_UPDATE_HOST_PLATFORM_ARTIFACT ?= .tmp/stable-update-artifacts/$(VM_UPDATE_ID)-host-platform.tar.gz
 VM_UPDATE_HELPER_HOST_PLATFORM_MEDIA_TYPE := application/vnd.tirosh.vitalserver-helper.host-platform-release+tar+gzip
+VM_UPDATE_HOST_PLATFORM_EFFECT_EXECUTOR_ID ?= helper-host-platform-effect-executor
+VM_UPDATE_HOST_PLATFORM_MANAGER_EXECUTABLE ?= /usr/local/bin/vitalserver-host-installation-manager
+VM_UPDATE_HOST_PLATFORM_DATABASE ?= /Library/Application Support/VitalServerHelper/update-manager/state.sqlite
+VM_UPDATE_HOST_PLATFORM_INSTALLATION_ROOT ?= /Library/Application Support/VitalServerHelper/host-platform
+VM_UPDATE_HOST_PLATFORM_EXCHANGE_ROOT ?= /Library/Application Support/VitalServerHelper/update-manager/exchange
 
 # Public package artifact knobs.
 VM_NGINX_SOURCE_BIN ?= /opt/homebrew/opt/nginx/bin/nginx
@@ -650,7 +655,7 @@ define require_update_file
 	@test -f "$($(1))" || { echo "error: $(1) must be a regular file: $($(1))"; exit 1; }
 endef
 
-internal/vm/update/tools: internal/vm/update/require-inputs
+internal/vm/update/tools:
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release \
 		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
 		--product vitalserver-update-runner
@@ -683,7 +688,20 @@ internal/vm/update/require-inputs:
 	$(call require_update_value,VM_UPDATE_GUEST_RUNTIME_EFFECT_CONFIGURATION)
 	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ARCHIVE_COMPOSITION)
 	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_ARTIFACT)
-	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_EFFECT_CONFIGURATION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_EFFECT_EXECUTOR_ID)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_MANAGER_EXECUTABLE)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_DATABASE)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_INSTALLATION_ROOT)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_EXCHANGE_ROOT)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_INSTALLATION_ID)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_APPLY_REVISION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_APPLY_RELEASE_ID)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_APPLY_RELEASE_VERSION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_APPLY_SLOT_RELATIVE_PATH)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_REVISION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_RELEASE_ID)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_RELEASE_VERSION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_SLOT_RELATIVE_PATH)
 	$(call require_update_file,VM_UPDATE_PUBLISHER_PRIVATE_KEY)
 	$(call require_update_file,VM_UPDATE_BOOTSTRAP_TRUST_STORE)
 	$(call require_update_file,VM_UPDATE_CONTAINER_ARTIFACT)
@@ -694,16 +712,45 @@ internal/vm/update/require-inputs:
 	$(call require_update_file,VM_UPDATE_GUEST_RUNTIME_EFFECT_CONFIGURATION)
 	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_ARCHIVE_COMPOSITION)
 	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_ROLLBACK_ARTIFACT)
-	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_EFFECT_CONFIGURATION)
 
 internal/vm/update/host-platform-artifact: internal/vm/update/tools
+	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_ARCHIVE_COMPOSITION)
 	@mkdir -p "$(dir $(VM_UPDATE_HOST_PLATFORM_ARTIFACT))"
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" \
 		helper-host-platform-release-archive \
 		--composition "$(VM_UPDATE_HOST_PLATFORM_ARCHIVE_COMPOSITION)" \
 		--output "$(VM_UPDATE_HOST_PLATFORM_ARTIFACT)"
 
-internal/vm/update: internal/vm/release-contract internal/vm/update/host-platform-artifact
+internal/vm/update/host-platform-effect-configuration: internal/vm/update/tools
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_INSTALLATION_ID)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_APPLY_REVISION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_APPLY_RELEASE_ID)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_APPLY_RELEASE_VERSION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_APPLY_SLOT_RELATIVE_PATH)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_REVISION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_RELEASE_ID)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_RELEASE_VERSION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_SLOT_RELATIVE_PATH)
+	@mkdir -p "$(dir $(VM_UPDATE_HOST_PLATFORM_EFFECT_CONFIGURATION))"
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" \
+		helper-host-platform-layer-effect-configuration \
+		--effect-executor-id "$(VM_UPDATE_HOST_PLATFORM_EFFECT_EXECUTOR_ID)" \
+		--manager-executable-path "$(VM_UPDATE_HOST_PLATFORM_MANAGER_EXECUTABLE)" \
+		--database-path "$(VM_UPDATE_HOST_PLATFORM_DATABASE)" \
+		--installation-root "$(VM_UPDATE_HOST_PLATFORM_INSTALLATION_ROOT)" \
+		--exchange-root "$(VM_UPDATE_HOST_PLATFORM_EXCHANGE_ROOT)" \
+		--installation-id "$(VM_UPDATE_HOST_PLATFORM_INSTALLATION_ID)" \
+		--apply-revision "$(VM_UPDATE_HOST_PLATFORM_APPLY_REVISION)" \
+		--apply-release-id "$(VM_UPDATE_HOST_PLATFORM_APPLY_RELEASE_ID)" \
+		--apply-release-version "$(VM_UPDATE_HOST_PLATFORM_APPLY_RELEASE_VERSION)" \
+		--apply-slot-relative-path "$(VM_UPDATE_HOST_PLATFORM_APPLY_SLOT_RELATIVE_PATH)" \
+		--rollback-revision "$(VM_UPDATE_HOST_PLATFORM_ROLLBACK_REVISION)" \
+		--rollback-release-id "$(VM_UPDATE_HOST_PLATFORM_ROLLBACK_RELEASE_ID)" \
+		--rollback-release-version "$(VM_UPDATE_HOST_PLATFORM_ROLLBACK_RELEASE_VERSION)" \
+		--rollback-slot-relative-path "$(VM_UPDATE_HOST_PLATFORM_ROLLBACK_SLOT_RELATIVE_PATH)" \
+		--output "$(VM_UPDATE_HOST_PLATFORM_EFFECT_CONFIGURATION)"
+
+internal/vm/update: internal/vm/release-contract internal/vm/update/require-inputs internal/vm/update/host-platform-artifact internal/vm/update/host-platform-effect-configuration
 	$(call require_update_file,VM_UPDATE_NEXT_UPDATER)
 	$(call require_update_file,VM_UPDATE_CONTAINER_EFFECT_EXECUTOR)
 	$(call require_update_file,VM_UPDATE_GUEST_RUNTIME_EFFECT_EXECUTOR)
