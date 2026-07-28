@@ -60,6 +60,114 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
         )
     }
 
+    func testWaitsForDelayedTerminalJournalWithoutGuessingCompletion() throws {
+        let running = recoveryJournal(state: .running)
+        let succeeded = terminalJournal(
+            state: .succeeded,
+            outcome: .succeeded
+        )
+        var reads = [running, running, succeeded]
+        var elapsed: UInt64 = 0
+
+        let journal = try ProveUpdateBootstrapLifecycleUseCase()
+            .awaitTerminalJournal(
+                updateId: succeeded.id,
+                timeoutMilliseconds: 1_000,
+                pollIntervalMilliseconds: 100,
+                elapsedMilliseconds: { elapsed },
+                wait: { elapsed += $0 },
+                readJournal: { .loaded(reads.removeFirst()) }
+            )
+
+        XCTAssertEqual(journal.state, .succeeded)
+        XCTAssertEqual(elapsed, 200)
+        XCTAssertTrue(reads.isEmpty)
+    }
+
+    func testReportsLastOwnedStateWhenTerminalWaitTimesOut() {
+        let running = recoveryJournal(state: .running)
+        var elapsed: UInt64 = 0
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .awaitTerminalJournal(
+                    updateId: running.id,
+                    timeoutMilliseconds: 200,
+                    pollIntervalMilliseconds: 100,
+                    elapsedMilliseconds: { elapsed },
+                    wait: { elapsed += $0 },
+                    readJournal: { .loaded(running) }
+                )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .terminalJournalWaitTimedOut(
+                    id: running.id,
+                    timeoutMilliseconds: 200,
+                    lastState: .running
+                )
+            )
+        }
+    }
+
+    func testRejectsRollbackProofWithoutHostFailureAndReverseReceipts() {
+        let journal = terminalJournal(
+            state: .failed,
+            outcome: .failed
+        )
+        let report = ProductUpdateExecutionReport(
+            schemaVersion: ProductUpdateExecutionContract.schemaVersion,
+            updateId: journal.id,
+            requestId: journal.requestId,
+            bootstrapEnvelopeId: journal.envelope.id,
+            updateSpecificationSHA256:
+                journal.envelope.specification.sha256,
+            state: .failed,
+            startedAt: "2026-07-29T00:59:00Z",
+            finishedAt: "2026-07-29T01:00:00Z",
+            applyReceipts: [
+                receipt(
+                    journal: journal,
+                    layer: .container,
+                    operation: .apply,
+                    state: .succeeded
+                ),
+                receipt(
+                    journal: journal,
+                    layer: .guestRuntime,
+                    operation: .apply,
+                    state: .failed
+                ),
+            ],
+            rollbackReceipts: [
+                receipt(
+                    journal: journal,
+                    layer: .container,
+                    operation: .rollback,
+                    state: .succeeded
+                ),
+            ],
+            rollback: rollbackEvidence(.succeeded),
+            failure: failureIssue()
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase().execute(
+                expectation: .failedRolledBack,
+                journal: journal,
+                report: report
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .hostFailureRollbackEvidenceInvalid(
+                    applyLayers: [.container, .guestRuntime],
+                    rollbackLayers: [.container]
+                )
+            )
+        }
+    }
+
     func testDoesNotTreatFailedWithoutRollbackAsRollbackProof() {
         let journal = terminalJournal(
             state: .failed,
@@ -129,7 +237,41 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
         state: ProductUpdateExecutionState,
         rollback: ProductUpdateRollbackState
     ) -> ProductUpdateExecutionReport {
-        ProductUpdateExecutionReport(
+        let failedApplyReceipts: [ProductUpdateLayerEffectReceipt] = [
+            receipt(
+                journal: journal,
+                layer: .container,
+                operation: .apply,
+                state: .succeeded
+            ),
+            receipt(
+                journal: journal,
+                layer: .guestRuntime,
+                operation: .apply,
+                state: .succeeded
+            ),
+            receipt(
+                journal: journal,
+                layer: .hostPlatform,
+                operation: .apply,
+                state: .failed
+            ),
+        ]
+        let successfulRollbackReceipts: [ProductUpdateLayerEffectReceipt] = [
+            receipt(
+                journal: journal,
+                layer: .guestRuntime,
+                operation: .rollback,
+                state: .succeeded
+            ),
+            receipt(
+                journal: journal,
+                layer: .container,
+                operation: .rollback,
+                state: .succeeded
+            ),
+        ]
+        return ProductUpdateExecutionReport(
             schemaVersion: ProductUpdateExecutionContract.schemaVersion,
             updateId: journal.id,
             requestId: journal.requestId,
@@ -139,34 +281,67 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
             state: state,
             startedAt: "2026-07-29T00:59:00Z",
             finishedAt: "2026-07-29T01:00:00Z",
-            applyReceipts: [],
-            rollbackReceipts: [],
-            rollback: ProductUpdateRollbackEvidence(
-                state: rollback,
-                observedAt: "2026-07-29T01:00:00Z",
-                evidence: rollback == .succeeded
-                    ? ProductUpdateEvidenceReference(
-                        kind: "product-update-rollback",
-                        id: "\(journal.id):rollback"
-                    )
-                    : nil,
-                issue: rollback == .failed
-                    ? ProductUpdateIssue(
-                        code: "rollback-failed",
-                        message: "rollback failed",
-                        retryable: false,
-                        dependency: "effect-executor"
-                    )
-                    : nil
+            applyReceipts: state == .failed ? failedApplyReceipts : [],
+            rollbackReceipts: rollback == .succeeded
+                ? successfulRollbackReceipts
+                : [],
+            rollback: rollbackEvidence(rollback),
+            failure: state == .failed ? failureIssue() : nil
+        )
+    }
+
+    private func receipt(
+        journal: UpdateBootstrapJournal,
+        layer: UpdateLayer,
+        operation: ProductUpdateLayerEffectOperation,
+        state: ProductUpdateLayerEffectState
+    ) -> ProductUpdateLayerEffectReceipt {
+        ProductUpdateLayerEffectReceipt(
+            schemaVersion: ProductUpdateExecutionContract.schemaVersion,
+            updateId: journal.id,
+            layer: layer,
+            effectExecutorId: "\(layer.rawValue)-effect-executor",
+            operation: operation,
+            artifactSHA256: String(repeating: "d", count: 64),
+            state: state,
+            observedAt: "2026-07-29T01:00:00Z",
+            evidence: ProductUpdateEvidenceReference(
+                kind: "layer-effect",
+                id: "\(layer.rawValue):\(operation.rawValue)"
             ),
-            failure: state == .failed
+            issue: state == .failed ? failureIssue() : nil
+        )
+    }
+
+    private func rollbackEvidence(
+        _ state: ProductUpdateRollbackState
+    ) -> ProductUpdateRollbackEvidence {
+        ProductUpdateRollbackEvidence(
+            state: state,
+            observedAt: "2026-07-29T01:00:00Z",
+            evidence: state == .succeeded
+                ? ProductUpdateEvidenceReference(
+                    kind: "product-update-rollback",
+                    id: "update-42:rollback"
+                )
+                : nil,
+            issue: state == .failed
                 ? ProductUpdateIssue(
-                    code: "host-effect-failed",
-                    message: "host effect failed",
+                    code: "rollback-failed",
+                    message: "rollback failed",
                     retryable: false,
-                    dependency: "host-platform-effect-executor"
+                    dependency: "effect-executor"
                 )
                 : nil
+        )
+    }
+
+    private func failureIssue() -> ProductUpdateIssue {
+        ProductUpdateIssue(
+            code: "host-effect-failed",
+            message: "host effect failed",
+            retryable: false,
+            dependency: "host-platform-effect-executor"
         )
     }
 }

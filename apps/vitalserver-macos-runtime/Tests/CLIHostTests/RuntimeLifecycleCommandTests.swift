@@ -288,11 +288,17 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 "update-42",
                 "--expect",
                 "failed-rolled-back",
+                "--timeout-seconds",
+                "600",
+                "--poll-interval-milliseconds",
+                "500",
             ]),
             .proveUpdateBootstrap(
                 RuntimeProveUpdateBootstrapCommand(
                     updateId: "update-42",
-                    expectation: .failedRolledBack
+                    expectation: .failedRolledBack,
+                    timeoutMilliseconds: 600_000,
+                    pollIntervalMilliseconds: 500
                 )
             )
         )
@@ -346,6 +352,26 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             ["prove-update-bootstrap", "update-42"],
             ["prove-update-bootstrap", "update-42", "--expect", "unknown"],
             ["prove-update-bootstrap", "update-42", "--unknown", "succeeded"],
+            [
+                "prove-update-bootstrap",
+                "update-42",
+                "--expect",
+                "succeeded",
+                "--timeout-seconds",
+                "0",
+                "--poll-interval-milliseconds",
+                "500",
+            ],
+            [
+                "prove-update-bootstrap",
+                "update-42",
+                "--expect",
+                "succeeded",
+                "--timeout-seconds",
+                "600",
+                "--poll-interval-milliseconds",
+                "0",
+            ],
             ["fail-update-bootstrap"],
             ["fail-update-bootstrap", "update-42"],
             ["fail-update-bootstrap", "update-42", "--reason", ""],

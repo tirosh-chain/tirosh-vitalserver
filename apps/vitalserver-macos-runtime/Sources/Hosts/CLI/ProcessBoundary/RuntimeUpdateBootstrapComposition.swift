@@ -422,13 +422,25 @@ extension RuntimeLifecycle {
         _ command: RuntimeProveUpdateBootstrapCommand
     ) throws {
         let repository = updateBootstrapJournalRepository()
-        let journalRead = repository.loadUpdateBootstrapJournal(
-            id: command.updateId
-        )
         let proof = ProveUpdateBootstrapLifecycleUseCase()
-        let journal = try proof.requireJournal(
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        let journal = try proof.awaitTerminalJournal(
             updateId: command.updateId,
-            journalRead: journalRead
+            timeoutMilliseconds: command.timeoutMilliseconds,
+            pollIntervalMilliseconds: command.pollIntervalMilliseconds,
+            elapsedMilliseconds: {
+                let elapsedNanoseconds =
+                    DispatchTime.now().uptimeNanoseconds - startedAt
+                return elapsedNanoseconds / 1_000_000
+            },
+            wait: { milliseconds in
+                Thread.sleep(
+                    forTimeInterval: Double(milliseconds) / 1_000
+                )
+            },
+            readJournal: {
+                repository.loadUpdateBootstrapJournal(id: command.updateId)
+            }
         )
         guard let completion = journal.completion else {
             throw ProveUpdateBootstrapLifecycleError.completionMissing(

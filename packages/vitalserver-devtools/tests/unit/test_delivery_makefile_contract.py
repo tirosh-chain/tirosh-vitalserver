@@ -312,10 +312,14 @@ def test_stable_update_field_smokes_require_owner_proof() -> None:
     assert "runtime apply-update-bootstrap" in apply_smoke
     assert "runtime prove-update-bootstrap" in apply_smoke
     assert "--expect succeeded" in apply_smoke
+    assert "--timeout-seconds" in apply_smoke
+    assert "--poll-interval-milliseconds" in apply_smoke
     assert "VM_UPDATE_ROLLBACK_PROOF_BUNDLE" in rollback_smoke
     assert "verify-update-bootstrap-bundle" in rollback_smoke
-    assert "signed rollback proof bundle unexpectedly succeeded" in rollback_smoke
+    assert "signed rollback proof bundle unexpectedly succeeded" not in rollback_smoke
     assert "--expect failed-rolled-back" in rollback_smoke
+    assert "--timeout-seconds" in rollback_smoke
+    assert "--poll-interval-milliseconds" in rollback_smoke
     assert "dist/update/dev/rollback-smoke" in root_makefile
 
 

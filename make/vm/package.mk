@@ -100,6 +100,8 @@ VM_GOLDEN_NEGATIVE_HOME ?= .tmp/vitalserver-vm-golden-negative
 VM_GOLDEN_RUNTIME_SMOKE_HOME ?= .tmp/vitalserver-vm-golden-runtime-smoke
 VM_AIRGAP_CLEANUP_WAIT_TIMEOUT ?= 30
 VM_AIRGAP_FORCE_STOP_TIMEOUT ?= 5
+VM_UPDATE_PROOF_TIMEOUT_SECONDS ?= 600
+VM_UPDATE_PROOF_POLL_INTERVAL_MILLISECONDS ?= 500
 
 # Public install/uninstall knobs.
 VM_INSTALL_SETTINGS ?=
@@ -815,7 +817,9 @@ internal/vm/update/apply-smoke:
 		--request-id "$(VM_UPDATE_APPLY_REQUEST_ID)"
 	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime prove-update-bootstrap \
 		"$(VM_UPDATE_ID)" \
-		--expect succeeded
+		--expect succeeded \
+		--timeout-seconds "$(VM_UPDATE_PROOF_TIMEOUT_SECONDS)" \
+		--poll-interval-milliseconds "$(VM_UPDATE_PROOF_POLL_INTERVAL_MILLISECONDS)"
 
 internal/vm/update/apply-smoke/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/update/apply-smoke/dev:
@@ -844,19 +848,15 @@ internal/vm/update/rollback-smoke/dev:
 		verify-update-bootstrap-bundle \
 		--bundle "$(VM_UPDATE_ROLLBACK_PROOF_BUNDLE)" \
 		--publisher-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
-	@set +e; \
+	@set -e; \
 	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime apply-update-bootstrap \
 		"$(abspath $(VM_UPDATE_ROLLBACK_PROOF_BUNDLE))" \
-		--request-id "$(VM_UPDATE_ROLLBACK_PROOF_REQUEST_ID)"; \
-	apply_status="$$?"; \
-	set -e; \
-	if [ "$${apply_status}" -eq 0 ]; then \
-		printf "signed rollback proof bundle unexpectedly succeeded\n" >&2; \
-		exit 1; \
-	fi
+		--request-id "$(VM_UPDATE_ROLLBACK_PROOF_REQUEST_ID)"
 	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime prove-update-bootstrap \
 		"$(VM_UPDATE_ROLLBACK_PROOF_ID)" \
-		--expect failed-rolled-back
+		--expect failed-rolled-back \
+		--timeout-seconds "$(VM_UPDATE_PROOF_TIMEOUT_SECONDS)" \
+		--poll-interval-milliseconds "$(VM_UPDATE_PROOF_POLL_INTERVAL_MILLISECONDS)"
 
 internal/vm/image-update/legacy-build: internal/vm/release-contract pwa/build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \

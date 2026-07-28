@@ -19,6 +19,15 @@ public enum ProveUpdateBootstrapLifecycleError:
     case journalIdentityMismatch(expected: String, actual: String)
     case completionMissing(id: String)
     case reportCorrelationMismatch
+    case terminalJournalWaitTimedOut(
+        id: String,
+        timeoutMilliseconds: UInt64,
+        lastState: UpdateBootstrapJournalState
+    )
+    case hostFailureRollbackEvidenceInvalid(
+        applyLayers: [UpdateLayer],
+        rollbackLayers: [UpdateLayer]
+    )
     case expectedSuccess(
         journalState: UpdateBootstrapJournalState,
         completionOutcome: UpdateBootstrapCompletionOutcome,
@@ -78,8 +87,78 @@ public struct ProveUpdateBootstrapLifecycleUseCase {
                         rollbackState: report.rollback.state
                     )
             }
+            let expectedApplyLayers: [UpdateLayer] = [
+                .container,
+                .guestRuntime,
+                .hostPlatform,
+            ]
+            let expectedRollbackLayers: [UpdateLayer] = [
+                .guestRuntime,
+                .container,
+            ]
+            guard report.applyReceipts.map(\.layer) == expectedApplyLayers,
+                  report.applyReceipts.map(\.operation).allSatisfy({
+                      $0 == .apply
+                  }),
+                  report.applyReceipts.dropLast().allSatisfy({
+                      $0.state == .succeeded
+                  }),
+                  report.applyReceipts.last?.state == .failed,
+                  report.rollbackReceipts.map(\.layer)
+                    == expectedRollbackLayers,
+                  report.rollbackReceipts.map(\.operation).allSatisfy({
+                      $0 == .rollback
+                  }),
+                  report.rollbackReceipts.allSatisfy({
+                      $0.state == .succeeded
+                  }) else {
+                throw ProveUpdateBootstrapLifecycleError
+                    .hostFailureRollbackEvidenceInvalid(
+                        applyLayers: report.applyReceipts.map(\.layer),
+                        rollbackLayers:
+                            report.rollbackReceipts.map(\.layer)
+                    )
+            }
         }
         return journal
+    }
+
+    public func awaitTerminalJournal(
+        updateId: String,
+        timeoutMilliseconds: UInt64,
+        pollIntervalMilliseconds: UInt64,
+        elapsedMilliseconds: () -> UInt64,
+        wait: (UInt64) -> Void,
+        readJournal: () -> UpdateBootstrapJournalReadResult
+    ) throws -> UpdateBootstrapJournal {
+        precondition(timeoutMilliseconds > 0)
+        precondition(pollIntervalMilliseconds > 0)
+
+        while true {
+            let journal = try requireJournal(
+                updateId: updateId,
+                journalRead: readJournal()
+            )
+            if journal.state == .succeeded || journal.state == .failed {
+                return journal
+            }
+
+            let elapsed = elapsedMilliseconds()
+            guard elapsed < timeoutMilliseconds else {
+                throw ProveUpdateBootstrapLifecycleError
+                    .terminalJournalWaitTimedOut(
+                        id: updateId,
+                        timeoutMilliseconds: timeoutMilliseconds,
+                        lastState: journal.state
+                    )
+            }
+            wait(
+                min(
+                    pollIntervalMilliseconds,
+                    timeoutMilliseconds - elapsed
+                )
+            )
+        }
     }
 
     public func requireJournal(

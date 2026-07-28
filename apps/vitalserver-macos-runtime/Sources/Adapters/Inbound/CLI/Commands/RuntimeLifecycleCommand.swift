@@ -240,7 +240,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>
       vitalserver-vm runtime resume-update-bootstrap-handoff <update-id>
       vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>
-      vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back
+      vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds>
       vitalserver-vm runtime fail-update-bootstrap <update-id> --reason <reason>
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
@@ -355,18 +355,27 @@ extension RuntimeLifecycleCommand {
         _ arguments: [String]
     ) throws -> RuntimeProveUpdateBootstrapCommand {
         let usage =
-            "usage: vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back"
-        guard arguments.count == 3,
+            "usage: vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds>"
+        guard arguments.count == 7,
               !arguments[0].isEmpty,
               arguments[1] == "--expect",
               let expectation = UpdateBootstrapLifecycleProofExpectation(
                 rawValue: arguments[2]
-              ) else {
+              ),
+              arguments[3] == "--timeout-seconds",
+              let timeoutSeconds = UInt64(arguments[4]),
+              timeoutSeconds > 0,
+              timeoutSeconds <= UInt64.max / 1_000,
+              arguments[5] == "--poll-interval-milliseconds",
+              let pollIntervalMilliseconds = UInt64(arguments[6]),
+              pollIntervalMilliseconds > 0 else {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         return RuntimeProveUpdateBootstrapCommand(
             updateId: arguments[0],
-            expectation: expectation
+            expectation: expectation,
+            timeoutMilliseconds: timeoutSeconds * 1_000,
+            pollIntervalMilliseconds: pollIntervalMilliseconds
         )
     }
 
