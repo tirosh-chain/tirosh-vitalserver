@@ -1067,6 +1067,46 @@ describe("runtime control contract schemas", () => {
         ]
       }))
     ).toThrow();
+
+    expect(
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        beds: [
+          fullVitalBedRecord({
+            linkedRecorderVersion: undefined
+          })
+        ]
+      })).beds[0]?.linkedRecorderVersion
+    ).toBeUndefined();
+
+    expect(
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        beds: [
+          fullVitalBedRecord({
+            linkedRecorderVersion: "1.18.43"
+          })
+        ]
+      })).beds[0]?.linkedRecorderVersion
+    ).toBe("1.18.43");
+  });
+
+  it("accepts legacy Recorder observability without supportSource", () => {
+    const parsed = vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+      recorders: [
+        fullVitalRecorderRecord({
+          observability: {
+            state: "notReported",
+            vrcode: "VR_TEST",
+            supportState: "unknown",
+            supportSource: undefined,
+            reportState: "notEvaluated"
+          }
+        })
+      ]
+    }));
+
+    expect(parsed.recorders[0]?.observability?.supportSource).toBeUndefined();
+    expect(parsed.recorders[0]?.observability?.supportState).toBe("unknown");
+    expect(parsed.recorders[0]?.observability?.reportState).toBe("notEvaluated");
   });
 
   it("requires explicit VitalDB read model visibility", () => {
@@ -1825,6 +1865,7 @@ function fullVitalBedRecord(overrides: Record<string, unknown> = {}) {
     vrcode: null,
     linkedRecorderStatus: null,
     linkedRecorderIP: null,
+    linkedRecorderVersion: null,
     linkedRecorderLastSeenAt: null,
     status: "online",
     visibility: "visible",

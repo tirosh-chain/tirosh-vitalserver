@@ -550,6 +550,15 @@
     @apply inline-flex min-w-0 flex-wrap items-center gap-2;
   }
 
+  .bed-identity {
+    @apply inline-grid min-w-0 gap-1;
+  }
+
+  .bed-identity > span {
+    @apply text-sm;
+    overflow-wrap: anywhere;
+  }
+
   .visibility-badge {
     @apply inline-flex rounded-full border border-app-border bg-app-control/40 px-2 py-0.5 text-xs font-extrabold text-app-muted;
   }

@@ -2177,7 +2177,8 @@ export interface components {
             vrcode: string;
             /** @enum {string} */
             supportState: "supported" | "unsupported" | "unknown";
-            supportSource: string | null;
+            /** @description Source that established Recorder observability support. Current providers emit this field explicitly; legacy providers may omit it. */
+            supportSource?: string | null;
             /** @enum {string} */
             reportState: "notEvaluated" | "awaitingFirstReport" | "current" | "stale" | "missing" | "readFailed";
             profileState: string | null;
@@ -2274,6 +2275,8 @@ export interface components {
             linkedRecorderStatus: components["schemas"]["RuntimeVitalRecorderStatus"] | null;
             /** @description IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
             linkedRecorderIP: string | null;
+            /** @description Version reported by the VRecorder linked to this bed. Current providers emit this field explicitly; legacy providers may omit it. */
+            linkedRecorderVersion?: string | null;
             /** @description Last seen timestamp reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
             linkedRecorderLastSeenAt: string | null;
             status: components["schemas"]["RuntimeVitalBedStatus"];
