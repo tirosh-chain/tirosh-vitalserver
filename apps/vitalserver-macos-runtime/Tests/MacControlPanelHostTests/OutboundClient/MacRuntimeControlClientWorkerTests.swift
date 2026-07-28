@@ -18,7 +18,6 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let worker = MacRuntimeControlReadWorker(
             releaseInfo: RuntimeReleaseInfo(
                 helperVersion: "helper",
-                minimumUpdaterVersion: "1",
                 vitalServerVersion: "runtime",
                 services: []
             ),
@@ -79,7 +78,6 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         )
         let releaseInfo = RuntimeReleaseInfo(
             helperVersion: "helper",
-            minimumUpdaterVersion: "1",
             vitalServerVersion: "runtime",
             services: []
         )

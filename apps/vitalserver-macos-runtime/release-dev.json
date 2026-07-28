@@ -1,8 +1,7 @@
 {
   "channel": "dev",
-  "helperVersion": "0.2.1",
-  "releaseLabel": "0.2.1-dev",
-  "minUpdaterVersion": "0.1.15",
+  "helperVersion": "0.2.2",
+  "releaseLabel": "0.2.2-dev",
   "targetPlatform": "macos-arm64",
   "distribution": {
     "profile": "dev",

@@ -1,8 +1,7 @@
 {
   "channel": "stable",
-  "helperVersion": "0.2.1",
-  "releaseLabel": "0.2.1",
-  "minUpdaterVersion": "0.1.15",
+  "helperVersion": "0.2.2",
+  "releaseLabel": "0.2.2",
   "targetPlatform": "macos-arm64",
   "distribution": {
     "profile": "stable",

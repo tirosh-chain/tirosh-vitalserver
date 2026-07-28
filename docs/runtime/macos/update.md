@@ -7,9 +7,9 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 질문 | 답 |
 |---|---|
 | update 입력 단위는? | `dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball |
-| 현장 적용 UI는? | 0.2.1 UI는 integrity 확인만 제공하고 apply는 `canApplyBundle=false`로 차단한다 |
-| CLI backend는? | 0.2.1에서는 installed `dev` launcher와 명시적 `--allow-unsigned-dev-bundle` intent만 `/usr/local/bin/vitalserver-vm runtime apply-bundle`을 실행할 수 있다 |
-| 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size로 integrity를 확인한다. publisher authenticity는 검증하지 않는다 |
+| 현장 적용 UI는? | 0.2.2 installed macOS Host는 stable bootstrap verify/apply capability를 제공한다 |
+| CLI backend는? | Runtime Control worker가 `verify-update-bootstrap`과 `apply-update-bootstrap --request-id`를 실행한다 |
+| 검증 기준은? | publisher signature, target, bundle-owned next updater, specification digest, payload closure를 인증한다 |
 | Product Update bundle에 rootfs가 들어가나? | 아니다. `make dist/update/release`는 rootfs를 제외한다 |
 | rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make dist/image-update/release`를 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
@@ -17,11 +17,11 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | Docker image bundle만 바꾸면 container가 자동 갱신되나? | update 단계에서 guest-side activation을 실행해야 한다 |
 | `bootstrap.sh` 수정은 update bundle로 반영되나? | 된다. `guest-deploy.tar.gz`에 포함되고 기본 migration/activation 경로로 반영된다 |
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
-| update 중 watchdog이 복구를 시도하나? | 안 한다. `apply-bundle`, `activate-guest-update`, `rollback` 진행 중에는 watchdog auto-recovery를 suppress한다 |
+| update 중 watchdog이 복구를 시도하나? | 안 한다. stable update operation lease가 활성인 동안 watchdog auto-recovery를 suppress한다 |
 
-## 0.2.1 Update Apply 제한
+## Historical: 0.2.1 Update Apply 제한
 
-0.2.1 bundle의 `signature` 파일은 `unsigned` placeholder이고 trusted publisher verification 구현과 trust root/config 계약이 없습니다. 따라서 integrity 확인 성공을 publisher 인증 성공으로 취급하면 안 됩니다.
+아래는 이전 0.2.1 설치본의 containment 계약입니다. 0.2.2 stable bootstrap의 현재 동작이 아닙니다. 0.2.1 bundle의 `signature` 파일은 `unsigned` placeholder이고 trusted publisher verification 구현과 trust root/config 계약이 없었습니다.
 
 | 진입점 | 0.2.1 계약 |
 |---|---|
@@ -55,7 +55,7 @@ bundle kind는 의도적으로 두 개만 둡니다.
 | `product-update` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
-Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 않고 `product-update`의 channel, changed components, `requiresTwoPhaseUpdate` 같은 metadata로 표현합니다.
+Hotfix와 service-only update는 별도 kind를 만들지 않고 `product-update`의 signed specification layer plan으로 표현합니다. Updater bridge와 `requiresTwoPhaseUpdate`는 legacy schema-3 경로에만 남아 있으며 stable bootstrap은 매 release의 signed next updater를 사용합니다.
 
 ### Layer And Version Model
 
@@ -67,7 +67,7 @@ Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 �
 | Helper UI | cross-platform Web/PWA primary | iPhone/Android/iPad/desktop browser와 native shell wrapper에서 쓰는 product UI | `components.helperUI` |
 | Native Shell | platform-specific | install/bootstrap/pairing/recovery/native picker/tray/menu | `components.nativeShell` |
 | Runtime Control API | common API contract, platform-specific host implementation | auth/session/pairing, capability, status/log/update/settings/admin endpoint, progress/log streaming | `components.runtimeControl` |
-| Updater | host/platform-specific | product update bundle 검증/적용/rollback, manifest compatibility gate | `components.updater`, `minUpdaterVersion` |
+| Updater | host/platform-specific | signed bootstrap 검증, bundle-owned next updater handoff, 적용/rollback | bootstrap envelope, Product Update Specification |
 | Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, auto-recovery suppression | `components.supervisor` |
 | VM Driver | platform-specific | macOS Apple Virtualization, Windows provider 등 VM lifecycle provider | `components.vmDriver` |
 | Service Stack | mostly guest/service-specific | guest deploy assets, compose, container image bundle, service activation 단위 | `components.serviceStack` |
@@ -121,9 +121,26 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 | result에 `requestId` 없음 | baseline 계약 위반으로 stale/failed 처리 |
 | result status가 `failed` | 즉시 실패 처리하고 message를 Helper UI와 command log에 노출 |
 
-### Manifest Compatibility
+### Stable Bootstrap Compatibility
 
-update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니다.
+현재 stable update에는 minimum updater version이나 updater bridge gate가 없습니다.
+설치된 bundle-owned bootstrap updater는 고정된 signed envelope에서 publisher,
+target, next updater artifact, opaque specification digest, payload closure를
+검증합니다. 검증된 next updater만 변경되는 Product Update Specification을
+해석합니다. 따라서 `release.json`, `release-dev.json`, Runtime Control release
+read model은 minimum updater version을 소유하거나 노출하지 않습니다.
+
+필드나 specification이 바뀌어도 기존 Host가 새 specification을 추측하거나
+fallback으로 해석하지 않습니다. 기존 Host는 고정 bootstrap 계약만 검증하고,
+bundle이 제공한 next updater에 인증된 입력을 그대로 handoff합니다.
+
+### Legacy schema-3 Manifest Compatibility
+
+아래 계약은 전환 기간 동안 남아 있는 legacy publisher/engine에만 적용됩니다.
+현재 stable Product Update나 release source of truth 계약이 아닙니다.
+현재 `make dist/update/*`도 TS-199의 real layer composer/executor wiring이 끝날
+때까지 이 legacy publisher를 사용하므로 stable release candidate proof가
+아닙니다.
 
 ```json
 {
@@ -134,7 +151,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
   "helperVersion": "0.2.0",
   "releaseLabel": "0.2.0",
   "targetPlatform": "macos-arm64",
-  "minUpdaterVersion": "0.1.6",
+  "minUpdaterVersion": "0.0.0",
   "components": {
     "helperUI": "0.2.0+macos.1",
     "nativeShell": "0.2.0+macos.1",
@@ -166,7 +183,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 | `requiresGuestActivation` | `guest-deploy` 교체 후 VM 내부 activation이 필요한지 |
 | `requiresTwoPhaseUpdate` | updater 자체를 먼저 갱신해야 하는 bridge update가 필요한지 |
 
-Reader는 required contract field 누락을 실패로 처리합니다. 새 필드는 가능한 optional metadata로 추가하고, required field/schema major version을 바꾸는 경우에는 기존 Updater가 읽을 수 있는 bridge/two-phase Product Update를 먼저 제공해야 합니다. Stable/dev artifact identity와 optional container 포함 정책은 `apps/vitalserver-macos-runtime/release.json` 및 `release-dev.json`을 SoT로 삼고, build tool이 manifest로 변환합니다.
+Legacy reader는 required contract field 누락을 실패로 처리합니다. 이 serializer가 요구하는 `minUpdaterVersion`은 explicit no-gate 값으로만 기록하며 stable/dev release source of truth에는 저장하지 않습니다. Stable/dev artifact identity와 optional container 포함 정책은 `apps/vitalserver-macos-runtime/release.json` 및 `release-dev.json`을 SoT로 삼습니다.
 
 `requiresTwoPhaseUpdate`의 owner 경계는 아래처럼 고정합니다.
 

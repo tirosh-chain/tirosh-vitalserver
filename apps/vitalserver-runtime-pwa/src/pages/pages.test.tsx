@@ -1158,6 +1158,7 @@ describe("runtime console pages", () => {
 
     expect(screen.getByText("Product information")).toBeInTheDocument();
     expect(screen.getByText("helper-1.0.0")).toBeInTheDocument();
+    expect(screen.queryByText("Minimum updater version")).not.toBeInTheDocument();
     expect(screen.getByText("runtime.example")).toBeInTheDocument();
     expect(screen.getAllByText("ghcr.io/tirosh/app:1").length).toBeGreaterThan(0);
   });
@@ -2005,7 +2006,6 @@ function setupDefaultHooks() {
   }));
   hooks.useReleaseInfo.mockReturnValue(query({
     helperVersion: "helper-1.0.0",
-    minimumUpdaterVersion: "updater-1.0.0",
     vitalServerVersion: "vitalserver-1.0.0",
     services: [{ name: "app", image: "ghcr.io/tirosh/app:1", version: "1" }]
   }));

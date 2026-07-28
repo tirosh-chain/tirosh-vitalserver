@@ -24,9 +24,9 @@
 | 신규 설치 release 검증 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/release` | release.json 기반 release 검증 |
 | 개발용 `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/dev` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/dev`가 소유 |
 | release `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/release` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/release`가 소유 |
-| air-gapped Product Update | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | `make dist/update/release` | 0.2.1은 integrity 확인만 지원. stable/UI/API apply는 차단하고, 설치 channel이 `dev`인 로컬 CLI에서 명시적 개발 flag로만 apply 가능 |
+| air-gapped Product Update | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | `make dist/update/release` | TS-199 real layer composition 전까지 legacy publisher 산출물이므로 stable release candidate로 사용하지 않음 |
 | VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make dist/image-update/release` | rootfs-base 교체가 필요한 경우에만 사용 |
-| Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | 전달 전 manifest/checksum 검증 |
+| Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | legacy manifest/checksum integrity 검증; stable bootstrap publisher proof가 아님 |
 | VM Image Update bundle 검증 | VM image update tarball | `make dist/image-update/verify/release` | 전달 전 manifest/checksum 검증 |
 | 개발 설치 테스트 | installed runtime | `make dist/install/dev` | 현재 repo가 있는 개발 Mac에 설치 후 `make dist/installed/health` |
 
@@ -193,11 +193,15 @@ Release package와 DMG build는 expensive host packaging 전에 preflight를 통
 
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-`make devtools/build`는 manifest metadata를 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. Artifact identity, 표시명, update compatibility, optional container service 정책은 manifest가 소유합니다. Guest image 변경은 manifest와 immutable Compose/VM Docker plan을 함께 변경하고 release-contract로 대조합니다.
+`make devtools/build`는 manifest metadata를 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. Artifact identity, 표시명, optional container service 정책은 manifest가 소유합니다. Guest image 변경은 manifest와 immutable Compose/VM Docker plan을 함께 변경하고 release-contract로 대조합니다.
 
-Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatform`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatform`과 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
+현재 stable update compatibility는 release manifest의 version gate가 아니라 signed bootstrap envelope의 고정 계약과 bundle-owned next updater로 유지합니다. `release.json`과 `release-dev.json`은 `minUpdaterVersion`을 소유하지 않습니다. Bootstrap은 publisher, target, next updater, specification digest, payload closure만 검증하고, 변경되는 specification은 인증된 next updater가 해석합니다.
 
-Layer별 platform dependency도 manifest 설계 기준입니다. Helper UI와 VM Driver는 platform-specific이고, Updater는 host/platform-specific compatibility gate이며, Supervisor는 host/platform-aware health/recovery loop입니다. Service Stack은 guest/service-specific 실행 세트이고, VM Image는 Linux guest OS image artifact입니다.
+`schemaVersion: 3`, `minUpdaterVersion`, `requiresTwoPhaseUpdate`를 사용하는 manifest는 전환 중인 legacy publisher/engine 계약입니다. 이 legacy serializer가 요구하는 값은 현재 product release source of truth나 Runtime Control read model로 올리지 않습니다.
+
+현재 `make dist/update/*` release composition은 실제 layer artifact와 effect executor 연결이 완료될 때까지 이 legacy publisher를 사용합니다. Stable bootstrap verifier/apply command의 존재만으로 해당 target 산출물이 stable release candidate가 되지는 않습니다. TS-199의 signed specification/payload closure가 real Container, Guest Runtime, Host Platform artifact로 완성되어야 publisher 전환이 끝납니다.
+
+Layer별 platform dependency도 update specification 설계 기준입니다. Helper UI와 VM Driver는 platform-specific이고, Updater는 host/platform-specific bootstrap 검증과 signed next-updater handoff를 소유하며, Supervisor는 host/platform-aware health/recovery loop입니다. Service Stack은 guest/service-specific 실행 세트이고, VM Image는 Linux guest OS image artifact입니다.
 
 Update bundle kind는 두 개로 제한합니다.
 
@@ -206,7 +210,7 @@ Update bundle kind는 두 개로 제한합니다.
 | `product-update` | `make dist/update/release` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | `make dist/image-update/release` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
-Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `product-update` metadata로 표현합니다.
+Hotfix와 service-only update는 별도 kind가 아니라 `product-update`의 signed specification layer plan으로 표현합니다. Updater bridge는 legacy schema-3 경로에만 남아 있으며 stable bootstrap은 매 release의 signed next updater를 사용합니다.
 
 ## Bundled observer services
 

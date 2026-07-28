@@ -591,7 +591,6 @@ function createGateway(): GatewayMock {
     }),
     getReleaseInfo: vi.fn().mockResolvedValue({
       helperVersion: "1.0.0",
-      minimumUpdaterVersion: "1.0.0",
       vitalServerVersion: "1.0.0",
       services: []
     }),

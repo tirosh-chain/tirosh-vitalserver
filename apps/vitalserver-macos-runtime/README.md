@@ -278,7 +278,11 @@ apps/vitalserver-macos-runtime/release-dev.json
 
 `VitalServer Helper`는 최상위 product release입니다. 플랫폼별 UI/VM provider 구현은 같은 Helper release 아래의 variant로 보고, 세부 변경 범위는 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatform`, `minUpdaterVersion`, `components`를 기준으로 해석합니다. 설치된 updater channel과 bundle channel이 다르면 apply preflight에서 거부합니다. `helperVersion`은 Apple/package-safe numeric version이고, `releaseLabel`은 `0.1.7-dev`처럼 artifact, staging, backup, installed version 표시에 쓰는 identity입니다.
+현재 stable Product Update는 signed bootstrap envelope와 Product Update Specification의 구조적 계약으로 호환성을 판단합니다. `release.json`과 `release-dev.json`에는 minimum updater version을 두지 않으며 Runtime Control도 이를 제품 상태로 노출하지 않습니다. 설치된 bundle-owned bootstrap updater가 고정 envelope를 검증하고, 인증된 specification과 payload를 bundle이 제공한 next updater에 넘기는 방식이므로 변경되는 specification을 기존 Host의 version gate 없이 처리할 수 있습니다.
+
+기존 `schemaVersion: 3` update bundle publisher/engine은 전환 기간 동안 legacy 경로로만 남아 있습니다. 그 serializer가 요구하는 `minUpdaterVersion`은 제품 release source of truth가 아니며 현재 release/API/UI 계약으로 올리지 않습니다. `helperVersion`은 Apple/package-safe numeric version이고, `releaseLabel`은 `0.2.2-dev`처럼 artifact, staging, backup, installed version 표시에 쓰는 identity입니다.
+
+현재 `make dist/update/*` release composition은 real layer artifact/executor wiring이 완료될 때까지 legacy publisher를 사용합니다. Stable bootstrap verifier/apply command가 존재한다는 사실만으로 이 target의 산출물을 stable release candidate로 취급하지 않습니다. 완료 조건은 TS-199의 Helper-owned specification과 실제 Container, Guest Runtime, Host Platform payload closure가 같은 signed bundle로 조립되는 것입니다.
 
 `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
 

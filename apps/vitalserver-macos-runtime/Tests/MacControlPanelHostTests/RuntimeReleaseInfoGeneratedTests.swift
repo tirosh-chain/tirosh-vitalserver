@@ -1,3 +1,4 @@
+import Foundation
 import RuntimeControl
 @testable import MacControlPanelHost
 import XCTest
@@ -25,5 +26,14 @@ final class RuntimeReleaseInfoGeneratedTests: XCTestCase {
 
         XCTAssertEqual(services.map(\.name), expectedNames)
         XCTAssertFalse(services.map(\.image).contains { $0.contains("testkit") })
+    }
+
+    func testGeneratedReleaseInfoDoesNotExposeAnUpdaterVersionGate() throws {
+        let encoded = try JSONEncoder().encode(RuntimeReleaseInfo.generated)
+        let document = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        XCTAssertNil(document["minimumUpdaterVersion"])
     }
 }

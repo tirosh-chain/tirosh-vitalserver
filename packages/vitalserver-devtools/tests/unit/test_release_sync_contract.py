@@ -48,6 +48,30 @@ def release_workspace(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, objec
     )
 
 
+@pytest.mark.parametrize(
+    ("file_name", "expected_channel", "expected_label"),
+    (
+        ("release.json", "stable", "0.2.2"),
+        ("release-dev.json", "dev", "0.2.2-dev"),
+    ),
+)
+def test_helper_release_manifest_declares_0_2_2_without_version_gate(
+    file_name: str,
+    expected_channel: str,
+    expected_label: str,
+) -> None:
+    release = json.loads(
+        (
+            ROOT / "apps/vitalserver-macos-runtime" / file_name
+        ).read_text(encoding="utf-8")
+    )
+
+    assert release["channel"] == expected_channel
+    assert release["helperVersion"] == "0.2.2"
+    assert release["releaseLabel"] == expected_label
+    assert "minUpdaterVersion" not in release
+
+
 def test_release_sync_only_materializes_designated_swift_sources(
     tmp_path: Path,
 ) -> None:
@@ -72,7 +96,28 @@ def test_release_sync_only_materializes_designated_swift_sources(
     generated_dir = (
         runtime_dir / "Sources/Adapters/Inbound/MacControlPanel/Generated"
     )
-    assert (generated_dir / "RuntimeReleaseInfo+Generated.swift").is_file()
+    generated_release = (
+        generated_dir / "GeneratedRelease.swift"
+    ).read_text(encoding="utf-8")
+    generated_release_info = (
+        generated_dir / "RuntimeReleaseInfo+Generated.swift"
+    ).read_text(encoding="utf-8")
+    assert "minUpdaterVersion" not in generated_release
+    assert "minimumUpdaterVersion" not in generated_release_info
+
+
+def test_release_sync_rejects_legacy_minimum_updater_field(
+    tmp_path: Path,
+) -> None:
+    module = load_sync_release_module()
+    runtime_dir, _, _, release = release_workspace(tmp_path)
+    release["minUpdaterVersion"] = "0.1.15"
+
+    with pytest.raises(
+        SystemExit,
+        match="unsupported release field: minUpdaterVersion",
+    ):
+        module.sync_release(runtime_dir, release, runtime_dir / "release-dev.json")
 
 
 def test_release_sync_rejects_compose_image_drift_without_rewriting_it(

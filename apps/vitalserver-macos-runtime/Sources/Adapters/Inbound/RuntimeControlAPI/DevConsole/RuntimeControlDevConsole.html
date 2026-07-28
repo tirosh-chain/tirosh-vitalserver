@@ -564,7 +564,6 @@
     function renderRelease(release) {
       const values = [
         ["helper version", release.helperVersion],
-        ["minimum updater", release.minimumUpdaterVersion],
         ["VitalServer version", release.vitalServerVersion]
       ];
       const services = (release.services || []).map((service) => (

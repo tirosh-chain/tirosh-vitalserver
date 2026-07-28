@@ -1939,7 +1939,6 @@ export const recorderObservabilityIncidentsSchema = z
 export const runtimeReleaseInfoSchema = z
   .object({
     helperVersion: z.string().optional(),
-    minimumUpdaterVersion: z.string().optional(),
     vitalServerVersion: z.string().optional(),
     services: z
       .array(

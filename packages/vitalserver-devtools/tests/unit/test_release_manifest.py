@@ -16,7 +16,6 @@ def test_load_release_manifest_reads_host_proxy_image(tmp_path: Path) -> None:
                 "channel": "dev",
                 "helperVersion": "0.1.7",
                 "releaseLabel": "0.1.7-dev",
-                "minUpdaterVersion": "0.1.7",
                 "targetPlatform": "macos-arm64",
                 "vitalServerVersion": "2.3.4",
                 "bundle": {
@@ -44,6 +43,43 @@ def test_load_release_manifest_reads_host_proxy_image(tmp_path: Path) -> None:
     assert release.lab_image == "vitalserver-lab:0.2.0"
     assert release.postgres_image == "postgres:16-alpine"
     assert release.optional_container_services == ("redis-ui",)
+    assert not hasattr(release, "minimum_updater_version")
+
+
+def test_load_release_manifest_rejects_legacy_minimum_updater_field(
+    tmp_path: Path,
+) -> None:
+    release_file = tmp_path / "release.json"
+    release_file.write_text(
+        json.dumps(
+            {
+                "channel": "dev",
+                "helperVersion": "0.2.2",
+                "releaseLabel": "0.2.2-dev",
+                "minUpdaterVersion": "0.1.15",
+                "targetPlatform": "macos-arm64",
+                "vitalServerVersion": "2.3.4",
+                "bundle": {
+                    "optionalContainerServices": [],
+                },
+                "services": {
+                    "lab": {
+                        "image": "vitalserver-lab:0.2.0",
+                    },
+                    "postgres": {
+                        "image": "postgres:16-alpine",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match=r"unsupported release field: minUpdaterVersion",
+    ):
+        load_release_manifest(release_file)
 
 
 def test_load_release_manifest_requires_runtime_product_services(
@@ -56,7 +92,6 @@ def test_load_release_manifest_requires_runtime_product_services(
                 "channel": "dev",
                 "helperVersion": "0.2.0",
                 "releaseLabel": "0.2.0-dev",
-                "minUpdaterVersion": "0.1.15",
                 "targetPlatform": "macos-arm64",
                 "vitalServerVersion": "2.3.4",
                 "bundle": {
@@ -86,7 +121,6 @@ def test_load_release_manifest_rejects_testkit_product_service(
                 "channel": "dev",
                 "helperVersion": "0.2.0",
                 "releaseLabel": "0.2.0-dev",
-                "minUpdaterVersion": "0.1.15",
                 "targetPlatform": "macos-arm64",
                 "vitalServerVersion": "2.3.4",
                 "bundle": {
@@ -122,7 +156,6 @@ def test_load_release_manifest_rejects_testkit_optional_service(
                 "channel": "dev",
                 "helperVersion": "0.2.0",
                 "releaseLabel": "0.2.0-dev",
-                "minUpdaterVersion": "0.1.15",
                 "targetPlatform": "macos-arm64",
                 "vitalServerVersion": "2.3.4",
                 "bundle": {

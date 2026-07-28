@@ -53,7 +53,6 @@ def test_release_update_bundle_forwards_explicit_updater_bridge_contract(
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -81,9 +80,17 @@ def test_release_update_bundle_forwards_explicit_updater_bridge_contract(
         "resolve_path",
         lambda root, value: Path(value) if Path(value).is_absolute() else root / value,
     )
-    monkeypatch.setattr(macos_update_bundle_usecases, "sync_release", lambda *args: None)
+    monkeypatch.setattr(
+        macos_update_bundle_usecases,
+        "sync_release",
+        lambda *args: None,
+    )
     monkeypatch.setattr(macos_update_bundle_usecases, "build_swift", lambda *args: None)
-    monkeypatch.setattr(macos_update_bundle_usecases, "sign_runtime_cli", lambda *args: None)
+    monkeypatch.setattr(
+        macos_update_bundle_usecases,
+        "sign_runtime_cli",
+        lambda *args: None,
+    )
     monkeypatch.setattr(
         macos_update_bundle_usecases,
         "build_app_bundle",
@@ -140,6 +147,7 @@ def test_release_update_bundle_forwards_explicit_updater_bridge_contract(
     captured_spec = captured_specs[0]
     assert captured_spec.bundle_kind == bundle_kind
     assert captured_spec.requires_two_phase_update is requires_two_phase_update
+    assert captured_spec.min_updater_version == "0.0.0"
 
 
 def test_verify_release_update_bundle_uses_explicit_output_dir(
@@ -153,7 +161,6 @@ def test_verify_release_update_bundle_uses_explicit_output_dir(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         )
@@ -216,7 +223,6 @@ def test_apply_smoke_release_update_bundle_uses_installed_cli(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         )
@@ -308,7 +314,6 @@ def test_apply_smoke_release_update_bundle_rejects_stable_channel_before_sudo(
             channel="stable",
             helper_version="1.2.3",
             release_label="1.2.3",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -322,7 +327,7 @@ def test_apply_smoke_release_update_bundle_rejects_stable_channel_before_sudo(
     with pytest.raises(
         SystemExit,
         match=(
-            "0.2.1 stable update apply smoke is unavailable because "
+            "legacy stable update apply smoke is unavailable because "
             "trusted publisher verification is not implemented"
         ),
     ):
@@ -357,7 +362,6 @@ def test_apply_smoke_release_update_bundle_reports_sudo_failure(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         )

@@ -71,7 +71,6 @@ def test_package_clean_plan_allows_managed_build_paths() -> None:
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -91,7 +90,6 @@ def test_package_clean_plan_rejects_workspace_root() -> None:
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -108,7 +106,6 @@ def test_default_troubleshooting_tools_output_uses_release_label() -> None:
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -127,7 +124,6 @@ def test_package_outputs_include_pkg_and_dmg_outputs() -> None:
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -164,7 +160,6 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -741,7 +736,6 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -1113,7 +1107,6 @@ def test_release_dmg_artifact_verify_accepts_expected_layout(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -1259,7 +1252,6 @@ def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -1332,7 +1324,6 @@ def test_release_dmg_artifact_verify_reports_detach_failure(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -1378,12 +1369,12 @@ def test_install_pkg_blocks_present_receipt_before_settings_or_installer_effects
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = repo_root()
-    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output = tmp_path / "VitalServerHelper-0.2.2-dev.pkg"
     pkg_output.write_text("pkg", encoding="utf-8")
     install_settings = tmp_path / "install-settings.json"
     install_settings.write_text("{}", encoding="utf-8")
     events: list[str] = []
-    installed_version = NumericPackageVersion.parse("0.2.1")
+    installed_version = NumericPackageVersion.parse("0.2.2")
     assert installed_version is not None
 
     monkeypatch.setattr(
@@ -1424,7 +1415,7 @@ def test_install_pkg_blocks_receipt_read_failure_before_effects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = repo_root()
-    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output = tmp_path / "VitalServerHelper-0.2.2-dev.pkg"
     pkg_output.write_text("pkg", encoding="utf-8")
     effects: list[list[str]] = []
     monkeypatch.setattr(
@@ -1461,7 +1452,7 @@ def test_install_pkg_observes_absent_receipt_before_settings_write_and_installer
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = repo_root()
-    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output = tmp_path / "VitalServerHelper-0.2.2-dev.pkg"
     pkg_output.write_text("pkg", encoding="utf-8")
     install_settings = tmp_path / "install-settings.json"
     install_settings.write_text("{}", encoding="utf-8")
@@ -1514,7 +1505,6 @@ def test_install_pkg_reports_sudo_failure_without_traceback(
                     "channel": "dev",
                     "helperVersion": "1.2.3",
                     "releaseLabel": "1.2.3-dev",
-                    "minUpdaterVersion": "1.0.0",
                     "vitalServerVersion": "2.3.4",
                     "targetPlatform": "macos-arm64",
                     "services": {
@@ -1690,7 +1680,6 @@ def test_release_dmg_preflight_blocks_mounted_output(
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )

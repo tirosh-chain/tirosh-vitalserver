@@ -2196,7 +2196,6 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.logText = "runtime log line\nwatchdog recovered"
         viewModel.releaseInfo = RuntimeReleaseInfo(
             helperVersion: "1.0",
-            minimumUpdaterVersion: "1.0",
             vitalServerVersion: "2026.05.30",
             services: [
                 RuntimeBundledServiceInfo(name: "vitalserver", image: "vitalserver:latest", version: "2026.05.30")
@@ -3017,7 +3016,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         }
         return RuntimeReleaseInfo(
             helperVersion: "test",
-            minimumUpdaterVersion: "test",
             vitalServerVersion: "test",
             services: []
         )

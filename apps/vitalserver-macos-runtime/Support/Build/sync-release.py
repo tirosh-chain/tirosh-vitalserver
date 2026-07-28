@@ -98,6 +98,11 @@ def swift_string(value):
 
 
 def validate_release_policy(release):
+    if "minUpdaterVersion" in release:
+        raise SystemExit(
+            "unsupported release field: minUpdaterVersion; "
+            "stable bootstrap compatibility is structural"
+        )
     require_field(release, "channel")
     require_field(release, "releaseLabel")
     target_platform = require_field(release, "targetPlatform")
@@ -330,7 +335,6 @@ def toml_string_list(section, key, path):
 
 def sync_swift(root, release, release_file):
     helper_version = release["helperVersion"]
-    min_updater_version = release["minUpdaterVersion"]
     release_channel = require_field(release, "channel")
     release_label = require_field(release, "releaseLabel")
     distribution_profile = require_field(release, "distribution.profile")
@@ -393,7 +397,6 @@ public enum GeneratedRelease {{
     public static let channel = {swift_string(release_channel)}
     public static let releaseLabel = {swift_string(release_label)}
     public static let testEnabled = {str(test_enabled).lower()}
-    public static let minUpdaterVersion = {swift_string(min_updater_version)}
     public static let vitalServerVersion = {swift_string(release["vitalServerVersion"])}
     public static let vitalServerName = {swift_string(vitalserver_name)}
     public static let recorderIngressName = {swift_string(recorder_ingress_name)}
@@ -510,7 +513,6 @@ public extension RuntimeReleaseInfo {{
         ]
         return RuntimeReleaseInfo(
             helperVersion: GeneratedRelease.helperVersion,
-            minimumUpdaterVersion: GeneratedRelease.minUpdaterVersion,
             vitalServerVersion: GeneratedRelease.vitalServerVersion,
             services: services
         )

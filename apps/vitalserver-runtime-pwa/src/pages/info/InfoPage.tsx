@@ -17,7 +17,6 @@ export function InfoPage() {
         <KeyValueRows
           rows={[
             { label: "Helper version", value: release.data?.helperVersion ?? NOT_REPORTED },
-            { label: "Minimum updater version", value: release.data?.minimumUpdaterVersion ?? NOT_REPORTED },
             { label: "VitalServer version", value: release.data?.vitalServerVersion ?? NOT_REPORTED },
             { label: "Installed runtime version", value: platform.data?.installedVersion ?? NOT_REPORTED },
             { label: "Package identifier", value: installation.data?.packageIdentifier ?? NOT_REPORTED }

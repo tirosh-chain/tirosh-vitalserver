@@ -728,18 +728,15 @@ public struct RuntimeLogExportResult: Codable, Equatable, Sendable {
 
 public struct RuntimeReleaseInfo: Codable, Equatable, Sendable {
     public let helperVersion: String
-    public let minimumUpdaterVersion: String
     public let vitalServerVersion: String
     public let services: [RuntimeBundledServiceInfo]
 
     public init(
         helperVersion: String,
-        minimumUpdaterVersion: String,
         vitalServerVersion: String,
         services: [RuntimeBundledServiceInfo]
     ) {
         self.helperVersion = helperVersion
-        self.minimumUpdaterVersion = minimumUpdaterVersion
         self.vitalServerVersion = vitalServerVersion
         self.services = services
     }

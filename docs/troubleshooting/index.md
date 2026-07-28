@@ -199,6 +199,9 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-196 | Helper UI/API가 stable bootstrap 대신 legacy update engine을 호출함 | Update / Runtime Control / Host adapter | resolved | [Helper UI uses the legacy update bundle engine](196_helper_ui_uses_legacy_update_bundle_engine.md) |
 | TS-197 | stable bootstrap update가 Host operation lease를 우회함 | Update / Operation ownership / SQLite | resolved | [Stable update bypasses the Host operation lease](197_stable_update_bypasses_operation_lease.md) |
 | TS-198 | stable update 명령 연결 후에도 제품 capability와 UI가 비활성 상태로 남음 | Update / Capability / Presentation | resolved | [Stable update capability remains disabled after integration](198_stable_update_capability_remains_disabled.md) |
+| TS-199 | Helper stable update specification과 payload를 수동 조립해 signed closure가 재현되지 않음 | Update / Packaging / Release composition | active | [Helper stable update specification is hand-assembled](199_helper_stable_update_specification_is_hand_assembled.md) |
+| TS-200 | 현재 릴리스 계약과 화면에 legacy updater version gate가 노출됨 | Update / Packaging / Runtime Control | resolved | [Release manifest leaks the legacy updater version gate](200_release_manifest_leaks_legacy_updater_version_gate.md) |
+| TS-201 | installed release에 설치 인스턴스 identity/revision fence가 없어 재설치 전 writer를 구분하지 못함 | Install / Update / SQLite state ownership | resolved | [Installed release has no installation identity fence](201_installed_release_has_no_installation_fence.md) |
 
 ## Follow-up 규칙
 
