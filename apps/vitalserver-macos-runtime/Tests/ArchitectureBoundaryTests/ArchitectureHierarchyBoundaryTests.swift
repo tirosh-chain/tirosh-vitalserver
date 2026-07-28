@@ -5628,6 +5628,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         XCTAssertEqual(
             fileNames,
             [
+                "ExecuteBundleOwnedProductUpdateWorkflow.swift",
                 "RuntimeApplyBundleWorkflow.swift",
                 "RuntimeGuestActivationWorkflow.swift",
                 "RuntimeGuestShutdownWorkflow.swift",

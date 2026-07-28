@@ -197,7 +197,20 @@ requires `host-platform` to be final. Layer artifacts, rollback artifacts,
 effect executors, and executor configuration are distinct immutable payload
 members with explicit paths, sizes, media types, and SHA-256 digests. This
 planning boundary does not execute effects; process execution and typed layer
-effect receipt aggregation remain the next implementation step.
+effect receipt aggregation remain a separate adapter responsibility.
+
+The bundle-owned execution workflow now consumes only the pure execution plan
+and explicit layer-effect execution results. It issues `apply` requests in the
+authenticated order, validates every typed receipt against the update, layer,
+declared executor, operation, and artifact digest, and stops at the first
+non-successful effect. Previously applied layers are requested in reverse order
+with their explicitly declared rollback artifacts. Missing executor evidence,
+adapter unavailability, process failure, invalid correlation, unsupported
+rollback, and rollback failure remain different typed outcomes. The workflow
+aggregates them into one correlated `ProductUpdateExecutionReport`; it never
+uses a process exit code or missing receipt as success. Filesystem
+materialization, fixed process arguments, atomic report publication, and the
+standalone next-updater executable remain outside this pure workflow.
 
 Release automation calls:
 
