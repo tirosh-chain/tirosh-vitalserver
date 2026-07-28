@@ -33,6 +33,13 @@ public enum GuestOwnedLayer: Sendable {
         case .guestRuntime: "guest-runtime-release-operation"
         }
     }
+
+    var artifactMediaType: String {
+        switch self {
+        case .container, .guestRuntime:
+            "application/x-tar"
+        }
+    }
 }
 
 public enum LayerEffectExecutorError: Error, CustomStringConvertible {
@@ -114,6 +121,7 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
             try verifyFile(
                 path: invocation.artifactPath,
                 expectedSHA256: invocation.artifactSHA256,
+                expectedSizeBytes: invocation.artifactSizeBytes,
                 role: "layer artifact"
             )
             try verifyFile(
@@ -171,7 +179,9 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
               invocation.artifactPath.hasPrefix("/"),
               invocation.configurationPath.hasPrefix("/"),
               isSHA256(invocation.artifactSHA256),
-              isSHA256(invocation.configurationSHA256) else {
+              isSHA256(invocation.configurationSHA256),
+              invocation.artifactSizeBytes > 0,
+              invocation.artifactMediaType == layer.artifactMediaType else {
             throw GuestOwnerEffectFailure.failed(
                 code: "layer-effect-invocation-invalid",
                 message: "Layer invocation identity, paths, or digests are invalid.",
@@ -305,6 +315,7 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
         let deadline = Date().addingTimeInterval(
             configuration.operationTimeoutSeconds
         )
+        var lastUnavailable: GuestOwnerEffectFailure?
         while Date() < deadline {
             let url = try endpoint(
                 configuration,
@@ -313,7 +324,19 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             request.timeoutInterval = configuration.requestTimeoutSeconds
-            let (data, response) = try await send(request, uploadFile: nil)
+            let data: Data
+            let response: HTTPURLResponse
+            do {
+                (data, response) = try await send(request, uploadFile: nil)
+            } catch let failure as GuestOwnerEffectFailure
+                where failure.state == .unavailable {
+                lastUnavailable = failure
+                try await Task.sleep(
+                    for: .milliseconds(configuration.pollIntervalMilliseconds)
+                )
+                continue
+            }
+            lastUnavailable = nil
             guard response.statusCode == 200 else {
                 throw httpFailure(
                     response: response,
@@ -350,6 +373,9 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
                     dependency: layer.ownerPath
                 )
             }
+        }
+        if let lastUnavailable {
+            throw lastUnavailable
         }
         throw GuestOwnerEffectFailure.unavailable(
             code: "guest-owner-operation-timeout",
@@ -994,6 +1020,7 @@ private func httpFailure(
 private func verifyFile(
     path: String,
     expectedSHA256: String,
+    expectedSizeBytes: Int? = nil,
     role: String
 ) throws {
     guard path.hasPrefix("/"), isSHA256(expectedSHA256) else {
@@ -1018,15 +1045,24 @@ private func verifyFile(
         try? handle.close()
     }
     var digest = SHA256()
+    var sizeBytes = 0
     do {
         while let chunk = try handle.read(upToCount: 1024 * 1024),
               !chunk.isEmpty {
             digest.update(data: chunk)
+            sizeBytes += chunk.count
         }
     } catch {
         throw GuestOwnerEffectFailure.unavailable(
             code: "layer-effect-file-unavailable",
             message: "\(role) digest read failed: \(error)",
+            dependency: "host-update-staging"
+        )
+    }
+    if let expectedSizeBytes, sizeBytes != expectedSizeBytes {
+        throw GuestOwnerEffectFailure.failed(
+            code: "layer-effect-file-size-mismatch",
+            message: "\(role) size mismatch expected=\(expectedSizeBytes) actual=\(sizeBytes).",
             dependency: "host-update-staging"
         )
     }

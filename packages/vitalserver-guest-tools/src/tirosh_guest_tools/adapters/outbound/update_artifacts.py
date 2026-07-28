@@ -12,6 +12,7 @@ from typing import BinaryIO
 
 from tirosh_guest_tools.application.guest_control.update_owner_worker import (
     UpdateArtifactUnavailable,
+    UpdateEffectCompensationFailed,
     UpdateEffectFailed,
 )
 from tirosh_guest_tools.contracts import RuntimeService
@@ -176,6 +177,43 @@ class SystemdUpdateOwnerWorkerDispatcher:
             )
 
 
+GUEST_RUNTIME_RESTART_SERVICES = (
+    RuntimeService.GUEST_CONTROL_API.value,
+    RuntimeService.RUNTIME_OBSERVATION.value,
+    RuntimeService.CONTAINER_LOGS.value,
+    "tirosh-guest-observability.service",
+)
+
+
+class GuestRuntimeServiceReconciler:
+    """Restart long-running processes so wrappers resolve the active release."""
+
+    def __init__(self, compose_reconcile: Callable[[], None]) -> None:
+        self._compose_reconcile = compose_reconcile
+
+    def reconcile(self) -> None:
+        self._compose_reconcile()
+        for service in GUEST_RUNTIME_RESTART_SERVICES:
+            try:
+                result = subprocess.run(
+                    ["systemctl", "restart", service],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            except OSError as error:
+                raise UpdateEffectFailed(
+                    "Guest Runtime service restart could not start "
+                    f"service={service}: {error}."
+                ) from error
+            if result.returncode != 0:
+                detail = result.stderr.strip() or "no stderr"
+                raise UpdateEffectFailed(
+                    "Guest Runtime service restart failed "
+                    f"service={service} exit={result.returncode}: {detail}."
+                )
+
+
 class AtomicGuestRuntimeReleaseEffect:
     """Stages one immutable release and switches its active link atomically."""
 
@@ -253,8 +291,8 @@ class AtomicGuestRuntimeReleaseEffect:
             self._switch_active(destination)
             try:
                 self._reconcile()
-            except Exception:
-                self._restore_active(previous)
+            except Exception as error:
+                self._compensate_activation(previous, error)
                 raise
             return
         staging.mkdir(mode=0o700)
@@ -269,8 +307,8 @@ class AtomicGuestRuntimeReleaseEffect:
             self._switch_active(destination)
             try:
                 self._reconcile()
-            except Exception:
-                self._restore_active(previous)
+            except Exception as error:
+                self._compensate_activation(previous, error)
                 raise
         except Exception:
             _remove_tree(staging)
@@ -335,6 +373,20 @@ class AtomicGuestRuntimeReleaseEffect:
             self._active_link.unlink(missing_ok=True)
             return
         self._switch_active(previous)
+
+    def _compensate_activation(
+        self,
+        previous: Path | None,
+        effect_failure: Exception,
+    ) -> None:
+        try:
+            self._restore_active(previous)
+            self._reconcile()
+        except Exception as compensation_failure:
+            raise UpdateEffectCompensationFailed(
+                effect_failure=effect_failure,
+                compensation_failure=compensation_failure,
+            ) from compensation_failure
 
 
 def _validated_digest(kind: str, digest: str) -> str:

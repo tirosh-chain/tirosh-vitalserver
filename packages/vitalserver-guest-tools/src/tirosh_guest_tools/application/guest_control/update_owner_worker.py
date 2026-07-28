@@ -33,6 +33,21 @@ class UpdateEffectFailed(RuntimeError):
     pass
 
 
+class UpdateEffectCompensationFailed(UpdateEffectFailed):
+    def __init__(
+        self,
+        *,
+        effect_failure: Exception,
+        compensation_failure: Exception,
+    ) -> None:
+        self.effect_failure = effect_failure
+        self.compensation_failure = compensation_failure
+        super().__init__(
+            "Guest Runtime activation and previous-release compensation both "
+            f"failed effect={effect_failure} compensation={compensation_failure}."
+        )
+
+
 class UpdateArtifactResolver(Protocol):
     def resolve(self, *, kind: str, digest: str) -> Path:
         raise NotImplementedError
@@ -161,6 +176,16 @@ class GuestUpdateOwnerWorker:
                 updated_at=self.clock.now(),
                 failure=GuestRuntimeReleaseFailure(
                     kind="guestRuntimeReleaseArtifactUnavailable",
+                    message=str(error),
+                ),
+            )
+        except UpdateEffectCompensationFailed as error:
+            terminal = transition_guest_runtime_release_operation(
+                running,
+                state=GuestRuntimeReleaseOperationState.FAILED,
+                updated_at=self.clock.now(),
+                failure=GuestRuntimeReleaseFailure(
+                    kind="guestRuntimeReleaseCompensationFailed",
                     message=str(error),
                 ),
             )

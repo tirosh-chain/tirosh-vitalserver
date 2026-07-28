@@ -48,7 +48,8 @@ absolute artifact and configuration paths plus their expected SHA-256 values.
 Each executor:
 
 1. validates its declared layer and executor identity;
-2. re-hashes both local files without loading the whole archive into memory;
+2. re-hashes both local files without loading the whole archive into memory,
+   and verifies the artifact's declared byte size and layer media type;
 3. streams the archive to the Guest content-addressed import owner;
 4. submits only its own Container Image-Set or Guest Runtime Release command;
 5. correlates operation ID, command, expected identity, target identity,
@@ -66,6 +67,16 @@ The checked-in strict configuration schemas and examples are under
 `apps/vitalserver-macos-runtime/Support/UpdateExecutors`. Apply and rollback
 must be inverse identity transitions, and the configuration declares exactly
 one `container` or `guest-runtime` owner.
+
+Guest Runtime activation switches `/opt/tirosh/guest-tools` to an immutable
+release slot and restarts the long-running services whose wrappers resolve
+that link. If a restart fails after a partial transition, the effect restores
+the previous link and reconciles the previous release again. Failure of that
+compensation is persisted separately as
+`guestRuntimeReleaseCompensationFailed`; it is not flattened into ordinary
+activation failure. The Host poll tolerates transient connection loss after
+command acceptance while the Guest Control API restarts, but reports the last
+unavailable state if the owner does not recover before its deadline.
 
 ## Prevention
 

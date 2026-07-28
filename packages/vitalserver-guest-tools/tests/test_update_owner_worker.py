@@ -6,6 +6,7 @@ import tarfile
 from datetime import UTC, datetime
 from http import HTTPStatus
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -14,7 +15,9 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control import (
     SQLiteControlRepository,
 )
 from tirosh_guest_tools.adapters.outbound.update_artifacts import (
+    GUEST_RUNTIME_RESTART_SERVICES,
     AtomicGuestRuntimeReleaseEffect,
+    GuestRuntimeServiceReconciler,
     ImmutableUpdateArtifactStore,
 )
 from tirosh_guest_tools.application.guest_control.container_image_set import (
@@ -25,6 +28,7 @@ from tirosh_guest_tools.application.guest_control.guest_runtime_release import (
 )
 from tirosh_guest_tools.application.guest_control.update_owner_worker import (
     GuestUpdateOwnerWorker,
+    UpdateEffectCompensationFailed,
     UpdateEffectFailed,
 )
 from tirosh_guest_tools.domain.container_image_set import (
@@ -209,6 +213,227 @@ def test_guest_runtime_worker_uses_verified_imported_archive(tmp_path) -> None:
     assert len(effect.archives) == 1
 
 
+def test_worker_persists_runtime_compensation_failure_as_distinct_kind(
+    tmp_path,
+) -> None:
+    owner, artifacts, container_effect, _, _ = fixture(tmp_path)
+    content = tar_bytes("version", b"target")
+    target_digest = digest(content)
+    reference = artifacts.import_bytes(
+        kind="guest-runtime-release",
+        digest=target_digest,
+        content=content,
+    )
+    operation = GuestRuntimeReleaseUseCases(
+        state_owner=owner,
+        operation_ids=Ids(),
+        clock=Clock(),
+    ).apply(
+        {
+            "expectedActiveIdentity": "guest-0.2.1",
+            "target": {
+                "identity": "guest-0.2.2",
+                "archive": reference,
+                "digest": target_digest,
+            },
+        }
+    )
+
+    class CompensationFailureEffect:
+        def activate(self, operation, archive) -> None:
+            raise UpdateEffectCompensationFailed(
+                effect_failure=RuntimeError("new restart failed"),
+                compensation_failure=RuntimeError("old restart failed"),
+            )
+
+    worker = GuestUpdateOwnerWorker(
+        container_owner=owner,
+        guest_runtime_owner=owner,
+        artifacts=artifacts,
+        container_effect=container_effect,
+        guest_runtime_effect=CompensationFailureEffect(),
+        clock=Clock(),
+    )
+
+    terminal = worker.run_guest_runtime(operation.operation_id)
+
+    assert terminal.failure is not None
+    assert terminal.failure.kind == "guestRuntimeReleaseCompensationFailed"
+    assert owner.read_active_guest_runtime_release().identity == "guest-0.2.1"
+
+
+def test_container_apply_and_rollback_consume_target_and_previous_archives(
+    tmp_path,
+) -> None:
+    owner, artifacts, effect, _, worker = fixture(tmp_path)
+    previous = b"initial"
+    target = b"target compose image-set"
+    previous_digest = digest(previous)
+    target_digest = digest(target)
+    artifacts.import_bytes(
+        kind="container-image-set",
+        digest=previous_digest,
+        content=previous,
+    )
+    artifacts.import_bytes(
+        kind="container-image-set",
+        digest=target_digest,
+        content=target,
+    )
+    usecases = ContainerImageSetUseCases(
+        state_owner=owner,
+        operation_ids=Ids(),
+        clock=Clock(),
+    )
+    applied = usecases.apply(
+        {
+            "expectedCurrentIdentity": "images-0.2.1",
+            "target": {
+                "identity": "images-0.2.2",
+                "digest": target_digest,
+            },
+        }
+    )
+    worker.run_container(applied.operation_id)
+    rolled_back = usecases.rollback(
+        {
+            "expectedCurrentIdentity": "images-0.2.2",
+            "target": {
+                "identity": "images-0.2.1",
+                "digest": previous_digest,
+            },
+        }
+    )
+    worker.run_container(rolled_back.operation_id)
+
+    assert [archive.read_bytes() for archive in effect.archives] == [
+        target,
+        previous,
+    ]
+    assert owner.read_current().identity == "images-0.2.1"
+
+
+def test_guest_runtime_apply_and_rollback_execute_through_active_release_link(
+    tmp_path,
+) -> None:
+    now = Clock().now()
+    owner = SQLiteControlRepository(tmp_path / "control.sqlite")
+    owner.migrate_schema()
+    artifacts = ImmutableUpdateArtifactStore(tmp_path / "artifacts")
+    previous_archive = tar_bytes("version", b"previous")
+    target_archive = tar_bytes("version", b"target")
+    previous_digest = digest(previous_archive)
+    target_digest = digest(target_archive)
+    previous_reference = artifacts.import_bytes(
+        kind="guest-runtime-release",
+        digest=previous_digest,
+        content=previous_archive,
+    )
+    target_reference = artifacts.import_bytes(
+        kind="guest-runtime-release",
+        digest=target_digest,
+        content=target_archive,
+    )
+    previous_release = GuestRuntimeRelease.validated(
+        "guest-0.2.1",
+        previous_reference,
+        previous_digest,
+    )
+    owner.provision_active_guest_runtime_release(
+        previous_release,
+        observed_at=now,
+    )
+    releases = tmp_path / "releases"
+    previous_slot = releases / previous_release.identity
+    previous_slot.mkdir(parents=True)
+    (previous_slot / "version").write_bytes(b"previous")
+    (previous_slot / ".artifact-sha256").write_text(
+        previous_digest + "\n",
+        encoding="utf-8",
+    )
+    active = tmp_path / "guest-tools"
+    active.symlink_to(previous_slot)
+    executed_versions: list[bytes] = []
+    effect = AtomicGuestRuntimeReleaseEffect(
+        releases_root=releases,
+        active_link=active,
+        reconcile=lambda: executed_versions.append(
+            (active / "version").read_bytes()
+        ),
+    )
+    worker = GuestUpdateOwnerWorker(
+        container_owner=owner,
+        guest_runtime_owner=owner,
+        artifacts=artifacts,
+        container_effect=ContainerEffect(),
+        guest_runtime_effect=effect,
+        clock=Clock(),
+    )
+    usecases = GuestRuntimeReleaseUseCases(
+        state_owner=owner,
+        operation_ids=Ids(),
+        clock=Clock(),
+    )
+    applied = usecases.apply(
+        {
+            "expectedActiveIdentity": previous_release.identity,
+            "target": {
+                "identity": "guest-0.2.2",
+                "archive": target_reference,
+                "digest": target_digest,
+            },
+        }
+    )
+    worker.run_guest_runtime(applied.operation_id)
+    rolled_back = usecases.rollback(
+        {
+            "expectedActiveIdentity": "guest-0.2.2",
+            "target": previous_release.as_json(),
+        }
+    )
+    worker.run_guest_runtime(rolled_back.operation_id)
+
+    assert executed_versions == [b"target", b"previous"]
+    assert active.resolve() == previous_slot
+    assert owner.read_active_guest_runtime_release() == previous_release
+
+
+def test_guest_runtime_reconciler_restarts_services_after_compose(
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+
+    def run(arguments, **_):
+        events.append(arguments[-1])
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(
+        "tirosh_guest_tools.adapters.outbound.update_artifacts.subprocess.run",
+        run,
+    )
+    GuestRuntimeServiceReconciler(
+        compose_reconcile=lambda: events.append("compose")
+    ).reconcile()
+
+    assert events == ["compose", *GUEST_RUNTIME_RESTART_SERVICES]
+
+
+def test_long_running_guest_wrappers_resolve_the_active_runtime_link() -> None:
+    root = Path(__file__).resolve().parents[3]
+    wrapper_dir = (
+        root / "apps/vitalserver-macos-runtime/Support/Guest/bin"
+    )
+
+    for wrapper in (
+        "tirosh-vitalserver-guest-control-api",
+        "tirosh-runtime-observation",
+        "tirosh-vitalserver-container-logs",
+    ):
+        assert "/opt/tirosh/guest-tools/venv/bin/" in (
+            wrapper_dir / wrapper
+        ).read_text(encoding="utf-8")
+
+
 def test_atomic_runtime_effect_rejects_archive_path_traversal(tmp_path) -> None:
     archive = tmp_path / "release.tar"
     archive.write_bytes(tar_bytes("../escaped", b"bad"))
@@ -233,17 +458,51 @@ def test_atomic_runtime_effect_restores_previous_active_link_on_reconcile_failur
     releases = tmp_path / "releases"
     previous = releases / "guest-0.2.1"
     previous.mkdir(parents=True)
+    (previous / "version").write_bytes(b"previous")
     active = tmp_path / "active"
     active.symlink_to(previous)
     archive = tmp_path / "release.tar"
-    archive.write_bytes(tar_bytes("bin/runtime", b"new"))
+    archive.write_bytes(tar_bytes("version", b"new"))
+    executed_versions: list[bytes] = []
+
+    def reconcile() -> None:
+        executed_versions.append((active / "version").read_bytes())
+        if len(executed_versions) == 1:
+            raise RuntimeError("restart failed")
+
+    effect = AtomicGuestRuntimeReleaseEffect(
+        releases_root=releases,
+        active_link=active,
+        reconcile=reconcile,
+    )
+
+    with pytest.raises(RuntimeError, match="restart failed"):
+        effect.activate(_runtime_operation(tmp_path), archive)
+
+    assert active.resolve() == previous
+    assert executed_versions == [b"new", b"previous"]
+
+
+def test_atomic_runtime_effect_reports_failed_compensation_separately(
+    tmp_path,
+) -> None:
+    releases = tmp_path / "releases"
+    previous = releases / "guest-0.2.1"
+    previous.mkdir(parents=True)
+    active = tmp_path / "active"
+    active.symlink_to(previous)
+    archive = tmp_path / "release.tar"
+    archive.write_bytes(tar_bytes("version", b"new"))
     effect = AtomicGuestRuntimeReleaseEffect(
         releases_root=releases,
         active_link=active,
         reconcile=lambda: (_ for _ in ()).throw(RuntimeError("restart failed")),
     )
 
-    with pytest.raises(RuntimeError, match="restart failed"):
+    with pytest.raises(
+        UpdateEffectCompensationFailed,
+        match="compensation both failed",
+    ):
         effect.activate(_runtime_operation(tmp_path), archive)
 
     assert active.resolve() == previous

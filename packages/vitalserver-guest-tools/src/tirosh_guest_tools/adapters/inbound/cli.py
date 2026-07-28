@@ -41,16 +41,17 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control import (
 from tirosh_guest_tools.adapters.outbound.update_artifacts import (
     AtomicGuestRuntimeReleaseEffect,
     DockerComposeContainerImageSetEffect,
+    GuestRuntimeServiceReconciler,
     ImmutableUpdateArtifactStore,
 )
 from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
-from tirosh_guest_tools.application.initial_release_artifacts import (
-    compose_initial_update_owner_artifacts,
-)
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.guest_control.runtime import SystemClock
 from tirosh_guest_tools.application.guest_control.update_owner_worker import (
     GuestUpdateOwnerWorker,
+)
+from tirosh_guest_tools.application.initial_release_artifacts import (
+    compose_initial_update_owner_artifacts,
 )
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
@@ -114,6 +115,9 @@ def vitalserver_update_owner_worker() -> int:
     owner = SQLiteControlRepository(SETTINGS.paths.control_state_dir / "control.sqlite")
     owner.check_ready()
     compose = ComposeGuestControlAdapter()
+    runtime_reconciler = GuestRuntimeServiceReconciler(
+        compose_reconcile=compose.reconcile_services
+    )
     worker = GuestUpdateOwnerWorker(
         container_owner=owner,
         guest_runtime_owner=owner,
@@ -128,7 +132,7 @@ def vitalserver_update_owner_worker() -> int:
                 SETTINGS.paths.guest_tools_home.parent / "guest-runtime-releases"
             ),
             active_link=SETTINGS.paths.guest_tools_home,
-            reconcile=compose.reconcile_services,
+            reconcile=runtime_reconciler.reconcile,
         ),
         clock=SystemClock(),
     )

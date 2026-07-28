@@ -107,6 +107,57 @@ func guestRuntimeExecutorCorrelatesImportedOwnerReference() async throws {
 }
 
 @Test
+func containerRollbackConsumesTheExplicitPreviousImageSetIntent() async throws {
+    let fixture = try EffectFixture(layer: .container)
+    let rollback = invocation(fixture, operation: .rollback)
+    let transport = FakeTransport(
+        responses: [
+            importedArtifactResponse(fixture, kind: "container-image-set"),
+            response(
+                status: 202,
+                body: containerOperation(
+                    fixture,
+                    state: "pending",
+                    command: "rollback",
+                    expectedIdentity: "target-022",
+                    targetIdentity: "current-021"
+                )
+            ),
+            response(
+                status: 200,
+                body: containerOperation(
+                    fixture,
+                    state: "succeeded",
+                    command: "rollback",
+                    expectedIdentity: "target-022",
+                    targetIdentity: "current-021"
+                )
+            ),
+        ]
+    )
+
+    let receipt = await GuestOwnerLayerEffectExecutor(
+        transport: transport
+    ).execute(
+        layer: .container,
+        invocation: rollback,
+        configuration: fixture.configuration
+    )
+
+    #expect(receipt.state == .succeeded)
+    let requests = await transport.requests
+    let commandBody = try #require(requests[1].body)
+    let command = try #require(
+        try JSONSerialization.jsonObject(with: commandBody)
+            as? [String: Any]
+    )
+    #expect(command["expectedCurrentIdentity"] as? String == "target-022")
+    let target = try #require(command["target"] as? [String: String])
+    #expect(target["identity"] == "current-021")
+    #expect(target["digest"] == fixture.digest)
+}
+
+@Test
 func digestMismatchFailsWithoutCallingGuest() async throws {
     let fixture = try EffectFixture(layer: .container)
     let transport = FakeTransport(responses: [])
@@ -137,6 +188,55 @@ func digestMismatchFailsWithoutCallingGuest() async throws {
 
     #expect(receipt.state == .failed)
     #expect(receipt.issue?.code == "layer-effect-file-digest-mismatch")
+    #expect(await transport.requests.isEmpty)
+}
+
+@Test
+func artifactSizeMismatchFailsWithoutCallingGuest() async throws {
+    let fixture = try EffectFixture(layer: .container)
+    let transport = FakeTransport(responses: [])
+    let invalid = invocation(
+        fixture,
+        artifactSizeBytes: fixture.invocation.artifactSizeBytes + 1
+    )
+
+    let receipt = await GuestOwnerLayerEffectExecutor(
+        transport: transport
+    ).execute(
+        layer: .container,
+        invocation: invalid,
+        configuration: fixture.configuration
+    )
+
+    #expect(receipt.state == .failed)
+    #expect(receipt.issue?.code == "layer-effect-file-size-mismatch")
+    #expect(await transport.requests.isEmpty)
+}
+
+@Test(arguments: [
+    GuestOwnedLayer.container,
+    GuestOwnedLayer.guestRuntime,
+])
+func artifactMediaTypeMismatchFailsWithoutCallingGuest(
+    layer: GuestOwnedLayer
+) async throws {
+    let fixture = try EffectFixture(layer: layer)
+    let transport = FakeTransport(responses: [])
+    let invalid = invocation(
+        fixture,
+        artifactMediaType: "application/octet-stream"
+    )
+
+    let receipt = await GuestOwnerLayerEffectExecutor(
+        transport: transport
+    ).execute(
+        layer: layer,
+        invocation: invalid,
+        configuration: fixture.configuration
+    )
+
+    #expect(receipt.state == .failed)
+    #expect(receipt.issue?.code == "layer-effect-invocation-invalid")
     #expect(await transport.requests.isEmpty)
 }
 
@@ -213,6 +313,46 @@ func connectionLossRemainsExplicitUnavailable() async throws {
 
     #expect(receipt.state == .unavailable)
     #expect(receipt.issue?.code == "guest-owner-connection-unavailable")
+}
+
+@Test
+func acceptedOperationRetriesTransientConnectionLossDuringServiceRestart()
+    async throws {
+    let fixture = try EffectFixture(layer: .guestRuntime)
+    let ownerReference = "guest-runtime-release/\(fixture.digest).archive"
+    let transport = FakeTransport(
+        responses: [
+            importedArtifactResponse(fixture, kind: "guest-runtime-release"),
+            response(
+                status: 202,
+                body: guestRuntimeOperation(
+                    fixture,
+                    ownerReference: ownerReference,
+                    state: "pending"
+                )
+            ),
+            .failure(FakeTransportFailure.disconnected),
+            response(
+                status: 200,
+                body: guestRuntimeOperation(
+                    fixture,
+                    ownerReference: ownerReference,
+                    state: "succeeded"
+                )
+            ),
+        ]
+    )
+
+    let receipt = await GuestOwnerLayerEffectExecutor(
+        transport: transport
+    ).execute(
+        layer: .guestRuntime,
+        invocation: fixture.invocation,
+        configuration: fixture.configuration
+    )
+
+    #expect(receipt.state == .succeeded)
+    #expect(await transport.requests.count == 4)
 }
 
 @Test
@@ -408,12 +548,38 @@ private struct EffectFixture {
                 with: ""
             ),
             artifactSizeBytes: try Data(contentsOf: artifact).count,
-            artifactMediaType: "application/octet-stream",
+            artifactMediaType: "application/x-tar",
             configurationRelativePath: "payload/layer/configuration.json",
             configurationPath: configurationURL.path,
             configurationSHA256: sha256(configurationData)
         )
     }
+}
+
+private func invocation(
+    _ fixture: EffectFixture,
+    operation: ProductUpdateLayerEffectOperation? = nil,
+    artifactSizeBytes: Int? = nil,
+    artifactMediaType: String? = nil
+) -> ProductUpdateLayerEffectInvocation {
+    ProductUpdateLayerEffectInvocation(
+        schemaVersion: fixture.invocation.schemaVersion,
+        updateId: fixture.invocation.updateId,
+        layer: fixture.invocation.layer,
+        effectExecutorId: fixture.invocation.effectExecutorId,
+        operation: operation ?? fixture.invocation.operation,
+        artifactRelativePath: fixture.invocation.artifactRelativePath,
+        artifactPath: fixture.invocation.artifactPath,
+        artifactSHA256: fixture.invocation.artifactSHA256,
+        artifactSizeBytes: artifactSizeBytes ??
+            fixture.invocation.artifactSizeBytes,
+        artifactMediaType: artifactMediaType ??
+            fixture.invocation.artifactMediaType,
+        configurationRelativePath:
+            fixture.invocation.configurationRelativePath,
+        configurationPath: fixture.invocation.configurationPath,
+        configurationSHA256: fixture.invocation.configurationSHA256
+    )
 }
 
 private func importedArtifactResponse(
@@ -435,6 +601,7 @@ private actor FakeTransport: LayerEffectHTTPTransport {
         let method: String
         let path: String
         let uploadPath: String?
+        let body: Data?
     }
 
     private var responses: [
@@ -454,7 +621,8 @@ private actor FakeTransport: LayerEffectHTTPTransport {
             Request(
                 method: request.httpMethod ?? "",
                 path: request.url?.path ?? "",
-                uploadPath: uploadFile?.path
+                uploadPath: uploadFile?.path,
+                body: request.httpBody
             )
         )
         guard !responses.isEmpty else {
@@ -492,14 +660,17 @@ private func response(
 
 private func containerOperation(
     _ fixture: EffectFixture,
-    state: String
+    state: String,
+    command: String = "apply",
+    expectedIdentity: String = "current-021",
+    targetIdentity: String = "target-022"
 ) -> [String: Any] {
     [
         "operationId": "container-operation-1",
-        "command": "apply",
-        "expectedCurrentIdentity": "current-021",
+        "command": command,
+        "expectedCurrentIdentity": expectedIdentity,
         "target": [
-            "identity": "target-022",
+            "identity": targetIdentity,
             "digest": fixture.digest,
         ],
         "state": state,
