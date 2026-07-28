@@ -113,7 +113,7 @@ final class UpdateBootstrapJournalStateMachineTests: XCTestCase {
 
     private func admittedJournal() -> UpdateBootstrapJournal {
         UpdateBootstrapJournal(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "update-operation-1",
             journalRevision: 1,
             operationId: "operation-1",
