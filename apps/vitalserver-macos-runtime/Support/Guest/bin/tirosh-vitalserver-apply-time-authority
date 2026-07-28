@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+exec /opt/tirosh/guest-tools/venv/bin/tirosh-vitalserver-apply-time-authority "$@"

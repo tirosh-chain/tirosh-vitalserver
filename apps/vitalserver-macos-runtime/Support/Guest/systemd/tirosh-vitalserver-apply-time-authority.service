@@ -1,0 +1,8 @@
+[Unit]
+Description=Apply explicit Tirosh Host time authority to Guest chrony
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tirosh-vitalserver-apply-time-authority

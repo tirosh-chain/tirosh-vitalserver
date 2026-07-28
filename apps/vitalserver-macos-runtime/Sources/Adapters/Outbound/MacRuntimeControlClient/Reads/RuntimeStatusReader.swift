@@ -20,6 +20,7 @@ struct SystemPlatformStateReader: PlatformStateReading, @unchecked Sendable {
     private let vmLifecycleReader: any RuntimeVMLifecycleReading
     private let guestControlGateway: @Sendable (String) throws -> any RuntimeGuestControlGateway
     private let runCommand: @Sendable (String, [String]) async -> RuntimeCommandResult
+    private let timeAuthorityReader: any RuntimeTimeAuthorityReading
 
     init(
         runtimeLauncherPath: String = RuntimeControlClientConstants.Paths.launcher,
@@ -36,6 +37,7 @@ struct SystemPlatformStateReader: PlatformStateReading, @unchecked Sendable {
         runtimeVersionReader: (any RuntimeVersionReading)? = nil,
         latestBackupReader: (any RuntimeLatestBackupReading)? = nil,
         vmLifecycleReader: (any RuntimeVMLifecycleReading)? = nil,
+        timeAuthorityReader: (any RuntimeTimeAuthorityReading)? = nil,
         guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
         guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         runCommand: @escaping @Sendable (String, [String]) async -> RuntimeCommandResult = { command, arguments in
@@ -74,6 +76,7 @@ struct SystemPlatformStateReader: PlatformStateReading, @unchecked Sendable {
             )
         }
         self.runCommand = runCommand
+        self.timeAuthorityReader = timeAuthorityReader ?? SystemRuntimeTimeAuthorityReader()
     }
 
     func loadPlatformState(settings: RuntimeSettings) -> PlatformState {
@@ -140,7 +143,7 @@ struct SystemPlatformStateReader: PlatformStateReading, @unchecked Sendable {
         let guestAddressRead = guestAddressProvider.readGuestAddress()
         let vmLifecycleRead = vmLifecycleReader.loadVMLifecycleRead()
 
-        return PlatformStateAssembler.makePlatformState(
+        var status = PlatformStateAssembler.makePlatformState(
             proxyPortReadState: proxyPortReader.loadProxyPortReadState(),
             runtimeVersionRead: runtimeVersionReader.loadRuntimeVersionRead(),
             latestBackupRead: latestBackupReader.loadLatestBackupRead(),
@@ -148,6 +151,8 @@ struct SystemPlatformStateReader: PlatformStateReading, @unchecked Sendable {
             vmLifecycleRead: vmLifecycleRead,
             liveDiagnostics: liveDiagnostics
         )
+        status.timeAuthority = timeAuthorityReader.loadTimeAuthority()
+        return status
     }
 
     private func httpStatus(source: String, url: String) async -> RuntimeHTTPStatusRead {

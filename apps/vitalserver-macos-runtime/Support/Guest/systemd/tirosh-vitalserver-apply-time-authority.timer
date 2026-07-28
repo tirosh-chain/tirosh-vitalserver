@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry explicit Tirosh Host time authority application
+
+[Timer]
+OnBootSec=5s
+OnUnitInactiveSec=5s
+AccuracySec=1s
+Unit=tirosh-vitalserver-apply-time-authority.service
+
+[Install]
+WantedBy=timers.target

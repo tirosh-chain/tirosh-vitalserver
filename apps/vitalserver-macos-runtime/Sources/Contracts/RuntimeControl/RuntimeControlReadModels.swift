@@ -75,6 +75,22 @@ public enum RuntimeHostResourceReadState: String, Codable, Equatable, Sendable {
     case failed
 }
 
+public struct RuntimeTimeAuthorityResourceRead: Codable, Equatable, Sendable {
+    public let state: RuntimeHostResourceReadState
+    public let document: RuntimeTimeAuthorityDocument?
+    public let readError: String?
+
+    public init(
+        state: RuntimeHostResourceReadState,
+        document: RuntimeTimeAuthorityDocument? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.document = document
+        self.readError = readError
+    }
+}
+
 public struct RuntimeVMLifecycleResourceState: Codable, Equatable, Sendable {
     public let state: RuntimeHostResourceReadState
     public let document: RuntimeVMLifecycleDocument?

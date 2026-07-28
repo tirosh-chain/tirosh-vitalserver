@@ -279,6 +279,57 @@ const runtimeProbeErrorSchema = z
     message: z.string()
   })
   .passthrough();
+const runtimeClockQualitySchema = z
+  .object({
+    state: z.enum([
+      "configured",
+      "synchronizing",
+      "synchronized",
+      "unsynchronized",
+      "stale",
+      "unsupported",
+      "failed",
+      "unavailable"
+    ]),
+    observedAt: z.string(),
+    source: nullableString,
+    stratum: z.number().int().nullable().optional(),
+    offsetMs: nullableNumber,
+    uncertaintyMs: nullableNumber,
+    rootDelayMs: nullableNumber,
+    rootDispersionMs: nullableNumber,
+    lastSyncAt: nullableString,
+    issue: nullableString
+  })
+  .passthrough()
+  .superRefine((quality, context) => {
+    if (
+      quality.state === "synchronized" &&
+      (isBlank(quality.source) ||
+        quality.stratum == null ||
+        quality.offsetMs == null ||
+        quality.uncertaintyMs == null ||
+        isBlank(quality.lastSyncAt))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "synchronized clock quality requires source, stratum, offsetMs, uncertaintyMs, and lastSyncAt"
+      });
+    }
+    if (
+      ["unsynchronized", "stale", "unsupported", "failed", "unavailable"].includes(
+        quality.state
+      ) &&
+      isBlank(quality.issue)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["issue"],
+        message: "non-synchronized clock quality requires an issue"
+      });
+    }
+  });
 export const runtimeGuestControlStackStatusSchema = z
   .object({
     state: z.string(),
@@ -288,6 +339,7 @@ export const runtimeGuestControlStackStatusSchema = z
     memory: resourceUsageSchema.optional(),
     systemDisk: resourceUsageSchema.optional(),
     vitalFilesDisk: resourceUsageSchema.optional(),
+    clockQuality: runtimeClockQualitySchema.nullable().optional(),
     probeErrors: z.array(runtimeProbeErrorSchema)
   })
   .passthrough();
@@ -1045,7 +1097,54 @@ export const platformStateSchema = z
     dataDirectoryStatsError: nullableString,
     publicProxyPort: z.number().optional(),
     publicProxyPortReadState: z.string().nullable().optional(),
-    healthIssues: z.array(z.string()).optional()
+    healthIssues: z.array(z.string()).optional(),
+    timeAuthority: z
+      .object({
+        state: z.enum(["loaded", "missing", "unavailable", "failed"]),
+        document: z
+          .object({
+            schemaVersion: z.number().int(),
+            profile: z.enum(["helper-ntp", "enterprise-ntp"]),
+            sourceId: z.string(),
+            serverAddress: nullableString,
+            serverPort: z.number().int().nullable().optional(),
+            state: z.enum([
+              "synchronizing",
+              "synchronized",
+              "host-clock-only",
+              "unsynchronized",
+              "stale",
+              "failed",
+              "unavailable"
+            ]),
+            stratum: z.number().int().nullable().optional(),
+            allowedClientAddress: nullableString,
+            updatedAt: z.string(),
+            issue: nullableString
+          })
+          .passthrough()
+          .nullable()
+          .optional(),
+        readError: nullableString
+      })
+      .passthrough()
+      .superRefine((read, context) => {
+        if (read.state === "loaded" && read.document == null) {
+          context.addIssue({
+            code: "custom",
+            path: ["document"],
+            message: "loaded time authority read requires a document"
+          });
+        }
+        if (read.state === "failed" && isBlank(read.readError)) {
+          context.addIssue({
+            code: "custom",
+            path: ["readError"],
+            message: "failed time authority read requires readError"
+          });
+        }
+      })
+      .optional()
   })
   .passthrough()
   .superRefine((status, context) => {

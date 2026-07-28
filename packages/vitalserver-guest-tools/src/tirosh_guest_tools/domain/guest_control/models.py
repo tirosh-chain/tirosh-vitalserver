@@ -9,6 +9,7 @@ from tirosh_guest_tools.domain.runtime_observation import (
     ProbeError,
     RuntimeResourceUsage,
 )
+from tirosh_guest_tools.domain.time_authority import ClockQuality
 
 
 class ServiceCommand(StrEnum):
@@ -243,6 +244,7 @@ class StackStatus:
     memory: RuntimeResourceUsage | None = None
     system_disk: RuntimeResourceUsage | None = None
     vital_files_disk: RuntimeResourceUsage | None = None
+    clock_quality: ClockQuality | None = None
     probe_errors: list[ProbeError] | None = None
 
     def as_json(self) -> dict[str, Any]:
@@ -259,6 +261,8 @@ class StackStatus:
             document["systemDisk"] = self.system_disk.as_json()
         if self.vital_files_disk is not None:
             document["vitalFilesDisk"] = self.vital_files_disk.as_json()
+        if self.clock_quality is not None:
+            document["clockQuality"] = self.clock_quality.as_json()
         document["probeErrors"] = [
             error.as_json() for error in (self.probe_errors or [])
         ]

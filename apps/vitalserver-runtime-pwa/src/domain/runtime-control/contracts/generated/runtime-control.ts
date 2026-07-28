@@ -2382,7 +2382,47 @@ export interface components {
             memory?: components["schemas"]["ResourceUsage"];
             systemDisk?: components["schemas"]["ResourceUsage"];
             vitalFilesDisk?: components["schemas"]["ResourceUsage"];
+            clockQuality?: components["schemas"]["RuntimeClockQuality"] | null;
             probeErrors: components["schemas"]["RuntimeGuestControlProbeError"][];
+        };
+        RuntimeClockQuality: {
+            /** @enum {string} */
+            state: "configured" | "synchronizing" | "synchronized" | "unsynchronized" | "stale" | "unsupported" | "failed" | "unavailable";
+            observedAt: string;
+            source?: string | null;
+            stratum?: number | null;
+            offsetMs?: number | null;
+            uncertaintyMs?: number | null;
+            rootDelayMs?: number | null;
+            rootDispersionMs?: number | null;
+            lastSyncAt?: string | null;
+            issue?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        RuntimeTimeAuthorityDocument: {
+            schemaVersion: number;
+            /** @enum {string} */
+            profile: "helper-ntp" | "enterprise-ntp";
+            sourceId: string;
+            serverAddress?: string | null;
+            serverPort?: number | null;
+            /** @enum {string} */
+            state: "synchronizing" | "synchronized" | "host-clock-only" | "unsynchronized" | "stale" | "failed" | "unavailable";
+            stratum?: number | null;
+            allowedClientAddress?: string | null;
+            updatedAt: string;
+            issue?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        RuntimeTimeAuthorityResourceRead: {
+            /** @enum {string} */
+            state: "loaded" | "missing" | "unavailable" | "failed";
+            document?: components["schemas"]["RuntimeTimeAuthorityDocument"] | null;
+            readError?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** @enum {string} */
         RuntimeLabReadState: "loaded" | "unavailable" | "failed";
@@ -2670,6 +2710,7 @@ export interface components {
             publicProxyPort?: number;
             publicProxyPortReadState?: string | null;
             healthIssues?: string[];
+            timeAuthority?: components["schemas"]["RuntimeTimeAuthorityResourceRead"];
         } & {
             [key: string]: unknown;
         };

@@ -110,7 +110,7 @@ let package = Package(
         ),
         .target(
             name: "MacPlatformAgent",
-            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl", "InboundAdapters", "OutboundAdapters"],
+            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl", "InboundAdapters", "OutboundAdapters"],
             path: "Sources/Hosts/MacPlatformAgent"
         ),
         .executableTarget(

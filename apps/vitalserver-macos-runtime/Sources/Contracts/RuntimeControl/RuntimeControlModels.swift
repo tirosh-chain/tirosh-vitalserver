@@ -805,6 +805,7 @@ public struct PlatformState: Codable, Equatable, Sendable {
         case publicProxyPort
         case publicProxyPortReadState
         case healthIssues
+        case timeAuthority
     }
 
     public var runtimeInstallationState: RuntimeFileState
@@ -827,6 +828,7 @@ public struct PlatformState: Codable, Equatable, Sendable {
     public var publicProxyPort: Int?
     public var publicProxyPortReadState: RuntimeProxyPortReadState?
     public var healthIssues: [RuntimeFailureReason]
+    public var timeAuthority: RuntimeTimeAuthorityResourceRead?
 
     public init(
         runtimeInstallationState: RuntimeFileState,
@@ -848,7 +850,8 @@ public struct PlatformState: Codable, Equatable, Sendable {
         dataDirectoryStatsError: String? = nil,
         publicProxyPort: Int? = nil,
         publicProxyPortReadState: RuntimeProxyPortReadState? = nil,
-        healthIssues: [RuntimeFailureReason] = []
+        healthIssues: [RuntimeFailureReason] = [],
+        timeAuthority: RuntimeTimeAuthorityResourceRead? = nil
     ) {
         self.runtimeInstallationState = runtimeInstallationState
         self.services = services
@@ -870,6 +873,7 @@ public struct PlatformState: Codable, Equatable, Sendable {
         self.publicProxyPort = publicProxyPort
         self.publicProxyPortReadState = publicProxyPortReadState
         self.healthIssues = healthIssues
+        self.timeAuthority = timeAuthority
     }
 
     public init(from decoder: Decoder) throws {
@@ -894,7 +898,8 @@ public struct PlatformState: Codable, Equatable, Sendable {
             dataDirectoryStatsError: try container.decodeIfPresent(String.self, forKey: .dataDirectoryStatsError),
             publicProxyPort: try container.decodeIfPresent(Int.self, forKey: .publicProxyPort),
             publicProxyPortReadState: try container.decodeIfPresent(RuntimeProxyPortReadState.self, forKey: .publicProxyPortReadState),
-            healthIssues: try container.decodeIfPresent([RuntimeFailureReason].self, forKey: .healthIssues) ?? []
+            healthIssues: try container.decodeIfPresent([RuntimeFailureReason].self, forKey: .healthIssues) ?? [],
+            timeAuthority: try container.decodeIfPresent(RuntimeTimeAuthorityResourceRead.self, forKey: .timeAuthority)
         )
     }
 

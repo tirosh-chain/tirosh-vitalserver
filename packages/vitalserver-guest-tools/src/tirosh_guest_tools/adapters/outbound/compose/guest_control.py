@@ -26,6 +26,7 @@ from tirosh_guest_tools.domain.runtime_observation import (
     RuntimeResourceUsage,
 )
 from tirosh_guest_tools.infrastructure.common import systemctl
+from tirosh_guest_tools.infrastructure.time_authority import read_clock_quality
 
 DOCKER_INSPECT_TIMEOUT_SECONDS = 1
 CGROUP_ROOT = Path("/sys/fs/cgroup")
@@ -120,6 +121,7 @@ class ComposeGuestControlAdapter:
                 "/mnt/tirosh-vital-files",
                 probe_errors,
             ),
+            clock_quality=read_clock_quality(now=observed_at),
             probe_errors=probe_errors,
         )
 
