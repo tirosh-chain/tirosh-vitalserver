@@ -115,17 +115,11 @@ func writeTestManifest(t *testing.T, release string, sources map[string]string, 
 	t.Helper()
 	manifest := map[string]any{
 		"schemaVersion": "v1", "installationId": "installation-001", "platform": "macos",
-		"release":          map[string]any{"id": "runtime-platform-030", "productVersion": "0.3.0", "runtimeVersion": "0.3.0"},
-		"package":          map[string]any{"identifier": "com.tirosh.vitalserver.runtime-platform", "productVersion": "0.3.0"},
-		"immutablePayload": map[string]any{"releaseCatalogPath": "/Library/Application Support/VitalServerRuntimePlatform/releases", "releaseRootPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-030", "manifestPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-030/installation-manifest.json", "entries": []any{map[string]any{"relativePath": "bin/host-agent", "sha256": digestFile(t, filepath.Join(release, "bin", "host-agent")), "executable": true}}},
-		"activation":       map[string]any{"currentReleaseLinkPath": "/Library/Application Support/VitalServerRuntimePlatform/current", "referenceKind": "symbolic-link", "expectedReleaseRootPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-030"},
-		"operatorInterface": map[string]any{
-			"bootstrapConfigurationPath":              "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json",
-			"bootstrapConfigurationSha256":            digestFile(t, bootstrap),
-			"applicationBundlePath":                   "/Applications/VitalServer Runtime Platform.app",
-			"applicationBundleTreeSha256":             "6666666666666666666666666666666666666666666666666666666666666666",
-			"applicationBundleEntrypointRelativePath": "Contents/MacOS/VitalServer Runtime Platform",
-		},
+		"release":           map[string]any{"id": "runtime-platform-030", "productVersion": "0.3.0", "runtimeVersion": "0.3.0"},
+		"package":           map[string]any{"identifier": "com.tirosh.vitalserver.runtime-platform", "productVersion": "0.3.0"},
+		"immutablePayload":  map[string]any{"releaseCatalogPath": "/Library/Application Support/VitalServerRuntimePlatform/releases", "releaseRootPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-030", "manifestPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-030/installation-manifest.json", "entries": []any{map[string]any{"relativePath": "bin/host-agent", "sha256": digestFile(t, filepath.Join(release, "bin", "host-agent")), "executable": true}}},
+		"activation":        map[string]any{"currentReleaseLinkPath": "/Library/Application Support/VitalServerRuntimePlatform/current", "referenceKind": "symbolic-link", "expectedReleaseRootPath": "/Library/Application Support/VitalServerRuntimePlatform/releases/runtime-platform-030"},
+		"operatorInterface": map[string]any{"bootstrapConfigurationPath": "/Library/Application Support/VitalServerRuntimePlatform/control/runtime-console-bootstrap.json", "bootstrapConfigurationSha256": digestFile(t, bootstrap)},
 		"requiredServices": []any{
 			map[string]any{"role": "host-agent", "manager": "launchd", "name": "com.tirosh.vitalserver.host-agent", "definitionPath": "/Library/LaunchDaemons/com.tirosh.vitalserver.host-agent.plist", "definitionSha256": digestFile(t, sources["host-agent"])},
 			map[string]any{"role": "host-edge-proxy", "manager": "launchd", "name": "com.tirosh.vitalserver.host-edge-proxy", "definitionPath": "/Library/LaunchDaemons/com.tirosh.vitalserver.host-edge-proxy.plist", "definitionSha256": digestFile(t, sources["host-edge-proxy"])},
@@ -139,56 +133,6 @@ func writeTestManifest(t *testing.T, release string, sources map[string]string, 
 	}
 	if err := os.WriteFile(filepath.Join(release, "installation-manifest.json"), append(bytes, '\n'), 0o600); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestComposeHostPlatformReleaseArchiveRejectsIncompleteMacOSApplicationBundleContract(t *testing.T) {
-	root := t.TempDir()
-	release := filepath.Join(root, "release")
-	if err := os.MkdirAll(filepath.Join(release, "bin"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(release, "bin", "host-agent"), []byte("host-agent"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	services := map[string]string{}
-	for _, role := range []string{"host-agent", "host-edge-proxy", "host-update-handoff-supervisor"} {
-		path := filepath.Join(root, role+".plist")
-		if err := os.WriteFile(path, []byte(role), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		services[role] = path
-	}
-	bootstrap := filepath.Join(root, "runtime-console-bootstrap.json")
-	if err := os.WriteFile(bootstrap, []byte(`{"schemaVersion":"v1"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	writeTestManifest(t, release, services, bootstrap)
-	manifestPath := filepath.Join(release, "installation-manifest.json")
-	var manifest map[string]any
-	contents, err := os.ReadFile(manifestPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(contents, &manifest); err != nil {
-		t.Fatal(err)
-	}
-	delete(manifest["operatorInterface"].(map[string]any), "applicationBundleTreeSha256")
-	contents, err = json.Marshal(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifestPath, append(contents, '\n'), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	composition := filepath.Join(root, "composition.json")
-	writeComposition(t, composition, release, services, bootstrap)
-
-	if _, err := ComposeHostPlatformReleaseArchive(ComposeHostPlatformReleaseArchiveRequest{
-		CompositionPath:   composition,
-		OutputArchivePath: filepath.Join(root, "release.tar.gz"),
-	}); err == nil {
-		t.Fatal("expected incomplete macOS application bundle declaration rejection")
 	}
 }
 func writeComposition(t *testing.T, path, release string, sources map[string]string, bootstrap string) {

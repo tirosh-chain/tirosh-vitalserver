@@ -81,11 +81,8 @@ type installationManifest struct {
 		ExpectedReleaseRootPath string `json:"expectedReleaseRootPath"`
 	} `json:"activation"`
 	OperatorInterface struct {
-		BootstrapConfigurationPath              string `json:"bootstrapConfigurationPath"`
-		BootstrapConfigurationSHA256            string `json:"bootstrapConfigurationSha256"`
-		ApplicationBundlePath                   string `json:"applicationBundlePath,omitempty"`
-		ApplicationBundleTreeSHA256             string `json:"applicationBundleTreeSha256,omitempty"`
-		ApplicationBundleEntrypointRelativePath string `json:"applicationBundleEntrypointRelativePath,omitempty"`
+		BootstrapConfigurationPath   string `json:"bootstrapConfigurationPath"`
+		BootstrapConfigurationSHA256 string `json:"bootstrapConfigurationSha256"`
 	} `json:"operatorInterface"`
 	RequiredServices []requiredService `json:"requiredServices"`
 	MutableStores    []struct {
@@ -192,13 +189,6 @@ func decodeManifest(contents []byte) (installationManifest, error) {
 	}
 	if manifest.SchemaVersion != "v1" || !validHostPlatform(manifest.Platform) || !validIdentifier(manifest.Release.ID) || !sha256Pattern.MatchString(manifest.OperatorInterface.BootstrapConfigurationSHA256) || len(manifest.ImmutablePayload.Entries) == 0 || len(manifest.RequiredServices) != 3 {
 		return installationManifest{}, fmt.Errorf("candidate C48 archive-relevant declaration is invalid")
-	}
-	if manifest.Platform == "macos" {
-		if !strings.HasPrefix(manifest.OperatorInterface.ApplicationBundlePath, "/") ||
-			!sha256Pattern.MatchString(manifest.OperatorInterface.ApplicationBundleTreeSHA256) ||
-			!safeRelativePath(manifest.OperatorInterface.ApplicationBundleEntrypointRelativePath) {
-			return installationManifest{}, fmt.Errorf("candidate C48 macOS application bundle declaration is invalid")
-		}
 	}
 	seenEntries := map[string]bool{}
 	for _, entry := range manifest.ImmutablePayload.Entries {
