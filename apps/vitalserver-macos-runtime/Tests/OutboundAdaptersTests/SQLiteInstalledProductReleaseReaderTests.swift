@@ -9,6 +9,7 @@ final class SQLiteInstalledProductReleaseReaderTests: XCTestCase {
     func testReadsValidatedPackageInstallRelease() throws {
         let context = try makeContext()
         let release = try InstalledProductReleasePolicy.makePackageInstall(
+            installationId: "installation-1",
             productId: "ai.tirosh.vitalserver.helper",
             productVersion: "0.2.2",
             runtimeVersion: "0.2.2",
@@ -32,9 +33,47 @@ final class SQLiteInstalledProductReleaseReaderTests: XCTestCase {
         )
     }
 
+    func testReportsColumnAndDocumentIdentityMismatchAsFailure() throws {
+        let context = try makeContext()
+        let release = try InstalledProductReleasePolicy.makePackageInstall(
+            installationId: "installation-1",
+            productId: "ai.tirosh.vitalserver.helper",
+            productVersion: "0.2.2",
+            runtimeVersion: "0.2.2",
+            installOperationId: "install-1",
+            settledAt: "2026-07-27T00:00:00Z"
+        )
+        try context.writer.settlePackageInstallRelease(release)
+        let connection = SQLiteHostRuntimeStateConnection(
+            url: context.databaseURL,
+            busyTimeoutMilliseconds: 5_000
+        )
+        try connection.withWritableDatabase { db in
+            try SQLiteHostRuntimeStateStatement.execute(
+                db,
+                sql: """
+                UPDATE installed_product_release
+                SET installation_id = 'installation-corrupt'
+                WHERE singleton_id = 1
+                """
+            )
+        }
+
+        guard case .failed(let reason) =
+            context.reader.loadInstalledProductRelease() else {
+            return XCTFail("expected explicit read failure")
+        }
+        XCTAssertTrue(
+            reason.contains(
+                "installed_product_release.installation_id"
+            )
+        )
+    }
+
     private func makeContext() throws -> (
         reader: SQLiteInstalledProductReleaseReader,
-        writer: SQLiteUpdateBootstrapJournalRepository
+        writer: SQLiteUpdateBootstrapJournalRepository,
+        databaseURL: URL
     ) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -57,7 +96,8 @@ final class SQLiteInstalledProductReleaseReaderTests: XCTestCase {
                 validate: ValidateUpdateBootstrapJournalUseCase().validate,
                 validateRelease: InstalledProductReleasePolicy.validate,
                 validateSettlement: InstalledProductReleasePolicy.validate
-            )
+            ),
+            databaseURL
         )
     }
 }
@@ -65,6 +105,7 @@ final class SQLiteInstalledProductReleaseReaderTests: XCTestCase {
 final class RuntimeHostInstalledProductReleaseVersionReaderTests: XCTestCase {
     func testMapsLoadedReleaseToRuntimeVersion() throws {
         let release = try InstalledProductReleasePolicy.makePackageInstall(
+            installationId: "installation-1",
             productId: "ai.tirosh.vitalserver.helper",
             productVersion: "0.2.2",
             runtimeVersion: "runtime-2026.07",

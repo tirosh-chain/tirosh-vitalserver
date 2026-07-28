@@ -10,6 +10,7 @@ public enum InstalledProductReleaseValidationError:
     case completionMissing
     case completionIsNotSucceeded(UpdateBootstrapCompletionOutcome)
     case invalidField(field: String, value: String)
+    case invalidInstallationRevision(Int)
     case invalidReleaseRevision(Int)
     case invalidEvidenceShape(InstalledProductReleaseSource)
     case productMismatch(expected: String, actual: String)
@@ -18,6 +19,7 @@ public enum InstalledProductReleaseValidationError:
 
 public enum InstalledProductReleasePolicy {
     public static func makePackageInstall(
+        installationId: String,
         productId: String,
         productVersion: String,
         runtimeVersion: String,
@@ -25,7 +27,9 @@ public enum InstalledProductReleasePolicy {
         settledAt: String
     ) throws -> InstalledProductRelease {
         let release = InstalledProductRelease(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
+            installationId: installationId,
+            installationRevision: 1,
             productId: productId,
             productVersion: productVersion,
             runtimeVersion: runtimeVersion,
@@ -56,7 +60,9 @@ public enum InstalledProductReleasePolicy {
         }
         let completion = try succeededCompletion(journal)
         let release = InstalledProductRelease(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
+            installationId: current.installationId,
+            installationRevision: current.installationRevision + 1,
             productId: journal.envelope.productId,
             productVersion: journal.envelope.targetRelease.productVersion,
             runtimeVersion: journal.envelope.targetRelease.runtimeVersion,
@@ -75,7 +81,13 @@ public enum InstalledProductReleasePolicy {
     }
 
     public static func validate(_ release: InstalledProductRelease) throws {
-        try require(release.schemaVersion == "v1", "schemaVersion", release.schemaVersion)
+        try require(release.schemaVersion == "v2", "schemaVersion", release.schemaVersion)
+        try requireIdentifier(release.installationId, "installationId")
+        guard release.installationRevision > 0 else {
+            throw InstalledProductReleaseValidationError.invalidInstallationRevision(
+                release.installationRevision
+            )
+        }
         try requireIdentifier(release.productId, "productId")
         try requireVersion(release.productVersion, "productVersion")
         try requireVersion(release.runtimeVersion, "runtimeVersion")
@@ -84,11 +96,17 @@ public enum InstalledProductReleasePolicy {
                 release.releaseRevision
             )
         }
+        guard release.installationRevision >= release.releaseRevision else {
+            throw InstalledProductReleaseValidationError.invalidInstallationRevision(
+                release.installationRevision
+            )
+        }
         try requireCanonicalTimestamp(release.settledAt, "settledAt")
 
         switch release.source {
         case .packageInstall:
             guard let operationId = release.installOperationId,
+                  release.installationRevision == 1,
                   release.releaseRevision == 1,
                   release.updateId == nil,
                   release.journalId == nil,
@@ -102,6 +120,8 @@ public enum InstalledProductReleasePolicy {
             try requireIdentifier(operationId, "installOperationId")
         case .update:
             guard release.installOperationId == nil,
+                  release.installationRevision > 1,
+                  release.releaseRevision > 1,
                   let updateId = release.updateId,
                   let journalId = release.journalId,
                   let journalRevision = release.journalRevision,

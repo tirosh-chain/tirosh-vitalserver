@@ -9,8 +9,18 @@ public enum SQLiteUpdateBootstrapJournalRepositoryError:
 {
     case invalidJournal(reason: String)
     case invalidInstalledRelease(reason: String)
-    case installedReleaseAlreadyExists(revision: Int)
+    case installedReleaseAlreadyExists(
+        installationId: String,
+        installationRevision: Int
+    )
     case installedReleaseMissing
+    case installedReleaseIdentityMismatch(expected: String, actual: String)
+    case staleInstallationRevision(expected: Int, actual: Int)
+    case installedReleaseCASFailed(
+        installationId: String,
+        expectedInstallationRevision: Int,
+        expectedReleaseRevision: Int
+    )
     case missing(id: String)
     case alreadyExists(id: String, revision: Int)
     case staleRevision(id: String, expected: Int, actual: Int)
@@ -181,23 +191,14 @@ public struct SQLiteUpdateBootstrapJournalRepository:
         do {
             return try connection.withReadOnlyDatabase { db in
                 _ = try SQLiteHostRuntimeStateSchema.validate(db)
-                guard let document =
-                    try SQLiteHostRuntimeStateStatement.scalarString(
+                guard let release =
+                    try SQLiteInstalledProductReleaseRecordReader.load(
                         db,
-                        sql: """
-                        SELECT document_json
-                        FROM installed_product_release
-                        WHERE singleton_id = 1
-                        """
-                    )
-                else {
+                        decoder: decoder,
+                        validate: validateRelease
+                    ) else {
                     return .missing
                 }
-                let release = try decoder.decode(
-                    InstalledProductRelease.self,
-                    from: Data(document.utf8)
-                )
-                try validateRelease(release)
                 return .loaded(release)
             }
         } catch {
@@ -225,9 +226,18 @@ public struct SQLiteUpdateBootstrapJournalRepository:
             try connection.withWritableDatabase { db in
                 _ = try SQLiteHostRuntimeStateSchema.validate(db)
                 try connection.withImmediateTransaction(db) {
-                    if let revision = try installedReleaseRevision(db) {
+                    if let existing =
+                        try SQLiteInstalledProductReleaseRecordReader.load(
+                            db,
+                            decoder: decoder,
+                            validate: validateRelease
+                        ) {
                         throw SQLiteUpdateBootstrapJournalRepositoryError
-                            .installedReleaseAlreadyExists(revision: revision)
+                            .installedReleaseAlreadyExists(
+                                installationId: existing.installationId,
+                                installationRevision:
+                                    existing.installationRevision
+                            )
                     }
                     try insertInstalledRelease(db, release: release)
                 }
@@ -246,7 +256,7 @@ public struct SQLiteUpdateBootstrapJournalRepository:
         journal: UpdateBootstrapJournal,
         release: InstalledProductRelease,
         expectedJournalRevision: Int,
-        expectedReleaseRevision: Int
+        expectedInstallationRevision: Int
     ) throws {
         do {
             try validate(journal)
@@ -267,25 +277,46 @@ public struct SQLiteUpdateBootstrapJournalRepository:
             try connection.withWritableDatabase { db in
                 _ = try SQLiteHostRuntimeStateSchema.validate(db)
                 try connection.withImmediateTransaction(db) {
-                    guard let actualReleaseRevision =
-                        try installedReleaseRevision(db) else {
+                    guard let current =
+                        try SQLiteInstalledProductReleaseRecordReader.load(
+                            db,
+                            decoder: decoder,
+                            validate: validateRelease
+                        ) else {
                         throw SQLiteUpdateBootstrapJournalRepositoryError
                             .installedReleaseMissing
                     }
-                    guard actualReleaseRevision == expectedReleaseRevision else {
+                    guard current.installationId
+                        == release.installationId else {
                         throw SQLiteUpdateBootstrapJournalRepositoryError
-                            .staleRevision(
-                                id: "installed-product-release",
-                                expected: expectedReleaseRevision,
-                                actual: actualReleaseRevision
+                            .installedReleaseIdentityMismatch(
+                                expected: release.installationId,
+                                actual: current.installationId
+                            )
+                    }
+                    guard current.installationRevision
+                        == expectedInstallationRevision else {
+                        throw SQLiteUpdateBootstrapJournalRepositoryError
+                            .staleInstallationRevision(
+                                expected: expectedInstallationRevision,
+                                actual: current.installationRevision
+                            )
+                    }
+                    guard release.installationRevision
+                        == expectedInstallationRevision + 1 else {
+                        throw SQLiteUpdateBootstrapJournalRepositoryError
+                            .invalidNextRevision(
+                                id: "installed-product-installation",
+                                expected: expectedInstallationRevision + 1,
+                                actual: release.installationRevision
                             )
                     }
                     guard release.releaseRevision
-                        == expectedReleaseRevision + 1 else {
+                        == current.releaseRevision + 1 else {
                         throw SQLiteUpdateBootstrapJournalRepositoryError
                             .invalidNextRevision(
                                 id: "installed-product-release",
-                                expected: expectedReleaseRevision + 1,
+                                expected: current.releaseRevision + 1,
                                 actual: release.releaseRevision
                             )
                     }
@@ -327,7 +358,13 @@ public struct SQLiteUpdateBootstrapJournalRepository:
                             .text(journal.id),
                         ]
                     )
-                    try updateInstalledRelease(db, release: release)
+                    try updateInstalledRelease(
+                        db,
+                        release: release,
+                        expectedInstallationRevision:
+                            expectedInstallationRevision,
+                        expectedReleaseRevision: current.releaseRevision
+                    )
                 }
             }
         } catch let error as SQLiteUpdateBootstrapJournalRepositoryError {
@@ -338,19 +375,6 @@ public struct SQLiteUpdateBootstrapJournalRepository:
                 reason: String(describing: error)
             )
         }
-    }
-
-    private func installedReleaseRevision(
-        _ db: OpaquePointer
-    ) throws -> Int? {
-        try SQLiteHostRuntimeStateStatement.scalarInt(
-            db,
-            sql: """
-            SELECT release_revision
-            FROM installed_product_release
-            WHERE singleton_id = 1
-            """
-        )
     }
 
     private func insertInstalledRelease(
@@ -366,13 +390,17 @@ public struct SQLiteUpdateBootstrapJournalRepository:
             sql: """
             INSERT INTO installed_product_release(
               singleton_id,
+              installation_id,
+              installation_revision,
               release_revision,
               source,
               document_json,
               settled_at
-            ) VALUES (1, ?, ?, ?, ?)
+            ) VALUES (1, ?, ?, ?, ?, ?, ?)
             """,
             bindings: [
+                .text(release.installationId),
+                .int(release.installationRevision),
                 .int(release.releaseRevision),
                 .text(release.source.rawValue),
                 .text(document),
@@ -383,7 +411,9 @@ public struct SQLiteUpdateBootstrapJournalRepository:
 
     private func updateInstalledRelease(
         _ db: OpaquePointer,
-        release: InstalledProductRelease
+        release: InstalledProductRelease,
+        expectedInstallationRevision: Int,
+        expectedReleaseRevision: Int
     ) throws {
         let document = String(
             decoding: try encoder.encode(release),
@@ -393,19 +423,40 @@ public struct SQLiteUpdateBootstrapJournalRepository:
             db,
             sql: """
             UPDATE installed_product_release
-            SET release_revision = ?,
+            SET installation_revision = ?,
+                release_revision = ?,
                 source = ?,
                 document_json = ?,
                 settled_at = ?
             WHERE singleton_id = 1
+              AND installation_id = ?
+              AND installation_revision = ?
+              AND release_revision = ?
             """,
             bindings: [
+                .int(release.installationRevision),
                 .int(release.releaseRevision),
                 .text(release.source.rawValue),
                 .text(document),
                 .text(release.settledAt),
+                .text(release.installationId),
+                .int(expectedInstallationRevision),
+                .int(expectedReleaseRevision),
             ]
         )
+        let changed = try SQLiteHostRuntimeStateStatement.scalarInt(
+            db,
+            sql: "SELECT changes()"
+        )
+        guard changed == 1 else {
+            throw SQLiteUpdateBootstrapJournalRepositoryError
+                .installedReleaseCASFailed(
+                    installationId: release.installationId,
+                    expectedInstallationRevision:
+                        expectedInstallationRevision,
+                    expectedReleaseRevision: expectedReleaseRevision
+                )
+        }
     }
 
     private func read(

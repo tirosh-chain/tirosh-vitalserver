@@ -630,6 +630,11 @@ public enum SQLiteHostRuntimeStateDatabaseError: Error, Equatable, CustomStringC
     case schemaObjectMissing(String)
     case unsupportedSchemaVersion(found: Int, supported: Int)
     case migrationSequenceInvalid(expected: Int, actual: Int)
+    case installedProductReleaseMigrationInputInvalid(
+        field: String,
+        value: String
+    )
+    case installedProductReleaseMigrationDocumentInvalid(reason: String)
     case integrityCheckFailed(String)
     case metadataMissing
     case metadataInvalid(field: String, value: String)
@@ -659,6 +664,13 @@ public enum SQLiteHostRuntimeStateDatabaseError: Error, Equatable, CustomStringC
             return "Host runtime state database schema is newer than this runtime found=\(found) supported=\(supported)"
         case .migrationSequenceInvalid(let expected, let actual):
             return "Host runtime state database migration sequence is invalid expected=\(expected) actual=\(actual)"
+        case .installedProductReleaseMigrationInputInvalid(
+            let field,
+            let value
+        ):
+            return "Host runtime state database installed product release migration input is invalid field=\(field) value=\(value)"
+        case .installedProductReleaseMigrationDocumentInvalid(let reason):
+            return "Host runtime state database installed product release migration document is invalid reason=\(reason)"
         case .integrityCheckFailed(let result):
             return "Host runtime state database integrity check failed result=\(result)"
         case .metadataMissing:

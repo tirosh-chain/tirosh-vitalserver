@@ -13,6 +13,7 @@ public struct SQLiteHostRuntimeStateDatabase:
     private let fileStore: any RuntimeFileStore
     private let connection: SQLiteHostRuntimeStateConnection
     private let databaseID: @Sendable () -> String
+    private let migratedInstallationID: @Sendable () -> String
     private let timestamp: @Sendable () -> String
 
     public init(
@@ -20,6 +21,9 @@ public struct SQLiteHostRuntimeStateDatabase:
         fileStore: any RuntimeFileStore = SystemRuntimeFileStore(),
         busyTimeoutMilliseconds: Int32 = 5_000,
         databaseID: @escaping @Sendable () -> String = { UUID().uuidString.lowercased() },
+        migratedInstallationID: @escaping @Sendable () -> String = {
+            UUID().uuidString.lowercased()
+        },
         timestamp: @escaping @Sendable () -> String = {
             ISO8601DateFormatter().string(from: Date())
         }
@@ -31,6 +35,7 @@ public struct SQLiteHostRuntimeStateDatabase:
             busyTimeoutMilliseconds: busyTimeoutMilliseconds
         )
         self.databaseID = databaseID
+        self.migratedInstallationID = migratedInstallationID
         self.timestamp = timestamp
     }
 
@@ -67,6 +72,7 @@ public struct SQLiteHostRuntimeStateDatabase:
                 db,
                 connection: connection,
                 databaseID: databaseID,
+                migratedInstallationID: migratedInstallationID,
                 timestamp: timestamp
             )
             return try SQLiteHostRuntimeStateSchema.validate(db)
@@ -126,7 +132,9 @@ public struct SQLiteHostRuntimeStateDatabase:
             return .configuration
         case .schemaObjectMissing,
              .unsupportedSchemaVersion,
-             .migrationSequenceInvalid:
+             .migrationSequenceInvalid,
+             .installedProductReleaseMigrationInputInvalid,
+             .installedProductReleaseMigrationDocumentInvalid:
             return .migration
         case .integrityCheckFailed:
             return .integrityCheck

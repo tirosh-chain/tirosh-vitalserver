@@ -19,6 +19,6 @@ public protocol SucceededUpdateSettlementWriting: Sendable {
         journal: UpdateBootstrapJournal,
         release: InstalledProductRelease,
         expectedJournalRevision: Int,
-        expectedReleaseRevision: Int
+        expectedInstallationRevision: Int
     ) throws
 }

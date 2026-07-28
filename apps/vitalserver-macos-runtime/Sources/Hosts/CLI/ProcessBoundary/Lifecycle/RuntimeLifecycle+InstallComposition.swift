@@ -60,9 +60,13 @@ extension RuntimeLifecycle {
                     databaseURL: installedPaths.runtimeStateDatabase
                 ),
                 operationID: { UUID().uuidString.lowercased() },
-                settleInstalledProductRelease: { operationID in
+                installationID: { UUID().uuidString.lowercased() },
+                settleInstalledProductRelease: {
+                    operationID,
+                    installationID in
                     let release = try MakeInstalledProductReleaseUseCase()
                         .makePackageInstall(
+                            installationId: installationID,
                             productId: Constants.Product.identifier,
                             productVersion: Constants.launcherVersion,
                             runtimeVersion: Constants.launcherVersion,

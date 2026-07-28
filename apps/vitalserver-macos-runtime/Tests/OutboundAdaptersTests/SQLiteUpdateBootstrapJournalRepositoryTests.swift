@@ -37,6 +37,35 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         )
     }
 
+    func testPackageInstallRejectsReplacingExistingInstallation() throws {
+        let context = try makeContext()
+        let replacement = try InstalledProductReleasePolicy
+            .makePackageInstall(
+                installationId: "installation-2",
+                productId: "ai.tirosh.vitalserver.helper",
+                productVersion: "0.2.2",
+                runtimeVersion: "0.2.2",
+                installOperationId: "install-2",
+                settledAt: "2026-07-27T00:01:00Z"
+            )
+
+        XCTAssertThrowsError(
+            try context.repository.settlePackageInstallRelease(replacement)
+        ) { error in
+            XCTAssertEqual(
+                error as? SQLiteUpdateBootstrapJournalRepositoryError,
+                .installedReleaseAlreadyExists(
+                    installationId: "installation-1",
+                    installationRevision: 1
+                )
+            )
+        }
+        XCTAssertEqual(
+            context.repository.loadInstalledProductRelease(),
+            .loaded(try baselineRelease())
+        )
+    }
+
     func testRejectsStaleWriterWithoutChangingJournal() throws {
         let context = try makeContext()
         let admitted = journal()
@@ -92,7 +121,7 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             journal: succeeded,
             release: release,
             expectedJournalRevision: 3,
-            expectedReleaseRevision: 1
+            expectedInstallationRevision: 1
         )
 
         XCTAssertEqual(
@@ -103,6 +132,9 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             context.repository.loadInstalledProductRelease(),
             .loaded(release)
         )
+        XCTAssertEqual(release.installationId, "installation-1")
+        XCTAssertEqual(release.installationRevision, 2)
+        XCTAssertEqual(release.releaseRevision, 2)
     }
 
     func testInvalidReleaseDoesNotAdvanceJournal() throws {
@@ -122,6 +154,8 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         )
         let invalid = InstalledProductRelease(
             schemaVersion: valid.schemaVersion,
+            installationId: valid.installationId,
+            installationRevision: valid.installationRevision,
             productId: valid.productId,
             productVersion: "wrong-version",
             runtimeVersion: valid.runtimeVersion,
@@ -140,7 +174,7 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             journal: succeeded,
             release: invalid,
             expectedJournalRevision: 3,
-            expectedReleaseRevision: 1
+            expectedInstallationRevision: 1
         ))
         guard case .loaded(let unchanged) =
             context.repository.loadUpdateBootstrapJournal(id: admitted.id)
@@ -175,7 +209,7 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             journal: succeeded,
             release: release,
             expectedJournalRevision: 2,
-            expectedReleaseRevision: 1
+            expectedInstallationRevision: 1
         )) { error in
             XCTAssertEqual(
                 error as? SQLiteUpdateBootstrapJournalRepositoryError,
@@ -183,6 +217,106 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
                     id: admitted.id,
                     expected: 2,
                     actual: 3
+                )
+            )
+        }
+        guard case .loaded(let unchanged) =
+            context.repository.loadUpdateBootstrapJournal(id: admitted.id)
+        else {
+            return XCTFail("expected running journal")
+        }
+        XCTAssertEqual(unchanged.state, .running)
+        XCTAssertEqual(unchanged.journalRevision, 3)
+        XCTAssertEqual(
+            context.repository.loadInstalledProductRelease(),
+            .loaded(try baselineRelease())
+        )
+    }
+
+    func testStaleInstallationRevisionChangesNeitherJournalNorRelease() throws {
+        let context = try makeContext()
+        let admitted = journal()
+        try context.repository.saveUpdateBootstrapJournal(
+            admitted,
+            expectedRevision: nil
+        )
+        let succeeded = try prepareSucceededJournal(
+            from: admitted,
+            repository: context.repository
+        )
+        let release = try InstalledProductReleasePolicy.makeUpdate(
+            current: try baselineRelease(),
+            from: succeeded
+        )
+
+        XCTAssertThrowsError(try context.repository.settleSucceededUpdate(
+            journal: succeeded,
+            release: release,
+            expectedJournalRevision: 3,
+            expectedInstallationRevision: 9
+        )) { error in
+            XCTAssertEqual(
+                error as? SQLiteUpdateBootstrapJournalRepositoryError,
+                .staleInstallationRevision(expected: 9, actual: 1)
+            )
+        }
+        guard case .loaded(let unchanged) =
+            context.repository.loadUpdateBootstrapJournal(id: admitted.id)
+        else {
+            return XCTFail("expected running journal")
+        }
+        XCTAssertEqual(unchanged.state, .running)
+        XCTAssertEqual(unchanged.journalRevision, 3)
+        XCTAssertEqual(
+            context.repository.loadInstalledProductRelease(),
+            .loaded(try baselineRelease())
+        )
+    }
+
+    func testDifferentInstallationIdentityChangesNeitherJournalNorRelease() throws {
+        let context = try makeContext()
+        let admitted = journal()
+        try context.repository.saveUpdateBootstrapJournal(
+            admitted,
+            expectedRevision: nil
+        )
+        let succeeded = try prepareSucceededJournal(
+            from: admitted,
+            repository: context.repository
+        )
+        let valid = try InstalledProductReleasePolicy.makeUpdate(
+            current: try baselineRelease(),
+            from: succeeded
+        )
+        let differentInstallation = InstalledProductRelease(
+            schemaVersion: valid.schemaVersion,
+            installationId: "installation-other",
+            installationRevision: valid.installationRevision,
+            productId: valid.productId,
+            productVersion: valid.productVersion,
+            runtimeVersion: valid.runtimeVersion,
+            releaseRevision: valid.releaseRevision,
+            source: valid.source,
+            installOperationId: valid.installOperationId,
+            updateId: valid.updateId,
+            journalId: valid.journalId,
+            journalRevision: valid.journalRevision,
+            reportRelativePath: valid.reportRelativePath,
+            reportSHA256: valid.reportSHA256,
+            settledAt: valid.settledAt
+        )
+
+        XCTAssertThrowsError(try context.repository.settleSucceededUpdate(
+            journal: succeeded,
+            release: differentInstallation,
+            expectedJournalRevision: 3,
+            expectedInstallationRevision: 1
+        )) { error in
+            XCTAssertEqual(
+                error as? SQLiteUpdateBootstrapJournalRepositoryError,
+                .installedReleaseIdentityMismatch(
+                    expected: "installation-other",
+                    actual: "installation-1"
                 )
             )
         }
@@ -226,6 +360,7 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
 
     private func baselineRelease() throws -> InstalledProductRelease {
         try InstalledProductReleasePolicy.makePackageInstall(
+            installationId: "installation-1",
             productId: "ai.tirosh.vitalserver.helper",
             productVersion: "0.2.2",
             runtimeVersion: "0.2.2",

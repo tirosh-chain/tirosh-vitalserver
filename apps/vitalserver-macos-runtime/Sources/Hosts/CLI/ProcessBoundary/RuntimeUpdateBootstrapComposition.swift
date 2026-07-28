@@ -208,12 +208,12 @@ extension RuntimeLifecycle {
                             repository.loadInstalledProductRelease()
                     )
                 },
-                settleSucceeded: { settled, release, journalRevision, releaseRevision in
+                settleSucceeded: { settled, release, journalRevision, installationRevision in
                     try repository.settleSucceededUpdate(
                         journal: settled,
                         release: release,
                         expectedJournalRevision: journalRevision,
-                        expectedReleaseRevision: releaseRevision
+                        expectedInstallationRevision: installationRevision
                     )
                 },
                 fail: advance.failed,
@@ -278,12 +278,12 @@ extension RuntimeLifecycle {
                             repository.loadInstalledProductRelease()
                     )
                 },
-                settleSucceeded: { settled, release, journalRevision, releaseRevision in
+                settleSucceeded: { settled, release, journalRevision, installationRevision in
                     try repository.settleSucceededUpdate(
                         journal: settled,
                         release: release,
                         expectedJournalRevision: journalRevision,
-                        expectedReleaseRevision: releaseRevision
+                        expectedInstallationRevision: installationRevision
                     )
                 },
                 fail: advance.failed,
@@ -339,12 +339,12 @@ extension RuntimeLifecycle {
                             repository.loadInstalledProductRelease()
                     )
                 },
-                settleSucceeded: { settled, release, journalRevision, releaseRevision in
+                settleSucceeded: { settled, release, journalRevision, installationRevision in
                     try repository.settleSucceededUpdate(
                         journal: settled,
                         release: release,
                         expectedJournalRevision: journalRevision,
-                        expectedReleaseRevision: releaseRevision
+                        expectedInstallationRevision: installationRevision
                     )
                 }
             )

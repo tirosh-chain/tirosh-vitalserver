@@ -76,7 +76,9 @@ final class RequireUpdateBootstrapAdmissionStateUseCaseTests: XCTestCase {
 
 private func admissionInstalledRelease() -> InstalledProductRelease {
     InstalledProductRelease(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
+        installationId: "installation-1",
+        installationRevision: 1,
         productId: "ai.tirosh.vitalserver.helper",
         productVersion: "0.2.2",
         runtimeVersion: "0.2.2",

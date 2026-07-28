@@ -1,4 +1,5 @@
 import Application
+import Contracts
 import Foundation
 import SQLite3
 import XCTest
@@ -27,7 +28,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         let metadata = try database.initialize()
 
         XCTAssertEqual(metadata, RuntimeHostStateStoreMetadata(
-            schemaVersion: 9,
+            schemaVersion: 10,
             databaseID: "host-db-1",
             createdAt: "2026-07-14T05:00:00Z",
             updatedAt: "2026-07-14T05:00:00Z"
@@ -48,7 +49,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
             "vm_lifecycle",
             "workflow_operation_states",
         ])
-        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 9)
+        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 10)
         XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM diagnostic_outbox"), 0)
     }
 
@@ -72,7 +73,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         XCTAssertEqual(metadata.databaseID, "host-db-original")
         XCTAssertEqual(metadata.createdAt, "2026-07-14T05:00:00Z")
         XCTAssertEqual(metadata.updatedAt, "2026-07-14T05:00:00Z")
-        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 9)
+        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 10)
     }
 
     func testInitializeUpgradesVersion1DatabaseToLatestWithoutReplacingIdentity() throws {
@@ -88,15 +89,111 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         let metadata = try database.initialize()
 
         XCTAssertEqual(metadata, RuntimeHostStateStoreMetadata(
-            schemaVersion: 9,
+            schemaVersion: 10,
             databaseID: "host-db-v1",
             createdAt: "2026-07-14T05:00:00Z",
             updatedAt: "2026-07-14T06:00:00Z"
         ))
-        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 9)
+        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 10)
         XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM runtime_operation_lease"), 0)
         XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM legacy_state_imports"), 0)
         XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM workflow_operation_states"), 0)
+    }
+
+    func testVersion10MigrationAssignsExplicitIdentityToVersion9Release() throws {
+        let directory = try temporaryDirectory()
+        let databaseURL = directory.appendingPathComponent(
+            "runtime-state.sqlite"
+        )
+        _ = try SQLiteHostRuntimeStateDatabase(url: databaseURL).initialize()
+        try prepareVersion9InstalledRelease(databaseURL)
+
+        let metadata = try SQLiteHostRuntimeStateDatabase(
+            url: databaseURL,
+            migratedInstallationID: { "installation-migrated-1" },
+            timestamp: { "2026-07-29T00:00:00Z" }
+        ).initialize()
+
+        XCTAssertEqual(metadata.schemaVersion, 10)
+        XCTAssertEqual(
+            try scalarString(
+                databaseURL,
+                sql: """
+                SELECT installation_id
+                FROM installed_product_release
+                WHERE singleton_id = 1
+                """
+            ),
+            "installation-migrated-1"
+        )
+        XCTAssertEqual(
+            try scalarInt(
+                databaseURL,
+                sql: """
+                SELECT installation_revision
+                FROM installed_product_release
+                WHERE singleton_id = 1
+                """
+            ),
+            1
+        )
+        let document = try XCTUnwrap(try scalarString(
+            databaseURL,
+            sql: """
+            SELECT document_json
+            FROM installed_product_release
+            WHERE singleton_id = 1
+            """
+        ))
+        let release = try JSONDecoder().decode(
+            InstalledProductRelease.self,
+            from: Data(document.utf8)
+        )
+        XCTAssertEqual(release.schemaVersion, "v2")
+        XCTAssertEqual(release.installationId, "installation-migrated-1")
+        XCTAssertEqual(release.installationRevision, 1)
+        XCTAssertEqual(release.releaseRevision, 1)
+    }
+
+    func testVersion10MigrationRejectsInvalidExplicitIdentityAndRollsBack() throws {
+        let directory = try temporaryDirectory()
+        let databaseURL = directory.appendingPathComponent(
+            "runtime-state.sqlite"
+        )
+        _ = try SQLiteHostRuntimeStateDatabase(url: databaseURL).initialize()
+        try prepareVersion9InstalledRelease(databaseURL)
+
+        XCTAssertThrowsError(try SQLiteHostRuntimeStateDatabase(
+            url: databaseURL,
+            migratedInstallationID: { "" },
+            timestamp: { "2026-07-29T00:00:00Z" }
+        ).initialize()) { error in
+            XCTAssertEqual(
+                error as? SQLiteHostRuntimeStateDatabaseError,
+                .installedProductReleaseMigrationInputInvalid(
+                    field: "installationId",
+                    value: ""
+                )
+            )
+        }
+        XCTAssertEqual(
+            try scalarInt(
+                databaseURL,
+                sql: "SELECT schema_version FROM runtime_metadata"
+            ),
+            9
+        )
+        XCTAssertEqual(
+            try scalarInt(
+                databaseURL,
+                sql: """
+                SELECT COUNT(*)
+                FROM pragma_table_info('installed_product_release')
+                WHERE name = 'installation_id'
+                """
+            ),
+            0
+        )
     }
 
     func testReadinessReportsDirectoryPathAsFailureInsteadOfMissing() throws {
@@ -143,7 +240,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         _ = try database.initialize()
         try executeSQL(
             databaseURL,
-            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (10, '2099-01-01T00:00:00Z')"
+            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (11, '2099-01-01T00:00:00Z')"
         )
 
         guard case .failed(let failure) = database.loadHostStateStoreReadiness() else {
@@ -154,7 +251,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         XCTAssertThrowsError(try database.initialize()) { error in
             XCTAssertEqual(
                 error as? SQLiteHostRuntimeStateDatabaseError,
-                .unsupportedSchemaVersion(found: 10, supported: 9)
+                .unsupportedSchemaVersion(found: 11, supported: 10)
             )
         }
     }
@@ -208,7 +305,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
             timestamp: { "2026-07-14T08:00:00Z" }
         ).initialize()
 
-        XCTAssertEqual(migrated.schemaVersion, 9)
+        XCTAssertEqual(migrated.schemaVersion, 10)
         XCTAssertEqual(
             try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM host_runtime_settings WHERE applied_revision IS NULL AND applied_run_id IS NULL AND applied_at IS NULL"),
             1
@@ -350,6 +447,29 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         }
     }
 
+    private func scalarString(_ url: URL, sql: String) throws -> String? {
+        try withSQLiteDatabase(url, readOnly: true) { db in
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                db,
+                sql,
+                -1,
+                &statement,
+                nil
+            ) == SQLITE_OK else {
+                throw TestFailure.sqlite(String(cString: sqlite3_errmsg(db)))
+            }
+            defer { sqlite3_finalize(statement) }
+            guard sqlite3_step(statement) == SQLITE_ROW else {
+                throw TestFailure.sqlite(String(cString: sqlite3_errmsg(db)))
+            }
+            guard let value = sqlite3_column_text(statement, 0) else {
+                return nil
+            }
+            return String(cString: value)
+        }
+    }
+
     private func executeSQL(_ url: URL, sql: String) throws {
         try withSQLiteDatabase(url) { db in
             try rawExecute(db, sql: sql)
@@ -399,6 +519,34 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
               VALUES (1, '2026-07-14T05:00:00Z');
             """)
         }
+    }
+
+    private func prepareVersion9InstalledRelease(_ url: URL) throws {
+        try executeSQL(url, sql: """
+        DELETE FROM schema_migrations WHERE version = 10;
+        UPDATE runtime_metadata SET schema_version = 9;
+        DROP TABLE installed_product_release;
+        CREATE TABLE installed_product_release (
+          singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+          release_revision INTEGER NOT NULL CHECK(release_revision > 0),
+          source TEXT NOT NULL CHECK(source IN ('package-install', 'update')),
+          document_json TEXT NOT NULL CHECK(length(document_json) > 0),
+          settled_at TEXT NOT NULL CHECK(length(settled_at) > 0)
+        );
+        INSERT INTO installed_product_release(
+          singleton_id,
+          release_revision,
+          source,
+          document_json,
+          settled_at
+        ) VALUES (
+          1,
+          1,
+          'package-install',
+          '{"schemaVersion":"v1","productId":"ai.tirosh.vitalserver.helper","productVersion":"0.2.2","runtimeVersion":"0.2.2","releaseRevision":1,"source":"package-install","installOperationId":"install-1","settledAt":"2026-07-27T00:00:00Z"}',
+          '2026-07-27T00:00:00Z'
+        );
+        """)
     }
 
     private func rawExecute(_ db: OpaquePointer, sql: String) throws {

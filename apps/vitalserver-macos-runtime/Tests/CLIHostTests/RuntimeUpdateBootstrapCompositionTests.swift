@@ -29,6 +29,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         let repository = makeRepository(installed)
         try repository.settlePackageInstallRelease(
             try InstalledProductReleasePolicy.makePackageInstall(
+                installationId: "installation-1",
                 productId: Constants.Product.identifier,
                 productVersion: "0.2.1",
                 runtimeVersion: "0.2.1",
@@ -77,6 +78,8 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         }
         XCTAssertEqual(release.productVersion, "0.2.2")
         XCTAssertEqual(release.runtimeVersion, "0.2.2")
+        XCTAssertEqual(release.installationId, "installation-1")
+        XCTAssertEqual(release.installationRevision, 2)
         XCTAssertEqual(release.releaseRevision, 2)
         XCTAssertEqual(release.source, .update)
         XCTAssertEqual(runner.invocations.count, 1)
@@ -326,6 +329,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         let repository = makeRepository(installed)
         try repository.settlePackageInstallRelease(
             try InstalledProductReleasePolicy.makePackageInstall(
+                installationId: "installation-1",
                 productId: Constants.Product.identifier,
                 productVersion: "0.2.1",
                 runtimeVersion: "0.2.1",

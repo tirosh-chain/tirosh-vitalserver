@@ -10,6 +10,7 @@ public struct MakeInstalledProductReleaseUseCase {
     public init() {}
 
     public func makePackageInstall(
+        installationId: String,
         productId: String,
         productVersion: String,
         runtimeVersion: String,
@@ -17,6 +18,7 @@ public struct MakeInstalledProductReleaseUseCase {
         settledAt: String
     ) throws -> InstalledProductRelease {
         try InstalledProductReleasePolicy.makePackageInstall(
+            installationId: installationId,
             productId: productId,
             productVersion: productVersion,
             runtimeVersion: runtimeVersion,

@@ -6,6 +6,8 @@ final class InstalledProductReleasePolicyTests: XCTestCase {
     func testMakesPackageInstallReleaseAsRevisionOne() throws {
         let release = try packageInstallRelease()
 
+        XCTAssertEqual(release.installationId, "installation-42")
+        XCTAssertEqual(release.installationRevision, 1)
         XCTAssertEqual(release.releaseRevision, 1)
         XCTAssertEqual(release.source, .packageInstall)
         XCTAssertEqual(release.installOperationId, "install-42")
@@ -21,6 +23,8 @@ final class InstalledProductReleasePolicyTests: XCTestCase {
         )
 
         XCTAssertEqual(release.productVersion, "0.2.3")
+        XCTAssertEqual(release.installationId, "installation-42")
+        XCTAssertEqual(release.installationRevision, 2)
         XCTAssertEqual(release.releaseRevision, 2)
         XCTAssertEqual(release.source, .update)
         XCTAssertEqual(release.updateId, journal.id)
@@ -29,6 +33,7 @@ final class InstalledProductReleasePolicyTests: XCTestCase {
 
     func testRejectsUpdateForDifferentProductOwner() throws {
         let current = try InstalledProductReleasePolicy.makePackageInstall(
+            installationId: "installation-42",
             productId: "different.product",
             productVersion: "0.2.2",
             runtimeVersion: "0.2.2",
@@ -54,6 +59,8 @@ final class InstalledProductReleasePolicyTests: XCTestCase {
         let valid = try packageInstallRelease()
         let invalid = InstalledProductRelease(
             schemaVersion: valid.schemaVersion,
+            installationId: valid.installationId,
+            installationRevision: valid.installationRevision,
             productId: valid.productId,
             productVersion: valid.productVersion,
             runtimeVersion: valid.runtimeVersion,
@@ -76,8 +83,42 @@ final class InstalledProductReleasePolicyTests: XCTestCase {
         }
     }
 
+    func testRejectsInstallationRevisionBehindReleaseRevision() throws {
+        let valid = try InstalledProductReleasePolicy.makeUpdate(
+            current: packageInstallRelease(),
+            from: succeededJournal()
+        )
+        let invalid = InstalledProductRelease(
+            schemaVersion: valid.schemaVersion,
+            installationId: valid.installationId,
+            installationRevision: 1,
+            productId: valid.productId,
+            productVersion: valid.productVersion,
+            runtimeVersion: valid.runtimeVersion,
+            releaseRevision: valid.releaseRevision,
+            source: valid.source,
+            installOperationId: valid.installOperationId,
+            updateId: valid.updateId,
+            journalId: valid.journalId,
+            journalRevision: valid.journalRevision,
+            reportRelativePath: valid.reportRelativePath,
+            reportSHA256: valid.reportSHA256,
+            settledAt: valid.settledAt
+        )
+
+        XCTAssertThrowsError(
+            try InstalledProductReleasePolicy.validate(invalid)
+        ) {
+            XCTAssertEqual(
+                $0 as? InstalledProductReleaseValidationError,
+                .invalidInstallationRevision(1)
+            )
+        }
+    }
+
     private func packageInstallRelease() throws -> InstalledProductRelease {
         try InstalledProductReleasePolicy.makePackageInstall(
+            installationId: "installation-42",
             productId: "ai.tirosh.vitalserver.helper",
             productVersion: "0.2.2",
             runtimeVersion: "0.2.2",

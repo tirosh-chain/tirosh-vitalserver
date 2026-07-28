@@ -210,7 +210,7 @@ public struct ResumeUpdateBootstrapHandoffWorkflow {
                     settled,
                     release,
                     running.journalRevision,
-                    release.releaseRevision - 1
+                    release.installationRevision - 1
                 )
             } else {
                 try operations.saveJournal(

@@ -243,14 +243,15 @@ private final class HandoffWorkflowHarness {
                 )
             },
             settleSucceeded: {
-                [self] _, release, expectedRevision, expectedReleaseRevision in
+                [self] _, release, expectedRevision,
+                    expectedInstallationRevision in
                 events.append("settle-installed-release")
                 if let settlementError {
                     throw settlementError
                 }
                 settledRelease = release
                 settledExpectedRevision = expectedRevision
-                XCTAssertEqual(expectedReleaseRevision, 1)
+                XCTAssertEqual(expectedInstallationRevision, 1)
             },
             fail: { [self] in
                 if let failTransitionError {
@@ -269,6 +270,7 @@ private final class HandoffWorkflowHarness {
 
     private func baselineRelease() throws -> InstalledProductRelease {
         try InstalledProductReleasePolicy.makePackageInstall(
+            installationId: "installation-1",
             productId: "com.tirosh.vitalserver-helper",
             productVersion: "0.2.1",
             runtimeVersion: "0.2.1",

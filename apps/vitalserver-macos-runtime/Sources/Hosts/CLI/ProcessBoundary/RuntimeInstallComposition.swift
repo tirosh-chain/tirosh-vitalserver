@@ -36,7 +36,7 @@ public struct RuntimeInstallCompositionOperations<Settings> {
     let configureInstalledVMRuntime: (Settings) throws -> Void
     let createCloudInitSeed: (Settings) throws -> Void
     let writeInstalledRuntimeVersion: () throws -> Void
-    let settleInstalledProductRelease: (String) throws -> Void
+    let settleInstalledProductRelease: (String, String) throws -> Void
     let configureInstalledPermissions: (Settings) throws -> Void
     let startInstalledServices: (Settings) throws -> Void
     let applyStartOnBootPolicy: (Settings) throws -> Void
@@ -47,6 +47,7 @@ public struct RuntimeInstallCompositionOperations<Settings> {
     let prepareHostSettings: (Settings) throws -> Void
     let workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository
     let operationID: () -> String
+    let installationID: () -> String
 
     public init(
         fileStore: RuntimeFileStore,
@@ -74,7 +75,13 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         prepareHostSettings: @escaping (Settings) throws -> Void,
         workflowOperationStateRepository: any RuntimeWorkflowOperationStateRepository,
         operationID: @escaping () -> String,
-        settleInstalledProductRelease: @escaping (String) throws -> Void = { _ in }
+        installationID: @escaping () -> String = {
+            UUID().uuidString.lowercased()
+        },
+        settleInstalledProductRelease: @escaping (
+            String,
+            String
+        ) throws -> Void = { _, _ in }
     ) {
         self.fileStore = fileStore
         self.now = now
@@ -102,6 +109,7 @@ public struct RuntimeInstallCompositionOperations<Settings> {
         self.prepareHostSettings = prepareHostSettings
         self.workflowOperationStateRepository = workflowOperationStateRepository
         self.operationID = operationID
+        self.installationID = installationID
     }
 }
 
@@ -124,11 +132,13 @@ public struct RuntimeInstallComposition<Settings> {
         let preflight = operations.freshInstallPreflight()
         try operations.initializeHostStateStore()
         let operationID = operations.operationID()
+        let installationID = operations.installationID()
         try RuntimeInstallWorkflow().run(
             plan,
             context: InstallRuntimeExecutionContext(runtimeHomePath: context.paths.home.path),
             operations: installRuntimeOperations(
                 operationID: operationID,
+                installationID: installationID,
                 freshInstallPreflight: { preflight },
                 provisionPayload: operations.installProvisionPayload
             )
@@ -142,11 +152,13 @@ public struct RuntimeInstallComposition<Settings> {
         let provisionPayload = operations.installProvisionPayload()
         try operations.initializeHostStateStore()
         let operationID = operations.operationID()
+        let installationID = operations.installationID()
         try RuntimeInstallWorkflow().run(
             plan,
             context: InstallRuntimeExecutionContext(runtimeHomePath: context.paths.home.path),
             operations: installRuntimeOperations(
                 operationID: operationID,
+                installationID: installationID,
                 freshInstallPreflight: operations.freshInstallPreflight,
                 provisionPayload: { provisionPayload }
             )
@@ -159,6 +171,7 @@ public struct RuntimeInstallComposition<Settings> {
 
     private func installRuntimeOperations(
         operationID: String,
+        installationID: String,
         freshInstallPreflight: @escaping () -> RuntimeFreshInstallPreflightDocument,
         provisionPayload: @escaping () -> RuntimeInstallProvisionPayloadDocument
     ) -> InstallRuntimeOperations<Settings> {
@@ -187,7 +200,10 @@ public struct RuntimeInstallComposition<Settings> {
                 describeError: RuntimeErrorDescription.describe,
                 prepareHostStateStore: operations.prepareHostSettings,
                 settleInstalledProductRelease: {
-                    try operations.settleInstalledProductRelease(operationID)
+                    try operations.settleInstalledProductRelease(
+                        operationID,
+                        installationID
+                    )
                 }
             ),
             writer: InstallRuntimeStateWriter(

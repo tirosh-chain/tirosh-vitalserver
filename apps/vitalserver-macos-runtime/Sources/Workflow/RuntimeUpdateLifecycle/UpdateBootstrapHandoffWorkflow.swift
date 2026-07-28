@@ -280,7 +280,7 @@ public struct UpdateBootstrapHandoffWorkflow {
                     settled,
                     release,
                     running.journalRevision,
-                    release.releaseRevision - 1
+                    release.installationRevision - 1
                 )
             } else {
                 try save(

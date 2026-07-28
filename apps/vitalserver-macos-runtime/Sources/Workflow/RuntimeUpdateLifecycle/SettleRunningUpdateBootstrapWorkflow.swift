@@ -134,7 +134,7 @@ public struct SettleRunningUpdateBootstrapWorkflow {
                 settled,
                 release,
                 input.runningJournal.journalRevision,
-                release.releaseRevision - 1
+                release.installationRevision - 1
             )
         } else {
             try operations.saveJournal(

@@ -5,6 +5,8 @@ public enum InstalledProductReleaseSource: String, Codable, Equatable, Sendable 
 
 public struct InstalledProductRelease: Codable, Equatable, Sendable {
     public let schemaVersion: String
+    public let installationId: String
+    public let installationRevision: Int
     public let productId: String
     public let productVersion: String
     public let runtimeVersion: String
@@ -20,6 +22,8 @@ public struct InstalledProductRelease: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion
+        case installationId
+        case installationRevision
         case productId
         case productVersion
         case runtimeVersion
@@ -36,6 +40,8 @@ public struct InstalledProductRelease: Codable, Equatable, Sendable {
 
     public init(
         schemaVersion: String,
+        installationId: String,
+        installationRevision: Int,
         productId: String,
         productVersion: String,
         runtimeVersion: String,
@@ -50,6 +56,8 @@ public struct InstalledProductRelease: Codable, Equatable, Sendable {
         settledAt: String
     ) {
         self.schemaVersion = schemaVersion
+        self.installationId = installationId
+        self.installationRevision = installationRevision
         self.productId = productId
         self.productVersion = productVersion
         self.runtimeVersion = runtimeVersion
@@ -75,6 +83,14 @@ public struct InstalledProductRelease: Codable, Equatable, Sendable {
             schemaVersion: try container.decode(
                 String.self,
                 forKey: .schemaVersion
+            ),
+            installationId: try container.decode(
+                String.self,
+                forKey: .installationId
+            ),
+            installationRevision: try container.decode(
+                Int.self,
+                forKey: .installationRevision
             ),
             productId: try container.decode(String.self, forKey: .productId),
             productVersion: try container.decode(
