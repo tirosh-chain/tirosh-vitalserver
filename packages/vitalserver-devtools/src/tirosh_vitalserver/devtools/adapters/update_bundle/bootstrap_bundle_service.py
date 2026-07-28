@@ -21,6 +21,9 @@ from tirosh_vitalserver.devtools.adapters.update_bundle.bundle_service import (
     materialized_bundle,
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
+from tirosh_vitalserver.devtools.core.product_update_specification import (
+    load_product_update_specification,
+)
 from tirosh_vitalserver.devtools.core.update_bootstrap_bundle import (
     artifact,
     canonical_payload,
@@ -45,6 +48,7 @@ def build_bootstrap_bundle(
     require_regular_file(spec.next_updater, "next updater")
     require_regular_file(spec.specification, "update specification")
     require_regular_file(spec.publisher_private_key, "publisher private key")
+    require_directory(spec.payload_root, "product update payload root")
     if spec.output.exists():
         raise DomainError(f"bootstrap bundle output already exists: {spec.output}")
     spec.output.parent.mkdir(parents=True, exist_ok=True)
@@ -57,6 +61,26 @@ def build_bootstrap_bundle(
         specification.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(spec.next_updater, updater)
         shutil.copy2(spec.specification, specification)
+        _, declared_artifacts = load_product_update_specification(
+            specification,
+            update_id=spec.update_id,
+            layer_order=spec.layer_order,
+        )
+        for relative_path, declaration in declared_artifacts.items():
+            if relative_path in {
+                UPDATER_RELATIVE_PATH,
+                SPECIFICATION_RELATIVE_PATH,
+            }:
+                raise DomainError(
+                    "product update artifact conflicts with bootstrap-owned path: "
+                    f"{relative_path}"
+                )
+            source = spec.payload_root / relative_path
+            require_regular_file(source, str(declaration["id"]))
+            verify_declared_artifact(source, declaration)
+            destination = root / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
 
         unsigned = unsigned_envelope(
             update_id=spec.update_id,
@@ -120,11 +144,6 @@ def verify_bootstrap_bundle_directory(
     root: Path,
     publisher_public_key: Path,
 ) -> None:
-    expected_files = {
-        ENVELOPE_NAME,
-        UPDATER_RELATIVE_PATH,
-        SPECIFICATION_RELATIVE_PATH,
-    }
     actual_files: set[str] = set()
     for path in root.rglob("*"):
         relative_path = path.relative_to(root).as_posix()
@@ -142,13 +161,11 @@ def verify_bootstrap_bundle_directory(
                 f"bootstrap bundle entry must be a regular file path={relative_path}"
             )
         actual_files.add(relative_path)
-    if actual_files != expected_files:
-        raise DomainError(
-            "bootstrap bundle file closure differs: "
-            f"missing={sorted(expected_files - actual_files)} "
-            f"unknown={sorted(actual_files - expected_files)}"
-        )
-    for relative_path in expected_files:
+    for relative_path in {
+        ENVELOPE_NAME,
+        UPDATER_RELATIVE_PATH,
+        SPECIFICATION_RELATIVE_PATH,
+    }:
         require_regular_file(root / relative_path, relative_path)
 
     envelope_path = root / ENVELOPE_NAME
@@ -159,9 +176,6 @@ def verify_bootstrap_bundle_directory(
     if not isinstance(envelope, dict):
         raise DomainError("bootstrap envelope must be an object")
     validate_envelope(envelope)
-
-    verify_bound_artifact(root, envelope["nextUpdaterArtifact"])
-    verify_bound_artifact(root, envelope["specification"])
     signature = envelope["signature"]
     unsigned = dict(envelope)
     unsigned.pop("signature")
@@ -176,6 +190,30 @@ def verify_bootstrap_bundle_directory(
         signature=signature_bytes,
         public_key=publisher_public_key,
     )
+    verify_bound_artifact(root, envelope["nextUpdaterArtifact"])
+    verify_bound_artifact(root, envelope["specification"])
+    _, declared_artifacts = load_product_update_specification(
+        root / SPECIFICATION_RELATIVE_PATH,
+        update_id=str(envelope["id"]),
+        layer_order=list(envelope["layerOrder"]),
+    )
+    expected_files = {
+        ENVELOPE_NAME,
+        UPDATER_RELATIVE_PATH,
+        SPECIFICATION_RELATIVE_PATH,
+        *declared_artifacts,
+    }
+    if actual_files != expected_files:
+        raise DomainError(
+            "bootstrap bundle file closure differs: "
+            f"missing={sorted(expected_files - actual_files)} "
+            f"unknown={sorted(actual_files - expected_files)}"
+        )
+    for relative_path in expected_files:
+        require_regular_file(root / relative_path, relative_path)
+
+    for declaration in declared_artifacts.values():
+        verify_bound_artifact(root, declaration)
 
 
 def verify_bound_artifact(root: Path, entry: object) -> None:
@@ -193,6 +231,21 @@ def verify_bound_artifact(root: Path, entry: object) -> None:
     if actual_size != entry["sizeBytes"]:
         raise DomainError(
             f"bootstrap artifact size mismatch id={entry['id']} "
+            f"expected={entry['sizeBytes']} actual={actual_size}"
+        )
+
+
+def verify_declared_artifact(path: Path, entry: dict[str, object]) -> None:
+    actual_digest = sha256_file(path)
+    if actual_digest != entry["sha256"]:
+        raise DomainError(
+            f"product update artifact digest mismatch id={entry['id']} "
+            f"expected={entry['sha256']} actual={actual_digest}"
+        )
+    actual_size = path.stat().st_size
+    if actual_size != entry["sizeBytes"]:
+        raise DomainError(
+            f"product update artifact size mismatch id={entry['id']} "
             f"expected={entry['sizeBytes']} actual={actual_size}"
         )
 
@@ -235,3 +288,12 @@ def require_regular_file(path: Path, owner: str) -> None:
         raise DomainError(f"{owner} inspection failed path={path}: {error}") from error
     if not stat.S_ISREG(mode):
         raise DomainError(f"{owner} must be a regular file: {path}")
+
+
+def require_directory(path: Path, owner: str) -> None:
+    try:
+        mode = os.lstat(path).st_mode
+    except OSError as error:
+        raise DomainError(f"{owner} inspection failed path={path}: {error}") from error
+    if not stat.S_ISDIR(mode):
+        raise DomainError(f"{owner} must be a directory: {path}")

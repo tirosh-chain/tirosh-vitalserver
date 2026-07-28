@@ -748,6 +748,15 @@ def main() -> int:
         type=Path,
         required=True,
     )
+    update_bootstrap_bundle.add_argument(
+        "--payload-root",
+        type=Path,
+        required=True,
+        help=(
+            "directory containing every artifact, executor, configuration, "
+            "and rollback path declared by the update specification"
+        ),
+    )
     update_bootstrap_bundle.add_argument("--publisher-key-id", required=True)
     update_bootstrap_bundle.add_argument(
         "--publisher-private-key",
@@ -771,6 +780,7 @@ def main() -> int:
                 layer_order=args.layer,
                 next_updater=args.next_updater,
                 specification=args.specification,
+                payload_root=args.payload_root,
                 publisher_key_id=args.publisher_key_id,
                 publisher_private_key=args.publisher_private_key,
                 issued_at=args.issued_at,

@@ -28,8 +28,11 @@ def test_builds_signed_closure_matching_swift_canonical_contract(
     updater = tmp_path / "vitalserver-update"
     updater.write_bytes(b"next updater")
     updater.chmod(0o755)
-    specification = tmp_path / "update-specification.json"
-    specification.write_text('{"schemaVersion":"v1"}\n', encoding="utf-8")
+    specification, payload_root = write_specification(
+        tmp_path,
+        update_id="helper-update-0.2.2",
+        layer_order=["container", "guest-runtime", "host-platform"],
+    )
     output = tmp_path / "helper-update-0.2.2.tar.gz"
 
     result = bootstrap_bundle_service.build_bootstrap_bundle(
@@ -42,6 +45,7 @@ def test_builds_signed_closure_matching_swift_canonical_contract(
             layer_order=["container", "guest-runtime", "host-platform"],
             next_updater=updater,
             specification=specification,
+            payload_root=payload_root,
             publisher_key_id="helper-release-key-2026",
             publisher_private_key=private_key,
             issued_at="2026-07-27T00:00:00Z",
@@ -54,9 +58,19 @@ def test_builds_signed_closure_matching_swift_canonical_contract(
     bootstrap_bundle_service.verify_bootstrap_bundle(output, public_key)
     with tarfile.open(output, "r:gz") as archive:
         root = "update-bootstrap-helper-update-0.2.2"
+        names = set(archive.getnames())
         envelope_file = archive.extractfile(f"{root}/bootstrap-envelope.json")
         assert envelope_file is not None
         envelope = json.loads(envelope_file.read())
+    assert (
+        f"{root}/payload/layers/host-platform/executor"
+        in names
+    )
+    assert (
+        f"{root}/payload/layers/guest-runtime/configuration.json"
+        in names
+    )
+    assert f"{root}/payload/layers/container/rollback.bin" in names
     unsigned = dict(envelope)
     unsigned.pop("signature")
     assert (
@@ -87,9 +101,12 @@ def test_verifier_rejects_artifact_modified_after_signing(tmp_path: Path) -> Non
 def test_builder_does_not_replace_existing_release_artifact(tmp_path: Path) -> None:
     private_key, _ = signing_keys(tmp_path)
     updater = tmp_path / "updater"
-    specification = tmp_path / "specification.json"
+    specification, payload_root = write_specification(
+        tmp_path,
+        update_id="update-42",
+        layer_order=["host-platform"],
+    )
     updater.write_bytes(b"updater")
-    specification.write_bytes(b"specification")
     output = tmp_path / "existing.tar.gz"
     output.write_bytes(b"operator-owned")
 
@@ -104,6 +121,7 @@ def test_builder_does_not_replace_existing_release_artifact(tmp_path: Path) -> N
                 layer_order=["host-platform"],
                 next_updater=updater,
                 specification=specification,
+                payload_root=payload_root,
                 publisher_key_id="release-key",
                 publisher_private_key=private_key,
                 issued_at="2026-07-27T00:00:00Z",
@@ -119,8 +137,11 @@ def test_builder_rejects_symlinked_updater(tmp_path: Path) -> None:
     real.write_bytes(b"updater")
     updater = tmp_path / "updater"
     updater.symlink_to(real)
-    specification = tmp_path / "specification.json"
-    specification.write_bytes(b"specification")
+    specification, payload_root = write_specification(
+        tmp_path,
+        update_id="update-42",
+        layer_order=["host-platform"],
+    )
 
     with pytest.raises(DomainError, match="must be a regular file"):
         bootstrap_bundle_service.build_bootstrap_bundle(
@@ -133,12 +154,57 @@ def test_builder_rejects_symlinked_updater(tmp_path: Path) -> None:
                 layer_order=["host-platform"],
                 next_updater=updater,
                 specification=specification,
+                payload_root=payload_root,
                 publisher_key_id="release-key",
                 publisher_private_key=private_key,
                 issued_at="2026-07-27T00:00:00Z",
                 output=tmp_path / "bundle.tar.gz",
             )
         )
+
+
+def test_builder_rejects_payload_that_does_not_match_specification(
+    tmp_path: Path,
+) -> None:
+    private_key, _ = signing_keys(tmp_path)
+    updater = tmp_path / "updater"
+    updater.write_bytes(b"updater")
+    specification, payload_root = write_specification(
+        tmp_path,
+        update_id="update-42",
+        layer_order=["host-platform"],
+    )
+    (payload_root / "payload/layers/host-platform/apply.bin").write_bytes(
+        b"modified after specification"
+    )
+
+    with pytest.raises(DomainError, match="artifact digest mismatch"):
+        bootstrap_bundle_service.build_bootstrap_bundle(
+            BuildUpdateBootstrapBundleInput(
+                update_id="update-42",
+                product_version="0.2.2",
+                runtime_version="0.2.2",
+                target_platform="macos",
+                target_architecture="arm64",
+                layer_order=["host-platform"],
+                next_updater=updater,
+                specification=specification,
+                payload_root=payload_root,
+                publisher_key_id="release-key",
+                publisher_private_key=private_key,
+                issued_at="2026-07-27T00:00:00Z",
+                output=tmp_path / "bundle.tar.gz",
+            )
+        )
+
+
+def test_verifier_rejects_missing_specification_artifact(tmp_path: Path) -> None:
+    private_key, public_key = signing_keys(tmp_path)
+    root = build_and_extract(tmp_path, private_key)
+    (root / "payload/layers/host-platform/rollback.bin").unlink()
+
+    with pytest.raises(DomainError, match="file closure differs"):
+        bootstrap_bundle_service.verify_bootstrap_bundle_directory(root, public_key)
 
 
 def test_verifier_reports_invalid_archive_as_domain_failure(tmp_path: Path) -> None:
@@ -227,9 +293,12 @@ def signing_keys(root: Path) -> tuple[Path, Path]:
 
 def build_and_extract(root: Path, private_key: Path) -> Path:
     updater = root / "updater"
-    specification = root / "specification.json"
     updater.write_bytes(b"updater")
-    specification.write_bytes(b"specification")
+    specification, payload_root = write_specification(
+        root,
+        update_id="update-42",
+        layer_order=["host-platform"],
+    )
     output = root / "bundle.tar.gz"
     bootstrap_bundle_service.build_bootstrap_bundle(
         BuildUpdateBootstrapBundleInput(
@@ -241,6 +310,7 @@ def build_and_extract(root: Path, private_key: Path) -> Path:
             layer_order=["host-platform"],
             next_updater=updater,
             specification=specification,
+            payload_root=payload_root,
             publisher_key_id="release-key",
             publisher_private_key=private_key,
             issued_at="2026-07-27T00:00:00Z",
@@ -251,3 +321,96 @@ def build_and_extract(root: Path, private_key: Path) -> Path:
     with tarfile.open(output, "r:gz") as archive:
         archive.extractall(extracted, filter="data")
     return extracted / "update-bootstrap-update-42"
+
+
+def write_specification(
+    root: Path,
+    *,
+    update_id: str,
+    layer_order: list[str],
+) -> tuple[Path, Path]:
+    payload_root = root / "prepared-payload"
+    layer_plan: list[dict[str, object]] = []
+    prior_layers: list[str] = []
+    for layer in layer_order:
+        payload = write_artifact(
+            payload_root,
+            artifact_id=f"{layer}-payload",
+            relative_path=f"payload/layers/{layer}/apply.bin",
+            contents=f"{layer} apply".encode(),
+        )
+        executor = write_artifact(
+            payload_root,
+            artifact_id=f"{layer}-executor",
+            relative_path=f"payload/layers/{layer}/executor",
+            contents=f"{layer} executor".encode(),
+        )
+        (payload_root / executor["relativePath"]).chmod(0o755)
+        configuration = write_artifact(
+            payload_root,
+            artifact_id=f"{layer}-configuration",
+            relative_path=f"payload/layers/{layer}/configuration.json",
+            contents=b"{}\n",
+            media_type="application/json",
+        )
+        rollback = write_artifact(
+            payload_root,
+            artifact_id=f"{layer}-rollback",
+            relative_path=f"payload/layers/{layer}/rollback.bin",
+            contents=f"{layer} rollback".encode(),
+        )
+        layer_plan.append(
+            {
+                "layer": layer,
+                "dependsOn": list(prior_layers),
+                "artifact": payload,
+                "effectExecutor": {
+                    **executor,
+                    "configurationArtifact": configuration,
+                },
+                "rollback": {
+                    "state": "available",
+                    "artifact": rollback,
+                    "reason": None,
+                },
+            }
+        )
+        prior_layers.append(layer)
+    specification = root / "update-specification.json"
+    specification.write_text(
+        json.dumps(
+            {
+                "schemaVersion": (
+                    "vitalserver.product-update-specification/v1"
+                ),
+                "id": f"{update_id}-specification",
+                "bootstrapEnvelopeId": update_id,
+                "layerPlan": layer_plan,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return specification, payload_root
+
+
+def write_artifact(
+    root: Path,
+    *,
+    artifact_id: str,
+    relative_path: str,
+    contents: bytes,
+    media_type: str = "application/octet-stream",
+) -> dict[str, object]:
+    path = root / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(contents)
+    return {
+        "id": artifact_id,
+        "relativePath": relative_path,
+        "sha256": bootstrap_bundle_service.sha256_file(path),
+        "sizeBytes": len(contents),
+        "mediaType": media_type,
+    }

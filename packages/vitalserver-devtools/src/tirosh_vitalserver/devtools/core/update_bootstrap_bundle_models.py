@@ -14,6 +14,7 @@ class BuildUpdateBootstrapBundleInput:
     layer_order: list[str]
     next_updater: Path
     specification: Path
+    payload_root: Path
     publisher_key_id: str
     publisher_private_key: Path
     issued_at: str

@@ -237,6 +237,7 @@ vitalserver-devtools update-bootstrap-bundle \
   --layer <ordered-layer> \
   --next-updater <executable> \
   --specification <json> \
+  --payload-root <prepared-release-payload-directory> \
   --publisher-key-id <installed-trust-key-id> \
   --publisher-private-key <unencrypted-ed25519-pkcs8-pem> \
   --issued-at <canonical-utc> \
@@ -246,6 +247,12 @@ vitalserver-devtools verify-update-bootstrap-bundle \
   --bundle <tar-gz-path> \
   --publisher-public-key <ed25519-spki-pem>
 ```
+
+The payload root is an explicit release-composition input. Every artifact,
+effect executor, executor configuration, and rollback artifact declared by the
+specification must exist at its exact relative path with the declared size and
+SHA-256. The composer copies and verifier re-checks that complete file closure;
+an undeclared, missing, symlinked, or mismatched member fails the release.
 
 The private key path is an explicit release-publisher input. The tool neither
 searches for a key nor falls back to another signer. Secret storage and key

@@ -195,6 +195,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-192 | stable update가 중단된 뒤 journal 상태별 명시 복구가 필요함 | Update / Host runtime / Recovery | active | [Update bootstrap journal requires explicit recovery](192_update_bootstrap_journal_requires_explicit_recovery.md) |
 | TS-193 | next updater handoff에 인증된 layer 순서가 누락됨 | Update / Bootstrap handoff / Next updater | resolved | [Update handoff invocation cannot prove the authenticated layer order](193_update_handoff_missing_authenticated_layer_order.md) |
 | TS-194 | layer effect process가 typed receipt 없이 종료됨 | Update / Next updater / Layer effect | resolved | [Layer effect process exits without a typed receipt](194_layer_effect_exit_without_typed_receipt.md) |
+| TS-195 | bootstrap bundle에서 specification 소유 payload가 누락됨 | Update / Release composition / Bundle closure | resolved | [Bootstrap bundle omits specification-owned payload](195_bootstrap_bundle_omits_specification_payload.md) |
 
 ## Follow-up 규칙
 
