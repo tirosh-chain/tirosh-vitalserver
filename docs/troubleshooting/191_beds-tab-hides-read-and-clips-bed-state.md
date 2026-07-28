@@ -10,17 +10,18 @@
 The macOS Helper Beds tab can show `0` metrics or "no Bed data" when the Bed
 read failed. The list can clip its header and trailing columns because a wide
 set of flexible technical columns is laid out in a horizontal scroll view. A
-selected Bed can also expose Recorder health, version, IP, and relationship
-details even though the primary user needs Bed and patient-presence context.
+selected Bed can also expose Recorder health, version, and IP details even
+though the primary user needs Bed, patient-presence, and retained relationship
+context.
 
 ## Cause
 
 The original Beds presentation predates the explicit Bed history contract. It
 recomputes summary values and does not render `RuntimeVitalBedHistory.state` or
 `readError`. A later layout copied too much of the Recorder surface: eight
-flexible minimum-width columns, Recorder observability detail, and technical
-relationship content. `LazyVStack` combined with fixed-size layout made the
-wide header susceptible to vertical and trailing-edge clipping.
+flexible minimum-width columns and Recorder observability detail around the
+retained relationship history. `LazyVStack` combined with fixed-size layout
+made the wide header susceptible to vertical and trailing-edge clipping.
 
 ## Fix direction
 
@@ -31,7 +32,10 @@ wide header susceptible to vertical and trailing-edge clipping.
 - Use bounded fixed-width columns and a regular vertical stack inside
   horizontal scrolling.
 - Do not request or render Recorder observability, incidents, version, IP, boot,
-  resource, or relationship detail from the Bed surface.
+  or resource detail from the Bed surface.
+- Preserve owner-provided Bed–Recorder assignment and handoff history because
+  those retained records prevent a missing latest observation from erasing
+  operational evidence.
 - Move Bed hide, unhide, and confirmed delete actions to the selected detail
   workflow.
 - Keep technical Bed ID and visibility as secondary detail or management
@@ -45,10 +49,11 @@ wide header susceptible to vertical and trailing-edge clipping.
 
 Bed and Recorder reads are separate owner contracts and serve different user
 questions. The Bed surface must not derive clinical availability from Recorder
-health or expose infrastructure detail as Bed state. Patient identity,
-encounter, clinical signal availability, and data-gap coverage require explicit
-provider contracts; absence of those fields must not become inferred clinical
-state.
+health or expose infrastructure detail as Bed state. Recorder History and Bed
+relationship history are retained evidence and must not be removed as if they
+were infrastructure details. Patient identity, encounter, clinical signal
+availability, and data-gap coverage require explicit provider contracts;
+absence of those fields must not become inferred clinical state.
 
 ## Related cases
 

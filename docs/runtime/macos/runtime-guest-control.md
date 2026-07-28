@@ -490,12 +490,19 @@ links from the Bed read result rather than the Recorder history payload.
 The Beds presentation renders `RuntimeVitalBedHistory.state`, `summary`, and
 `readError` directly. A failed Bed read is not an empty successful list, and a
 partially loaded read keeps its retained rows together with the reported issue.
-The clinician-facing Bed surface does not request or render Recorder
+The clinician-facing Swift and PWA Bed surfaces do not request or render Recorder
 observability detail, incident history, version, IP address, boot state, or
 resource readings. Those remain Recorder operations concerns. The Bed list
 prioritizes explicit Bed status, Bed identity, patient presence, last
 observation time, and Bed data issues. Bed ID and list visibility remain
 secondary detail and management fields.
+
+Recorder History remains an explicit retained-data view. When a Recorder is
+absent from the latest observation, `presentInLatestObservation` keeps that
+absence distinct from deletion and the History toggle continues to expose the
+retained record. Bed details also keep the owner-provided relationship history
+for Recorder assignments and handoff events. Relationship history is retained
+evidence, not Recorder health detail, and its read failure must remain visible.
 
 The Bed table uses bounded fixed-width columns inside horizontal scrolling so
 headers and trailing content cannot be clipped by flexible minimum-width

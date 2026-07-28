@@ -96,14 +96,10 @@ export function BedsPage() {
       >
         <MetricStrip
           metrics={[
-            { label: "Known beds", value: summary?.knownBeds ?? NOT_REPORTED },
+            { label: "Beds observed", value: summary?.knownBeds ?? NOT_REPORTED },
             { label: "Online beds", value: summary?.onlineBeds ?? NOT_REPORTED },
             { label: "Stale beds", value: summary?.staleBeds ?? NOT_REPORTED },
-            {
-              label: "Assignments",
-              value: summary?.bedAssignments ?? NOT_REPORTED
-            },
-            { label: "Bed anomalies", value: summary?.bedAnomalies ?? NOT_REPORTED },
+            { label: "Data issues", value: summary?.bedAnomalies ?? NOT_REPORTED },
             {
               label: "Data updated",
               value: formatLocalDateTime(bedsQuery.data?.updatedAt)
@@ -136,25 +132,11 @@ export function BedsPage() {
             selectedKey={selectedBed?.bedID}
             onSelectRow={(bed) => setSelectedBedID(bed.bedID)}
             emptyText="No VitalDB bed observations found."
+            cardTitleColumnKey="bed"
             columns={[
               {
-                key: "bed",
-                header: "Bed ID",
-                render: (bed) => <strong>{shorten(bed.bedID)}</strong>
-              },
-              {
-                key: "name",
-                header: "Name",
-                render: (bed) => bed.name ?? NOT_REPORTED
-              },
-              {
-                key: "vrcode",
-                header: "VRecorder",
-                render: (bed) => bed.vrcode ?? NOT_REPORTED
-              },
-              {
                 key: "status",
-                header: "Status",
+                header: "Bed status",
                 render: (bed) => (
                   <StatusBadge tone={recorderStatusTone(bed.status)}>
                     {formatRecorderStatus(bed.status)}
@@ -162,59 +144,29 @@ export function BedsPage() {
                 )
               },
               {
+                key: "bed",
+                header: "Bed",
+                render: (bed) => (
+                  <span className="bed-identity">
+                    <strong>{bed.name ?? NOT_REPORTED}</strong>
+                    <span className="muted">{shorten(bed.bedID)}</span>
+                  </span>
+                )
+              },
+              {
+                key: "patient",
+                header: "Patient presence",
+                render: (bed) => formatPatientStatus(bed.patientConnected)
+              },
+              {
                 key: "lastSeen",
-                header: "Last seen",
+                header: "Last observation",
                 render: (bed) => formatLocalDateTimeWithAge(bed.lastSeenAt)
               },
               {
-                key: "visibility",
-                header: "Visibility",
-                render: (bed) => formatVisibility(bed.visibility)
-              },
-              {
                 key: "anomaly",
-                header: "Anomaly",
+                header: "Data issue",
                 render: (bed) => formatAnomalySummary(bed)
-              },
-              {
-                key: "actions",
-                header: "Actions",
-                render: (bed) => (
-                  <div className="toolbar compact-toolbar">
-                    {bed.visibility === "hidden" ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={visibilityMutationPending}
-                          onClick={() => unhideBeds.mutate({ bedIDs: [bed.bedID] })}
-                        >
-                          Unhide
-                        </button>
-                        {showHidden ? (
-                          <button
-                            type="button"
-                            disabled={visibilityMutationPending}
-                            onClick={() => {
-                              if (window.confirm(`Delete hidden bed ${bed.bedID}?`)) {
-                                deleteBeds.mutate({ bedIDs: [bed.bedID] });
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
-                        ) : null}
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={visibilityMutationPending}
-                        onClick={() => hideBeds.mutate({ bedIDs: [bed.bedID] })}
-                      >
-                        Hide
-                      </button>
-                    )}
-                  </div>
-                )
               }
             ]}
           />
@@ -226,6 +178,14 @@ export function BedsPage() {
           bed={selectedBed}
           relationships={relationshipsQuery.data}
           relationshipsError={relationshipsQuery.error}
+          visibilityMutationPending={visibilityMutationPending}
+          onHide={() => hideBeds.mutate({ bedIDs: [selectedBed.bedID] })}
+          onUnhide={() => unhideBeds.mutate({ bedIDs: [selectedBed.bedID] })}
+          onDelete={() => {
+            if (window.confirm(`Delete hidden bed ${selectedBed.bedID}?`)) {
+              deleteBeds.mutate({ bedIDs: [selectedBed.bedID] });
+            }
+          }}
         />
       ) : null}
 
@@ -369,11 +329,19 @@ function ProductLabBedDetails({ bed }: { bed: RuntimeLabBed }) {
 function BedDetails({
   bed,
   relationships,
-  relationshipsError
+  relationshipsError,
+  visibilityMutationPending,
+  onHide,
+  onUnhide,
+  onDelete
 }: {
   bed: VitalDBBedRecord;
   relationships: VitalDBRelationships | undefined;
   relationshipsError: unknown;
+  visibilityMutationPending: boolean;
+  onHide: () => void;
+  onUnhide: () => void;
+  onDelete: () => void;
 }) {
   const assignments = (relationships?.assignments ?? []).filter(
     (assignment) => assignment.bedID === bed.bedID
@@ -383,7 +351,39 @@ function BedDetails({
   );
 
   return (
-    <Panel title="Bed Details">
+    <Panel
+      title="Bed Details"
+      actions={
+        <div className="toolbar compact-toolbar">
+          {bed.visibility === "hidden" ? (
+            <>
+              <button
+                type="button"
+                disabled={visibilityMutationPending}
+                onClick={onUnhide}
+              >
+                Show in list
+              </button>
+              <button
+                type="button"
+                disabled={visibilityMutationPending}
+                onClick={onDelete}
+              >
+                Delete hidden bed
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={visibilityMutationPending}
+              onClick={onHide}
+            >
+              Hide from list
+            </button>
+          )}
+        </div>
+      }
+    >
       <div className="detail-heading">
         <StatusBadge tone={recorderStatusTone(bed.status)}>
           <strong>{bed.name ?? bed.bedID}</strong>
@@ -394,31 +394,26 @@ function BedDetails({
 
       <KeyValueRows
         rows={[
-          { label: "Bed ID", value: bed.bedID },
-          { label: "Name", value: bed.name ?? NOT_REPORTED },
-          { label: "VRecorder", value: bed.vrcode ?? NOT_REPORTED },
           {
-            label: "VRecorder status",
-            value: bed.linkedRecorderStatus ? (
-              <StatusBadge tone={recorderStatusTone(bed.linkedRecorderStatus)}>
-                {formatRecorderStatus(bed.linkedRecorderStatus)}
-              </StatusBadge>
-            ) : (
-              NOT_REPORTED
-            )
-          },
-          { label: "VRecorder IP", value: bed.linkedRecorderIP ?? NOT_REPORTED },
-          {
-            label: "VRecorder last seen",
-            value: formatLocalDateTimeWithAge(bed.linkedRecorderLastSeenAt)
-          },
-          {
-            label: "Patient status",
+            label: "Patient presence",
             value: formatPatientStatus(bed.patientConnected)
           },
-          { label: "First seen", value: formatLocalDateTime(bed.firstSeenAt) },
-          { label: "Last seen", value: formatLocalDateTimeWithAge(bed.lastSeenAt) },
-          { label: "Latest anomaly", value: formatAnomalySummary(bed) }
+          {
+            label: "Bed status",
+            value: (
+              <StatusBadge tone={recorderStatusTone(bed.status)}>
+                {formatRecorderStatus(bed.status)}
+              </StatusBadge>
+            )
+          },
+          {
+            label: "Last observation",
+            value: formatLocalDateTimeWithAge(bed.lastSeenAt)
+          },
+          { label: "First observed", value: formatLocalDateTime(bed.firstSeenAt) },
+          { label: "Data issue", value: formatAnomalySummary(bed) },
+          { label: "Bed ID", value: bed.bedID },
+          { label: "List visibility", value: formatVisibility(bed.visibility) }
         ]}
       />
 
@@ -524,7 +519,7 @@ function filterBeds(beds: VitalDBBedRecord[], searchText: string): VitalDBBedRec
     return beds;
   }
   return beds.filter((bed) =>
-    [bed.bedID, bed.name, bed.vrcode]
+    [bed.bedID, bed.name]
       .filter(Boolean)
       .some((value) => value?.toLowerCase().includes(query))
   );

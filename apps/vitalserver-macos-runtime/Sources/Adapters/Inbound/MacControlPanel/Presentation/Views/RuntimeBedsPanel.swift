@@ -149,6 +149,8 @@ struct RuntimeBedsPanel: View {
                     selectedBedSummary(bed)
                     Divider()
                     bedMetadata(bed)
+                    Divider()
+                    bedRelationshipHistory(bed)
                     if bed.visibility == .hidden, showingHiddenBeds {
                         Divider()
                         bedDataManagement(bed)
@@ -513,6 +515,113 @@ struct RuntimeBedsPanel: View {
         }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func bedRelationshipHistory(
+        _ bed: RuntimeVitalBedRecord
+    ) -> some View {
+        let history = viewModel.relationshipPresentationHistory(
+            bedID: bed.bedID
+        )
+        let assignments = history.assignments
+        let events = history.events
+
+        return VStack(alignment: .leading, spacing: 10) {
+            detailSectionTitle("Relationship history")
+            relationshipReadIssue
+            if assignments.isEmpty,
+                events.isEmpty,
+                viewModel.vitalRelationships.state == .loaded {
+                Text("No bed relationship history has been observed.")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            } else if viewModel.vitalRelationships.state != .readFailed {
+                if !assignments.isEmpty {
+                    relationshipSubsection("Assignments")
+                    ForEach(assignments) { assignment in
+                        relationshipRow(
+                            title: assignment.vrcode,
+                            detail: "\(viewModel.presentationFormatter.systemTimeText(assignment.startedAt)) - \(viewModel.presentationFormatter.systemTimeText(assignment.endedAt))",
+                            trailing: assignment.status.rawValue.capitalized
+                        )
+                    }
+                }
+                if !events.isEmpty {
+                    relationshipSubsection("Events")
+                    ForEach(events) { event in
+                        relationshipRow(
+                            title: "\(event.severity.rawValue.capitalized) · \(event.eventType.rawValue)",
+                            detail: event.message,
+                            trailing: viewModel.presentationFormatter.systemTimeText(
+                                event.observedAt
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var relationshipReadIssue: some View {
+        switch viewModel.vitalRelationships.state {
+        case .loaded:
+            if let readError = viewModel.vitalRelationships.readError {
+                Text("Relationship history contract issue: \(readError)")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+        case .partiallyLoaded:
+            Text(
+                "Relationship history is partially loaded: "
+                    + (viewModel.vitalRelationships.readError
+                        ?? "No failure detail was provided.")
+            )
+            .font(.caption)
+            .foregroundStyle(.orange)
+            .textSelection(.enabled)
+        case .readFailed:
+            Text(
+                "Relationship history read failed: "
+                    + (viewModel.vitalRelationships.readError
+                        ?? "No failure detail was provided.")
+            )
+            .font(.caption)
+            .foregroundStyle(.red)
+            .textSelection(.enabled)
+        }
+    }
+
+    private func relationshipSubsection(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+    }
+
+    private func relationshipRow(
+        title: String,
+        detail: String,
+        trailing: String
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .frame(minWidth: 120, alignment: .leading)
+            Text(detail)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text(trailing)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .font(.caption)
     }
 
     private func summaryMetric(_ label: String, _ value: String) -> some View {
