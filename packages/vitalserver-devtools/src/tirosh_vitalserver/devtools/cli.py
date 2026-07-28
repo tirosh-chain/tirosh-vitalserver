@@ -230,6 +230,7 @@ def main() -> int:
     )
     guest_deploy.add_argument("--vm-home", type=Path, required=True)
     guest_deploy.add_argument("--runtime-dir", type=Path, required=True)
+    guest_deploy.add_argument("--release-file", type=Path, required=True)
     guest_deploy.add_argument("--deploy-dir", type=Path)
     guest_deploy.add_argument("--docker-bundle", type=Path)
     guest_deploy.add_argument("--rootfs-run-id")
@@ -251,6 +252,7 @@ def main() -> int:
         handler=lambda args: guest_services_usecases.stage_guest_deployment(
             usecase_inputs.GuestDeploymentInput(
                 config=args.config,
+                release_file=args.release_file,
                 vm_home=args.vm_home,
                 runtime_dir=args.runtime_dir,
                 deploy_dir=args.deploy_dir,

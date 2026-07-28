@@ -170,3 +170,19 @@ class GuestRuntimeReleaseOperationRecord(ControlRecordBase):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+
+
+class InitialUpdateOwnerProvisioningRecord(ControlRecordBase):
+    __tablename__ = "initial_update_owner_provisioning"
+
+    owner_key: Mapped[str] = mapped_column(String, primary_key=True)
+    contract_digest: Mapped[str] = mapped_column(String, nullable=False)
+    container_identity: Mapped[str] = mapped_column(String, nullable=False)
+    container_digest: Mapped[str] = mapped_column(String, nullable=False)
+    container_archive: Mapped[str] = mapped_column(String, nullable=False)
+    guest_runtime_identity: Mapped[str] = mapped_column(String, nullable=False)
+    guest_runtime_digest: Mapped[str] = mapped_column(String, nullable=False)
+    guest_runtime_archive: Mapped[str] = mapped_column(String, nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )

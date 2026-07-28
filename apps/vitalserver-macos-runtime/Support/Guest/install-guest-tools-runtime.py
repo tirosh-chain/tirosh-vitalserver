@@ -63,7 +63,14 @@ def install_guest_tools_runtime(
     remove_directory(next_venv, label="pending Guest Tools venv")
     try:
         subprocess.run(
-            [sys.executable, "-m", "venv", "--clear", str(next_venv)],
+            [
+                sys.executable,
+                "-m",
+                "venv",
+                "--clear",
+                "--copies",
+                str(next_venv),
+            ],
             check=True,
         )
         pip = next_venv / "bin" / "pip"

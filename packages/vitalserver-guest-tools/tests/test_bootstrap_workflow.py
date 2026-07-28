@@ -28,7 +28,12 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
     assert_before(events, "sync-clock", "result:running")
     assert_before(events, "prepare-runtime-data", "start-docker")
     assert_before(events, "prepare-runtime-data", "migrate-control-store")
-    assert_before(events, "migrate-control-store", "start-docker")
+    assert_before(
+        events,
+        "migrate-control-store",
+        "provision-initial-update-owners",
+    )
+    assert_before(events, "provision-initial-update-owners", "start-docker")
     assert_before(
         events,
         "start-docker",
@@ -81,7 +86,7 @@ def test_guest_bootstrap_reports_each_running_step_and_failed_step(
     )
 
 
-def test_guest_bootstrap_rejects_docker_start_before_control_store_migration(
+def test_guest_bootstrap_rejects_docker_start_before_owner_provisioning(
     tmp_path: Path,
 ) -> None:
     workflow = GuestBootstrapWorkflow(
@@ -91,7 +96,7 @@ def test_guest_bootstrap_rejects_docker_start_before_control_store_migration(
 
     with pytest.raises(
         RuntimeError,
-        match="start-docker requires migrate-control-store",
+        match="start-docker requires provision-initial-update-owners",
     ):
         workflow.start_docker()
 
@@ -187,6 +192,9 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         install_runtime_files=lambda _: events.append("install-runtime-files"),
         prepare_runtime_data=lambda: events.append("prepare-runtime-data"),
         migrate_control_store=lambda: events.append("migrate-control-store"),
+        provision_initial_update_owners=lambda _: events.append(
+            "provision-initial-update-owners"
+        ),
         write_initial_runtime_observation=lambda: events.append(
             "write-runtime-observation"
         ),

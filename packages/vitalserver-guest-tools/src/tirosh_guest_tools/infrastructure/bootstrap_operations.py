@@ -6,9 +6,17 @@ import shutil
 import subprocess
 import tempfile
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tirosh_guest_tools.adapters.outbound.sqlite_control import (
+    SQLiteControlRepository,
+)
+from tirosh_guest_tools.adapters.outbound.update_artifacts import (
+    AtomicGuestRuntimeReleaseEffect,
+    ImmutableUpdateArtifactStore,
+)
 from tirosh_guest_tools.application.bootstrap import (
     BootstrapResultDocument,
     DockerSmokeResult,
@@ -16,6 +24,9 @@ from tirosh_guest_tools.application.bootstrap import (
     GuestBootstrapContext,
     GuestBootstrapOperations,
     expected_deploy_bundle_files,
+)
+from tirosh_guest_tools.application.guest_control.initial_update_owner import (
+    provision_initial_update_owner_state,
 )
 from tirosh_guest_tools.application.runtime_data_prepare import prepare_runtime_data
 from tirosh_guest_tools.contracts import RuntimeService
@@ -30,6 +41,7 @@ from tirosh_guest_tools.infrastructure.common import (
     utc_now,
     write_json,
 )
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 from tirosh_guest_tools.infrastructure.system_install import (
     install_guest_tools_runtime,
     migrate_guest_control_store,
@@ -65,6 +77,7 @@ def default_bootstrap_operations() -> GuestBootstrapOperations:
         install_runtime_files=install_runtime_files,
         prepare_runtime_data=prepare_runtime_data,
         migrate_control_store=migrate_guest_control_store,
+        provision_initial_update_owners=provision_initial_update_owners,
         write_initial_runtime_observation=write_initial_runtime_observation,
         start_docker=start_docker,
         start_avahi=start_avahi,
@@ -265,6 +278,29 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
 
 def write_initial_runtime_observation() -> None:
     run(["/usr/local/bin/tirosh-runtime-observation", "once"])
+
+
+def provision_initial_update_owners(context: GuestBootstrapContext) -> None:
+    repository = SQLiteControlRepository(
+        SETTINGS.paths.control_state_dir / "control.sqlite"
+    )
+    repository.check_ready()
+    provision_initial_update_owner_state(
+        contract_path=context.deploy_dir / "initial-update-owner-state.json",
+        deploy_dir=context.deploy_dir,
+        repository=repository,
+        artifacts=ImmutableUpdateArtifactStore(
+            SETTINGS.paths.control_state_dir / "update-artifacts"
+        ),
+        guest_runtime_activator=AtomicGuestRuntimeReleaseEffect(
+            releases_root=(
+                SETTINGS.paths.guest_tools_home.parent / "guest-runtime-releases"
+            ),
+            active_link=SETTINGS.paths.guest_tools_home,
+            reconcile=lambda: None,
+        ),
+        observed_at=datetime.now(UTC),
+    )
 
 
 def start_docker() -> None:

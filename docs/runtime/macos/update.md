@@ -19,6 +19,13 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
 | update 중 watchdog이 복구를 시도하나? | 안 한다. stable update operation lease가 활성인 동안 watchdog auto-recovery를 suppress한다 |
 
+Fresh install은 release manifest의 `releaseLabel`과 실제 rootfs staging
+archive 바이트로 초기 Container Image-Set 및 Guest Runtime Release 계약을
+만든다. Guest bootstrap은 control-store migration 뒤 이 계약을 검증하고,
+두 immutable owner와 initial provisioning receipt를 Guest SQLite에 함께
+기록한다. 이후 boot는 receipt와 현재 owner 무결성만 검증하며, update로
+변경된 current/active identity를 package baseline으로 되돌리지 않는다.
+
 ## Historical: 0.2.1 Update Apply 제한
 
 아래는 이전 0.2.1 설치본의 containment 계약입니다. 0.2.2 stable bootstrap의 현재 동작이 아닙니다. 0.2.1 bundle의 `signature` 파일은 `unsigned` placeholder이고 trusted publisher verification 구현과 trust root/config 계약이 없었습니다.

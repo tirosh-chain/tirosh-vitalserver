@@ -44,6 +44,9 @@ from tirosh_guest_tools.adapters.outbound.update_artifacts import (
     ImmutableUpdateArtifactStore,
 )
 from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
+from tirosh_guest_tools.application.initial_release_artifacts import (
+    compose_initial_update_owner_artifacts,
+)
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.guest_control.runtime import SystemClock
 from tirosh_guest_tools.application.guest_control.update_owner_worker import (
@@ -124,14 +127,30 @@ def vitalserver_update_owner_worker() -> int:
             releases_root=(
                 SETTINGS.paths.guest_tools_home.parent / "guest-runtime-releases"
             ),
-            active_link=(
-                SETTINGS.paths.guest_tools_home.parent / "active-guest-runtime"
-            ),
+            active_link=SETTINGS.paths.guest_tools_home,
             reconcile=compose.reconcile_services,
         ),
         clock=SystemClock(),
     )
     worker.recover_and_run_pending()
+    return 0
+
+
+def compose_initial_update_owner_state() -> int:
+    parser = argparse.ArgumentParser(
+        description="Compose explicit fresh-install update owner artifacts."
+    )
+    parser.add_argument("--release-identity", type=Path, required=True)
+    parser.add_argument("--deploy-dir", type=Path, required=True)
+    parser.add_argument("--container-archive", type=Path, required=True)
+    parser.add_argument("--guest-tools-home", type=Path, required=True)
+    args = parser.parse_args()
+    compose_initial_update_owner_artifacts(
+        release_identity_path=args.release_identity,
+        deploy_dir=args.deploy_dir,
+        container_archive=args.container_archive,
+        guest_tools_home=args.guest_tools_home,
+    )
     return 0
 
 

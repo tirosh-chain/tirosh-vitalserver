@@ -116,6 +116,7 @@ internal/vm/stage: internal/vm/init
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" guest-deploy \
 		--vm-home "$(VM_HOME)" \
 		--runtime-dir "$(VM_MACOS_RUNTIME_DIR)" \
+		--release-file "$(VM_RELEASE_FILE)" \
 		--docker-bundle "$(call VM_TOML_VALUE,guest.docker_images.bundle_path)" \
 		$$rootfs_run_args \
 		$$guest_deploy_source_args \

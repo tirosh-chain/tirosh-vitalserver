@@ -17,6 +17,7 @@ from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     GUEST_DEPLOY_MATERIAL_DIGEST_VERSION,
     guest_deploy_material_sha256,
+    stage_fresh_install_release_identity,
 )
 from tirosh_vitalserver.devtools.application.inputs import (
     GuestDeploymentInput,
@@ -334,6 +335,10 @@ def test_stage_guest_deployment_verifies_restaged_material_against_rootfs_receip
         json.dumps(rootfs_input_metadata_document(source_plan)),
         encoding="utf-8",
     )
+    stage_fresh_install_release_identity(
+        deploy_dir=source_deploy,
+        release_label="0.2.2-test",
+    )
     (source_deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
     rootfs = tmp_path / "rootfs-base.raw.gz"
     rootfs.write_bytes(b"rootfs")
@@ -370,6 +375,11 @@ def test_stage_guest_deployment_verifies_restaged_material_against_rootfs_receip
         vm_data_dirs=[],
     )
     monkeypatch.setattr(guest_services_usecases, "repo_root", lambda: root)
+    monkeypatch.setattr(
+        guest_services_usecases,
+        "load_release_manifest",
+        lambda _: SimpleNamespace(release_label="0.2.2-test"),
+    )
     monkeypatch.setattr(guest_services_usecases, "load_config", lambda _: {})
     monkeypatch.setattr(
         guest_services_usecases,
@@ -398,6 +408,7 @@ def test_stage_guest_deployment_verifies_restaged_material_against_rootfs_receip
 
     input = GuestDeploymentInput(
         config=root / "config.toml",
+        release_file=root / "release.json",
         vm_home=vm_home,
         runtime_dir=root / "runtime",
         deploy_dir=None,
@@ -418,6 +429,10 @@ def test_stage_guest_deployment_verifies_restaged_material_against_rootfs_receip
         "enabled": True,
         "runId": "runtime-smoke-run",
     }
+    release_identity = load_json(
+        staged_deploy / "build-metadata/fresh-install-release.json"
+    )
+    assert release_identity["releaseLabel"] == "0.2.2-test"
 
 
 def load_json(path: Path) -> dict[str, object]:

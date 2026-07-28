@@ -16,7 +16,10 @@ from tirosh_guest_tools.application.guest_control.update_owner_worker import (
 )
 from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.domain.guest_control.models import GuestControlDependencyError
-from tirosh_guest_tools.domain.guest_runtime_release import GuestRuntimeReleaseOperation
+from tirosh_guest_tools.domain.guest_runtime_release import (
+    GuestRuntimeRelease,
+    GuestRuntimeReleaseOperation,
+)
 
 UPDATE_ARTIFACT_KINDS = frozenset({"container-image-set", "guest-runtime-release"})
 
@@ -186,6 +189,54 @@ class AtomicGuestRuntimeReleaseEffect:
         self._releases_root = releases_root
         self._active_link = active_link
         self._reconcile = reconcile
+
+    def provision_initial(
+        self,
+        release: GuestRuntimeRelease,
+        archive: Path,
+    ) -> None:
+        """Replace the bootstrap directory with the first immutable release link."""
+
+        destination = self._releases_root / release.identity
+        if self._active_link.is_symlink():
+            self._require_slot_digest(destination, release.digest)
+            if self._active_link.resolve(strict=True) != destination.resolve():
+                raise UpdateEffectFailed(
+                    "Initial Guest Runtime active link targets another release."
+                )
+            return
+        if not self._active_link.is_dir():
+            raise UpdateEffectFailed(
+                "Initial Guest Runtime directory is unavailable: "
+                f"{self._active_link}."
+            )
+        staging = self._releases_root / f".{release.identity}.initial.staging"
+        previous = self._releases_root / f".{release.identity}.bootstrap.previous"
+        self._releases_root.mkdir(parents=True, exist_ok=True)
+        _remove_tree(staging)
+        _remove_tree(previous)
+        staging.mkdir(mode=0o700)
+        try:
+            self._safe_extract(archive, staging)
+            (staging / ".artifact-sha256").write_text(
+                release.digest + "\n",
+                encoding="utf-8",
+            )
+            if destination.exists():
+                self._require_slot_digest(destination, release.digest)
+                _remove_tree(staging)
+            else:
+                os.replace(staging, destination)
+            os.replace(self._active_link, previous)
+            self._switch_active(destination)
+            _remove_tree(previous)
+        except Exception:
+            if self._active_link.is_symlink():
+                self._active_link.unlink()
+            if previous.exists():
+                os.replace(previous, self._active_link)
+            _remove_tree(staging)
+            raise
 
     def activate(
         self,

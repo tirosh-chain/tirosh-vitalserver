@@ -128,6 +128,7 @@ class DockerImageBundleInput:
 @dataclass(frozen=True)
 class GuestDeploymentInput:
     config: Path
+    release_file: Path
     vm_home: Path
     runtime_dir: Path
     deploy_dir: Path | None

@@ -13,6 +13,7 @@ CONTROL_SCHEMA_REVISIONS = (
     ("0001", "f5b6a98ac7a8d61d"),
     ("0002", "90d219e32282638f"),
     ("0003", "bbeb68e94438d0b5"),
+    ("0004", "34993a7530a52d2f"),
 )
 CONTROL_SCHEMA_COLUMNS: dict[str, frozenset[str]] = {
     "control_schema_migrations": frozenset({"version", "checksum", "applied_at"}),
@@ -70,6 +71,19 @@ CONTROL_SCHEMA_COLUMNS: dict[str, frozenset[str]] = {
             "updated_at",
         }
     ),
+    "initial_update_owner_provisioning": frozenset(
+        {
+            "owner_key",
+            "contract_digest",
+            "container_identity",
+            "container_digest",
+            "container_archive",
+            "guest_runtime_identity",
+            "guest_runtime_digest",
+            "guest_runtime_archive",
+            "completed_at",
+        }
+    ),
 }
 
 
@@ -93,6 +107,9 @@ def migrate_control_schema(connection: Connection) -> None:
             applied = _applied_revisions(connection)
         if applied == list(CONTROL_SCHEMA_REVISIONS[:2]):
             _upgrade_0003(connection)
+            applied = _applied_revisions(connection)
+        if applied == list(CONTROL_SCHEMA_REVISIONS[:3]):
+            _upgrade_0004(connection)
         validate_control_schema(connection)
     except GuestControlDependencyError:
         raise
@@ -380,6 +397,35 @@ def _upgrade_0003(connection: Connection) -> None:
         {
             "version": CONTROL_SCHEMA_REVISIONS[2][0],
             "checksum": CONTROL_SCHEMA_REVISIONS[2][1],
+            "applied_at": datetime.now(UTC).isoformat(),
+        },
+    )
+
+
+def _upgrade_0004(connection: Connection) -> None:
+    context = MigrationContext.configure(connection)
+    operations = Operations(context)
+    operations.create_table(
+        "initial_update_owner_provisioning",
+        sa.Column("owner_key", sa.String(), primary_key=True),
+        sa.Column("contract_digest", sa.String(), nullable=False),
+        sa.Column("container_identity", sa.String(), nullable=False),
+        sa.Column("container_digest", sa.String(), nullable=False),
+        sa.Column("container_archive", sa.String(), nullable=False),
+        sa.Column("guest_runtime_identity", sa.String(), nullable=False),
+        sa.Column("guest_runtime_digest", sa.String(), nullable=False),
+        sa.Column("guest_runtime_archive", sa.String(), nullable=False),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    connection.execute(
+        text(
+            "INSERT INTO control_schema_migrations "
+            "(version, checksum, applied_at) VALUES "
+            "(:version, :checksum, :applied_at)"
+        ),
+        {
+            "version": CONTROL_SCHEMA_REVISIONS[3][0],
+            "checksum": CONTROL_SCHEMA_REVISIONS[3][1],
             "applied_at": datetime.now(UTC).isoformat(),
         },
     )

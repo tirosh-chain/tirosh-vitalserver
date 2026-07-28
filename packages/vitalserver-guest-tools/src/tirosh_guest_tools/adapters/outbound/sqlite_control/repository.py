@@ -37,6 +37,7 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control.records import (
     GuestRuntimeReleaseOperationRecord,
     GuestRuntimeReleaseRecord,
     GuestServiceResourceRecord,
+    InitialUpdateOwnerProvisioningRecord,
     OperationEventRecord,
     RedisRelayStatusRecord,
     ServiceOperationRecord,
@@ -489,6 +490,218 @@ class SQLiteControlRepository:
             )
 
         self._container_image_set_write("container image-set provision", write)
+
+    def provision_initial_update_owner_state(
+        self,
+        *,
+        container_image_set: ContainerImageSet,
+        contract_digest: str,
+        container_archive: str,
+        guest_runtime_release: GuestRuntimeRelease,
+        observed_at: datetime,
+    ) -> None:
+        """Persist both fresh-install update owners in one transaction."""
+
+        def write(session: Session) -> None:
+            receipt = session.get(
+                InitialUpdateOwnerProvisioningRecord,
+                "initial",
+            )
+            expected_receipt = (
+                contract_digest,
+                container_image_set.identity,
+                container_image_set.digest,
+                container_archive,
+                guest_runtime_release.identity,
+                guest_runtime_release.digest,
+                guest_runtime_release.archive,
+            )
+            if receipt is not None:
+                actual_receipt = (
+                    receipt.contract_digest,
+                    receipt.container_identity,
+                    receipt.container_digest,
+                    receipt.container_archive,
+                    receipt.guest_runtime_identity,
+                    receipt.guest_runtime_digest,
+                    receipt.guest_runtime_archive,
+                )
+                if actual_receipt == expected_receipt:
+                    return
+                raise ContainerImageSetConflictError(
+                    "Initial update owner provisioning receipt disagrees with "
+                    "the installed release contract.",
+                    kind="initialUpdateOwnerProvisioningReceiptMismatch",
+                )
+            current = session.get(CurrentContainerImageSetRecord, "current")
+            active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+            if current is not None or active is not None:
+                raise ContainerImageSetConflictError(
+                    "Initial update owner state exists without its provisioning "
+                    "receipt: "
+                    f"container={current.identity if current else 'missing'} "
+                    f"guestRuntime={active.identity if active else 'missing'}.",
+                    kind="initialUpdateOwnerProvisioningPartialState",
+                )
+            self._require_immutable_image_set(
+                session,
+                container_image_set,
+                observed_at,
+            )
+            self._require_immutable_guest_runtime_release(
+                session,
+                guest_runtime_release,
+                observed_at,
+            )
+            session.add(
+                CurrentContainerImageSetRecord(
+                    owner_key="current",
+                    identity=container_image_set.identity,
+                    updated_at=observed_at,
+                )
+            )
+            session.add(
+                ActiveGuestRuntimeReleaseRecord(
+                    owner_key="active",
+                    identity=guest_runtime_release.identity,
+                    updated_at=observed_at,
+                )
+            )
+            session.add(
+                InitialUpdateOwnerProvisioningRecord(
+                    owner_key="initial",
+                    contract_digest=contract_digest,
+                    container_identity=container_image_set.identity,
+                    container_digest=container_image_set.digest,
+                    container_archive=container_archive,
+                    guest_runtime_identity=guest_runtime_release.identity,
+                    guest_runtime_digest=guest_runtime_release.digest,
+                    guest_runtime_archive=guest_runtime_release.archive,
+                    completed_at=observed_at,
+                )
+            )
+
+        try:
+            self._write("initial update owner state provision", write)
+        except (
+            ContainerImageSetConflictError,
+            ContainerImageSetContractError,
+            GuestRuntimeReleaseConflictError,
+            GuestRuntimeReleaseContractError,
+        ):
+            raise
+        except GuestControlDependencyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                error.message,
+                kind="initialUpdateOwnerStateUnavailable",
+            ) from error
+
+    def initial_update_owner_state_is_provisioned(
+        self,
+        *,
+        contract_digest: str,
+        container_image_set: ContainerImageSet,
+        container_archive: str,
+        guest_runtime_release: GuestRuntimeRelease,
+    ) -> bool:
+        """Read the explicit installer receipt without consulting filesystem state."""
+
+        def read(session: Session) -> bool:
+            receipt = session.get(
+                InitialUpdateOwnerProvisioningRecord,
+                "initial",
+            )
+            if receipt is not None:
+                actual = (
+                    receipt.contract_digest,
+                    receipt.container_identity,
+                    receipt.container_digest,
+                    receipt.container_archive,
+                    receipt.guest_runtime_identity,
+                    receipt.guest_runtime_digest,
+                    receipt.guest_runtime_archive,
+                )
+                expected = (
+                    contract_digest,
+                    container_image_set.identity,
+                    container_image_set.digest,
+                    container_archive,
+                    guest_runtime_release.identity,
+                    guest_runtime_release.digest,
+                    guest_runtime_release.archive,
+                )
+                if actual == expected:
+                    current = session.get(
+                        CurrentContainerImageSetRecord,
+                        "current",
+                    )
+                    active = session.get(
+                        ActiveGuestRuntimeReleaseRecord,
+                        "active",
+                    )
+                    if current is None or active is None:
+                        raise ContainerImageSetDependencyError(
+                            "Initial update owner receipt exists but current "
+                            "owner pointers are missing.",
+                            kind="initialUpdateOwnerCurrentStateInvalid",
+                        )
+                    current_value = session.get(
+                        ContainerImageSetRecord,
+                        current.identity,
+                    )
+                    active_value = session.get(
+                        GuestRuntimeReleaseRecord,
+                        active.identity,
+                    )
+                    if current_value is None or active_value is None:
+                        raise ContainerImageSetDependencyError(
+                            "Initial update owner receipt exists but an owner "
+                            "pointer has no immutable record.",
+                            kind="initialUpdateOwnerCurrentStateInvalid",
+                        )
+                    ContainerImageSet.validated(
+                        current_value.identity,
+                        current_value.digest,
+                    )
+                    GuestRuntimeRelease.validated(
+                        active_value.identity,
+                        active_value.archive,
+                        active_value.digest,
+                    )
+                    return True
+                raise ContainerImageSetConflictError(
+                    "Initial update owner provisioning receipt disagrees with "
+                    "the installed release contract.",
+                    kind="initialUpdateOwnerProvisioningReceiptMismatch",
+                )
+            current = session.get(CurrentContainerImageSetRecord, "current")
+            active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+            if current is None and active is None:
+                return False
+            raise ContainerImageSetConflictError(
+                "Initial update owner state exists without its provisioning "
+                "receipt.",
+                kind="initialUpdateOwnerProvisioningPartialState",
+            )
+
+        try:
+            with Session(self._engine) as session:
+                return read(session)
+        except (
+            ContainerImageSetConflictError,
+            ContainerImageSetContractError,
+            GuestRuntimeReleaseConflictError,
+            GuestRuntimeReleaseContractError,
+        ):
+            raise
+        except SQLAlchemyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                control_store_error(
+                    error,
+                    stage="initial update owner provisioning receipt read",
+                ).message,
+                kind="initialUpdateOwnerStateUnavailable",
+            ) from error
 
     def read_current(self) -> ContainerImageSet:
         try:

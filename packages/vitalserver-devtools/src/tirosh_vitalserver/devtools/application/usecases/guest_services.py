@@ -9,6 +9,7 @@ from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
 )
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     ensure_vm_data_dirs,
+    stage_fresh_install_release_identity,
     stage_guest_deploy,
     stage_materialized_guest_deploy,
 )
@@ -38,6 +39,9 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
+from tirosh_vitalserver.devtools.config.release_manifest import (
+    load_release_manifest,
+)
 from tirosh_vitalserver.devtools.core.guest_image import RuntimeDataDiskConfig
 from tirosh_vitalserver.devtools.core.guest_services import (
     DockerImagePlan,
@@ -166,6 +170,7 @@ def stage_guest_deployment(
     input: GuestDeploymentInput,
 ) -> int:
     root = repo_root()
+    release = load_release_manifest(resolve_path(root, input.release_file))
     config = load_config(input.config)
     deploy_config = load_guest_deploy_config(config)
     runtime_dir = resolve_path(root, input.runtime_dir)
@@ -207,6 +212,10 @@ def stage_guest_deployment(
             resolve_path(root, input.source_deploy_dir),
             deploy_dir,
         )
+    stage_fresh_install_release_identity(
+        deploy_dir=deploy_dir,
+        release_label=release.release_label,
+    )
     ubuntu_config = load_ubuntu_image_config(config)
     runtime_config = load_guest_runtime_config(config)
     stage_rootfs_input_metadata(
