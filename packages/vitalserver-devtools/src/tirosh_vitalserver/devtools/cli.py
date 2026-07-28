@@ -4,6 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.adapters.macos_release import (
+    helper_update_layer_artifacts,
+)
 from tirosh_vitalserver.devtools.adapters.update_bundle import (
     bootstrap_bundle_service,
 )
@@ -19,6 +22,9 @@ from tirosh_vitalserver.devtools.application.usecases import (
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_services as guest_services_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    helper_stable_update_release as helper_stable_update_release_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     host_proxy as host_proxy_usecases,
@@ -57,6 +63,9 @@ from tirosh_vitalserver.devtools.config.build_toml import (
     default_config_path,
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
+from tirosh_vitalserver.devtools.core.helper_stable_update_release_models import (
+    HelperStableUpdateLayer,
+)
 
 
 def main() -> int:
@@ -790,6 +799,56 @@ def main() -> int:
         )
     )
 
+    helper_stable_update_release = subparsers.add_parser(
+        "helper-stable-update-release",
+        help=(
+            "compose the complete three-layer Helper 0.2.2+ release and build "
+            "its signed stable bootstrap bundle"
+        ),
+    )
+    helper_stable_update_release.add_argument("--update-id", required=True)
+    helper_stable_update_release.add_argument("--specification-id", required=True)
+    helper_stable_update_release.add_argument("--product-version", required=True)
+    helper_stable_update_release.add_argument("--runtime-version", required=True)
+    helper_stable_update_release.add_argument(
+        "--target-platform",
+        choices=["macos", "windows", "linux"],
+        required=True,
+    )
+    helper_stable_update_release.add_argument(
+        "--target-architecture",
+        choices=["arm64", "amd64"],
+        required=True,
+    )
+    for layer in HelperStableUpdateLayer:
+        add_helper_stable_update_layer_arguments(
+            helper_stable_update_release,
+            layer,
+        )
+    helper_stable_update_release.add_argument(
+        "--next-updater",
+        type=Path,
+        required=True,
+    )
+    helper_stable_update_release.add_argument("--publisher-key-id", required=True)
+    helper_stable_update_release.add_argument(
+        "--publisher-private-key",
+        type=Path,
+        required=True,
+    )
+    helper_stable_update_release.add_argument(
+        "--issued-at",
+        required=True,
+        help="canonical UTC timestamp, for example 2026-07-29T00:00:00Z",
+    )
+    helper_stable_update_release.add_argument("--output", type=Path, required=True)
+    helper_stable_update_release.set_defaults(
+        handler=lambda args: helper_stable_update_release_usecases.compose(
+            helper_stable_update_release_input(args),
+            helper_stable_update_release_operations(),
+        )
+    )
+
     verify_update_bootstrap_bundle = subparsers.add_parser(
         "verify-update-bootstrap-bundle",
         help="verify a signed stable bootstrap bundle and its artifact closure",
@@ -1240,6 +1299,98 @@ def update_bootstrap_bundle_operations(
     return update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations(
         build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
         verify_bundle=bootstrap_bundle_service.verify_bootstrap_bundle,
+    )
+
+
+def add_helper_stable_update_layer_arguments(
+    parser: argparse.ArgumentParser,
+    layer: HelperStableUpdateLayer,
+) -> None:
+    prefix = layer.value
+    parser.add_argument(
+        f"--{prefix}-artifact",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-artifact-media-type",
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-effect-executor",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-effect-configuration",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-rollback-artifact",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-rollback-media-type",
+        required=True,
+    )
+
+
+def helper_stable_update_release_input(
+    args: argparse.Namespace,
+) -> usecase_inputs.ComposeHelperStableUpdateReleaseInput:
+    layers = tuple(
+        usecase_inputs.HelperStableUpdateLayerArtifactInput(
+            layer=layer,
+            artifact=getattr(args, f"{layer.value.replace('-', '_')}_artifact"),
+            artifact_media_type=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_artifact_media_type",
+            ),
+            effect_executor=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_effect_executor",
+            ),
+            effect_configuration=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_effect_configuration",
+            ),
+            rollback_artifact=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_rollback_artifact",
+            ),
+            rollback_media_type=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_rollback_media_type",
+            ),
+        )
+        for layer in HelperStableUpdateLayer
+    )
+    return usecase_inputs.ComposeHelperStableUpdateReleaseInput(
+        update_id=args.update_id,
+        specification_id=args.specification_id,
+        product_version=args.product_version,
+        runtime_version=args.runtime_version,
+        target_platform=args.target_platform,
+        target_architecture=args.target_architecture,
+        layers=layers,
+        next_updater=args.next_updater,
+        publisher_key_id=args.publisher_key_id,
+        publisher_private_key=args.publisher_private_key,
+        issued_at=args.issued_at,
+        output=args.output,
+    )
+
+
+def helper_stable_update_release_operations() -> (
+    helper_stable_update_release_usecases.HelperStableUpdateReleaseOperations
+):
+    return helper_stable_update_release_usecases.HelperStableUpdateReleaseOperations(
+        materialize_payload=(
+            helper_update_layer_artifacts.materialized_helper_update_payload
+        ),
+        build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
     )
 
 
