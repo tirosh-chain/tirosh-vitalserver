@@ -110,6 +110,75 @@ final class BundleOwnedProductUpdateExecutionPolicyTests: XCTestCase {
         }
     }
 
+    func testRejectsRollbackReceiptsOutsideReverseApplyOrder() {
+        let invocation = invocation()
+        let container = rollbackLayerPlan(.container)
+        let guest = rollbackLayerPlan(.guestRuntime)
+        let host = rollbackLayerPlan(.hostPlatform)
+        let plan = ProductUpdateExecutionPlan(
+            updateId: invocation.updateId,
+            specificationId: "specification-42",
+            layerPlan: [container, guest, host]
+        )
+        let applyReceipts = [container, guest, host].map { layerPlan in
+            receipt(
+                for: BundleOwnedProductUpdateExecutionPolicy.makeRequest(
+                    updateId: invocation.updateId,
+                    layerPlan: layerPlan,
+                    operation: .apply,
+                    artifact: layerPlan.artifact
+                ),
+                state: layerPlan.layer == .hostPlatform
+                    ? .failed
+                    : .succeeded
+            )
+        }
+        let rollbackReceipts = [container, guest].map { layerPlan in
+            receipt(
+                for: BundleOwnedProductUpdateExecutionPolicy.makeRequest(
+                    updateId: invocation.updateId,
+                    layerPlan: layerPlan,
+                    operation: .rollback,
+                    artifact: layerPlan.rollback.artifact!
+                ),
+                state: .succeeded
+            )
+        }
+        let report = ProductUpdateExecutionReport(
+            schemaVersion: ProductUpdateExecutionContract.schemaVersion,
+            updateId: invocation.updateId,
+            requestId: invocation.requestId,
+            bootstrapEnvelopeId: invocation.bootstrapEnvelopeId,
+            updateSpecificationSHA256:
+                invocation.updateSpecificationSHA256,
+            state: .failed,
+            startedAt: "2026-07-28T10:00:00Z",
+            finishedAt: "2026-07-28T10:01:00Z",
+            applyReceipts: applyReceipts,
+            rollbackReceipts: rollbackReceipts,
+            rollback: ProductUpdateRollbackEvidence(
+                state: .succeeded,
+                observedAt: "2026-07-28T10:01:00Z",
+                evidence: evidence(),
+                issue: nil
+            ),
+            failure: applyReceipts.last?.issue
+        )
+
+        XCTAssertThrowsError(
+            try BundleOwnedProductUpdateExecutionPolicy.validate(
+                report: report,
+                invocation: invocation,
+                plan: plan
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BundleOwnedProductUpdateExecutionPolicyError,
+                .reportRollbackReceiptMismatch
+            )
+        }
+    }
+
     private func effectRequest() -> ProductUpdateLayerEffectRequest {
         let plan = layerPlan(.container)
         return BundleOwnedProductUpdateExecutionPolicy.makeRequest(
@@ -187,6 +256,23 @@ final class BundleOwnedProductUpdateExecutionPolicyTests: XCTestCase {
                 state: .unsupported,
                 artifact: nil,
                 reason: "not published"
+            )
+        )
+    }
+
+    private func rollbackLayerPlan(
+        _ layer: UpdateLayer
+    ) -> ProductUpdateLayerPlan {
+        let base = layerPlan(layer)
+        return ProductUpdateLayerPlan(
+            layer: base.layer,
+            dependsOn: base.dependsOn,
+            artifact: base.artifact,
+            effectExecutor: base.effectExecutor,
+            rollback: ProductUpdateLayerRollbackPlan(
+                state: .available,
+                artifact: artifact("\(layer.rawValue)-rollback", "f"),
+                reason: nil
             )
         )
     }
