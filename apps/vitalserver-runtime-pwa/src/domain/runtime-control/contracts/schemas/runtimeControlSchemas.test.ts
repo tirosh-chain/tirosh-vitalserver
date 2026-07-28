@@ -1089,6 +1089,26 @@ describe("runtime control contract schemas", () => {
     ).toBe("1.18.43");
   });
 
+  it("accepts legacy Recorder observability without supportSource", () => {
+    const parsed = vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+      recorders: [
+        fullVitalRecorderRecord({
+          observability: {
+            state: "notReported",
+            vrcode: "VR_TEST",
+            supportState: "unknown",
+            supportSource: undefined,
+            reportState: "notEvaluated"
+          }
+        })
+      ]
+    }));
+
+    expect(parsed.recorders[0]?.observability?.supportSource).toBeUndefined();
+    expect(parsed.recorders[0]?.observability?.supportState).toBe("unknown");
+    expect(parsed.recorders[0]?.observability?.reportState).toBe("notEvaluated");
+  });
+
   it("requires explicit VitalDB read model visibility", () => {
     expect(() =>
       vitalDBRecordersSchema.parse(fullVitalRecorderHistory({

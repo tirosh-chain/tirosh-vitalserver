@@ -2177,7 +2177,8 @@ export interface components {
             vrcode: string;
             /** @enum {string} */
             supportState: "supported" | "unsupported" | "unknown";
-            supportSource: string | null;
+            /** @description Source that established Recorder observability support. Current providers emit this field explicitly; legacy providers may omit it. */
+            supportSource?: string | null;
             /** @enum {string} */
             reportState: "notEvaluated" | "awaitingFirstReport" | "current" | "stale" | "missing" | "readFailed";
             profileState: string | null;

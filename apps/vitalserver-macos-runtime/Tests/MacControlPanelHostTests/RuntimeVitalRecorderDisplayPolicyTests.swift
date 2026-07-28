@@ -13,6 +13,41 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(RuntimeVitalHistoryTableLayout.rowMinimumHeight, 40)
     }
 
+    func testVitalPresentationTypographyUsesLargeSharedOperationalText() {
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.supportingPointSize,
+            14
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.panelTitlePointSize,
+            20
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.tableHeaderPointSize,
+            16
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.tableValuePointSize,
+            18
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.detailValuePointSize,
+            RuntimeVitalPresentationTypography.tableValuePointSize
+        )
+        XCTAssertGreaterThan(
+            RuntimeVitalPresentationTypography.summaryValuePointSize,
+            RuntimeVitalPresentationTypography.summaryLabelPointSize
+        )
+        XCTAssertGreaterThan(
+            RuntimeVitalPresentationTypography.identityPointSize,
+            RuntimeVitalPresentationTypography.tableValuePointSize
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.statusPointSize,
+            RuntimeVitalPresentationTypography.tableValuePointSize
+        )
+    }
+
     func testRecorderAndBedStatusTextPreservesExplicitStates() {
         XCTAssertEqual(policy.statusText(RuntimeVitalRecorderStatus.online), "Online")
         XCTAssertEqual(policy.statusText(RuntimeVitalRecorderStatus.stale), "Stale")

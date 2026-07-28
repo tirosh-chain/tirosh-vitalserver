@@ -12,7 +12,9 @@ read failed. The list can clip its header and trailing columns because a wide
 set of flexible technical columns is laid out in a horizontal scroll view. A
 selected Bed can also expose Recorder health, version, and IP details even
 though the primary user needs Bed, patient-presence, and retained relationship
-context.
+context. Bed list and detail text can also be materially smaller than the
+corresponding Recorder presentation, which makes rapid reading harder in a
+clinical environment.
 
 ## Cause
 
@@ -44,6 +46,10 @@ made the wide header susceptible to vertical and trailing-edge clipping.
   observation field equivalent to `presentInLatestObservation`.
 - Document `linkedRecorderVersion` as a legacy-optional wire field while
   requiring current providers to emit it explicitly.
+- Use one shared large operational typography scale for Recorder and Bed
+  summary, table, status, identity, detail, section, and supporting roles.
+- Size bounded Bed columns for the larger text so readability changes do not
+  reintroduce clipping.
 
 ## Prevention
 
@@ -54,6 +60,11 @@ relationship history are retained evidence and must not be removed as if they
 were infrastructure details. Patient identity, encounter, clinical signal
 availability, and data-gap coverage require explicit provider contracts;
 absence of those fields must not become inferred clinical state.
+
+Typography parity is protected by a shared presentation token source and
+focused minimum-size tests. Operational supporting text must remain at least 14
+points, headers 16 points, primary values 18 points, status 20 points, summary
+values 22 points, and selected identities 24 points.
 
 ## Related cases
 

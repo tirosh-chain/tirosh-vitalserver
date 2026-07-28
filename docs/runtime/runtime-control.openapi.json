@@ -5023,7 +5023,6 @@
           "state",
           "vrcode",
           "supportState",
-          "supportSource",
           "reportState",
           "profileState",
           "collectionState",
@@ -5051,7 +5050,8 @@
             "enum": ["supported", "unsupported", "unknown"]
           },
           "supportSource": {
-            "type": ["string", "null"]
+            "type": ["string", "null"],
+            "description": "Source that established Recorder observability support. Current providers emit this field explicitly; legacy providers may omit it."
           },
           "reportState": {
             "type": "string",

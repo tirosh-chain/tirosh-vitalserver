@@ -71,6 +71,15 @@ Recorder ingress already preserves boot-version meaning:
 
 The hotfix does not reinterpret v1 or missing observer data as v2.
 
+An additional PWA-only failure occurred when retained Recorder observability
+documents predated the `supportSource` metadata field. Swift optional decoding
+already accepted the omitted metadata, but the PWA schema required the key and
+rejected the complete Recorder response at
+`recorders[0].observability.supportSource`. Current providers still emit
+`supportSource` explicitly, including `null`; clients accept omission only as a
+documented legacy wire migration. The required `supportState` and `reportState`
+axes remain explicit and are never derived from that omission.
+
 ## Checks
 
 Read the recorder-ingress result and the Guest Control result separately:
@@ -117,6 +126,8 @@ Regression coverage includes:
 - dependency unavailability kept distinct from observer absence;
 - v1 boot ordering remaining `unknown` and v2 boot ordering reported as `ordered`;
 - Swift decoding of a Recorder-without-observer response;
+- Swift and PWA decoding of a legacy observability document with omitted
+  `supportSource`, while current providers continue to emit the field;
 - OpenAPI-generated PWA contract requiring `orderingState`;
 - PostgreSQL execution of the incident query with a kernel incident;
 - an incident query for a Recorder without observer rows returning an empty result.
@@ -140,3 +151,6 @@ file names, or report absence. The Guest owner must provide `unknown`, `notRepor
 - 2026-07-27: added the explicit-state hotfix and cross-language regression coverage.
 - 2026-07-27: reproduced the follow-on incident-history 503 against the live Guest PostgreSQL
   service. Added an explicit JSON text-extraction boundary and PostgreSQL-backed regression proof.
+- 2026-07-28: reproduced PWA rejection of a retained observability document
+  without `supportSource`. Documented and tested the metadata-only legacy wire
+  migration without relaxing the provider-owned state axes.

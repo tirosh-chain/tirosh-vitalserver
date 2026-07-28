@@ -7,11 +7,11 @@ import Errors
 struct RuntimeBedTableLayout {
     static let spacing: CGFloat = 12
     static let horizontalPadding: CGFloat = 10
-    static let statusWidth: CGFloat = 110
-    static let bedWidth: CGFloat = 260
-    static let patientWidth: CGFloat = 150
-    static let lastObservationWidth: CGFloat = 150
-    static let dataIssueWidth: CGFloat = 260
+    static let statusWidth: CGFloat = 140
+    static let bedWidth: CGFloat = 340
+    static let patientWidth: CGFloat = 180
+    static let lastObservationWidth: CGFloat = 180
+    static let dataIssueWidth: CGFloat = 300
     static let contentWidth =
         statusWidth
         + bedWidth
@@ -45,7 +45,8 @@ struct RuntimeBedsPanel: View {
         ViewThatFits(in: .horizontal) {
             HStack {
                 Text(AppConstants.Labels.sectionBeds)
-                    .font(.headline)
+                    .font(RuntimeVitalPresentationTypography.panelTitle)
+                    .fontWeight(.semibold)
                 Spacer()
                 bedSearchField
                 bedSortPicker
@@ -55,7 +56,8 @@ struct RuntimeBedsPanel: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text(AppConstants.Labels.sectionBeds)
-                    .font(.headline)
+                    .font(RuntimeVitalPresentationTypography.panelTitle)
+                    .fontWeight(.semibold)
                 HStack {
                     bedSearchField
                     bedSortPicker
@@ -77,7 +79,7 @@ struct RuntimeBedsPanel: View {
     private var bedSortPicker: some View {
         HStack(spacing: 6) {
             Text("Sort")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
             Picker("", selection: $bedSort) {
                 ForEach(RuntimeBedHistoryDisplayPolicy.BedSortOption.allCases) { option in
@@ -143,7 +145,8 @@ struct RuntimeBedsPanel: View {
     private var bedDetails: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(AppConstants.Labels.bedDetails)
-                .font(.headline)
+                .font(RuntimeVitalPresentationTypography.panelTitle)
+                .fontWeight(.semibold)
             if let bed = selectedBed {
                 VStack(alignment: .leading, spacing: 0) {
                     selectedBedSummary(bed)
@@ -344,7 +347,7 @@ struct RuntimeBedsPanel: View {
             if !viewModel.vitalDBVisibilityActionMessage.isEmpty {
                 HStack(spacing: 8) {
                     Text(viewModel.vitalDBVisibilityActionMessage)
-                        .font(.caption)
+                        .font(RuntimeVitalPresentationTypography.supporting)
                         .foregroundStyle(.secondary)
                     if let recentlyHiddenBedID {
                         Button("Undo") {
@@ -369,9 +372,9 @@ struct RuntimeBedsPanel: View {
         if case .partiallyLoaded(let issue) =
             bedHistoryDisplayPolicy.readPresentation(viewModel.vitalBeds) {
             Text("Bed history is partially loaded: \(issue)")
-            .font(.caption)
-            .foregroundStyle(.orange)
-            .textSelection(.enabled)
+                .font(RuntimeVitalPresentationTypography.supporting)
+                .foregroundStyle(.orange)
+                .textSelection(.enabled)
         }
     }
 
@@ -423,15 +426,15 @@ struct RuntimeBedsPanel: View {
                 .fill(statusColor(bed.status))
                 .frame(width: 9, height: 9)
             Text(bed.name ?? bed.bedID)
-                .font(.title2)
+                .font(RuntimeVitalPresentationTypography.identity)
                 .fontWeight(.semibold)
                 .lineLimit(1)
             Text(statusLabel(bed.status))
-                .font(.title3)
+                .font(RuntimeVitalPresentationTypography.status)
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(bed.status))
             Text("Patient: \(patientText(bed.patientConnected))")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 7)
@@ -440,7 +443,7 @@ struct RuntimeBedsPanel: View {
                 .clipShape(Capsule())
             if bed.visibility == .hidden {
                 Text("Hidden from list")
-                    .font(.caption)
+                    .font(RuntimeVitalPresentationTypography.supporting)
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 7)
@@ -455,7 +458,7 @@ struct RuntimeBedsPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             detailSectionTitle("Data management")
             Text("Deleting removes this hidden bed from retained bed history.")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
             Button("Delete hidden bed", role: .destructive) {
                 bedIDPendingDeletion = bed.bedID
@@ -479,7 +482,7 @@ struct RuntimeBedsPanel: View {
 
     private func detailSectionTitle(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline)
+            .font(RuntimeVitalPresentationTypography.sectionTitle)
             .fontWeight(.semibold)
     }
 
@@ -570,7 +573,7 @@ struct RuntimeBedsPanel: View {
         case .loaded:
             if let readError = viewModel.vitalRelationships.readError {
                 Text("Relationship history contract issue: \(readError)")
-                    .font(.caption)
+                    .font(RuntimeVitalPresentationTypography.supporting)
                     .foregroundStyle(.red)
                     .textSelection(.enabled)
             }
@@ -580,7 +583,7 @@ struct RuntimeBedsPanel: View {
                     + (viewModel.vitalRelationships.readError
                         ?? "No failure detail was provided.")
             )
-            .font(.caption)
+            .font(RuntimeVitalPresentationTypography.supporting)
             .foregroundStyle(.orange)
             .textSelection(.enabled)
         case .readFailed:
@@ -589,7 +592,7 @@ struct RuntimeBedsPanel: View {
                     + (viewModel.vitalRelationships.readError
                         ?? "No failure detail was provided.")
             )
-            .font(.caption)
+            .font(RuntimeVitalPresentationTypography.supporting)
             .foregroundStyle(.red)
             .textSelection(.enabled)
         }
@@ -597,7 +600,7 @@ struct RuntimeBedsPanel: View {
 
     private func relationshipSubsection(_ title: String) -> some View {
         Text(title)
-            .font(.caption)
+            .font(RuntimeVitalPresentationTypography.supporting)
             .fontWeight(.semibold)
             .foregroundStyle(.secondary)
     }
@@ -621,16 +624,16 @@ struct RuntimeBedsPanel: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .font(.caption)
+        .font(RuntimeVitalPresentationTypography.supporting)
     }
 
     private func summaryMetric(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.summaryLabel)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.title3)
+                .font(RuntimeVitalPresentationTypography.summaryValue)
                 .fontWeight(.semibold)
         }
     }
@@ -650,11 +653,12 @@ struct RuntimeBedsPanel: View {
                 .fontWeight(.semibold)
                 .textSelection(.enabled)
         }
+        .font(RuntimeVitalPresentationTypography.detailValue)
     }
 
     private func tableHeader(_ text: String, width: CGFloat) -> some View {
         Text(text)
-            .font(.caption)
+            .font(RuntimeVitalPresentationTypography.tableHeader)
             .fontWeight(.semibold)
             .foregroundStyle(.secondary)
             .frame(width: width, alignment: .leading)
@@ -666,7 +670,7 @@ struct RuntimeBedsPanel: View {
         weight: Font.Weight = .regular
     ) -> some View {
         Text(text)
-            .font(.caption)
+            .font(RuntimeVitalPresentationTypography.tableValue)
             .fontWeight(weight)
             .lineLimit(1)
             .truncationMode(.middle)
@@ -680,11 +684,11 @@ struct RuntimeBedsPanel: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(reportedText(bed.name, missing: "Bed name not reported"))
-                .font(.callout)
+                .font(RuntimeVitalPresentationTypography.tableValue)
                 .fontWeight(.semibold)
                 .lineLimit(1)
             Text(bed.bedID)
-                .font(.caption2)
+                .font(RuntimeVitalPresentationTypography.tableSecondary)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -715,7 +719,7 @@ struct RuntimeBedsPanel: View {
                 .fill(statusColor(status))
                 .frame(width: 10, height: 10)
             Text(statusLabel(status))
-                .font(.title3)
+                .font(RuntimeVitalPresentationTypography.tableValue)
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(status))
                 .lineLimit(1)

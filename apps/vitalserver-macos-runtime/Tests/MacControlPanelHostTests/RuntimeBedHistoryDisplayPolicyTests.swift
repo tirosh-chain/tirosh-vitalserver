@@ -7,7 +7,7 @@ final class RuntimeBedHistoryDisplayPolicyTests: XCTestCase {
     private let policy = RuntimeBedHistoryDisplayPolicy()
 
     func testBedTableUsesBoundedFixedWidthForStandardPanel() {
-        XCTAssertLessThanOrEqual(RuntimeBedTableLayout.contentWidth, 1_100)
+        XCTAssertLessThanOrEqual(RuntimeBedTableLayout.contentWidth, 1_400)
         XCTAssertGreaterThan(RuntimeBedTableLayout.bedWidth, 0)
         XCTAssertGreaterThan(RuntimeBedTableLayout.dataIssueWidth, 0)
     }

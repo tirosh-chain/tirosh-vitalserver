@@ -1371,7 +1371,7 @@ const recorderObservabilitySchema = z
     state: z.enum(["loaded", "notReported", "unavailable"]),
     vrcode: z.string(),
     supportState: z.enum(["supported", "unsupported", "unknown"]),
-    supportSource: requiredNullableString,
+    supportSource: requiredNullableString.optional(),
     reportState: z.enum([
       "notEvaluated",
       "awaitingFirstReport",

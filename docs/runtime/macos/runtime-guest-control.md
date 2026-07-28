@@ -526,6 +526,19 @@ used by owner workflows such as Product Lab cleanup, but it is not presented as
 clinical Bed detail and a missing version is never classified as a Vital
 Recorder or Product Lab source.
 
+Current Recorder providers also emit observability `supportSource` explicitly,
+using `null` when no source established support. Runtime clients accept an
+omitted `supportSource` only as a documented legacy wire migration for retained
+Recorder documents. The provider-owned `supportState` and `reportState` remain
+required; the client must not derive either state from a missing source.
+
+The Swift VitalDB Recorder and Bed presentations share one large operational
+typography scale. Supporting text is at least 14 points, table headers 16
+points, primary table and detail values 18 points, status 20 points, summary
+values 22 points, and selected identities 24 points. The Bed table keeps
+bounded columns sized for that scale and horizontal scrolling, so increasing
+clinical readability does not reintroduce header or trailing-column clipping.
+
 CLI automation uses the same boundary. `vitalserver-vm runtime lab-*` commands call Guest Control `/runtime/lab/*` and print the returned Product Lab contracts as JSON. The Host CLI must not read Lab fixture files, TestKit state files, or container-local process state to infer session state.
 
 Swift Helper navigation now treats Lab as a primary product section. Observability and Logs move toward diagnostics/More surfaces, while Lab scenario creation, session control, and `.vital` replay use the Runtime Control Product Lab client contract instead of direct TestKit container calls.

@@ -160,11 +160,11 @@ struct RuntimeRecorderHealthSection: View {
         switch incidentState.state {
         case "notReported":
             Text("Current incident assessment has not been reported by this Recorder.")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
         case "invalid":
             Text("Current incident assessment is invalid.")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.red)
         case "reported":
             if incidentState.bootLoopState == "warning"
@@ -173,7 +173,7 @@ struct RuntimeRecorderHealthSection: View {
                     "Current boot-loop assessment: "
                         + "\(incidentState.bootLoopState ?? "unknown")."
                 )
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(
                     incidentState.bootLoopState == "critical" ? Color.red : Color.orange
                 )
@@ -184,7 +184,7 @@ struct RuntimeRecorderHealthSection: View {
                     "Current repeated-undervoltage assessment: "
                         + "\(incidentState.repeatedUndervoltageState ?? "unknown")."
                 )
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(
                     incidentState.repeatedUndervoltageState == "critical"
                         ? Color.red
@@ -193,7 +193,7 @@ struct RuntimeRecorderHealthSection: View {
             }
         default:
             Text("Current incident assessment state: \(incidentState.state).")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
         }
     }
@@ -204,16 +204,16 @@ struct RuntimeRecorderHealthSection: View {
     ) -> some View {
         if !detail.operationalHealth.issues.isEmpty {
             Text("Latest reported issues")
-                .font(.subheadline)
+                .font(RuntimeVitalPresentationTypography.sectionTitle)
                 .fontWeight(.semibold)
                 .padding(.top, 4)
             ForEach(detail.operationalHealth.issues, id: \.code) { issue in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(issue.title)
-                        .font(.caption)
+                        .font(RuntimeVitalPresentationTypography.supporting)
                         .fontWeight(.semibold)
                     Text(issue.detail)
-                        .font(.caption)
+                        .font(RuntimeVitalPresentationTypography.supporting)
                 }
                 .foregroundStyle(
                     issue.severity == .critical ? Color.red : Color.orange
@@ -224,7 +224,7 @@ struct RuntimeRecorderHealthSection: View {
                     "These issues came from the latest report; "
                         + "current device state is unknown."
                 )
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
             }
         }
@@ -236,13 +236,13 @@ struct RuntimeRecorderHealthSection: View {
     ) -> some View {
         if !detail.readIssues.isEmpty {
             Text("Telemetry read issues")
-                .font(.subheadline)
+                .font(RuntimeVitalPresentationTypography.sectionTitle)
                 .fontWeight(.semibold)
                 .padding(.top, 4)
         }
         ForEach(Array(detail.readIssues.enumerated()), id: \.offset) { _, issue in
             Text("\(issue.field): \(issue.state) — \(issue.detail)")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.red)
         }
     }
@@ -253,14 +253,14 @@ struct RuntimeRecorderHealthSection: View {
     ) -> some View {
         if !detail.readings.networkInterfaces.isEmpty {
             Text("Network interfaces")
-                .font(.subheadline)
+                .font(RuntimeVitalPresentationTypography.sectionTitle)
                 .fontWeight(.semibold)
             ForEach(
                 detail.readings.networkInterfaces,
                 id: \.name
             ) { networkInterface in
                 Text(displayPolicy.networkText(networkInterface))
-                    .font(.caption)
+                    .font(RuntimeVitalPresentationTypography.supporting)
                     .foregroundStyle(.secondary)
             }
         }
@@ -271,7 +271,7 @@ struct RuntimeRecorderHealthSection: View {
         let query = displayPolicy.incidentQuery(vrcode: vrcode)
         if let page = viewModel.recorderObservabilityIncidentPage(query: query) {
             Text("Recent reported incidents")
-                .font(.subheadline)
+                .font(RuntimeVitalPresentationTypography.sectionTitle)
                 .fontWeight(.semibold)
                 .padding(.top, 4)
             if page.state == .unavailable {
@@ -279,27 +279,27 @@ struct RuntimeRecorderHealthSection: View {
                     "Incident history is unavailable: "
                         + (page.readError ?? "No failure detail was provided.")
                 )
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.red)
             } else if page.incidents.isEmpty {
                 Text("No reported incident records in the last 30 days.")
-                    .font(.caption)
+                    .font(RuntimeVitalPresentationTypography.supporting)
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(page.incidents, id: \.incidentId) { incident in
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(incident.code) — \(incident.severity)")
-                            .font(.caption)
+                            .font(RuntimeVitalPresentationTypography.supporting)
                             .fontWeight(.semibold)
                         Text(incident.summary)
-                            .font(.caption)
+                            .font(RuntimeVitalPresentationTypography.supporting)
                         Text(
                             "Reported "
                                 + viewModel.presentationFormatter.systemTimeText(
                                     incident.receivedAt
                                 )
                         )
-                        .font(.caption2)
+                        .font(RuntimeVitalPresentationTypography.supporting)
                         .foregroundStyle(.secondary)
                     }
                     .foregroundStyle(
@@ -312,7 +312,7 @@ struct RuntimeRecorderHealthSection: View {
 
     private func sectionTitle(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline)
+            .font(RuntimeVitalPresentationTypography.sectionTitle)
             .fontWeight(.semibold)
     }
 
@@ -324,5 +324,6 @@ struct RuntimeRecorderHealthSection: View {
                 .fontWeight(.semibold)
                 .textSelection(.enabled)
         }
+        .font(RuntimeVitalPresentationTypography.detailValue)
     }
 }

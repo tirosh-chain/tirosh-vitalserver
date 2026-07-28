@@ -32,7 +32,8 @@ struct RuntimeRecordersPanel: View {
         ViewThatFits(in: .horizontal) {
             HStack {
                 Text(AppConstants.Labels.sectionRecorders)
-                    .font(.headline)
+                    .font(RuntimeVitalPresentationTypography.panelTitle)
+                    .fontWeight(.semibold)
                 Spacer()
                 recorderSearchField
                 recorderSortPicker
@@ -44,7 +45,8 @@ struct RuntimeRecordersPanel: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 Text(AppConstants.Labels.sectionRecorders)
-                    .font(.headline)
+                    .font(RuntimeVitalPresentationTypography.panelTitle)
+                    .fontWeight(.semibold)
                 HStack {
                     recorderSearchField
                     recorderSortPicker
@@ -91,7 +93,8 @@ struct RuntimeRecordersPanel: View {
     private var recorderDetails: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(AppConstants.Labels.recorderDetails)
-                .font(.headline)
+                .font(RuntimeVitalPresentationTypography.panelTitle)
+                .fontWeight(.semibold)
             if let recorder = selectedRecorder {
                 VStack(alignment: .leading, spacing: 0) {
                     selectedRecorderSummary(recorder)
@@ -158,7 +161,7 @@ struct RuntimeRecordersPanel: View {
     private var recorderSortPicker: some View {
         HStack(spacing: 6) {
             Text("Sort")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
             Picker("", selection: $recorderSort) {
                 ForEach(RuntimeVitalRecorderDisplayPolicy.RecorderSortOption.allCases) { option in
@@ -292,7 +295,7 @@ struct RuntimeRecordersPanel: View {
             if !viewModel.vitalDBVisibilityActionMessage.isEmpty {
                 HStack(spacing: 8) {
                     Text(viewModel.vitalDBVisibilityActionMessage)
-                        .font(.caption)
+                        .font(RuntimeVitalPresentationTypography.supporting)
                         .foregroundStyle(.secondary)
                     if let recentlyHiddenVrcode {
                         Button("Undo") {
@@ -313,10 +316,10 @@ struct RuntimeRecordersPanel: View {
     private func summaryMetric(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.callout)
+                .font(RuntimeVitalPresentationTypography.summaryLabel)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.title2)
+                .font(RuntimeVitalPresentationTypography.summaryValue)
                 .fontWeight(.semibold)
         }
     }
@@ -343,17 +346,17 @@ struct RuntimeRecordersPanel: View {
                 .fill(statusColor(recorder.status))
                 .frame(width: 9, height: 9)
             Text(recorder.vrcode)
-                .font(.title2)
+                .font(RuntimeVitalPresentationTypography.identity)
                 .fontWeight(.semibold)
                 .lineLimit(1)
             Text(statusLabel(recorder.status))
-                .font(.title3)
+                .font(RuntimeVitalPresentationTypography.status)
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(recorder.status))
             RuntimeRecorderSourceBadge(version: recorder.version)
             if recorder.visibility == .hidden {
                 Text("Hidden from list")
-                    .font(.caption)
+                    .font(RuntimeVitalPresentationTypography.supporting)
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 7)
@@ -417,35 +420,35 @@ struct RuntimeRecordersPanel: View {
                         VStack(alignment: .leading, spacing: 5) {
                             HStack(spacing: 8) {
                                 Text(file.filename)
-                                    .font(.body)
+                                    .font(RuntimeVitalPresentationTypography.detailValue)
                                     .fontWeight(.semibold)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 Text(recorderVitalFileOriginText(file.origin))
-                                    .font(.caption)
+                                    .font(RuntimeVitalPresentationTypography.supporting)
                                     .fontWeight(.semibold)
                                     .padding(.horizontal, 7)
                                     .padding(.vertical, 3)
                                     .background(Color(nsColor: .windowBackgroundColor))
                                     .clipShape(Capsule())
                                 Text(file.status.rawValue)
-                                    .font(.caption)
+                                    .font(RuntimeVitalPresentationTypography.supporting)
                                     .foregroundStyle(file.status == .failed ? .red : .secondary)
                             }
                             Text(
                                 "\(ByteCountFormatter.string(fromByteCount: Int64(file.sizeBytes), countStyle: .file))"
                                 + " · received \(viewModel.presentationFormatter.systemTimeText(file.receivedAt))"
                             )
-                            .font(.caption)
+                            .font(RuntimeVitalPresentationTypography.supporting)
                             .foregroundStyle(.secondary)
                             if let bedName = file.bedName {
                                 Text("Bed \(bedName) · attribution \(file.attribution.state.rawValue)")
-                                    .font(.caption)
+                                    .font(RuntimeVitalPresentationTypography.supporting)
                                     .foregroundStyle(.secondary)
                             }
                             if let failure = file.failure {
                                 Text("\(failure.stage) / \(failure.code): \(failure.message)")
-                                    .font(.caption)
+                                    .font(RuntimeVitalPresentationTypography.supporting)
                                     .foregroundStyle(.red)
                             }
                         }
@@ -498,7 +501,7 @@ struct RuntimeRecordersPanel: View {
                     }
                     if let latestSample = activityDisplay.latestSample {
                         Text("Last activity \(viewModel.presentationFormatter.systemTimeText(latestSample.observedAt))")
-                            .font(.caption)
+                            .font(RuntimeVitalPresentationTypography.supporting)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -512,7 +515,7 @@ struct RuntimeRecordersPanel: View {
                         }
                         if let latestSample = activityDisplay.latestSample {
                             Text("Last activity \(viewModel.presentationFormatter.systemTimeText(latestSample.observedAt))")
-                                .font(.caption)
+                                .font(RuntimeVitalPresentationTypography.supporting)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -623,7 +626,7 @@ struct RuntimeRecordersPanel: View {
     private var activityPeriodPicker: some View {
         HStack(spacing: 6) {
             Text("Window")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
             Picker("", selection: activityPeriodSelection) {
                 ForEach(RecorderActivityPeriod.allCases) { period in
@@ -642,7 +645,7 @@ struct RuntimeRecordersPanel: View {
     private var activityBucketPicker: some View {
         HStack(spacing: 6) {
             Text("Bucket")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
             Picker("", selection: activityBucketSelection) {
                 ForEach(RecorderActivityBucketInterval.allCases) { interval in
@@ -697,13 +700,13 @@ struct RuntimeRecordersPanel: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(activityAllSamplesWindowText(window))
-                    .font(.caption)
+                    .font(RuntimeVitalPresentationTypography.supporting)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
                 Text("\(pageIndex + 1) / \(pageCount)")
-                    .font(.caption)
+                    .font(RuntimeVitalPresentationTypography.supporting)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -794,7 +797,7 @@ struct RuntimeRecordersPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             detailSectionTitle("Data management")
             Text("Deleting removes this hidden recorder from retained recorder history.")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
             Button("Delete hidden recorder", role: .destructive) {
                 recorderVrcodePendingDeletion = recorder.vrcode
@@ -807,7 +810,7 @@ struct RuntimeRecordersPanel: View {
 
     private func detailSectionTitle(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline)
+            .font(RuntimeVitalPresentationTypography.sectionTitle)
             .fontWeight(.semibold)
     }
 
@@ -826,7 +829,7 @@ struct RuntimeRecordersPanel: View {
     private var relationshipReadIssue: some View {
         if let readError = viewModel.vitalRelationships.readError {
             Text("Relationship history read issue: \(readError)")
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.red)
                 .textSelection(.enabled)
         }
@@ -834,7 +837,7 @@ struct RuntimeRecordersPanel: View {
 
     private func relationshipSubsection(_ title: String) -> some View {
         Text(title)
-            .font(.caption)
+            .font(RuntimeVitalPresentationTypography.supporting)
             .fontWeight(.semibold)
             .foregroundStyle(.secondary)
     }
@@ -854,16 +857,16 @@ struct RuntimeRecordersPanel: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .font(.caption)
+        .font(RuntimeVitalPresentationTypography.supporting)
     }
 
     private func activityMetric(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.caption)
+                .font(RuntimeVitalPresentationTypography.supporting)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.callout)
+                .font(RuntimeVitalPresentationTypography.tableValue)
                 .fontWeight(.semibold)
         }
     }
@@ -876,12 +879,12 @@ struct RuntimeRecordersPanel: View {
                 .fontWeight(.semibold)
                 .textSelection(.enabled)
         }
-        .font(.title3)
+        .font(RuntimeVitalPresentationTypography.detailValue)
     }
 
     private func tableHeader(_ text: String, minWidth: CGFloat) -> some View {
         Text(text)
-            .font(.body)
+            .font(RuntimeVitalPresentationTypography.tableHeader)
             .fontWeight(.semibold)
             .foregroundStyle(.secondary)
             .frame(minWidth: minWidth, alignment: .leading)
@@ -889,7 +892,7 @@ struct RuntimeRecordersPanel: View {
 
     private func tableValue(_ text: String, minWidth: CGFloat, weight: Font.Weight = .regular) -> some View {
         Text(text)
-            .font(.title3)
+            .font(RuntimeVitalPresentationTypography.tableValue)
             .fontWeight(weight)
             .lineLimit(1)
             .truncationMode(.middle)
@@ -900,12 +903,12 @@ struct RuntimeRecordersPanel: View {
     private func tableIPValue(_ recorder: RuntimeVitalRecorderRecord, minWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(reportedText(recorder.lastIP, missing: "IP not reported"))
-                .font(.title3)
+                .font(RuntimeVitalPresentationTypography.tableValue)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
             Text(recorderIPVerificationSummaryText(recorder.redisIPSync))
-                .font(.body)
+                .font(RuntimeVitalPresentationTypography.tableSecondary)
                 .foregroundStyle(recorderIPVerificationColor(recorder.redisIPSync))
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -920,14 +923,14 @@ struct RuntimeRecordersPanel: View {
     ) -> some View {
         HStack(spacing: 6) {
             Text(recorder.vrcode)
-                .font(.title3)
+                .font(RuntimeVitalPresentationTypography.tableValue)
                 .fontWeight(.semibold)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
             if recorder.visibility == .hidden {
                 Text("Hidden")
-                    .font(.caption2)
+                    .font(RuntimeVitalPresentationTypography.supporting)
                     .fontWeight(.semibold)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
@@ -948,7 +951,7 @@ struct RuntimeRecordersPanel: View {
                 .fill(statusColor(status))
                 .frame(width: 10, height: 10)
             Text(statusLabel(status))
-                .font(.title3)
+                .font(RuntimeVitalPresentationTypography.tableValue)
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(status))
                 .lineLimit(1)
