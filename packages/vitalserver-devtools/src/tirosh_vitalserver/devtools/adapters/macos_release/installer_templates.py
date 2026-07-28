@@ -15,6 +15,7 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     install_update_handoff_jobs,
     package_install_value,
     package_path,
+    settings_current_release_binary,
     settings_install_app_bundle,
     settings_install_home,
     settings_install_nginx_prefix,
@@ -31,8 +32,14 @@ def render_packaging_executable(
     settings: MacOSReleaseSettings,
     template: Path,
     destination: Path,
+    extra_values: dict[str, str] | None = None,
 ) -> None:
-    render_packaging_template(settings, template, destination)
+    render_packaging_template(
+        settings,
+        template,
+        destination,
+        extra_values,
+    )
     destination.chmod(0o755)
 
 
@@ -57,6 +64,15 @@ def packaging_template_values(settings: MacOSReleaseSettings) -> dict[str, str]:
         ),
         "VM_BIN": shell_double_quoted_content(
             settings_install_value(settings, "vm_cli")
+        ),
+        "HOST_INSTALLATION_MANAGER": shell_double_quoted_content(
+            settings_install_value(settings, "host_installation_manager")
+        ),
+        "HOST_INSTALLATION_DATABASE": shell_double_quoted_content(
+            f"{settings_install_prefix(settings)}/update-manager/state.sqlite"
+        ),
+        "HOST_PLATFORM_INSTALLATION_ROOT": shell_double_quoted_content(
+            f"{settings_install_prefix(settings)}/host-platform"
         ),
         "PROXY_RUN": shell_double_quoted_content(
             settings_install_value(settings, "proxy_runner")
@@ -122,13 +138,11 @@ def render_launchd_templates(context: PackageContext) -> None:
         launchd / templates.update_handoff_supervisor.template_file,
         daemon_dir / templates.update_handoff_supervisor.installed_plist,
         {
-            "VITALSERVER_UPDATE_HANDOFF_SUPERVISOR_BIN":
-                package_install_value(
-                    context,
-                    "update_handoff_supervisor",
-                ),
-            "VITALSERVER_UPDATE_HANDOFF_JOBS":
-                install_update_handoff_jobs(context),
+            "VITALSERVER_UPDATE_HANDOFF_SUPERVISOR_BIN": package_install_value(
+                context,
+                "update_handoff_supervisor",
+            ),
+            "VITALSERVER_UPDATE_HANDOFF_JOBS": install_update_handoff_jobs(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
         },
     )
@@ -136,7 +150,10 @@ def render_launchd_templates(context: PackageContext) -> None:
         launchd / templates.vm.template_file,
         daemon_dir / templates.vm.installed_plist,
         {
-            "VITALSERVER_VM_BIN": package_install_value(context, "vm_cli"),
+            "VITALSERVER_VM_BIN": settings_current_release_binary(
+                context.settings,
+                "vitalserver-vm",
+            ),
             "VITALSERVER_VM_HOME": install_home(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
         },
@@ -145,7 +162,10 @@ def render_launchd_templates(context: PackageContext) -> None:
         launchd / templates.proxy.template_file,
         daemon_dir / templates.proxy.installed_plist,
         {
-            "VITALSERVER_PROXY_RUN": package_install_value(context, "proxy_runner"),
+            "VITALSERVER_PROXY_RUN": settings_current_release_binary(
+                context.settings,
+                "vitalserver-proxy-run",
+            ),
             "VITALSERVER_VM_HOME": install_home(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
             "VITALSERVER_NGINX_PREFIX": install_nginx_prefix(context),
@@ -157,7 +177,10 @@ def render_launchd_templates(context: PackageContext) -> None:
         launchd / templates.guest_log_sync.template_file,
         daemon_dir / templates.guest_log_sync.installed_plist,
         {
-            "VITALSERVER_VM_BIN": package_install_value(context, "vm_cli"),
+            "VITALSERVER_VM_BIN": settings_current_release_binary(
+                context.settings,
+                "vitalserver-vm",
+            ),
             "VITALSERVER_VM_HOME": install_home(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
         },
@@ -173,7 +196,10 @@ def render_launchd_templates(context: PackageContext) -> None:
         launchd / templates.watchdog.template_file,
         daemon_dir / templates.watchdog.installed_plist,
         {
-            "VITALSERVER_VM_BIN": package_install_value(context, "vm_cli"),
+            "VITALSERVER_VM_BIN": settings_current_release_binary(
+                context.settings,
+                "vitalserver-vm",
+            ),
             "VITALSERVER_VM_HOME": install_home(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
         },
@@ -182,7 +208,10 @@ def render_launchd_templates(context: PackageContext) -> None:
         launchd / templates.automatic_backup.template_file,
         daemon_dir / templates.automatic_backup.installed_plist,
         {
-            "VITALSERVER_VM_BIN": package_install_value(context, "vm_cli"),
+            "VITALSERVER_VM_BIN": settings_current_release_binary(
+                context.settings,
+                "vitalserver-vm",
+            ),
             "VITALSERVER_VM_HOME": install_home(context),
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
         },

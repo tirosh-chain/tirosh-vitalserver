@@ -12,12 +12,15 @@ class MacOSInstallConfig:
     applications_dir: str
     launch_daemons_dir: str
     vm_cli: str
+    host_installation_manager: str
+    host_platform_effect_executor: str
     update_handoff_supervisor: str
     proxy_runner: str
     uninstaller: str
     install_settings_json: str
     uninstall_log: str
     preserve_tmp_template: str
+    host_platform_installation_id: str
 
 
 @dataclass(frozen=True)

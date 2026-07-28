@@ -13,6 +13,14 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
             productRoot: URL(fileURLWithPath: "/lease-ordered-uninstall-product")
         )
         let fileStore = RuntimeFileStoreSpy()
+        let stableUpdateExecutables = [
+            installedPaths.hostInstallationManagerExecutable,
+            installedPaths.hostPlatformEffectExecutorExecutable,
+            installedPaths.updateHandoffSupervisorExecutable,
+        ]
+        for executable in stableUpdateExecutables {
+            fileStore.files[executable] = Data("installed".utf8)
+        }
         var ordering: [String] = []
         let runner = RuntimeUninstallComposition.make(
             context: RuntimeUninstallCompositionContext(
@@ -65,6 +73,12 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
             "read-host-settings",
         ])
         XCTAssertEqual(ordering.last, "release-lease")
+        for executable in stableUpdateExecutables {
+            XCTAssertTrue(
+                fileStore.removed.contains(executable),
+                "stable update executable must be removed: \(executable.path)"
+            )
+        }
     }
 
     func testCleanUninstallForcesRuntimeServiceCleanupWhenGracefulStopFails() throws {

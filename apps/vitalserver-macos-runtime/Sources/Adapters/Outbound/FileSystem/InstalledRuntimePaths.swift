@@ -31,6 +31,20 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         )
     }
 
+    public var hostInstallationManagerExecutable: URL {
+        URL(
+            fileURLWithPath:
+                "/usr/local/bin/vitalserver-host-installation-manager"
+        )
+    }
+
+    public var hostPlatformEffectExecutorExecutable: URL {
+        URL(
+            fileURLWithPath:
+                "/usr/local/bin/vitalserver-host-platform-layer-effect-executor"
+        )
+    }
+
     public var updateHandoffJobsDirectory: URL {
         productRoot
             .appendingPathComponent("update-handoff", isDirectory: true)

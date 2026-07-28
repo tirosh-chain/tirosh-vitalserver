@@ -15,6 +15,46 @@
 | Shell script 역할은? | `postinstall`, launchd, uninstall wrapper |
 | update bundle은 누가 검증/적용하나? | Swift `RuntimeLifecycle` |
 
+## Helper Host 불변 설치 레이아웃
+
+신규 PKG와 이후 Host Platform update는 동일한 release slot 계약을 사용합니다.
+
+```text
+/Library/Application Support/VitalServerHelper/
+  host-platform/
+    releases/helper-<version>/release/
+      installation-manifest.json
+      app/VitalServer Helper.app
+      bin/vitalserver-vm
+      bin/vitalserver-proxy-run
+      nginx/...
+    current -> .../releases/helper-<version>/release
+  update-manager/
+    state.sqlite
+    exchange/
+
+/Applications/VitalServer Helper.app
+  -> .../host-platform/current/app/VitalServer Helper.app
+
+/usr/local/bin/
+  vitalserver-host-installation-manager
+  vitalserver-host-platform-layer-effect-executor
+  vitalserver-update-handoff-supervisor
+```
+
+`current`와 `/Applications`의 app은 상태를 추론하기 위한 표식이 아니라 설치
+manifest가 선언한 active release를 노출하는 안정된 참조입니다. postinstall은
+패키지에 포함된 initial installation manifest로 SQLite owner를 초기화합니다.
+누락된 manifest나 manager를 package receipt, 파일 검색, launchd 상태로 보정하지
+않습니다.
+
+VM, proxy, platform agent 등 교체 가능한 launchd service의 실행 경로는
+`host-platform/current` 아래를 가리킵니다. 반대로 installation manager와 update
+handoff supervisor는 자신이 교체하는 release 바깥의 fixed path에 남습니다.
+clean uninstall은 `current`, 모든 release slot, SQLite DB, stable app/CLI link,
+manager/executor/supervisor 및 launchd definition을 명시된 uninstall closure로
+삭제합니다.
+
 ## 배포 시나리오
 
 | 시나리오 | 산출물 | 생성 명령 | 현장 적용 |

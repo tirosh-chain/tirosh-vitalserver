@@ -19,7 +19,10 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
+    settings_current_release_binary,
+    settings_host_platform_current_release,
     settings_install_app_bundle,
+    settings_install_platform_agent,
 )
 
 PROXY_EVENT_TIMEOUT_SECONDS = 10
@@ -74,6 +77,22 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         root / "config/vm-build.toml",
         root,
     )
+    assert settings_host_platform_current_release(settings) == (
+        "/Library/Application Support/VitalServerHelper/"
+        "host-platform/current"
+    )
+    assert settings_current_release_binary(
+        settings,
+        "vitalserver-vm",
+    ) == (
+        "/Library/Application Support/VitalServerHelper/"
+        "host-platform/current/bin/vitalserver-vm"
+    )
+    assert settings_install_platform_agent(settings) == (
+        "/Library/Application Support/VitalServerHelper/host-platform/"
+        "current/app/VitalServer Helper.app/Contents/MacOS/"
+        "vitalserver-platform-agent"
+    )
     packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"
     platform_agent_launchd_template = (
         root
@@ -121,6 +140,14 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         settings,
         packaging / "postinstall.template",
         postinstall,
+        {
+            "INITIAL_RELEASE_ROOT":
+                "/Library/Application Support/VitalServerHelper/"
+                "host-platform/releases/helper-0.2.2/release",
+            "INITIAL_APPLICATION_TARGET":
+                "/Library/Application Support/VitalServerHelper/"
+                "host-platform/current/app/VitalServer Helper.app",
+        },
     )
     render_packaging_executable(
         settings,
@@ -238,6 +265,28 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert 'manager_app="/Applications/VitalServer Helper.app"' in postinstall_text
     assert '"${manager_app}"' in postinstall_text
     assert '"${vm_bin}"' in postinstall_text
+    assert (
+        'host_installation_manager="/usr/local/bin/'
+        'vitalserver-host-installation-manager"'
+        in postinstall_text
+    )
+    assert (
+        'host_installation_database="/Library/Application Support/'
+        'VitalServerHelper/update-manager/state.sqlite"'
+        in postinstall_text
+    )
+    assert '"${host_installation_manager}" initialize \\' in postinstall_text
+    assert '--manifest "${initial_host_installation_manifest}" \\' in postinstall_text
+    assert '--database "${host_installation_database}"' in postinstall_text
+    assert (
+        '[ ! -L "${host_platform_installation_root}/current" ]'
+        in postinstall_text
+    )
+    assert (
+        'readlink "${host_platform_installation_root}/current"'
+        in postinstall_text
+    )
+    assert 'readlink "${manager_app}"' in postinstall_text
     assert "VitalServer Helper postinstall started" in postinstall_text
     assert "VitalServer Helper postinstall completed" in postinstall_text
     platform_agent_launchd_text = platform_agent_launchd_template.read_text(

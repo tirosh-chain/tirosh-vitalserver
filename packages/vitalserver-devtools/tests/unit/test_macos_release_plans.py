@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import signal
 import subprocess
 from dataclasses import replace
@@ -684,7 +685,10 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
     )
     app_bundle = tmp_path / "VitalServer Helper.app"
     app_bundle.mkdir()
-    (app_bundle / "Contents").mkdir()
+    app_executable = app_bundle / "Contents/MacOS/VitalServer Helper"
+    app_executable.parent.mkdir(parents=True)
+    app_executable.write_text("helper", encoding="utf-8")
+    app_executable.chmod(0o755)
     nginx_bundle = tmp_path / "nginx"
     nginx_bundle.mkdir()
     (nginx_bundle / "nginx").write_text("nginx", encoding="utf-8")
@@ -696,6 +700,13 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
     )
     update_handoff_supervisor.write_text("supervisor", encoding="utf-8")
     update_handoff_supervisor.chmod(0o755)
+    for name in [
+        "vitalserver-host-installation-manager",
+        "vitalserver-host-platform-layer-effect-executor",
+    ]:
+        executable = tmp_path / name
+        executable.write_text(name, encoding="utf-8")
+        executable.chmod(0o755)
     rootfs_base = tmp_path / "rootfs-base.raw.gz"
     rootfs_base.write_text("rootfs", encoding="utf-8")
     rootfs_manifest = rootfs_artifact_manifest_path(rootfs_base)
@@ -785,11 +796,37 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
         "assert_virtualization_entitlement",
         lambda _: None,
     )
-    monkeypatch.setattr(installer_package, "render_launchd_templates", lambda _: None)
+    def render_test_launchd(package_context: PackageContext) -> None:
+        launchd_root = (
+            package_context.pkg_root
+            / package_context.settings.install.launch_daemons_dir.strip("/")
+        )
+        launchd_root.mkdir(parents=True, exist_ok=True)
+        for template in [
+            package_context.settings.launchd.platform_agent,
+            package_context.settings.launchd.update_handoff_supervisor,
+            package_context.settings.launchd.vm,
+            package_context.settings.launchd.proxy,
+            package_context.settings.launchd.guest_log_sync,
+            package_context.settings.launchd.sleep_prevention,
+            package_context.settings.launchd.watchdog,
+            package_context.settings.launchd.automatic_backup,
+        ]:
+            with (launchd_root / template.installed_plist).open("wb") as stream:
+                plistlib.dump(
+                    {"Label": template.installed_plist.removesuffix(".plist")},
+                    stream,
+                )
+
+    monkeypatch.setattr(
+        installer_package,
+        "render_launchd_templates",
+        render_test_launchd,
+    )
     monkeypatch.setattr(
         installer_package,
         "render_packaging_executable",
-        lambda _settings, _template, destination: destination.write_text(
+        lambda _settings, _template, destination, *_: destination.write_text(
             "#!/bin/sh\n",
             encoding="utf-8",
         ),
@@ -829,6 +866,73 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
         installed_trust_store.read_bytes()
         == context.update_bootstrap_trust_store.read_bytes()
     )
+    installation_root = (
+        settings.pkg_root
+        / "Library/Application Support/VitalServerHelper/host-platform"
+    )
+    current = installation_root / "current"
+    assert current.is_symlink()
+    assert os.readlink(current) == (
+        "/Library/Application Support/VitalServerHelper/host-platform/"
+        "releases/helper-1.2.3/release"
+    )
+    stable_app = settings.pkg_root / "Applications/VitalServer Helper.app"
+    assert stable_app.is_symlink()
+    assert os.readlink(stable_app) == (
+        "/Library/Application Support/VitalServerHelper/host-platform/"
+        "current/app/VitalServer Helper.app"
+    )
+    release_root = (
+        installation_root / "releases/helper-1.2.3/release"
+    )
+    release_manifest = json.loads(
+        (release_root / "installation-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert release_manifest["release"] == {
+        "id": "helper-1.2.3",
+        "version": "1.2.3",
+    }
+    assert {
+        service["role"]
+        for service in release_manifest["replaceableServices"]
+    } == {
+        "platform-agent",
+        "vm",
+        "proxy",
+        "guest-log-sync",
+        "sleep-prevention",
+        "watchdog",
+        "automatic-backup",
+    }
+    initial_slot = installation_root / "releases/helper-1.2.3"
+    assert (
+        initial_slot
+        / "operator-interface/runtime-console-bootstrap.json"
+    ).is_file()
+    for role in {
+        service["role"]
+        for service in release_manifest["replaceableServices"]
+    }:
+        assert (
+            initial_slot / f"service-definitions/{role}.plist"
+        ).is_file()
+    initial_installation = json.loads(
+        (
+            settings.pkg_scripts
+            / "initial-host-platform-installation.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert initial_installation["installationRevision"] == 1
+    assert initial_installation["activeRelease"]["id"] == "helper-1.2.3"
+    assert len(initial_installation["activeRelease"]["sha256"]) == 64
+    for executable in [
+        settings.install.host_installation_manager,
+        settings.install.host_platform_effect_executor,
+        settings.install.update_handoff_supervisor,
+    ]:
+        assert (settings.pkg_root / executable.strip("/")).is_file()
     pkgbuild_command = next(command for command in commands if command[0] == "pkgbuild")
     assert pkgbuild_command[
         pkgbuild_command.index("--identifier") + 1

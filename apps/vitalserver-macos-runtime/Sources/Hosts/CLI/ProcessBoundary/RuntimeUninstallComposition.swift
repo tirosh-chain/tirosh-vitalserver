@@ -163,6 +163,12 @@ public enum RuntimeUninstallComposition {
                     runtimeTools: [
                         context.installedPaths.launcher,
                         URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+                        context.installedPaths
+                            .hostInstallationManagerExecutable,
+                        context.installedPaths
+                            .hostPlatformEffectExecutorExecutable,
+                        context.installedPaths
+                            .updateHandoffSupervisorExecutable,
                         context.installedPaths.uninstaller,
                     ]
                 )

@@ -102,6 +102,16 @@ def load_macos_install(config: TomlTable) -> MacOSInstallConfig:
             path="macos.install",
         ),
         vm_cli=required_string(config, "vm_cli", path="macos.install"),
+        host_installation_manager=required_string(
+            config,
+            "host_installation_manager",
+            path="macos.install",
+        ),
+        host_platform_effect_executor=required_string(
+            config,
+            "host_platform_effect_executor",
+            path="macos.install",
+        ),
         update_handoff_supervisor=required_string(
             config,
             "update_handoff_supervisor",
@@ -118,6 +128,11 @@ def load_macos_install(config: TomlTable) -> MacOSInstallConfig:
         preserve_tmp_template=required_string(
             config,
             "preserve_tmp_template",
+            path="macos.install",
+        ),
+        host_platform_installation_id=required_string(
+            config,
+            "host_platform_installation_id",
             path="macos.install",
         ),
     )

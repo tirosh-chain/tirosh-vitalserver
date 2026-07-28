@@ -60,17 +60,28 @@ The manager intentionally does not inspect package receipts, launchd, logs, or
 the filesystem to manufacture active state. The initial manifest must be
 registered explicitly by installation composition.
 
-## Remaining integration
+## Packaging integration
 
-Packaging must install a stable manager executable and service reconciler at
-paths that are not replaced with the Host Platform release. The package
-postinstall must register the initial manifest from signed package inputs.
-The host-platform layer effect executor must submit one apply or rollback
-command and map only the manager's terminal operation into its layer receipt.
+Helper 0.2.2 fresh packaging now establishes the same installation contract
+that later updates consume:
 
-Until that wiring and clean-install apply/rollback acceptance proof exist, the
-new owner is a tested product boundary but is not yet the production update
-path.
+- immutable Host files are installed under
+  `host-platform/releases/<release-id>/release`;
+- `host-platform/current` is an explicit symlink to that release root;
+- `/Applications/VitalServer Helper.app`, the compatibility CLI links, and
+  replaceable launchd definitions resolve through `current`;
+- the installation manager, layer effect executor, and handoff supervisor stay
+  at fixed paths outside the replaceable release;
+- postinstall initializes the installation SQLite database from the packaged
+  `HostPlatformInstallationManifest`; and
+- clean uninstall removes the product root, stable links, stable executables,
+  and launchd definitions through the uninstall contract.
+
+If postinstall reports that `current`, the Helper app link, the initial
+manifest, or the manager is missing, the package payload is incomplete. Do not
+reconstruct the active release from files or a package receipt. Rebuild the
+package with all four explicit inputs and inspect the preserved postinstall
+failure log.
 
 ## Prevention
 

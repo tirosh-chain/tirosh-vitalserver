@@ -5,12 +5,18 @@ vm_home="${VM_HOME}"
 product_root="${PRODUCT_ROOT}"
 install_log="${INSTALL_LOG}"
 vm_bin="${VM_BIN}"
+host_installation_manager="${HOST_INSTALLATION_MANAGER}"
+host_installation_database="${HOST_INSTALLATION_DATABASE}"
+host_platform_installation_root="${HOST_PLATFORM_INSTALLATION_ROOT}"
 proxy_run="${PROXY_RUN}"
 uninstall="${UNINSTALL}"
 manager_app="${MANAGER_APP}"
 launch_daemons_dir="${LAUNCH_DAEMONS_DIR}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 package_install_contract="${script_dir}/package-install-contract.json"
+initial_host_installation_manifest="${script_dir}/initial-host-platform-installation.json"
+initial_release_root="${INITIAL_RELEASE_ROOT}"
+initial_application_target="${INITIAL_APPLICATION_TARGET}"
 failure_log="/private/tmp/tirosh-vitalserver-postinstall-failure.log"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
@@ -76,10 +82,30 @@ stop_services_after_failed_install() {
 }
 
 log "VitalServer Helper postinstall started"
-if [ ! -d "${manager_app}" ]; then
+if [ ! -L "${host_platform_installation_root}/current" ]; then
+  log "current Helper Host release link missing path=${host_platform_installation_root}/current"
+  exit 1
+fi
+if [ "$(readlink "${host_platform_installation_root}/current")" != "${initial_release_root}" ]; then
+  log "current Helper Host release target differs path=${host_platform_installation_root}/current"
+  exit 1
+fi
+if [ ! -L "${manager_app}" ]; then
   log "helper app missing path=${manager_app}"
   exit 1
 fi
+if [ "$(readlink "${manager_app}")" != "${initial_application_target}" ]; then
+  log "helper app target differs path=${manager_app}"
+  exit 1
+fi
+if [ ! -x "${host_installation_manager}" ]; then
+  log "host installation manager missing path=${host_installation_manager}"
+  exit 1
+fi
+mkdir -p "$(dirname "${host_installation_database}")"
+"${host_installation_manager}" initialize \
+  --manifest "${initial_host_installation_manifest}" \
+  --database "${host_installation_database}"
 VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime install-provision \
   --package-install-contract "${package_install_contract}"
 log "VitalServer Helper postinstall completed"
