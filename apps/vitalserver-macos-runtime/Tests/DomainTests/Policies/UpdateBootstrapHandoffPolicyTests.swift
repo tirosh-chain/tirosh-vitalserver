@@ -18,6 +18,10 @@ final class UpdateBootstrapHandoffPolicyTests: XCTestCase {
         XCTAssertEqual(invocation.operationId, journal.operationId)
         XCTAssertEqual(invocation.requestId, journal.requestId)
         XCTAssertEqual(invocation.bootstrapEnvelopeId, journal.envelope.id)
+        XCTAssertEqual(
+            invocation.layerOrder,
+            [.container, .guestRuntime, .hostPlatform]
+        )
         XCTAssertEqual(invocation.expectedJournalRevision, journal.journalRevision)
         XCTAssertEqual(invocation.updaterRelativePath, "updater/next-updater")
         XCTAssertEqual(invocation.specificationRelativePath, "spec/update.json")

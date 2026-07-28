@@ -138,7 +138,7 @@ public struct UpdateBootstrapRelease: Codable, Equatable, Sendable {
     }
 }
 
-public enum UpdateLayer: String, Codable, Equatable, Sendable {
+public enum UpdateLayer: String, Codable, Equatable, Hashable, Sendable {
     case container
     case guestRuntime = "guest-runtime"
     case hostPlatform = "host-platform"

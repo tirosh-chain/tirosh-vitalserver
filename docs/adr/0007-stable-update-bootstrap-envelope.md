@@ -188,6 +188,17 @@ terminate any non-terminal journal with
 update ID is not silently reusable. These commands require an exact journal
 ID and never select the latest journal as fallback.
 
+The fixed handoff invocation now also carries the exact `layerOrder` from the
+authenticated bootstrap envelope. The bundle-owned next updater parses the
+strict `ProductUpdateSpecification` contract and pure planning policy requires
+its layer plan to cover that order exactly, preserves the declared order
+without sorting, requires every dependency to refer to an earlier layer, and
+requires `host-platform` to be final. Layer artifacts, rollback artifacts,
+effect executors, and executor configuration are distinct immutable payload
+members with explicit paths, sizes, media types, and SHA-256 digests. This
+planning boundary does not execute effects; process execution and typed layer
+effect receipt aggregation remain the next implementation step.
+
 Release automation calls:
 
 ```sh

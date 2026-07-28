@@ -49,6 +49,7 @@ public enum UpdateBootstrapHandoffPolicy {
             bootstrapEnvelopeId: journal.envelope.id,
             bootstrapSignedSHA256: journal.bootstrapSignedSHA256,
             updateSpecificationSHA256: journal.envelope.specification.sha256,
+            layerOrder: journal.envelope.layerOrder,
             expectedJournalRevision: journal.journalRevision,
             updaterRelativePath: updaterPath,
             specificationRelativePath: specificationPath,

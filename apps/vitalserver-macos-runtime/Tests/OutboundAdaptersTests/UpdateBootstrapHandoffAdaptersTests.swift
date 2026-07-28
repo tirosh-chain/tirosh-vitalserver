@@ -144,6 +144,7 @@ final class UpdateBootstrapHandoffAdaptersTests: XCTestCase {
             bootstrapEnvelopeId: "envelope-42",
             bootstrapSignedSHA256: String(repeating: "a", count: 64),
             updateSpecificationSHA256: String(repeating: "b", count: 64),
+            layerOrder: [.container, .guestRuntime, .hostPlatform],
             expectedJournalRevision: 3,
             updaterRelativePath: "updater/next-updater",
             specificationRelativePath: "spec/update.json",
