@@ -29,10 +29,13 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control.migrations import (
     validate_control_schema,
 )
 from tirosh_guest_tools.adapters.outbound.sqlite_control.records import (
+    ActiveGuestRuntimeReleaseRecord,
     ActiveOperationLeaseRecord,
     ContainerImageSetOperationRecord,
     ContainerImageSetRecord,
     CurrentContainerImageSetRecord,
+    GuestRuntimeReleaseOperationRecord,
+    GuestRuntimeReleaseRecord,
     GuestServiceResourceRecord,
     OperationEventRecord,
     RedisRelayStatusRecord,
@@ -70,6 +73,18 @@ from tirosh_guest_tools.domain.guest_control.models import (
 )
 from tirosh_guest_tools.domain.guest_control.operation_policy import (
     ensure_valid_operation_transition,
+)
+from tirosh_guest_tools.domain.guest_runtime_release import (
+    TERMINAL_GUEST_RUNTIME_RELEASE_OPERATION_STATES,
+    GuestRuntimeRelease,
+    GuestRuntimeReleaseCommand,
+    GuestRuntimeReleaseConflictError,
+    GuestRuntimeReleaseContractError,
+    GuestRuntimeReleaseDependencyError,
+    GuestRuntimeReleaseFailure,
+    GuestRuntimeReleaseOperation,
+    GuestRuntimeReleaseOperationState,
+    transition_guest_runtime_release_operation,
 )
 
 SQLITE_BUSY_TIMEOUT_MILLISECONDS = 5_000
@@ -694,6 +709,295 @@ class SQLiteControlRepository:
                 kind="containerImageSetStateUnavailable",
             ) from error
 
+    def provision_active_guest_runtime_release(
+        self,
+        release: GuestRuntimeRelease,
+        *,
+        observed_at: datetime,
+    ) -> None:
+        """Persist installer-authored initial active Guest Runtime release."""
+
+        def write(session: Session) -> None:
+            self._require_immutable_guest_runtime_release(
+                session,
+                release,
+                observed_at,
+            )
+            active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+            if active is not None:
+                raise GuestRuntimeReleaseConflictError(
+                    "Active Guest Runtime release is already provisioned: "
+                    f"identity={active.identity}.",
+                    kind="guestRuntimeReleaseAlreadyProvisioned",
+                )
+            session.add(
+                ActiveGuestRuntimeReleaseRecord(
+                    owner_key="active",
+                    identity=release.identity,
+                    updated_at=observed_at,
+                )
+            )
+
+        self._guest_runtime_release_write("Guest Runtime release provision", write)
+
+    def read_active_guest_runtime_release(self) -> GuestRuntimeRelease:
+        try:
+            with Session(self._engine) as session:
+                active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+                if active is None:
+                    raise GuestRuntimeReleaseDependencyError(
+                        "Active Guest Runtime release is not provisioned.",
+                        kind="guestRuntimeReleaseActiveMissing",
+                    )
+                release = session.get(GuestRuntimeReleaseRecord, active.identity)
+                if release is None:
+                    raise GuestRuntimeReleaseDependencyError(
+                        "Active Guest Runtime release has no immutable archive: "
+                        f"identity={active.identity}.",
+                        kind="guestRuntimeReleaseStateInvalid",
+                    )
+                return GuestRuntimeRelease.validated(
+                    release.identity,
+                    release.archive,
+                    release.digest,
+                )
+        except (GuestRuntimeReleaseDependencyError, GuestRuntimeReleaseContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                f"Active Guest Runtime release read failed: {error}",
+                kind="guestRuntimeReleaseStateUnavailable",
+            ) from error
+
+    def accept_guest_runtime_release_operation(
+        self,
+        operation: GuestRuntimeReleaseOperation,
+    ) -> None:
+        if operation.state != GuestRuntimeReleaseOperationState.PENDING:
+            raise GuestRuntimeReleaseDependencyError(
+                "Guest Runtime release command must enter the owner as pending.",
+                kind="guestRuntimeReleaseOperationAcceptanceInvalid",
+            )
+
+        def write(session: Session) -> None:
+            active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+            if active is None:
+                raise GuestRuntimeReleaseDependencyError(
+                    "Active Guest Runtime release is not provisioned.",
+                    kind="guestRuntimeReleaseActiveMissing",
+                )
+            if active.identity != operation.expected_active_identity:
+                raise GuestRuntimeReleaseConflictError(
+                    "Guest Runtime release compare-and-swap rejected the command: "
+                    f"expected={operation.expected_active_identity} "
+                    f"actual={active.identity}.",
+                    kind="guestRuntimeReleaseRevisionConflict",
+                )
+            if (
+                session.get(
+                    GuestRuntimeReleaseOperationRecord,
+                    operation.operation_id,
+                )
+                is not None
+            ):
+                raise GuestRuntimeReleaseConflictError(
+                    "Guest Runtime release operation already exists: "
+                    f"operationId={operation.operation_id}.",
+                    kind="guestRuntimeReleaseOperationAlreadyExists",
+                )
+            active_operation = session.scalar(
+                select(GuestRuntimeReleaseOperationRecord).where(
+                    GuestRuntimeReleaseOperationRecord.state.not_in(
+                        tuple(
+                            state.value
+                            for state in (
+                                TERMINAL_GUEST_RUNTIME_RELEASE_OPERATION_STATES
+                            )
+                        )
+                    )
+                )
+            )
+            if active_operation is not None:
+                raise GuestRuntimeReleaseConflictError(
+                    "A Guest Runtime release operation is already active: "
+                    f"operationId={active_operation.operation_id}.",
+                    kind="guestRuntimeReleaseOperationInProgress",
+                )
+            self._require_immutable_guest_runtime_release(
+                session,
+                operation.target,
+                operation.created_at,
+            )
+            session.add(_guest_runtime_release_operation_record(operation))
+
+        self._guest_runtime_release_write(
+            "Guest Runtime release acceptance",
+            write,
+        )
+
+    def get_guest_runtime_release_operation(
+        self,
+        operation_id: str,
+    ) -> GuestRuntimeReleaseOperation | None:
+        try:
+            with Session(self._engine) as session:
+                record = session.get(
+                    GuestRuntimeReleaseOperationRecord,
+                    operation_id,
+                )
+                if record is None:
+                    return None
+                target = session.get(
+                    GuestRuntimeReleaseRecord,
+                    record.target_identity,
+                )
+                if target is None:
+                    raise GuestRuntimeReleaseDependencyError(
+                        "Guest Runtime release operation target is missing: "
+                        f"operationId={record.operation_id}.",
+                        kind="guestRuntimeReleaseOperationInvalid",
+                    )
+                return _guest_runtime_release_operation_from_record(
+                    record,
+                    target_archive=target.archive,
+                    target_digest=target.digest,
+                )
+        except (GuestRuntimeReleaseDependencyError, GuestRuntimeReleaseContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                f"Guest Runtime release operation read failed: {error}",
+                kind="guestRuntimeReleaseOperationUnavailable",
+            ) from error
+
+    def record_guest_runtime_release_transition(
+        self,
+        operation: GuestRuntimeReleaseOperation,
+    ) -> None:
+        def write(session: Session) -> None:
+            record = session.get(
+                GuestRuntimeReleaseOperationRecord,
+                operation.operation_id,
+            )
+            if record is None:
+                raise GuestRuntimeReleaseDependencyError(
+                    "Guest Runtime release operation is missing: "
+                    f"operationId={operation.operation_id}.",
+                    kind="guestRuntimeReleaseOperationMissing",
+                )
+            target = session.get(
+                GuestRuntimeReleaseRecord,
+                record.target_identity,
+            )
+            if target is None:
+                raise GuestRuntimeReleaseDependencyError(
+                    "Guest Runtime release operation target is missing: "
+                    f"operationId={record.operation_id}.",
+                    kind="guestRuntimeReleaseOperationInvalid",
+                )
+            persisted = _guest_runtime_release_operation_from_record(
+                record,
+                target_archive=target.archive,
+                target_digest=target.digest,
+            )
+            expected = transition_guest_runtime_release_operation(
+                persisted,
+                state=operation.state,
+                updated_at=operation.updated_at,
+                failure=operation.failure,
+            )
+            if expected != operation:
+                raise GuestRuntimeReleaseDependencyError(
+                    "Guest Runtime release operation immutable fields changed.",
+                    kind="guestRuntimeReleaseOperationInvalid",
+                )
+            if operation.state == GuestRuntimeReleaseOperationState.SUCCEEDED:
+                active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+                if active is None:
+                    raise GuestRuntimeReleaseDependencyError(
+                        "Active Guest Runtime release is not provisioned.",
+                        kind="guestRuntimeReleaseActiveMissing",
+                    )
+                if active.identity != operation.expected_active_identity:
+                    raise GuestRuntimeReleaseConflictError(
+                        "Guest Runtime release changed before operation settlement: "
+                        f"expected={operation.expected_active_identity} "
+                        f"actual={active.identity}.",
+                        kind="guestRuntimeReleaseRevisionConflict",
+                    )
+                active.identity = operation.target.identity
+                active.updated_at = operation.updated_at
+            record.state = operation.state.value
+            record.document = canonical_json(operation.as_json())
+            record.updated_at = sqlite_utc_naive_timestamp(
+                operation.updated_at,
+                kind="guestRuntimeReleaseOperationInvalid",
+                field="updatedAt",
+            )
+
+        self._guest_runtime_release_write(
+            "Guest Runtime release transition",
+            write,
+        )
+
+    def _require_immutable_guest_runtime_release(
+        self,
+        session: Session,
+        release: GuestRuntimeRelease,
+        observed_at: datetime,
+    ) -> None:
+        existing = session.get(GuestRuntimeReleaseRecord, release.identity)
+        if existing is not None:
+            if (
+                existing.archive != release.archive
+                or existing.digest != release.digest
+            ):
+                raise GuestRuntimeReleaseConflictError(
+                    "Guest Runtime release identity already names another archive: "
+                    f"identity={release.identity}.",
+                    kind="guestRuntimeReleaseIdentityConflict",
+                )
+            return
+        archive_owner = session.scalar(
+            select(GuestRuntimeReleaseRecord).where(
+                GuestRuntimeReleaseRecord.archive == release.archive
+            )
+        )
+        if archive_owner is not None:
+            raise GuestRuntimeReleaseConflictError(
+                "Guest Runtime release archive already belongs to another identity: "
+                f"archive={release.archive}.",
+                kind="guestRuntimeReleaseArchiveConflict",
+            )
+        session.add(
+            GuestRuntimeReleaseRecord(
+                identity=release.identity,
+                archive=release.archive,
+                digest=release.digest,
+                created_at=observed_at,
+            )
+        )
+        session.flush()
+
+    def _guest_runtime_release_write(
+        self,
+        stage: str,
+        action: Callable[[Session], T],
+    ) -> T:
+        try:
+            return self._write(stage, action)
+        except (
+            GuestRuntimeReleaseConflictError,
+            GuestRuntimeReleaseContractError,
+            GuestRuntimeReleaseDependencyError,
+        ):
+            raise
+        except GuestControlDependencyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                error.message,
+                kind="guestRuntimeReleaseStateUnavailable",
+            ) from error
+
     def _write(self, stage: str, action: Callable[[Session], T]) -> T:
         return self._write_connection(
             stage,
@@ -883,6 +1187,108 @@ def _container_image_set_operation_from_record(
             "Container image-set operation state and failure disagree: "
             f"operationId={record.operation_id}.",
             kind="containerImageSetOperationInvalid",
+        )
+    return operation
+
+
+def _guest_runtime_release_operation_record(
+    operation: GuestRuntimeReleaseOperation,
+) -> GuestRuntimeReleaseOperationRecord:
+    return GuestRuntimeReleaseOperationRecord(
+        operation_id=operation.operation_id,
+        command=operation.command.value,
+        expected_active_identity=operation.expected_active_identity,
+        target_identity=operation.target.identity,
+        state=operation.state.value,
+        document=canonical_json(operation.as_json()),
+        created_at=sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="guestRuntimeReleaseOperationInvalid",
+            field="createdAt",
+        ),
+        updated_at=sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="guestRuntimeReleaseOperationInvalid",
+            field="updatedAt",
+        ),
+    )
+
+
+def _guest_runtime_release_operation_from_record(
+    record: GuestRuntimeReleaseOperationRecord,
+    *,
+    target_archive: str,
+    target_digest: str,
+) -> GuestRuntimeReleaseOperation:
+    document = parse_document(
+        record.document,
+        kind="guestRuntimeReleaseOperationInvalid",
+    )
+    try:
+        target = document["target"]
+        failure_document = document.get("failure")
+        operation = GuestRuntimeReleaseOperation(
+            operation_id=str(document["operationId"]),
+            command=GuestRuntimeReleaseCommand(str(document["command"])),
+            expected_active_identity=str(document["expectedActiveIdentity"]),
+            target=GuestRuntimeRelease.validated(
+                target["identity"],
+                target["archive"],
+                target["digest"],
+            ),
+            state=GuestRuntimeReleaseOperationState(str(document["state"])),
+            created_at=datetime.fromisoformat(str(document["createdAt"])),
+            updated_at=datetime.fromisoformat(str(document["updatedAt"])),
+            failure=(
+                GuestRuntimeReleaseFailure(
+                    kind=str(failure_document["kind"]),
+                    message=str(failure_document["message"]),
+                )
+                if isinstance(failure_document, dict)
+                else None
+            ),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise GuestRuntimeReleaseDependencyError(
+            "Guest Runtime release operation document is invalid: "
+            f"operationId={record.operation_id}.",
+            kind="guestRuntimeReleaseOperationInvalid",
+        ) from error
+    if (
+        operation.operation_id != record.operation_id
+        or operation.command.value != record.command
+        or operation.expected_active_identity != record.expected_active_identity
+        or operation.target.identity != record.target_identity
+        or operation.target.archive != target_archive
+        or operation.target.digest != target_digest
+        or operation.state.value != record.state
+        or record.created_at
+        != sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="guestRuntimeReleaseOperationInvalid",
+            field="createdAt",
+        )
+        or record.updated_at
+        != sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="guestRuntimeReleaseOperationInvalid",
+            field="updatedAt",
+        )
+    ):
+        raise GuestRuntimeReleaseDependencyError(
+            "Guest Runtime release operation index and document disagree: "
+            f"operationId={record.operation_id}.",
+            kind="guestRuntimeReleaseOperationInvalid",
+        )
+    failure_required = operation.state in {
+        GuestRuntimeReleaseOperationState.FAILED,
+        GuestRuntimeReleaseOperationState.UNAVAILABLE,
+    }
+    if failure_required != (operation.failure is not None):
+        raise GuestRuntimeReleaseDependencyError(
+            "Guest Runtime release operation state and failure disagree: "
+            f"operationId={record.operation_id}.",
+            kind="guestRuntimeReleaseOperationInvalid",
         )
     return operation
 

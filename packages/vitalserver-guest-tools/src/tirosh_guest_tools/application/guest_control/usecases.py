@@ -6,6 +6,9 @@ from datetime import datetime
 from tirosh_guest_tools.application.guest_control.container_image_set import (
     ContainerImageSetUseCases,
 )
+from tirosh_guest_tools.application.guest_control.guest_runtime_release import (
+    GuestRuntimeReleaseUseCases,
+)
 from tirosh_guest_tools.application.guest_control.ports import (
     Clock,
     DatastoreRepairPort,
@@ -79,6 +82,10 @@ from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
     GuestServiceReconcileEffect,
     reconcile_guest_service,
 )
+from tirosh_guest_tools.domain.guest_runtime_release import (
+    GuestRuntimeReleaseOperation,
+    GuestRuntimeReleaseRead,
+)
 from tirosh_guest_tools.domain.recorder_vital_files import (
     RecorderVitalFileProjectionError,
     native_uploads_for_recorder,
@@ -120,6 +127,7 @@ class GuestControlUseCases:
         update_shutdown: UpdateShutdownPort | None = None,
         vital_file_library: VitalFileLibraryPort | None = None,
         container_image_sets: ContainerImageSetUseCases | None = None,
+        guest_runtime_releases: GuestRuntimeReleaseUseCases | None = None,
     ) -> None:
         self._service_control = service_control
         self._product_lab = product_lab
@@ -137,6 +145,7 @@ class GuestControlUseCases:
         self._update_shutdown = update_shutdown
         self._vital_file_library = vital_file_library
         self._container_image_sets = container_image_sets
+        self._guest_runtime_releases = guest_runtime_releases
         self._operations = operations
         self._service_status_snapshots = service_status_snapshots
         self._guest_service_resources = guest_service_resources
@@ -317,6 +326,15 @@ class GuestControlUseCases:
                     "container-image-set:operations:get",
                 ]
             )
+        if self._guest_runtime_releases is not None:
+            capabilities.extend(
+                [
+                    "guest-runtime-release:active:get",
+                    "guest-runtime-release:apply",
+                    "guest-runtime-release:rollback",
+                    "guest-runtime-release:operations:get",
+                ]
+            )
 
         return {
             "schemaVersion": 1,
@@ -360,6 +378,47 @@ class GuestControlUseCases:
                 kind="containerImageSetOwnerUnavailable",
             )
         return self._container_image_sets.operation(operation_id)
+
+    def get_active_guest_runtime_release(self) -> GuestRuntimeReleaseRead:
+        if self._guest_runtime_releases is None:
+            raise GuestControlDependencyError(
+                "Guest Runtime release application boundary is unavailable.",
+                kind="guestRuntimeReleaseOwnerUnavailable",
+            )
+        return self._guest_runtime_releases.read_active()
+
+    def apply_guest_runtime_release(
+        self,
+        request: dict[str, object],
+    ) -> GuestRuntimeReleaseOperation:
+        if self._guest_runtime_releases is None:
+            raise GuestControlDependencyError(
+                "Guest Runtime release application boundary is unavailable.",
+                kind="guestRuntimeReleaseOwnerUnavailable",
+            )
+        return self._guest_runtime_releases.apply(request)
+
+    def rollback_guest_runtime_release(
+        self,
+        request: dict[str, object],
+    ) -> GuestRuntimeReleaseOperation:
+        if self._guest_runtime_releases is None:
+            raise GuestControlDependencyError(
+                "Guest Runtime release application boundary is unavailable.",
+                kind="guestRuntimeReleaseOwnerUnavailable",
+            )
+        return self._guest_runtime_releases.rollback(request)
+
+    def get_guest_runtime_release_operation(
+        self,
+        operation_id: str,
+    ) -> GuestRuntimeReleaseOperation | None:
+        if self._guest_runtime_releases is None:
+            raise GuestControlDependencyError(
+                "Guest Runtime release application boundary is unavailable.",
+                kind="guestRuntimeReleaseOwnerUnavailable",
+            )
+        return self._guest_runtime_releases.operation(operation_id)
 
     def readiness(self) -> dict[str, object]:
         required_dependencies = [

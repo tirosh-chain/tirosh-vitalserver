@@ -12,6 +12,7 @@ from tirosh_guest_tools.domain.guest_control.models import GuestControlDependenc
 CONTROL_SCHEMA_REVISIONS = (
     ("0001", "f5b6a98ac7a8d61d"),
     ("0002", "90d219e32282638f"),
+    ("0003", "bbeb68e94438d0b5"),
 )
 CONTROL_SCHEMA_COLUMNS: dict[str, frozenset[str]] = {
     "control_schema_migrations": frozenset({"version", "checksum", "applied_at"}),
@@ -51,6 +52,24 @@ CONTROL_SCHEMA_COLUMNS: dict[str, frozenset[str]] = {
             "updated_at",
         }
     ),
+    "guest_runtime_releases": frozenset(
+        {"identity", "archive", "digest", "created_at"}
+    ),
+    "active_guest_runtime_release": frozenset(
+        {"owner_key", "identity", "updated_at"}
+    ),
+    "guest_runtime_release_operations": frozenset(
+        {
+            "operation_id",
+            "command",
+            "expected_active_identity",
+            "target_identity",
+            "state",
+            "document",
+            "created_at",
+            "updated_at",
+        }
+    ),
 }
 
 
@@ -71,6 +90,9 @@ def migrate_control_schema(connection: Connection) -> None:
         applied = _applied_revisions(connection)
         if applied == list(CONTROL_SCHEMA_REVISIONS[:1]):
             _upgrade_0002(connection)
+            applied = _applied_revisions(connection)
+        if applied == list(CONTROL_SCHEMA_REVISIONS[:2]):
+            _upgrade_0003(connection)
         validate_control_schema(connection)
     except GuestControlDependencyError:
         raise
@@ -305,3 +327,59 @@ def _applied_revisions(connection: Connection) -> list[tuple[str, str]]:
         )
     ).all()
     return [tuple(row) for row in applied]
+
+
+def _upgrade_0003(connection: Connection) -> None:
+    context = MigrationContext.configure(connection)
+    operations = Operations(context)
+    operations.create_table(
+        "guest_runtime_releases",
+        sa.Column("identity", sa.String(), primary_key=True),
+        sa.Column("archive", sa.String(), nullable=False, unique=True),
+        sa.Column("digest", sa.String(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_table(
+        "active_guest_runtime_release",
+        sa.Column("owner_key", sa.String(), primary_key=True),
+        sa.Column(
+            "identity",
+            sa.String(),
+            sa.ForeignKey("guest_runtime_releases.identity"),
+            nullable=False,
+        ),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_table(
+        "guest_runtime_release_operations",
+        sa.Column("operation_id", sa.String(), primary_key=True),
+        sa.Column("command", sa.String(), nullable=False),
+        sa.Column("expected_active_identity", sa.String(), nullable=False),
+        sa.Column(
+            "target_identity",
+            sa.String(),
+            sa.ForeignKey("guest_runtime_releases.identity"),
+            nullable=False,
+        ),
+        sa.Column("state", sa.String(), nullable=False),
+        sa.Column("document", sa.Text(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_index(
+        "guest_runtime_release_operations_updated_at_idx",
+        "guest_runtime_release_operations",
+        ["updated_at"],
+    )
+    connection.execute(
+        text(
+            "INSERT INTO control_schema_migrations "
+            "(version, checksum, applied_at) VALUES "
+            "(:version, :checksum, :applied_at)"
+        ),
+        {
+            "version": CONTROL_SCHEMA_REVISIONS[2][0],
+            "checksum": CONTROL_SCHEMA_REVISIONS[2][1],
+            "applied_at": datetime.now(UTC).isoformat(),
+        },
+    )

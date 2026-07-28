@@ -2154,6 +2154,112 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
+    func testActiveGuestReleasePreservesExplicitUnavailableRead() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 503,
+            body: """
+            {
+              "state": "unavailable",
+              "release": null,
+              "observedAt": "2026-07-29T00:00:00+00:00",
+              "failure": {
+                "kind": "guestRuntimeReleaseActiveMissing",
+                "message": "Active Guest Runtime release is not provisioned."
+              }
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let read = try gateway.activeGuestRelease()
+
+        XCTAssertEqual(read.state, .unavailable)
+        XCTAssertNil(read.release)
+        XCTAssertEqual(read.failure?.kind, "guestRuntimeReleaseActiveMissing")
+        XCTAssertEqual(
+            client.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/guest-runtime-release"
+        )
+    }
+
+    func testApplyGuestReleaseForwardsExpectedActiveIdentityAndArchive() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: runtimeGuestReleaseOperationBody(command: "apply")
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+        let request = RuntimeGuestReleaseMutationRequest(
+            expectedActiveIdentity: "guest-0.2.1",
+            target: RuntimeGuestRelease(
+                identity: "guest-0.2.2",
+                archive: "releases/guest-0.2.2.tar",
+                digest: "sha256:\(String(repeating: "b", count: 64))"
+            )
+        )
+
+        let operation = try gateway.applyGuestRelease(request)
+
+        XCTAssertEqual(operation.command, .apply)
+        XCTAssertEqual(operation.state, .pending)
+        let captured = try XCTUnwrap(client.requests.first)
+        XCTAssertEqual(
+            captured.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/guest-runtime-release/apply"
+        )
+        let document = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: try XCTUnwrap(captured.httpBody)
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(document["expectedActiveIdentity"] as? String, "guest-0.2.1")
+        let target = try XCTUnwrap(document["target"] as? [String: Any])
+        XCTAssertEqual(target["archive"] as? String, "releases/guest-0.2.2.tar")
+    }
+
+    func testGuestReleaseRollbackAndOperationReadUseOwnerRoutes() throws {
+        let rollbackClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: runtimeGuestReleaseOperationBody(command: "rollback")
+        ))
+        let rollbackGateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: rollbackClient
+        )
+        let request = RuntimeGuestReleaseMutationRequest(
+            expectedActiveIdentity: "guest-0.2.1",
+            target: RuntimeGuestRelease(
+                identity: "guest-0.2.2",
+                archive: "releases/guest-0.2.2.tar",
+                digest: "sha256:\(String(repeating: "b", count: 64))"
+            )
+        )
+        _ = try rollbackGateway.rollbackGuestRelease(request)
+        XCTAssertEqual(
+            rollbackClient.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/guest-runtime-release/rollback"
+        )
+
+        let operationClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: runtimeGuestReleaseOperationBody(command: "rollback")
+        ))
+        let operationGateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: operationClient
+        )
+        _ = try operationGateway.guestReleaseOperation("guest op/1")
+        XCTAssertEqual(
+            operationClient.requests.first?.url?.absoluteString,
+            "http://127.0.0.1:18330/runtime/guest-runtime-release/operations/guest%20op%2F1"
+        )
+    }
+
 }
 
 private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPClient, @unchecked Sendable {
@@ -2298,6 +2404,25 @@ private func containerImageSetOperationBody(command: String) -> String {
       "expectedCurrentIdentity": "images-0.2.1",
       "target": {
         "identity": "images-0.2.2",
+        "digest": "sha256:\(String(repeating: "b", count: 64))"
+      },
+      "state": "pending",
+      "createdAt": "2026-07-29T00:00:00+00:00",
+      "updatedAt": "2026-07-29T00:00:00+00:00",
+      "failure": null
+    }
+    """
+}
+
+private func runtimeGuestReleaseOperationBody(command: String) -> String {
+    """
+    {
+      "operationId": "guest-release-\(command)-1",
+      "command": "\(command)",
+      "expectedActiveIdentity": "guest-0.2.1",
+      "target": {
+        "identity": "guest-0.2.2",
+        "archive": "releases/guest-0.2.2.tar",
         "digest": "sha256:\(String(repeating: "b", count: 64))"
       },
       "state": "pending",

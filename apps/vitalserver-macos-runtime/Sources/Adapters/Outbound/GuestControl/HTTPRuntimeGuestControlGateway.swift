@@ -368,6 +368,7 @@ private struct RuntimeGuestControlUpdateShutdownRequest: Encodable {
 
 public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
     RuntimeContainerImageSetGateway,
+    RuntimeGuestReleaseGateway,
     RuntimeGuestProductLabGateway,
     RuntimeVitalDBGuestControlGateway
 {
@@ -544,6 +545,53 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
             RuntimeContainerImageSetOperation.self,
             method: "GET",
             path: "/runtime/container-image-set/operations/\(pathSegment(operationId))"
+        )
+    }
+
+    public func activeGuestRelease() throws -> RuntimeGuestReleaseRead {
+        let response = try httpClient.send(
+            request(method: "GET", path: "/runtime/guest-runtime-release", body: nil),
+            bodyFileURL: nil
+        )
+        if response.statusCode == 503 {
+            do {
+                return try decoder.decode(RuntimeGuestReleaseRead.self, from: response.data)
+            } catch {
+                throw requestFailed(response)
+            }
+        }
+        return try decode(RuntimeGuestReleaseRead.self, from: response)
+    }
+
+    public func applyGuestRelease(
+        _ request: RuntimeGuestReleaseMutationRequest
+    ) throws -> RuntimeGuestReleaseOperation {
+        try decode(
+            RuntimeGuestReleaseOperation.self,
+            method: "POST",
+            path: "/runtime/guest-runtime-release/apply",
+            body: request
+        )
+    }
+
+    public func rollbackGuestRelease(
+        _ request: RuntimeGuestReleaseMutationRequest
+    ) throws -> RuntimeGuestReleaseOperation {
+        try decode(
+            RuntimeGuestReleaseOperation.self,
+            method: "POST",
+            path: "/runtime/guest-runtime-release/rollback",
+            body: request
+        )
+    }
+
+    public func guestReleaseOperation(
+        _ operationId: String
+    ) throws -> RuntimeGuestReleaseOperation {
+        try decode(
+            RuntimeGuestReleaseOperation.self,
+            method: "GET",
+            path: "/runtime/guest-runtime-release/operations/\(pathSegment(operationId))"
         )
     }
 

@@ -55,6 +55,9 @@ from tirosh_guest_tools.adapters.outbound.vital_files import (
 from tirosh_guest_tools.application.guest_control.container_image_set import (
     ContainerImageSetUseCases,
 )
+from tirosh_guest_tools.application.guest_control.guest_runtime_release import (
+    GuestRuntimeReleaseUseCases,
+)
 from tirosh_guest_tools.application.guest_control.ports import VitalFileUploadSource
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
@@ -73,6 +76,11 @@ from tirosh_guest_tools.domain.guest_control.models import (
     RedisRelayStatusContractError,
     ServiceNotFoundError,
     VitalDBReadModelDependencyError,
+)
+from tirosh_guest_tools.domain.guest_runtime_release import (
+    GuestRuntimeReleaseConflictError,
+    GuestRuntimeReleaseContractError,
+    GuestRuntimeReleaseDependencyError,
 )
 from tirosh_guest_tools.domain.redis_relay_settings import (
     RedisRelaySettingsContractError,
@@ -182,6 +190,11 @@ def build_default_usecases() -> GuestControlUseCases:
             runtime_config=lambda: load_config(SETTINGS.paths.runtime_config_file),
         ),
         container_image_sets=ContainerImageSetUseCases(
+            state_owner=operations,
+            operation_ids=UUIDOperationIdFactory(),
+            clock=SystemClock(),
+        ),
+        guest_runtime_releases=GuestRuntimeReleaseUseCases(
             state_owner=operations,
             operation_ids=UUIDOperationIdFactory(),
             clock=SystemClock(),
@@ -352,6 +365,24 @@ def make_handler(
                     {"detail": error.message, "code": error.kind},
                 )
                 return
+            except GuestRuntimeReleaseContractError as error:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except GuestRuntimeReleaseConflictError as error:
+                self._write_json(
+                    HTTPStatus.CONFLICT,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except GuestRuntimeReleaseDependencyError as error:
+                self._write_json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
             except VitalDBReadModelDependencyError as error:
                 self._write_json(
                     HTTPStatus.SERVICE_UNAVAILABLE,
@@ -510,6 +541,45 @@ def route_request(
                 HTTPStatus.NOT_FOUND,
                 detail=f"Container image-set operation is not available: {parts[3]}",
                 code="containerImageSetOperationNotFound",
+            )
+        return HTTPStatus.OK, operation.as_json()
+
+    if method == "GET" and parts == ["runtime", "guest-runtime-release"]:
+        read = usecases.get_active_guest_runtime_release()
+        status = (
+            HTTPStatus.OK
+            if read.state == "available"
+            else HTTPStatus.SERVICE_UNAVAILABLE
+        )
+        return status, read.as_json()
+
+    if method == "POST" and parts == ["runtime", "guest-runtime-release", "apply"]:
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.apply_guest_runtime_release(_json_body(body)).as_json(),
+        )
+
+    if method == "POST" and parts == [
+        "runtime",
+        "guest-runtime-release",
+        "rollback",
+    ]:
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.rollback_guest_runtime_release(_json_body(body)).as_json(),
+        )
+
+    if (
+        method == "GET"
+        and len(parts) == 4
+        and parts[:3] == ["runtime", "guest-runtime-release", "operations"]
+    ):
+        operation = usecases.get_guest_runtime_release_operation(parts[3])
+        if operation is None:
+            raise GuestControlAPIError(
+                HTTPStatus.NOT_FOUND,
+                detail=f"Guest Runtime release operation is unavailable: {parts[3]}",
+                code="guestRuntimeReleaseOperationNotFound",
             )
         return HTTPStatus.OK, operation.as_json()
 
