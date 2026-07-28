@@ -140,6 +140,25 @@ def encode_update_bootstrap_trust_store(document: object) -> bytes:
     ).encode("utf-8")
 
 
+def require_active_publisher_key(
+    document: object,
+    *,
+    key_id: str,
+) -> bytes:
+    validate_update_bootstrap_trust_store(document)
+    if not IDENTIFIER.fullmatch(key_id):
+        raise ValueError("publisher key id is invalid")
+    if not isinstance(document, dict) or not isinstance(document["keys"], list):
+        raise ValueError("trust store contract was not preserved after validation")
+    for key in document["keys"]:
+        if key["id"] != key_id:
+            continue
+        if key["state"] == "revoked":
+            raise ValueError(f"publisher key is revoked: {key_id}")
+        return base64.b64decode(str(key["publicKey"]), validate=True)
+    raise ValueError(f"publisher key is unknown: {key_id}")
+
+
 def require_exact_keys(
     document: dict[object, object],
     expected: set[str],

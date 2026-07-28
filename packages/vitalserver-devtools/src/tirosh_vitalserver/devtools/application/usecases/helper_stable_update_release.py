@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from pathlib import Path
 
 from tirosh_vitalserver.devtools.application.inputs import (
     ComposeHelperStableUpdateReleaseInput,
@@ -32,12 +33,17 @@ class HelperStableUpdateReleaseOperations:
         [BuildUpdateBootstrapBundleInput],
         BuildUpdateBootstrapBundleResult,
     ]
+    require_active_publisher_key: Callable[[Path, str], bytes]
 
 
 def compose(
     input: ComposeHelperStableUpdateReleaseInput,
     operations: HelperStableUpdateReleaseOperations,
 ) -> int:
+    operations.require_active_publisher_key(
+        input.publisher_trust_store,
+        input.publisher_key_id,
+    )
     with operations.materialize_payload(input.layers) as payload:
         plan = HelperStableUpdateReleasePlan(
             update_id=input.update_id,

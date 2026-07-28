@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.update_bootstrap_trust_store import (
+    require_active_publisher_key,
     validate_update_bootstrap_trust_store,
 )
 
@@ -48,6 +49,19 @@ def read_ed25519_public_key(path: Path) -> bytes:
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
+
+
+def read_active_publisher_key(path: Path, key_id: str) -> bytes:
+    try:
+        return require_active_publisher_key(
+            read_trust_store(path),
+            key_id=key_id,
+        )
+    except ValueError as error:
+        raise DomainError(
+            "update bootstrap publisher trust failed "
+            f"path={path} keyId={key_id}: {error}"
+        ) from error
 
 
 def write_new_store(path: Path, encoded: bytes) -> None:

@@ -841,6 +841,11 @@ def main() -> int:
         required=True,
     )
     helper_stable_update_release.add_argument(
+        "--publisher-trust-store",
+        type=Path,
+        required=True,
+    )
+    helper_stable_update_release.add_argument(
         "--issued-at",
         required=True,
         help="canonical UTC timestamp, for example 2026-07-29T00:00:00Z",
@@ -859,7 +864,7 @@ def main() -> int:
     )
     verify_update_bootstrap_bundle.add_argument("--bundle", type=Path, required=True)
     verify_update_bootstrap_bundle.add_argument(
-        "--publisher-public-key",
+        "--publisher-trust-store",
         type=Path,
         required=True,
     )
@@ -867,7 +872,7 @@ def main() -> int:
         handler=lambda args: update_bootstrap_bundle_usecases.verify(
             usecase_inputs.VerifyUpdateBootstrapBundleInput(
                 bundle=args.bundle,
-                publisher_public_key=args.publisher_public_key,
+                publisher_trust_store=args.publisher_trust_store,
             ),
             update_bootstrap_bundle_operations(),
         )
@@ -1360,7 +1365,9 @@ def update_bootstrap_bundle_operations(
 ) -> update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations:
     return update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations(
         build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
-        verify_bundle=bootstrap_bundle_service.verify_bootstrap_bundle,
+        verify_bundle=(
+            bootstrap_bundle_service.verify_bootstrap_bundle_with_trust_store
+        ),
     )
 
 
@@ -1449,6 +1456,7 @@ def helper_stable_update_release_input(
         next_updater=args.next_updater,
         publisher_key_id=args.publisher_key_id,
         publisher_private_key=args.publisher_private_key,
+        publisher_trust_store=args.publisher_trust_store,
         issued_at=args.issued_at,
         output=args.output,
     )
@@ -1462,6 +1470,7 @@ def helper_stable_update_release_operations() -> (
             helper_update_layer_artifacts.materialized_helper_update_payload
         ),
         build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
+        require_active_publisher_key=trust_store_service.read_active_publisher_key,
     )
 
 

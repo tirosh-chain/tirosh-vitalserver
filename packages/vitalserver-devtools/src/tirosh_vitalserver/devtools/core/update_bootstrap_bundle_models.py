@@ -30,4 +30,4 @@ class BuildUpdateBootstrapBundleResult:
 @dataclass(frozen=True)
 class VerifyUpdateBootstrapBundleInput:
     bundle: Path
-    publisher_public_key: Path
+    publisher_trust_store: Path

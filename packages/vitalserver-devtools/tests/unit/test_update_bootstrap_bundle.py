@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import tarfile
 from pathlib import Path
@@ -216,6 +217,51 @@ def test_verifier_reports_invalid_archive_as_domain_failure(tmp_path: Path) -> N
         bootstrap_bundle_service.verify_bootstrap_bundle(bundle, public_key)
 
 
+def test_trust_store_verifier_uses_envelope_key_id(tmp_path: Path) -> None:
+    private_key, public_key = signing_keys(tmp_path)
+    build_and_extract(tmp_path, private_key)
+    trust_store = write_trust_store(
+        tmp_path,
+        public_key,
+        key_id="release-key",
+        state="active",
+    )
+
+    bootstrap_bundle_service.verify_bootstrap_bundle_with_trust_store(
+        tmp_path / "bundle.tar.gz",
+        trust_store,
+    )
+
+
+@pytest.mark.parametrize(
+    ("key_id", "state", "message"),
+    [
+        ("different-key", "active", "publisher key is unknown"),
+        ("release-key", "revoked", "publisher key is revoked"),
+    ],
+)
+def test_trust_store_verifier_rejects_untrusted_publisher_state(
+    tmp_path: Path,
+    key_id: str,
+    state: str,
+    message: str,
+) -> None:
+    private_key, public_key = signing_keys(tmp_path)
+    build_and_extract(tmp_path, private_key)
+    trust_store = write_trust_store(
+        tmp_path,
+        public_key,
+        key_id=key_id,
+        state=state,
+    )
+
+    with pytest.raises(DomainError, match=message):
+        bootstrap_bundle_service.verify_bootstrap_bundle_with_trust_store(
+            tmp_path / "bundle.tar.gz",
+            trust_store,
+        )
+
+
 def test_verifier_rejects_unknown_symlink_in_bundle(tmp_path: Path) -> None:
     private_key, public_key = signing_keys(tmp_path)
     root = build_and_extract(tmp_path, private_key)
@@ -289,6 +335,40 @@ def signing_keys(root: Path) -> tuple[Path, Path]:
         )
     )
     return private_key, public_key
+
+
+def write_trust_store(
+    root: Path,
+    public_key: Path,
+    *,
+    key_id: str,
+    state: str,
+) -> Path:
+    decoded = serialization.load_pem_public_key(public_key.read_bytes())
+    trust_store = root / "publisher-trust-store.json"
+    trust_store.write_text(
+        json.dumps(
+            {
+                "schemaVersion": "v2",
+                "keys": [
+                    {
+                        "id": key_id,
+                        "algorithm": "ed25519",
+                        "publicKey": base64.b64encode(
+                            decoded.public_bytes(
+                                encoding=serialization.Encoding.Raw,
+                                format=serialization.PublicFormat.Raw,
+                            )
+                        ).decode("ascii"),
+                        "state": state,
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return trust_store
 
 
 def build_and_extract(root: Path, private_key: Path) -> Path:

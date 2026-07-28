@@ -20,6 +20,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from tirosh_vitalserver.devtools.adapters.update_bundle.bundle_service import (
     materialized_bundle,
 )
+from tirosh_vitalserver.devtools.adapters.update_bundle.trust_store_service import (
+    read_active_publisher_key,
+)
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.product_update_specification import (
     load_product_update_specification,
@@ -140,9 +143,47 @@ def verify_bootstrap_bundle(
         ) from error
 
 
+def verify_bootstrap_bundle_with_trust_store(
+    bundle: Path,
+    publisher_trust_store: Path,
+) -> None:
+    require_regular_file(bundle, "bootstrap bundle")
+    require_regular_file(publisher_trust_store, "publisher trust store")
+    try:
+        with materialized_bundle(bundle) as root:
+            envelope = read_validated_envelope(root)
+            signature = envelope["signature"]
+            public_key = read_active_publisher_key(
+                publisher_trust_store,
+                str(signature["keyId"]),
+            )
+            verify_bootstrap_bundle_directory_with_public_key(
+                root,
+                public_key,
+                envelope=envelope,
+            )
+    except (SystemExit, tarfile.TarError, OSError) as error:
+        raise DomainError(
+            f"bootstrap bundle materialization failed: {error}"
+        ) from error
+
+
 def verify_bootstrap_bundle_directory(
     root: Path,
     publisher_public_key: Path,
+) -> None:
+    require_regular_file(publisher_public_key, "publisher public key")
+    verify_bootstrap_bundle_directory_with_public_key(
+        root,
+        read_ed25519_public_key(publisher_public_key),
+    )
+
+
+def verify_bootstrap_bundle_directory_with_public_key(
+    root: Path,
+    publisher_public_key: bytes,
+    *,
+    envelope: dict[str, object] | None = None,
 ) -> None:
     actual_files: set[str] = set()
     for path in root.rglob("*"):
@@ -168,14 +209,8 @@ def verify_bootstrap_bundle_directory(
     }:
         require_regular_file(root / relative_path, relative_path)
 
-    envelope_path = root / ENVELOPE_NAME
-    try:
-        envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise DomainError(f"bootstrap envelope read failed: {error}") from error
-    if not isinstance(envelope, dict):
-        raise DomainError("bootstrap envelope must be an object")
-    validate_envelope(envelope)
+    if envelope is None:
+        envelope = read_validated_envelope(root)
     signature = envelope["signature"]
     unsigned = dict(envelope)
     unsigned.pop("signature")
@@ -214,6 +249,19 @@ def verify_bootstrap_bundle_directory(
 
     for declaration in declared_artifacts.values():
         verify_bound_artifact(root, declaration)
+
+
+def read_validated_envelope(root: Path) -> dict[str, object]:
+    envelope_path = root / ENVELOPE_NAME
+    require_regular_file(envelope_path, ENVELOPE_NAME)
+    try:
+        envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise DomainError(f"bootstrap envelope read failed: {error}") from error
+    if not isinstance(envelope, dict):
+        raise DomainError("bootstrap envelope must be an object")
+    validate_envelope(envelope)
+    return envelope
 
 
 def verify_bound_artifact(root: Path, entry: object) -> None:
@@ -267,18 +315,29 @@ def verify_ed25519(
     *,
     payload: bytes,
     signature: bytes,
-    public_key: Path,
+    public_key: bytes,
 ) -> None:
     try:
-        key = serialization.load_pem_public_key(public_key.read_bytes())
-    except (OSError, ValueError, TypeError) as error:
-        raise DomainError(f"Ed25519 public key read failed: {error}") from error
-    if not isinstance(key, Ed25519PublicKey):
-        raise DomainError("publisher public key is not Ed25519")
+        key = Ed25519PublicKey.from_public_bytes(public_key)
+    except ValueError as error:
+        raise DomainError(f"Ed25519 public key decode failed: {error}") from error
     try:
         key.verify(signature, payload)
     except InvalidSignature as error:
         raise DomainError("bootstrap publisher signature is invalid") from error
+
+
+def read_ed25519_public_key(path: Path) -> bytes:
+    try:
+        key = serialization.load_pem_public_key(path.read_bytes())
+    except (OSError, ValueError, TypeError) as error:
+        raise DomainError(f"Ed25519 public key read failed: {error}") from error
+    if not isinstance(key, Ed25519PublicKey):
+        raise DomainError("publisher public key is not Ed25519")
+    return key.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
 
 
 def require_regular_file(path: Path, owner: str) -> None:

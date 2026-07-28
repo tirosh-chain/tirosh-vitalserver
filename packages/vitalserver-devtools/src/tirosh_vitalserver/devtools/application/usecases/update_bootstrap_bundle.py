@@ -38,7 +38,7 @@ def verify(
 ) -> int:
     operations.verify_bundle(
         input.bundle,
-        input.publisher_public_key,
+        input.publisher_trust_store,
     )
     print(f"update bootstrap bundle is verified: {input.bundle}")
     return 0

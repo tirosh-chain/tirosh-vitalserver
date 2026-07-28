@@ -313,6 +313,7 @@ class ComposeHelperStableUpdateReleaseInput:
     next_updater: Path
     publisher_key_id: str
     publisher_private_key: Path
+    publisher_trust_store: Path
     issued_at: str
     output: Path
 

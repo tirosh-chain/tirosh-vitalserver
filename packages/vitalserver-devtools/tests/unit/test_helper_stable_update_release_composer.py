@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import base64
 import json
 import tarfile
 from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 from tirosh_vitalserver.devtools.adapters.macos_release import (
     helper_update_layer_artifacts,
 )
 from tirosh_vitalserver.devtools.adapters.update_bundle import (
     bootstrap_bundle_service,
+    trust_store_service,
 )
 from tirosh_vitalserver.devtools.application.inputs import (
     ComposeHelperStableUpdateReleaseInput,
@@ -98,6 +103,9 @@ def test_same_explicit_inputs_produce_identical_specification(
                 helper_update_layer_artifacts.materialized_helper_update_payload
             ),
             build_bundle=observe_build,
+            require_active_publisher_key=(
+                trust_store_service.read_active_publisher_key
+            ),
         ),
     )
     second = ComposeHelperStableUpdateReleaseInput(
@@ -110,6 +118,9 @@ def test_same_explicit_inputs_produce_identical_specification(
                 helper_update_layer_artifacts.materialized_helper_update_payload
             ),
             build_bundle=observe_build,
+            require_active_publisher_key=(
+                trust_store_service.read_active_publisher_key
+            ),
         ),
     )
 
@@ -180,6 +191,32 @@ def release_input(
     updater = write_file(root / "vitalserver-update", "#!/bin/sh\n")
     updater.chmod(0o755)
     private_key, public_key = signing_keys(root)
+    publisher_trust_store = root / "publisher-trust-store.json"
+    public = serialization.load_pem_public_key(public_key.read_bytes())
+    assert isinstance(public, Ed25519PublicKey)
+    raw_public_key = public.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    publisher_trust_store.write_text(
+        json.dumps(
+            {
+                "schemaVersion": "v2",
+                "keys": [
+                    {
+                        "id": "helper-release-key-2026",
+                        "algorithm": "ed25519",
+                        "publicKey": base64.b64encode(raw_public_key).decode(
+                            "ascii"
+                        ),
+                        "state": "active",
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return (
         ComposeHelperStableUpdateReleaseInput(
             update_id="helper-update-0.2.2",
@@ -192,6 +229,7 @@ def release_input(
             next_updater=updater,
             publisher_key_id="helper-release-key-2026",
             publisher_private_key=private_key,
+            publisher_trust_store=publisher_trust_store,
             issued_at="2026-07-29T00:00:00Z",
             output=root / "helper-update-0.2.2.tar.gz",
         ),
@@ -205,6 +243,7 @@ def operations() -> helper_stable_update_release.HelperStableUpdateReleaseOperat
             helper_update_layer_artifacts.materialized_helper_update_payload
         ),
         build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
+        require_active_publisher_key=trust_store_service.read_active_publisher_key,
     )
 
 

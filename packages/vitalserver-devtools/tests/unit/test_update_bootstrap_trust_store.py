@@ -1,3 +1,4 @@
+import base64
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -12,6 +13,7 @@ from tirosh_vitalserver.devtools.config.update_bootstrap_trust_store import (
     load_update_bootstrap_trust_store,
 )
 from tirosh_vitalserver.devtools.core.update_bootstrap_trust_store import (
+    require_active_publisher_key,
     validate_update_bootstrap_trust_store,
 )
 
@@ -34,6 +36,32 @@ def valid_document() -> dict[str, object]:
 
 def test_validates_explicit_ed25519_public_key_contract() -> None:
     validate_update_bootstrap_trust_store(valid_document())
+
+
+def test_resolves_only_active_key_by_explicit_publisher_id() -> None:
+    assert require_active_publisher_key(
+        valid_document(),
+        key_id="helper-release-key-2026",
+    ) == base64.b64decode(PUBLIC_KEY)
+
+
+@pytest.mark.parametrize(
+    ("key_id", "state", "message"),
+    [
+        ("unknown-key", "active", "publisher key is unknown"),
+        ("helper-release-key-2026", "revoked", "publisher key is revoked"),
+    ],
+)
+def test_active_key_resolution_preserves_unknown_and_revoked(
+    key_id: str,
+    state: str,
+    message: str,
+) -> None:
+    document = valid_document()
+    document["keys"][0]["state"] = state
+
+    with pytest.raises(ValueError, match=message):
+        require_active_publisher_key(document, key_id=key_id)
 
 
 @pytest.mark.parametrize(
