@@ -477,7 +477,8 @@ public struct ProductUpdateExecutionReport: Codable, Equatable, Sendable {
     public let state: ProductUpdateExecutionState
     public let startedAt: String
     public let finishedAt: String
-    public let layerEvidence: [ProductUpdateLayerExecutionEvidence]
+    public let applyReceipts: [ProductUpdateLayerEffectReceipt]
+    public let rollbackReceipts: [ProductUpdateLayerEffectReceipt]
     public let rollback: ProductUpdateRollbackEvidence
     public let failure: ProductUpdateIssue?
 
@@ -490,7 +491,8 @@ public struct ProductUpdateExecutionReport: Codable, Equatable, Sendable {
         case state
         case startedAt
         case finishedAt
-        case layerEvidence
+        case applyReceipts
+        case rollbackReceipts
         case rollback
         case failure
     }
@@ -504,7 +506,8 @@ public struct ProductUpdateExecutionReport: Codable, Equatable, Sendable {
         state: ProductUpdateExecutionState,
         startedAt: String,
         finishedAt: String,
-        layerEvidence: [ProductUpdateLayerExecutionEvidence],
+        applyReceipts: [ProductUpdateLayerEffectReceipt],
+        rollbackReceipts: [ProductUpdateLayerEffectReceipt],
         rollback: ProductUpdateRollbackEvidence,
         failure: ProductUpdateIssue?
     ) {
@@ -516,7 +519,8 @@ public struct ProductUpdateExecutionReport: Codable, Equatable, Sendable {
         self.state = state
         self.startedAt = startedAt
         self.finishedAt = finishedAt
-        self.layerEvidence = layerEvidence
+        self.applyReceipts = applyReceipts
+        self.rollbackReceipts = rollbackReceipts
         self.rollback = rollback
         self.failure = failure
     }
@@ -549,9 +553,13 @@ public struct ProductUpdateExecutionReport: Codable, Equatable, Sendable {
             ),
             startedAt: try container.decode(String.self, forKey: .startedAt),
             finishedAt: try container.decode(String.self, forKey: .finishedAt),
-            layerEvidence: try container.decode(
-                [ProductUpdateLayerExecutionEvidence].self,
-                forKey: .layerEvidence
+            applyReceipts: try container.decode(
+                [ProductUpdateLayerEffectReceipt].self,
+                forKey: .applyReceipts
+            ),
+            rollbackReceipts: try container.decode(
+                [ProductUpdateLayerEffectReceipt].self,
+                forKey: .rollbackReceipts
             ),
             rollback: try container.decode(
                 ProductUpdateRollbackEvidence.self,

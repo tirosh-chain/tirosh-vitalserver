@@ -332,7 +332,8 @@ final class BundleOwnedProductUpdateBoundaryAdaptersTests: XCTestCase {
             state: .succeeded,
             startedAt: "2026-07-28T00:00:00Z",
             finishedAt: "2026-07-28T00:01:00Z",
-            layerEvidence: [],
+            applyReceipts: [],
+            rollbackReceipts: [],
             rollback: ProductUpdateRollbackEvidence(
                 state: .notRequired,
                 observedAt: "2026-07-28T00:01:00Z",

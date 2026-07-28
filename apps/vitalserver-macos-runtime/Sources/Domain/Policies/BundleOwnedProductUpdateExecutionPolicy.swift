@@ -8,7 +8,8 @@ public enum BundleOwnedProductUpdateExecutionPolicyError:
     case succeededReceiptHasIssue
     case nonSuccessfulReceiptMissingIssue
     case reportCorrelationMismatch
-    case reportLayerEvidenceMismatch
+    case reportApplyReceiptMismatch
+    case reportRollbackReceiptMismatch
     case invalidReportOutcome
 }
 
@@ -119,24 +120,63 @@ public enum BundleOwnedProductUpdateExecutionPolicy {
             throw BundleOwnedProductUpdateExecutionPolicyError
                 .reportCorrelationMismatch
         }
-        let expectedLayers = Array(
-            plan.layerPlan.prefix(report.layerEvidence.count)
-        ).map(\.layer)
-        guard !report.layerEvidence.isEmpty,
-              report.layerEvidence.count <= plan.layerPlan.count,
-              report.layerEvidence.map(\.layer) == expectedLayers else {
+        let expectedApplyPlans = Array(
+            plan.layerPlan.prefix(report.applyReceipts.count)
+        )
+        guard !report.applyReceipts.isEmpty,
+              report.applyReceipts.count <= plan.layerPlan.count else {
             throw BundleOwnedProductUpdateExecutionPolicyError
-                .reportLayerEvidenceMismatch
+                .reportApplyReceiptMismatch
         }
-        for (index, evidence) in report.layerEvidence.enumerated() {
-            guard evidence.artifactSHA256 ==
-                    plan.layerPlan[index].artifact.sha256,
-                  !evidence.observedAt.isEmpty,
-                  !evidence.evidence.kind.isEmpty,
-                  !evidence.evidence.id.isEmpty,
-                  (evidence.state == .succeeded) == (evidence.issue == nil) else {
+        for (receipt, layerPlan) in zip(
+            report.applyReceipts,
+            expectedApplyPlans
+        ) {
+            let request = makeRequest(
+                updateId: plan.updateId,
+                layerPlan: layerPlan,
+                operation: .apply,
+                artifact: layerPlan.artifact
+            )
+            do {
+                try validate(receipt: receipt, request: request)
+            } catch {
                 throw BundleOwnedProductUpdateExecutionPolicyError
-                    .reportLayerEvidenceMismatch
+                    .reportApplyReceiptMismatch
+            }
+        }
+        let appliedPlans = zip(
+            expectedApplyPlans,
+            report.applyReceipts
+        ).compactMap { item in
+            item.1.state == .succeeded ? item.0 : nil
+        }
+        let expectedRollbackPlans = Array(appliedPlans.reversed())
+        guard report.rollbackReceipts.count <= expectedRollbackPlans.count
+        else {
+            throw BundleOwnedProductUpdateExecutionPolicyError
+                .reportRollbackReceiptMismatch
+        }
+        for (receipt, layerPlan) in zip(
+            report.rollbackReceipts,
+            expectedRollbackPlans
+        ) {
+            guard layerPlan.rollback.state == .available,
+                  let artifact = layerPlan.rollback.artifact else {
+                throw BundleOwnedProductUpdateExecutionPolicyError
+                    .reportRollbackReceiptMismatch
+            }
+            let request = makeRequest(
+                updateId: plan.updateId,
+                layerPlan: layerPlan,
+                operation: .rollback,
+                artifact: artifact
+            )
+            do {
+                try validate(receipt: receipt, request: request)
+            } catch {
+                throw BundleOwnedProductUpdateExecutionPolicyError
+                    .reportRollbackReceiptMismatch
             }
         }
         guard validRollbackEvidence(report.rollback) else {
@@ -145,19 +185,46 @@ public enum BundleOwnedProductUpdateExecutionPolicy {
         }
         switch report.state {
         case .succeeded:
-            guard report.layerEvidence.count == plan.layerPlan.count,
-                  report.layerEvidence.allSatisfy({ $0.state == .succeeded }),
+            guard report.applyReceipts.count == plan.layerPlan.count,
+                  report.applyReceipts.allSatisfy({ $0.state == .succeeded }),
+                  report.rollbackReceipts.isEmpty,
                   report.rollback.state == .notRequired,
                   report.failure == nil else {
                 throw BundleOwnedProductUpdateExecutionPolicyError
                     .invalidReportOutcome
             }
         case .failed:
-            guard report.layerEvidence.last?.state != .succeeded,
-                  report.failure != nil else {
+            guard report.applyReceipts.last?.state != .succeeded,
+                  report.failure != nil,
+                  validRollbackReceiptOutcome(
+                    report.rollback,
+                    receipts: report.rollbackReceipts,
+                    expectedCount: expectedRollbackPlans.count
+                  ) else {
                 throw BundleOwnedProductUpdateExecutionPolicyError
                     .invalidReportOutcome
             }
+        }
+    }
+
+    private static func validRollbackReceiptOutcome(
+        _ rollback: ProductUpdateRollbackEvidence,
+        receipts: [ProductUpdateLayerEffectReceipt],
+        expectedCount: Int
+    ) -> Bool {
+        switch rollback.state {
+        case .notRequired:
+            return expectedCount == 0 && receipts.isEmpty
+        case .succeeded:
+            return receipts.count == expectedCount
+                && receipts.allSatisfy { $0.state == .succeeded }
+        case .failed:
+            return !receipts.isEmpty
+                && receipts.dropLast().allSatisfy { $0.state == .succeeded }
+                && receipts.last?.state != .succeeded
+        case .notAttempted:
+            return receipts.count < expectedCount
+                && receipts.allSatisfy { $0.state == .succeeded }
         }
     }
 

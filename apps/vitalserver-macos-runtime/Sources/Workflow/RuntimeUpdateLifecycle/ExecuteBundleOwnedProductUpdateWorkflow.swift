@@ -78,7 +78,7 @@ public struct ExecuteBundleOwnedProductUpdateWorkflow {
     ) throws -> ProductUpdateExecutionReport {
         let plan = try operations.plan(invocation, specification)
         let startedAt = operations.now()
-        var evidence: [ProductUpdateLayerExecutionEvidence] = []
+        var applyReceipts: [ProductUpdateLayerEffectReceipt] = []
         var applied: [ProductUpdateLayerPlan] = []
 
         for layerPlan in plan.layerPlan {
@@ -89,9 +89,7 @@ public struct ExecuteBundleOwnedProductUpdateWorkflow {
                 artifact: layerPlan.artifact,
                 operations: operations
             )
-            evidence.append(
-                ProductUpdateLayerExecutionEvidence(receipt: receipt)
-            )
+            applyReceipts.append(receipt)
             if receipt.state == .succeeded {
                 applied.append(layerPlan)
                 continue
@@ -100,6 +98,11 @@ public struct ExecuteBundleOwnedProductUpdateWorkflow {
                 throw ExecuteBundleOwnedProductUpdateWorkflowError
                     .failedEffectHasNoIssue(layer: layerPlan.layer)
             }
+            let rollbackResult = rollback(
+                updateId: plan.updateId,
+                applied: applied,
+                operations: operations
+            )
             let report = ProductUpdateExecutionReport(
                 schemaVersion: ProductUpdateExecutionContract.schemaVersion,
                 updateId: invocation.updateId,
@@ -110,12 +113,9 @@ public struct ExecuteBundleOwnedProductUpdateWorkflow {
                 state: .failed,
                 startedAt: startedAt,
                 finishedAt: operations.now(),
-                layerEvidence: evidence,
-                rollback: rollback(
-                    updateId: plan.updateId,
-                    applied: applied,
-                    operations: operations
-                ),
+                applyReceipts: applyReceipts,
+                rollbackReceipts: rollbackResult.receipts,
+                rollback: rollbackResult.evidence,
                 failure: issue
             )
             try operations.validateReport(report, invocation, plan)
@@ -131,7 +131,8 @@ public struct ExecuteBundleOwnedProductUpdateWorkflow {
             state: .succeeded,
             startedAt: startedAt,
             finishedAt: operations.now(),
-            layerEvidence: evidence,
+            applyReceipts: applyReceipts,
+            rollbackReceipts: [],
             rollback: ProductUpdateRollbackEvidence(
                 state: .notRequired,
                 observedAt: operations.now(),
@@ -168,29 +169,39 @@ public struct ExecuteBundleOwnedProductUpdateWorkflow {
         updateId: String,
         applied: [ProductUpdateLayerPlan],
         operations: ExecuteBundleOwnedProductUpdateWorkflowOperations
-    ) -> ProductUpdateRollbackEvidence {
+    ) -> (
+        evidence: ProductUpdateRollbackEvidence,
+        receipts: [ProductUpdateLayerEffectReceipt]
+    ) {
         guard !applied.isEmpty else {
-            return ProductUpdateRollbackEvidence(
-                state: .notRequired,
-                observedAt: operations.now(),
-                evidence: nil,
-                issue: nil
+            return (
+                ProductUpdateRollbackEvidence(
+                    state: .notRequired,
+                    observedAt: operations.now(),
+                    evidence: nil,
+                    issue: nil
+                ),
+                []
             )
         }
+        var receipts: [ProductUpdateLayerEffectReceipt] = []
         for layerPlan in applied.reversed() {
             guard layerPlan.rollback.state == .available,
                   let artifact = layerPlan.rollback.artifact else {
-                return ProductUpdateRollbackEvidence(
-                    state: .notAttempted,
-                    observedAt: operations.now(),
-                    evidence: nil,
-                    issue: ProductUpdateIssue(
-                        code: "rollback-artifact-unsupported",
-                        message: layerPlan.rollback.reason
-                            ?? "Rollback is not available.",
-                        retryable: false,
-                        dependency: "bundle-owned-layer-effect-executor"
-                    )
+                return (
+                    ProductUpdateRollbackEvidence(
+                        state: .notAttempted,
+                        observedAt: operations.now(),
+                        evidence: nil,
+                        issue: ProductUpdateIssue(
+                            code: "rollback-artifact-unsupported",
+                            message: layerPlan.rollback.reason
+                                ?? "Rollback is not available.",
+                            retryable: false,
+                            dependency: "bundle-owned-layer-effect-executor"
+                        )
+                    ),
+                    receipts
                 )
             }
             let receipt = execute(
@@ -200,23 +211,30 @@ public struct ExecuteBundleOwnedProductUpdateWorkflow {
                 artifact: artifact,
                 operations: operations
             )
+            receipts.append(receipt)
             guard receipt.state == .succeeded else {
-                return ProductUpdateRollbackEvidence(
-                    state: .failed,
-                    observedAt: receipt.observedAt,
-                    evidence: receipt.evidence,
-                    issue: receipt.issue
+                return (
+                    ProductUpdateRollbackEvidence(
+                        state: .failed,
+                        observedAt: receipt.observedAt,
+                        evidence: receipt.evidence,
+                        issue: receipt.issue
+                    ),
+                    receipts
                 )
             }
         }
-        return ProductUpdateRollbackEvidence(
-            state: .succeeded,
-            observedAt: operations.now(),
-            evidence: ProductUpdateEvidenceReference(
-                kind: "product-update-rollback",
-                id: "\(updateId):rollback"
+        return (
+            ProductUpdateRollbackEvidence(
+                state: .succeeded,
+                observedAt: operations.now(),
+                evidence: ProductUpdateEvidenceReference(
+                    kind: "product-update-rollback",
+                    id: "\(updateId):rollback"
+                ),
+                issue: nil
             ),
-            issue: nil
+            receipts
         )
     }
 }

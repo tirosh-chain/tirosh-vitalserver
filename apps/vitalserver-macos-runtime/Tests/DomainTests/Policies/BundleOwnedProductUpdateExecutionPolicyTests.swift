@@ -67,7 +67,7 @@ final class BundleOwnedProductUpdateExecutionPolicyTests: XCTestCase {
         XCTAssertTrue(evaluated.issue?.retryable == true)
     }
 
-    func testRejectsSuccessReportWithIncompleteLayerEvidence() {
+    func testRejectsSuccessReportWithIncompleteApplyReceipts() {
         let invocation = invocation()
         let plan = ProductUpdateExecutionPlan(
             updateId: invocation.updateId,
@@ -85,11 +85,8 @@ final class BundleOwnedProductUpdateExecutionPolicyTests: XCTestCase {
             state: .succeeded,
             startedAt: "2026-07-28T10:00:00Z",
             finishedAt: "2026-07-28T10:01:00Z",
-            layerEvidence: [
-                ProductUpdateLayerExecutionEvidence(
-                    receipt: receipt(for: request, state: .succeeded)
-                )
-            ],
+            applyReceipts: [receipt(for: request, state: .succeeded)],
+            rollbackReceipts: [],
             rollback: ProductUpdateRollbackEvidence(
                 state: .notRequired,
                 observedAt: "2026-07-28T10:01:00Z",

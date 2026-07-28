@@ -54,6 +54,15 @@ final class ExecuteBundleOwnedProductUpdateWorkflowTests: XCTestCase {
         XCTAssertEqual(report.state, .failed)
         XCTAssertEqual(report.rollback.state, .succeeded)
         XCTAssertEqual(
+            report.rollbackReceipts.map {
+                "\($0.operation.rawValue):\($0.layer.rawValue):\($0.state.rawValue)"
+            },
+            [
+                "rollback:guest-runtime:succeeded",
+                "rollback:container:succeeded",
+            ]
+        )
+        XCTAssertEqual(
             fixture.requests.map { "\($0.operation.rawValue):\($0.layer.rawValue)" },
             [
                 "apply:container",
@@ -76,7 +85,7 @@ final class ExecuteBundleOwnedProductUpdateWorkflowTests: XCTestCase {
         )
 
         XCTAssertEqual(report.state, .failed)
-        XCTAssertEqual(report.layerEvidence[0].state, .unavailable)
+        XCTAssertEqual(report.applyReceipts[0].state, .unavailable)
         XCTAssertEqual(
             report.failure?.code,
             "layer-effect-receipt-unavailable"
