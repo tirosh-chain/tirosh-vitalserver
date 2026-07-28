@@ -333,7 +333,6 @@ public struct RuntimeBundleComposition {
                     backupsDirectory: context.backupsDirectory,
                     rootfsBase: context.rootfsBase,
                     updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
-                    currentUpdaterVersion: Constants.launcherVersion,
                     currentChannel: context.installedChannel,
                     currentPlatform: Constants.Platform.current
                 ))

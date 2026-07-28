@@ -64,7 +64,6 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 backupsDirectory: URL(fileURLWithPath: "/product/backups"),
                 rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
                 updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
-                currentUpdaterVersion: "1.0.0",
                 currentChannel: .stable,
                 currentPlatform: "macos-arm64"
             ),

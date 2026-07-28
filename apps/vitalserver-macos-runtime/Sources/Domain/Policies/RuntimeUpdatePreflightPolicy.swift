@@ -27,13 +27,11 @@ public enum RuntimeUpdateRootfsStorageInput: Equatable, Sendable {
 public enum RuntimeUpdatePreflightPolicy {
     public static func checkCompatibility(
         manifest: UpdateBundleManifest,
-        currentUpdaterVersion: String,
         currentChannel: UpdateBundleChannel,
         currentPlatform: String?
     ) throws {
         try RuntimeUpdateCompatibilityChecker.check(
             manifest: manifest,
-            currentUpdaterVersion: currentUpdaterVersion,
             currentChannel: currentChannel,
             currentPlatform: currentPlatform
         )
