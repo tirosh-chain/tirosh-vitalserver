@@ -51,7 +51,7 @@ include make/vm.mk
 	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/cached dist/dmg/dev/compile dist/dmg/dev/verify \
 	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/review dist/pkg/dev/runtime-smoke dist/pkg/dev/verify \
 	dist/dmg/release/review dist/pkg/release/review dist/pkg/release/verify \
-	dist/update/dev dist/update/verify/dev dist/update/dev/smoke dist/update/dev/apply-smoke \
+	dist/update/dev dist/update/verify/dev dist/update/dev/smoke dist/update/dev/apply-smoke dist/update/dev/rollback-smoke \
 	dist/image-update/dev dist/image-update/verify/dev dist/image-update/dev/smoke dist/image-update/dev/apply-smoke \
 	dist/troubleshooting/dev dist/troubleshooting/dev/verify dist/troubleshooting/release dist/troubleshooting/release/verify \
 	dist/install/dev dist/install/dev/verified dist/installed/health dist/installed/smoke dist/uninstall/dev \
@@ -93,6 +93,7 @@ dist/update/dev: internal/vm/update/dev
 dist/update/verify/dev: internal/vm/update/verify/dev
 dist/update/dev/smoke: internal/vm/update/smoke/dev
 dist/update/dev/apply-smoke: internal/vm/update/apply-smoke/dev
+dist/update/dev/rollback-smoke: internal/vm/update/rollback-smoke/dev
 dist/image-update/dev: internal/vm/image-update/dev
 dist/image-update/verify/dev: internal/vm/image-update/verify/dev
 dist/image-update/dev/smoke: internal/vm/image-update/smoke/dev
@@ -368,9 +369,11 @@ help/dist:
 	@printf "  dist/image-update/dev/smoke   Static smoke for development VM image/rootfs update bundle\n"
 	@printf "  dist/image-update/release/smoke\n"
 	@printf "                                Static smoke for release VM image/rootfs update bundle\n"
-	@printf "  dist/update/dev/apply-smoke   Guarded product update apply smoke interface\n"
+	@printf "  dist/update/dev/apply-smoke   Apply and prove a signed stable update on an installed Helper\n"
 	@printf "  dist/update/release/apply-smoke\n"
-	@printf "                                Guarded release product update apply smoke interface\n"
+	@printf "                                Apply and prove a signed release update on an installed Helper\n"
+	@printf "  dist/update/dev/rollback-smoke\n"
+	@printf "                                Apply a signed fault bundle and prove ordered reverse rollback\n"
 	@printf "  dist/image-update/dev/apply-smoke\n"
 	@printf "                                Guarded VM image update apply smoke interface\n"
 	@printf "\n"

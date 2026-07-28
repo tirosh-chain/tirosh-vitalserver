@@ -4,8 +4,8 @@
 .PHONY: internal/vm/troubleshooting internal/vm/troubleshooting/verify internal/vm/troubleshooting/dev internal/vm/troubleshooting/dev/verify internal/vm/troubleshooting/release internal/vm/troubleshooting/release/verify
 .PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/artifact-verify internal/vm/dmg/environment-preflight internal/vm/dmg/dev internal/vm/dmg/dev/cached internal/vm/dmg/dev/artifact-verify internal/vm/dmg/dev/compile internal/vm/dmg/dev/review internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/artifact-verify internal/vm/dmg/release/compile internal/vm/dmg/release/review internal/vm/dmg/release/runtime-smoke
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
-.PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release internal/vm/update/smoke internal/vm/update/smoke/dev internal/vm/update/smoke/release internal/vm/update/apply-smoke internal/vm/update/apply-smoke/dev internal/vm/update/apply-smoke/release
-.PHONY: internal/vm/image-update internal/vm/image-update/dev
+.PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release internal/vm/update/smoke internal/vm/update/smoke/dev internal/vm/update/smoke/release internal/vm/update/apply-smoke internal/vm/update/apply-smoke/dev internal/vm/update/apply-smoke/release internal/vm/update/rollback-smoke/dev internal/vm/update/tools internal/vm/update/host-platform-artifact internal/vm/update/require-inputs
+.PHONY: internal/vm/image-update internal/vm/image-update/dev internal/vm/image-update/legacy-build internal/vm/image-update/legacy-verify internal/vm/image-update/legacy-apply-smoke
 .PHONY: internal/vm/image-update/release
 .PHONY: internal/vm/update/verify internal/vm/update/verify/dev
 .PHONY: internal/vm/update/verify/release
@@ -14,13 +14,21 @@
 .PHONY: internal/vm/image-update/smoke internal/vm/image-update/smoke/dev internal/vm/image-update/smoke/release internal/vm/image-update/apply-smoke internal/vm/image-update/apply-smoke/dev internal/vm/image-update/apply-smoke/release
 .PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs internal/vm/golden-rootfs/compile internal/vm/golden-rootfs/negative internal/vm/golden-rootfs/require internal/vm/golden-rootfs/runtime-smoke
 
-# Public update bundle knobs. Two-phase is an explicit Updater bridge contract;
-# bundle kind and included artifacts must never infer it.
-VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
+# VM Image Update retains the pre-stable schema-3 publisher. Product Update
+# must only use the signed stable bootstrap composition below.
+VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
 VM_UPDATE_BUNDLE_KIND ?= product-update
 VM_UPDATE_TARGET_PLATFORM ?=
 VM_UPDATE_ROOTFS_BASE ?=
 VM_UPDATE_STATIC_SMOKE_HINT ?= make dist/update/dev/smoke
+
+VM_UPDATE_SWIFT_RELEASE_DIR ?= $(VM_SWIFT_PACKAGE_DIR)/.build/release
+VM_UPDATE_NEXT_UPDATER ?= $(VM_UPDATE_SWIFT_RELEASE_DIR)/vitalserver-update-runner
+VM_UPDATE_CONTAINER_EFFECT_EXECUTOR ?= $(VM_UPDATE_SWIFT_RELEASE_DIR)/vitalserver-container-layer-effect-executor
+VM_UPDATE_GUEST_RUNTIME_EFFECT_EXECUTOR ?= $(VM_UPDATE_SWIFT_RELEASE_DIR)/vitalserver-guest-runtime-layer-effect-executor
+VM_UPDATE_HOST_PLATFORM_EFFECT_EXECUTOR ?= $(VM_UPDATE_SWIFT_RELEASE_DIR)/vitalserver-host-platform-layer-effect-executor
+VM_UPDATE_HOST_PLATFORM_ARTIFACT ?= .tmp/stable-update-artifacts/$(VM_UPDATE_ID)-host-platform.tar.gz
+VM_UPDATE_HELPER_HOST_PLATFORM_MEDIA_TYPE := application/vnd.tirosh.vitalserver-helper.host-platform-release+tar+gzip
 
 # Public package artifact knobs.
 VM_NGINX_SOURCE_BIN ?= /opt/homebrew/opt/nginx/bin/nginx
@@ -632,18 +640,104 @@ internal/vm/troubleshooting/release/verify:
 	$(MAKE) internal/vm/troubleshooting/release VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 	$(MAKE) internal/vm/troubleshooting/verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
-internal/vm/update: internal/vm/release-contract pwa/build
-	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \
-		--release-file "$(VM_RELEASE_FILE)" \
-		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)" \
-		--requires-two-phase-update "$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)" \
-		--compression-threads "$(VM_COMPRESSION_THREADS)" \
-		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
-		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
-		--sdkroot "$(VM_SDKROOT)" \
-		--nginx-binary "$(VM_NGINX_BIN)" \
-		--target-platform "$(VM_UPDATE_TARGET_PLATFORM)" \
-		--rootfs-base "$(VM_UPDATE_ROOTFS_BASE)"
+define require_update_value
+	@test -n "$($(1))" || { echo "error: $(1) is required"; exit 1; }
+endef
+
+define require_update_file
+	@test -f "$($(1))" || { echo "error: $(1) must be a regular file: $($(1))"; exit 1; }
+endef
+
+internal/vm/update/tools: internal/vm/update/require-inputs
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release \
+		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
+		--product vitalserver-update-runner
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release \
+		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
+		--product vitalserver-container-layer-effect-executor
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release \
+		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
+		--product vitalserver-guest-runtime-layer-effect-executor
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift build -c release \
+		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
+		--product vitalserver-host-platform-layer-effect-executor
+
+internal/vm/update/require-inputs:
+	$(call require_update_value,VM_UPDATE_ID)
+	$(call require_update_value,VM_UPDATE_SPECIFICATION_ID)
+	$(call require_update_value,VM_UPDATE_PRODUCT_VERSION)
+	$(call require_update_value,VM_UPDATE_RUNTIME_VERSION)
+	$(call require_update_value,VM_STABLE_UPDATE_TARGET_PLATFORM)
+	$(call require_update_value,VM_STABLE_UPDATE_TARGET_ARCHITECTURE)
+	$(call require_update_value,VM_UPDATE_ISSUED_AT)
+	$(call require_update_value,VM_UPDATE_PUBLISHER_KEY_ID)
+	$(call require_update_value,VM_UPDATE_PUBLISHER_PRIVATE_KEY)
+	$(call require_update_value,VM_UPDATE_BOOTSTRAP_TRUST_STORE)
+	$(call require_update_value,VM_UPDATE_CONTAINER_ARTIFACT)
+	$(call require_update_value,VM_UPDATE_CONTAINER_ROLLBACK_ARTIFACT)
+	$(call require_update_value,VM_UPDATE_CONTAINER_EFFECT_CONFIGURATION)
+	$(call require_update_value,VM_UPDATE_GUEST_RUNTIME_ARTIFACT)
+	$(call require_update_value,VM_UPDATE_GUEST_RUNTIME_ROLLBACK_ARTIFACT)
+	$(call require_update_value,VM_UPDATE_GUEST_RUNTIME_EFFECT_CONFIGURATION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ARCHIVE_COMPOSITION)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_ROLLBACK_ARTIFACT)
+	$(call require_update_value,VM_UPDATE_HOST_PLATFORM_EFFECT_CONFIGURATION)
+	$(call require_update_file,VM_UPDATE_PUBLISHER_PRIVATE_KEY)
+	$(call require_update_file,VM_UPDATE_BOOTSTRAP_TRUST_STORE)
+	$(call require_update_file,VM_UPDATE_CONTAINER_ARTIFACT)
+	$(call require_update_file,VM_UPDATE_CONTAINER_ROLLBACK_ARTIFACT)
+	$(call require_update_file,VM_UPDATE_CONTAINER_EFFECT_CONFIGURATION)
+	$(call require_update_file,VM_UPDATE_GUEST_RUNTIME_ARTIFACT)
+	$(call require_update_file,VM_UPDATE_GUEST_RUNTIME_ROLLBACK_ARTIFACT)
+	$(call require_update_file,VM_UPDATE_GUEST_RUNTIME_EFFECT_CONFIGURATION)
+	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_ARCHIVE_COMPOSITION)
+	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_ROLLBACK_ARTIFACT)
+	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_EFFECT_CONFIGURATION)
+
+internal/vm/update/host-platform-artifact: internal/vm/update/tools
+	@mkdir -p "$(dir $(VM_UPDATE_HOST_PLATFORM_ARTIFACT))"
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" \
+		helper-host-platform-release-archive \
+		--composition "$(VM_UPDATE_HOST_PLATFORM_ARCHIVE_COMPOSITION)" \
+		--output "$(VM_UPDATE_HOST_PLATFORM_ARTIFACT)"
+
+internal/vm/update: internal/vm/release-contract internal/vm/update/host-platform-artifact
+	$(call require_update_file,VM_UPDATE_NEXT_UPDATER)
+	$(call require_update_file,VM_UPDATE_CONTAINER_EFFECT_EXECUTOR)
+	$(call require_update_file,VM_UPDATE_GUEST_RUNTIME_EFFECT_EXECUTOR)
+	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_EFFECT_EXECUTOR)
+	$(call require_update_file,VM_UPDATE_HOST_PLATFORM_ARTIFACT)
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" helper-stable-update-release \
+		--update-id "$(VM_UPDATE_ID)" \
+		--specification-id "$(VM_UPDATE_SPECIFICATION_ID)" \
+		--product-version "$(VM_UPDATE_PRODUCT_VERSION)" \
+		--runtime-version "$(VM_UPDATE_RUNTIME_VERSION)" \
+		--target-platform "$(VM_STABLE_UPDATE_TARGET_PLATFORM)" \
+		--target-architecture "$(VM_STABLE_UPDATE_TARGET_ARCHITECTURE)" \
+		--container-artifact "$(VM_UPDATE_CONTAINER_ARTIFACT)" \
+		--container-artifact-media-type "application/x-tar" \
+		--container-effect-executor "$(VM_UPDATE_CONTAINER_EFFECT_EXECUTOR)" \
+		--container-effect-configuration "$(VM_UPDATE_CONTAINER_EFFECT_CONFIGURATION)" \
+		--container-rollback-artifact "$(VM_UPDATE_CONTAINER_ROLLBACK_ARTIFACT)" \
+		--container-rollback-media-type "application/x-tar" \
+		--guest-runtime-artifact "$(VM_UPDATE_GUEST_RUNTIME_ARTIFACT)" \
+		--guest-runtime-artifact-media-type "application/x-tar" \
+		--guest-runtime-effect-executor "$(VM_UPDATE_GUEST_RUNTIME_EFFECT_EXECUTOR)" \
+		--guest-runtime-effect-configuration "$(VM_UPDATE_GUEST_RUNTIME_EFFECT_CONFIGURATION)" \
+		--guest-runtime-rollback-artifact "$(VM_UPDATE_GUEST_RUNTIME_ROLLBACK_ARTIFACT)" \
+		--guest-runtime-rollback-media-type "application/x-tar" \
+		--host-platform-artifact "$(VM_UPDATE_HOST_PLATFORM_ARTIFACT)" \
+		--host-platform-artifact-media-type "$(VM_UPDATE_HELPER_HOST_PLATFORM_MEDIA_TYPE)" \
+		--host-platform-effect-executor "$(VM_UPDATE_HOST_PLATFORM_EFFECT_EXECUTOR)" \
+		--host-platform-effect-configuration "$(VM_UPDATE_HOST_PLATFORM_EFFECT_CONFIGURATION)" \
+		--host-platform-rollback-artifact "$(VM_UPDATE_HOST_PLATFORM_ROLLBACK_ARTIFACT)" \
+		--host-platform-rollback-media-type "$(VM_UPDATE_HELPER_HOST_PLATFORM_MEDIA_TYPE)" \
+		--next-updater "$(VM_UPDATE_NEXT_UPDATER)" \
+		--publisher-key-id "$(VM_UPDATE_PUBLISHER_KEY_ID)" \
+		--publisher-private-key "$(VM_UPDATE_PUBLISHER_PRIVATE_KEY)" \
+		--publisher-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)" \
+		--issued-at "$(VM_UPDATE_ISSUED_AT)" \
+		--output "$(VM_UPDATE_OUTPUT)"
 
 internal/vm/update/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/update/dev:
@@ -658,11 +752,11 @@ internal/vm/image-update: VM_UPDATE_ROOTFS_BASE = $(VM_PKG_ROOTFS_CACHE)
 internal/vm/image-update: VM_UPDATE_BUNDLE_KIND := vm-image-update
 internal/vm/image-update:
 	$(MAKE) internal/vm/golden-rootfs VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
-	$(MAKE) internal/vm/update \
+	$(MAKE) internal/vm/image-update/legacy-build \
 		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
 		VM_UPDATE_ROOTFS_BASE="$(VM_UPDATE_ROOTFS_BASE)" \
 		VM_UPDATE_BUNDLE_KIND="$(VM_UPDATE_BUNDLE_KIND)" \
-		VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE="$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)"
+		VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE="$(VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE)"
 
 internal/vm/image-update/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/image-update/dev:
@@ -674,9 +768,13 @@ internal/vm/image-update/release:
 	$(MAKE) internal/vm/image-update VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
 
 internal/vm/update/verify:
-	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle-verify \
-		--release-file "$(VM_RELEASE_FILE)" \
-		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)"
+	$(call require_update_value,VM_UPDATE_OUTPUT)
+	$(call require_update_value,VM_UPDATE_BOOTSTRAP_TRUST_STORE)
+	$(call require_update_file,VM_UPDATE_BOOTSTRAP_TRUST_STORE)
+	$(call require_update_file,VM_UPDATE_OUTPUT)
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" verify-update-bootstrap-bundle \
+		--bundle "$(VM_UPDATE_OUTPUT)" \
+		--publisher-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
 
 internal/vm/update/verify/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/update/verify/dev:
@@ -703,32 +801,96 @@ internal/vm/update/smoke/release:
 
 internal/vm/update/apply-smoke:
 	@if [ "$(VM_UPDATE_APPLY_SMOKE_CONFIRM)" != "YES" ]; then \
+		printf "stable update apply smoke is destructive and requires VM_UPDATE_APPLY_SMOKE_CONFIRM=YES\n"; \
+		exit 2; \
+	fi
+	$(call require_update_value,VM_UPDATE_ID)
+	$(call require_update_value,VM_UPDATE_APPLY_REQUEST_ID)
+	$(call require_update_file,VM_UPDATE_INSTALLED_CLI)
+	$(MAKE) internal/vm/update/verify \
+		VM_UPDATE_OUTPUT="$(VM_UPDATE_OUTPUT)" \
+		VM_UPDATE_BOOTSTRAP_TRUST_STORE="$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
+	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime apply-update-bootstrap \
+		"$(abspath $(VM_UPDATE_OUTPUT))" \
+		--request-id "$(VM_UPDATE_APPLY_REQUEST_ID)"
+	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime prove-update-bootstrap \
+		"$(VM_UPDATE_ID)" \
+		--expect succeeded
+
+internal/vm/update/apply-smoke/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/update/apply-smoke/dev:
+	$(MAKE) internal/vm/update/apply-smoke \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/update/apply-smoke/release: override VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/update/apply-smoke/release:
+	$(MAKE) internal/vm/require-release-branch
+	$(MAKE) internal/vm/update/apply-smoke \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/update/rollback-smoke/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/update/rollback-smoke/dev:
+	@if [ "$(VM_UPDATE_APPLY_SMOKE_CONFIRM)" != "YES" ]; then \
+		printf "stable update rollback smoke is destructive and requires VM_UPDATE_APPLY_SMOKE_CONFIRM=YES\n"; \
+		exit 2; \
+	fi
+	$(call require_update_value,VM_UPDATE_ROLLBACK_PROOF_ID)
+	$(call require_update_value,VM_UPDATE_ROLLBACK_PROOF_REQUEST_ID)
+	$(call require_update_value,VM_UPDATE_ROLLBACK_PROOF_BUNDLE)
+	$(call require_update_file,VM_UPDATE_ROLLBACK_PROOF_BUNDLE)
+	$(call require_update_file,VM_UPDATE_INSTALLED_CLI)
+	$(call require_update_file,VM_UPDATE_BOOTSTRAP_TRUST_STORE)
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" \
+		verify-update-bootstrap-bundle \
+		--bundle "$(VM_UPDATE_ROLLBACK_PROOF_BUNDLE)" \
+		--publisher-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
+	@set +e; \
+	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime apply-update-bootstrap \
+		"$(abspath $(VM_UPDATE_ROLLBACK_PROOF_BUNDLE))" \
+		--request-id "$(VM_UPDATE_ROLLBACK_PROOF_REQUEST_ID)"; \
+	apply_status="$$?"; \
+	set -e; \
+	if [ "$${apply_status}" -eq 0 ]; then \
+		printf "signed rollback proof bundle unexpectedly succeeded\n" >&2; \
+		exit 1; \
+	fi
+	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime prove-update-bootstrap \
+		"$(VM_UPDATE_ROLLBACK_PROOF_ID)" \
+		--expect failed-rolled-back
+
+internal/vm/image-update/legacy-build: internal/vm/release-contract pwa/build
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \
+		--release-file "$(VM_RELEASE_FILE)" \
+		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)" \
+		--requires-two-phase-update "$(VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE)" \
+		--compression-threads "$(VM_COMPRESSION_THREADS)" \
+		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
+		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
+		--sdkroot "$(VM_SDKROOT)" \
+		--nginx-binary "$(VM_NGINX_BIN)" \
+		--target-platform "$(VM_UPDATE_TARGET_PLATFORM)" \
+		--rootfs-base "$(VM_UPDATE_ROOTFS_BASE)"
+
+internal/vm/image-update/legacy-verify:
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle-verify \
+		--release-file "$(VM_RELEASE_FILE)" \
+		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)"
+
+internal/vm/image-update/legacy-apply-smoke:
+	@if [ "$(VM_UPDATE_APPLY_SMOKE_CONFIRM)" != "YES" ]; then \
 		printf "update apply smoke is destructive and requires VM_UPDATE_APPLY_SMOKE_CONFIRM=YES\n"; \
 		printf "build and static smoke first: $(VM_UPDATE_STATIC_SMOKE_HINT)\n"; \
 		exit 2; \
 	fi
-	$(MAKE) internal/vm/update/verify \
+	$(MAKE) internal/vm/image-update/legacy-verify \
 		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
 		VM_UPDATE_BUNDLE_KIND="$(VM_UPDATE_BUNDLE_KIND)"
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle-apply-smoke \
 		--release-file "$(VM_RELEASE_FILE)" \
 		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)"
 
-internal/vm/update/apply-smoke/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
-internal/vm/update/apply-smoke/dev:
-	$(MAKE) internal/vm/update/apply-smoke \
-		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
-		VM_UPDATE_STATIC_SMOKE_HINT="make dist/update/dev/smoke"
-
-internal/vm/update/apply-smoke/release: override VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
-internal/vm/update/apply-smoke/release:
-	$(MAKE) internal/vm/require-release-branch
-	$(MAKE) internal/vm/update/apply-smoke \
-		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
-		VM_UPDATE_STATIC_SMOKE_HINT="make dist/update/release/smoke"
-
 internal/vm/image-update/verify: VM_UPDATE_BUNDLE_KIND := vm-image-update
-internal/vm/image-update/verify: internal/vm/update/verify
+internal/vm/image-update/verify: internal/vm/image-update/legacy-verify
 
 internal/vm/image-update/verify/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/image-update/verify/dev:
@@ -740,7 +902,7 @@ internal/vm/image-update/verify/release:
 	$(MAKE) internal/vm/image-update/verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/image-update/smoke: VM_UPDATE_BUNDLE_KIND := vm-image-update
-internal/vm/image-update/smoke: internal/vm/update/smoke
+internal/vm/image-update/smoke: internal/vm/image-update/verify
 
 internal/vm/image-update/smoke/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/image-update/smoke/dev:
@@ -751,7 +913,7 @@ internal/vm/image-update/smoke/release:
 	$(MAKE) internal/vm/image-update/verify/release VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/image-update/apply-smoke: VM_UPDATE_BUNDLE_KIND := vm-image-update
-internal/vm/image-update/apply-smoke: internal/vm/update/apply-smoke
+internal/vm/image-update/apply-smoke: internal/vm/image-update/legacy-apply-smoke
 
 internal/vm/image-update/apply-smoke/dev: override VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/image-update/apply-smoke/dev:

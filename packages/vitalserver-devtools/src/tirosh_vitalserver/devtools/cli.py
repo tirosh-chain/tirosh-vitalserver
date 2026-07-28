@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.macos_release import (
+    helper_host_platform_release_archive,
     helper_update_layer_artifacts,
 )
 from tirosh_vitalserver.devtools.adapters.update_bundle import (
@@ -23,6 +24,9 @@ from tirosh_vitalserver.devtools.application.usecases import (
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_services as guest_services_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    helper_host_platform_release as helper_host_platform_release_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     helper_stable_update_release as helper_stable_update_release_usecases,
@@ -857,6 +861,35 @@ def main() -> int:
         handler=lambda args: helper_stable_update_release_usecases.compose(
             helper_stable_update_release_input(args),
             helper_stable_update_release_operations(),
+        )
+    )
+
+    helper_host_platform_release = subparsers.add_parser(
+        "helper-host-platform-release-archive",
+        help=(
+            "compose a deterministic Helper Host Platform replacement archive "
+            "without its stable update owners"
+        ),
+    )
+    helper_host_platform_release.add_argument(
+        "--composition",
+        type=Path,
+        required=True,
+    )
+    helper_host_platform_release.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+    )
+    helper_host_platform_release.set_defaults(
+        handler=lambda args: helper_host_platform_release_usecases.compose(
+            args.composition,
+            args.output,
+            helper_host_platform_release_usecases.HelperHostPlatformReleaseOperations(
+                compose_archive=(
+                    helper_host_platform_release_archive.compose_helper_host_platform_release_archive
+                ),
+            ),
         )
     )
 

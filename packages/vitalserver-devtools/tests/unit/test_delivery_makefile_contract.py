@@ -63,6 +63,27 @@ def test_package_delivery_requires_the_release_owned_bootstrap_trust_store() -> 
             in recipe
         )
 
+
+def test_stable_update_uses_the_helper_host_release_contract_only() -> None:
+    makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    artifact_recipe = target_recipe(
+        makefile,
+        "internal/vm/update/host-platform-artifact",
+    )
+    release_recipe = target_recipe(makefile, "internal/vm/update")
+
+    assert "helper-host-platform-release-archive" in artifact_recipe
+    assert "host-platform-release-archive-composer" not in makefile
+    assert "runtime-platform/tooling" not in artifact_recipe
+    assert (
+        "application/vnd.tirosh.vitalserver-helper."
+        "host-platform-release+tar+gzip"
+    ) in makefile
+    assert (
+        '--host-platform-artifact-media-type '
+        '"$(VM_UPDATE_HELPER_HOST_PLATFORM_MEDIA_TYPE)"'
+    ) in release_recipe
+
     for target in (
         "internal/vm/pkg",
         "internal/vm/dmg",
@@ -240,15 +261,62 @@ def test_vm_image_update_does_not_infer_updater_bridge_from_rootfs() -> None:
         maxsplit=1,
     )[1].split("internal/vm/image-update/dev", maxsplit=1)[0]
 
-    assert "VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false" in makefile
+    assert "VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false" in makefile
     assert (
         "internal/vm/image-update: "
-        "VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE := true"
+        "VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE := true"
     ) not in makefile
     assert (
-        'VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE='
-        '"$(VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE)"'
+        'VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE='
+        '"$(VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE)"'
     ) in image_update_contract
+
+
+def test_public_product_update_uses_signed_stable_three_layer_contract() -> None:
+    package_makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    root_makefile = ROOT_MAKEFILE.read_text(encoding="utf-8")
+    update = target_recipe(package_makefile, "internal/vm/update")
+    verify = target_recipe(package_makefile, "internal/vm/update/verify")
+
+    assert "helper-stable-update-release" in update
+    assert "--container-artifact" in update
+    assert "--guest-runtime-artifact" in update
+    assert "--host-platform-artifact" in update
+    assert update.index("--container-artifact") < update.index(
+        "--guest-runtime-artifact"
+    ) < update.index("--host-platform-artifact")
+    assert "--publisher-private-key" in update
+    assert "--publisher-trust-store" in update
+    assert "release-update-bundle" not in update
+    assert "verify-update-bootstrap-bundle" in verify
+    assert "--publisher-trust-store" in verify
+    assert "dist/update/dev/apply-smoke" in root_makefile
+    assert "dist/update/release/apply-smoke" in root_makefile
+
+
+def test_stable_update_field_smokes_require_owner_proof() -> None:
+    package_makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    root_makefile = ROOT_MAKEFILE.read_text(encoding="utf-8")
+    apply_smoke = target_recipe(
+        package_makefile,
+        "internal/vm/update/apply-smoke",
+    )
+    rollback_smoke = target_recipe(
+        package_makefile,
+        "internal/vm/update/rollback-smoke/dev",
+    )
+
+    assert "VM_UPDATE_APPLY_REQUEST_ID" in apply_smoke
+    assert "verify-update-bootstrap-bundle" not in apply_smoke
+    assert "internal/vm/update/verify" in apply_smoke
+    assert "runtime apply-update-bootstrap" in apply_smoke
+    assert "runtime prove-update-bootstrap" in apply_smoke
+    assert "--expect succeeded" in apply_smoke
+    assert "VM_UPDATE_ROLLBACK_PROOF_BUNDLE" in rollback_smoke
+    assert "verify-update-bootstrap-bundle" in rollback_smoke
+    assert "signed rollback proof bundle unexpectedly succeeded" in rollback_smoke
+    assert "--expect failed-rolled-back" in rollback_smoke
+    assert "dist/update/dev/rollback-smoke" in root_makefile
 
 
 def test_public_dmg_targets_route_only_to_the_standard_profiles() -> None:
