@@ -132,6 +132,8 @@ extension HostPlatformInstallationPolicyTests {
       expectedInstallationRevision: expectedRevision,
       targetRelease: targetRelease(),
       sourceArtifactPath: "/incoming/host-platform.pkg",
+      sourceArtifactSizeBytes: 1024,
+      sourceArtifactMediaType: HostPlatformReleaseArchiveContract.mediaType,
       stagingAttemptId: "attempt-1",
       requestedAt: "2026-07-29T01:00:00Z"
     )

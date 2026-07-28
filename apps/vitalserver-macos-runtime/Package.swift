@@ -41,6 +41,14 @@ let package = Package(
             targets: ["GuestRuntimeLayerEffectExecutorHost"]
         ),
         .executable(
+            name: "vitalserver-host-installation-manager",
+            targets: ["HostInstallationManagerHost"]
+        ),
+        .executable(
+            name: "vitalserver-host-platform-layer-effect-executor",
+            targets: ["HostPlatformLayerEffectExecutorHost"]
+        ),
+        .executable(
             name: "vitalserver-troubleshooting-reset-for-reinstall",
             targets: ["TroubleshootingResetForReinstall"]
         ),
@@ -81,7 +89,7 @@ let package = Package(
         ),
         .target(
             name: "OutboundAdapters",
-            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl"],
+            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl"],
             path: "Sources/Adapters/Outbound",
             linkerSettings: [
                 .linkedLibrary("sqlite3")
@@ -168,6 +176,21 @@ let package = Package(
             name: "GuestRuntimeLayerEffectExecutorHost",
             dependencies: ["UpdateLayerEffectExecutor"],
             path: "Sources/Hosts/GuestRuntimeLayerEffectExecutor"
+        ),
+        .executableTarget(
+            name: "HostInstallationManagerHost",
+            dependencies: [
+                "Contracts",
+                "Domain",
+                "Application",
+                "OutboundAdapters",
+            ],
+            path: "Sources/Hosts/HostInstallationManager"
+        ),
+        .executableTarget(
+            name: "HostPlatformLayerEffectExecutorHost",
+            dependencies: ["Contracts", "Domain"],
+            path: "Sources/Hosts/HostPlatformLayerEffectExecutor"
         ),
         .executableTarget(
             name: "TroubleshootingResetForReinstall",
@@ -264,6 +287,13 @@ let package = Package(
         .testTarget(
             name: "UpdateLayerEffectExecutorTests",
             dependencies: ["Contracts", "UpdateLayerEffectExecutor"]
+        ),
+        .testTarget(
+            name: "HostPlatformLayerEffectExecutorHostTests",
+            dependencies: [
+                "Contracts",
+                "HostPlatformLayerEffectExecutorHost",
+            ]
         ),
         .testTarget(
             name: "MacControlPanelHostTests",

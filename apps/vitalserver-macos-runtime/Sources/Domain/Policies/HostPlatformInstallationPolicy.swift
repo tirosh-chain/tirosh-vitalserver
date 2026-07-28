@@ -255,7 +255,8 @@ public enum HostPlatformInstallationPolicy {
       operationId: operation.id,
       installationId: operation.installationId,
       expectedInstallationRevision: operation.expectedInstallationRevision,
-      targetRelease: operation.targetRelease
+      targetRelease: operation.targetRelease,
+      previousRelease: operation.previousRelease
     )
   }
 

@@ -1,3 +1,10 @@
+public enum HostPlatformReleaseArchiveContract {
+  public static let mediaType =
+    "application/vnd.tirosh.vitalserver-helper.host-platform-release+tar+gzip"
+  public static let manifestSchemaVersion =
+    "vitalserver.helper-host-platform-release-manifest/v1"
+}
+
 public struct HostPlatformRelease: Codable, Equatable, Sendable {
   public let id: String
   public let version: String
@@ -167,6 +174,8 @@ public struct HostPlatformInstallationCommand: Codable, Equatable, Sendable {
   public let expectedInstallationRevision: Int
   public let targetRelease: HostPlatformRelease
   public let sourceArtifactPath: String
+  public let sourceArtifactSizeBytes: UInt64
+  public let sourceArtifactMediaType: String
   public let stagingAttemptId: String
   public let requestedAt: String
 
@@ -177,6 +186,8 @@ public struct HostPlatformInstallationCommand: Codable, Equatable, Sendable {
     expectedInstallationRevision: Int,
     targetRelease: HostPlatformRelease,
     sourceArtifactPath: String,
+    sourceArtifactSizeBytes: UInt64,
+    sourceArtifactMediaType: String,
     stagingAttemptId: String,
     requestedAt: String
   ) {
@@ -186,6 +197,8 @@ public struct HostPlatformInstallationCommand: Codable, Equatable, Sendable {
     self.expectedInstallationRevision = expectedInstallationRevision
     self.targetRelease = targetRelease
     self.sourceArtifactPath = sourceArtifactPath
+    self.sourceArtifactSizeBytes = sourceArtifactSizeBytes
+    self.sourceArtifactMediaType = sourceArtifactMediaType
     self.stagingAttemptId = stagingAttemptId
     self.requestedAt = requestedAt
   }
@@ -198,6 +211,7 @@ public struct HostPlatformServiceReconciliationRequest: Codable, Equatable, Send
   public let installationId: String
   public let expectedInstallationRevision: Int
   public let targetRelease: HostPlatformRelease
+  public let previousRelease: HostPlatformRelease
 
   public init(
     schemaVersion: String,
@@ -205,7 +219,8 @@ public struct HostPlatformServiceReconciliationRequest: Codable, Equatable, Send
     operationId: String,
     installationId: String,
     expectedInstallationRevision: Int,
-    targetRelease: HostPlatformRelease
+    targetRelease: HostPlatformRelease,
+    previousRelease: HostPlatformRelease
   ) {
     self.schemaVersion = schemaVersion
     self.reconciliationId = reconciliationId
@@ -213,5 +228,70 @@ public struct HostPlatformServiceReconciliationRequest: Codable, Equatable, Send
     self.installationId = installationId
     self.expectedInstallationRevision = expectedInstallationRevision
     self.targetRelease = targetRelease
+    self.previousRelease = previousRelease
   }
+}
+
+public struct HostPlatformReleaseArchiveManifest:
+  Codable,
+  Equatable,
+  Sendable
+{
+  public let schemaVersion: String
+  public let installationId: String
+  public let release: HostPlatformReleaseIdentity
+  public let releaseCatalogPath: String
+  public let releaseRootPath: String
+  public let currentReleaseLinkPath: String
+  public let files: [HostPlatformImmutablePayloadEntry]
+  public let operatorInterface: HostPlatformOperatorInterface
+  public let replaceableServices: [HostPlatformRequiredService]
+  public let stableComponents: [HostPlatformStableComponent]
+  public let mutableStores: [HostPlatformMutableStore]
+}
+
+public struct HostPlatformReleaseIdentity: Codable, Equatable, Sendable {
+  public let id: String
+  public let version: String
+}
+
+public struct HostPlatformImmutablePayloadEntry:
+  Codable,
+  Equatable,
+  Sendable
+{
+  public let relativePath: String
+  public let sha256: String
+  public let executable: Bool
+}
+
+public struct HostPlatformOperatorInterface: Codable, Equatable, Sendable {
+  public let bootstrapConfigurationPath: String
+  public let bootstrapConfigurationSha256: String
+  public let applicationBundlePath: String
+  public let applicationBundleRelativePath: String
+  public let applicationBundleTreeSha256: String
+  public let applicationBundleEntrypointRelativePath: String
+}
+
+public struct HostPlatformRequiredService: Codable, Equatable, Sendable {
+  public let role: String
+  public let manager: String
+  public let name: String
+  public let definitionPath: String
+  public let definitionSha256: String
+}
+
+public struct HostPlatformStableComponent: Codable, Equatable, Sendable {
+  public let role: String
+  public let executablePath: String
+  public let serviceName: String?
+}
+
+public struct HostPlatformMutableStore: Codable, Equatable, Sendable {
+  public let id: String
+  public let path: String
+  public let kind: String
+  public let owner: String
+  public let retention: String
 }
