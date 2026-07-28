@@ -7,16 +7,20 @@ final class UpdateBootstrapTrustStoreReaderTests: XCTestCase {
     func testLoadsDecodedPublicKeyByOwnerId() throws {
         let file = try write(
             """
-            {"schemaVersion":"v1","keys":[{"id":"release-key","algorithm":"ed25519","publicKey":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}]}
+            {"schemaVersion":"v2","keys":[{"id":"release-key","algorithm":"ed25519","publicKey":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","state":"active"}]}
             """
         )
         defer {
             try? FileManager.default.removeItem(at: file)
         }
 
-        let keys = try reader().loadPublicKeys(from: file)
+        let keys = try reader().loadPublisherKeys(from: file)
 
-        XCTAssertEqual(keys["release-key"], Data(repeating: 0, count: 32))
+        XCTAssertEqual(keys["release-key"]?.state, .active)
+        XCTAssertEqual(
+            keys["release-key"]?.publicKey,
+            Data(repeating: 0, count: 32).base64EncodedString()
+        )
     }
 
     func testReportsMissingTrustStoreAsUnavailable() {
@@ -24,7 +28,7 @@ final class UpdateBootstrapTrustStoreReaderTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString)
 
         XCTAssertThrowsError(
-            try reader().loadPublicKeys(from: file)
+            try reader().loadPublisherKeys(from: file)
         ) { error in
             XCTAssertEqual(
                 error as? UpdateBootstrapTrustStoreLoadError,
@@ -40,7 +44,7 @@ final class UpdateBootstrapTrustStoreReaderTests: XCTestCase {
         }
 
         XCTAssertThrowsError(
-            try reader().loadPublicKeys(from: file)
+            try reader().loadPublisherKeys(from: file)
         ) { error in
             guard case .decodeFailed(let path, _) =
                     error as? UpdateBootstrapTrustStoreLoadError else {

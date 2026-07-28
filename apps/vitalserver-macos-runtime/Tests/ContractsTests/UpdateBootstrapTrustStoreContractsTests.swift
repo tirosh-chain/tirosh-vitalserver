@@ -7,12 +7,12 @@ final class UpdateBootstrapTrustStoreContractsTests: XCTestCase {
             UpdateBootstrapTrustStore.self,
             from: Data(
                 """
-                {"schemaVersion":"v1","keys":[{"id":"release-key","algorithm":"ed25519","publicKey":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}]}
+                {"schemaVersion":"v2","keys":[{"id":"release-key","algorithm":"ed25519","publicKey":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","state":"active"}]}
                 """.utf8
             )
         )
 
-        XCTAssertEqual(store.schemaVersion, "v1")
+        XCTAssertEqual(store.schemaVersion, "v2")
         XCTAssertEqual(store.keys.map(\.id), ["release-key"])
     }
 
@@ -21,7 +21,7 @@ final class UpdateBootstrapTrustStoreContractsTests: XCTestCase {
             UpdateBootstrapTrustStore.self,
             from: Data(
                 """
-                {"schemaVersion":"v1","keys":[{"id":"release-key","algorithm":"ed25519","publicKey":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","purpose":"update"}]}
+                {"schemaVersion":"v2","keys":[{"id":"release-key","algorithm":"ed25519","publicKey":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","state":"active","purpose":"update"}]}
                 """.utf8
             )
         ))

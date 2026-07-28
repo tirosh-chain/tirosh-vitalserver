@@ -434,12 +434,12 @@ extension RuntimeLifecycle {
             entriesRead: entriesRead
         )
 
-        let publicKeys = try UpdateBootstrapTrustStoreReader(
+        let publisherKeys = try UpdateBootstrapTrustStoreReader(
             validate: UpdateBootstrapTrustStorePolicy.validate
-        ).loadPublicKeys(from: installedPaths.updateBootstrapTrustStore)
+        ).loadPublisherKeys(from: installedPaths.updateBootstrapTrustStore)
         let canonicalEncoder = UpdateBootstrapCanonicalPayloadEncoder()
         let signatureVerifier = UpdateBootstrapPublisherSignatureVerifier(
-            publicKeysById: publicKeys
+            publisherKeysById: publisherKeys
         )
         let artifactObserver = UpdateBootstrapArtifactFileObserver(
             bundleDirectory: bundleRoot

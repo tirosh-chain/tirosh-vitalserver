@@ -91,18 +91,20 @@ export VM_UPDATE_BOOTSTRAP_TRUST_STORE=/secure/release/update-bootstrap-trust-st
 make dist/dmg/dev
 ```
 
-입력은 다음 strict v1 계약을 따릅니다. `keys`는 비어 있을 수 없고, key ID는
+입력은 다음 strict v2 계약을 따릅니다. `keys`는 비어 있을 수 없고, key ID는
 중복될 수 없으며, `publicKey`는 정확히 32 byte Ed25519 public key의 base64
-표현이어야 합니다. 알 수 없는 필드는 거부됩니다.
+표현이어야 합니다. `state`는 `active` 또는 `revoked`이며 알 수 없는 필드는
+거부됩니다.
 
 ```json
 {
-  "schemaVersion": "v1",
+  "schemaVersion": "v2",
   "keys": [
     {
       "id": "helper-release-key-2026",
       "algorithm": "ed25519",
-      "publicKey": "<base64-encoded-32-byte-public-key>"
+      "publicKey": "<base64-encoded-32-byte-public-key>",
+      "state": "active"
     }
   ]
 }
@@ -120,7 +122,56 @@ contract와 원본 byte equality를 모두 검증합니다.
 ```
 
 서명용 private key는 이 파일이나 PKG에 포함하지 않습니다. bundle envelope의
-`publisherKeyId`는 이 trust store에 이미 포함된 공개키 ID를 가리켜야 합니다.
+`publisherKeyId`는 이 trust store의 `active` 공개키 ID를 가리켜야 합니다.
+`revoked` key ID는 unknown key와 구분해서 거부됩니다.
+
+공개 trust store는 release workspace 밖의 공개키 PEM에서 재현 가능하게 생성합니다.
+명령은 기존 파일을 덮어쓰지 않으므로 review된 산출물을 실수로 변경하지 않습니다.
+
+```sh
+.venv/bin/vitalserver-devtools \
+  update-bootstrap-trust-store-create \
+  --publisher-key-id helper-release-key-2026-a \
+  --publisher-public-key /secure/release/helper-release-key-2026-a.public.pem \
+  --output /secure/release/update-bootstrap-trust-store-01.json
+```
+
+회전은 새 public key를 active로 추가하고 기존 active key를 유지하여 배포 overlap
+기간을 만듭니다.
+
+```sh
+.venv/bin/vitalserver-devtools \
+  update-bootstrap-trust-store-rotate \
+  --trust-store /secure/release/update-bootstrap-trust-store-01.json \
+  --publisher-key-id helper-release-key-2026-b \
+  --publisher-public-key /secure/release/helper-release-key-2026-b.public.pem \
+  --output /secure/release/update-bootstrap-trust-store-02.json
+```
+
+새 trust store가 설치된 제품만 새 key로 서명한 bundle을 받을 수 있습니다. overlap
+배포를 확인한 뒤 이전 key를 삭제하지 않고 revoked로 전환합니다.
+
+```sh
+.venv/bin/vitalserver-devtools \
+  update-bootstrap-trust-store-revoke \
+  --trust-store /secure/release/update-bootstrap-trust-store-02.json \
+  --publisher-key-id helper-release-key-2026-a \
+  --output /secure/release/update-bootstrap-trust-store-03.json
+```
+
+release bundle signing은 별도 보안 경계에 있는 private key path와 그 key ID를 항상
+명시합니다. 둘 중 하나라도 없으면 CLI parsing 단계에서 실패합니다.
+
+```sh
+.venv/bin/vitalserver-devtools \
+  helper-stable-update-release \
+  ... \
+  --publisher-key-id helper-release-key-2026-b \
+  --publisher-private-key /secure/release/helper-release-key-2026-b.private.pem
+```
+
+private key는 repository, trust-store JSON, PKG/DMG staging root, 설치된 Host 어느
+곳에도 복사하지 않습니다.
 
 ## Build and Runtime Validation Contracts
 

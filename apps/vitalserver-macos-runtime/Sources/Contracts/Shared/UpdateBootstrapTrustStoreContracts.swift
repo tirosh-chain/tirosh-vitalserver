@@ -27,24 +27,33 @@ public struct UpdateBootstrapTrustStore: Codable, Equatable, Sendable {
 }
 
 public struct TrustedUpdatePublisherKey: Codable, Equatable, Sendable {
+    public enum State: String, Codable, Equatable, Sendable {
+        case active
+        case revoked
+    }
+
     public let id: String
     public let algorithm: UpdateBootstrapSignatureAlgorithm
     public let publicKey: String
+    public let state: State
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case id
         case algorithm
         case publicKey
+        case state
     }
 
     public init(
         id: String,
         algorithm: UpdateBootstrapSignatureAlgorithm,
-        publicKey: String
+        publicKey: String,
+        state: State
     ) {
         self.id = id
         self.algorithm = algorithm
         self.publicKey = publicKey
+        self.state = state
     }
 
     public init(from decoder: Decoder) throws {
@@ -60,7 +69,8 @@ public struct TrustedUpdatePublisherKey: Codable, Equatable, Sendable {
                 UpdateBootstrapSignatureAlgorithm.self,
                 forKey: .algorithm
             ),
-            publicKey: try container.decode(String.self, forKey: .publicKey)
+            publicKey: try container.decode(String.self, forKey: .publicKey),
+            state: try container.decode(State.self, forKey: .state)
         )
     }
 }

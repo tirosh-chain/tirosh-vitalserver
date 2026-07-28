@@ -424,12 +424,13 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
 
     private func writeTrustStore(_ publicKey: Data, to url: URL) throws {
         let store = UpdateBootstrapTrustStore(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             keys: [
                 TrustedUpdatePublisherKey(
                     id: "release-key-1",
                     algorithm: .ed25519,
-                    publicKey: publicKey.base64EncodedString()
+                    publicKey: publicKey.base64EncodedString(),
+                    state: .active
                 ),
             ]
         )

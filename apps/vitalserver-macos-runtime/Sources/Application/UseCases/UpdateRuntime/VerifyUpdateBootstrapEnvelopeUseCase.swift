@@ -21,6 +21,7 @@ public struct VerifyUpdateBootstrapEnvelopeInput: Equatable, Sendable {
 public enum UpdateBootstrapPublisherVerificationResult: Equatable, Sendable {
     case verified
     case keyUnavailable(keyId: String)
+    case keyRevoked(keyId: String)
     case invalidSignature
     case failed(reason: String)
 }
@@ -69,6 +70,7 @@ public enum VerifyUpdateBootstrapEnvelopeError: Error, Equatable, Sendable {
     case canonicalPayloadFailed(reason: String)
     case canonicalPayloadDigestMismatch(expected: String, actual: String)
     case publisherKeyUnavailable(keyId: String)
+    case publisherKeyRevoked(keyId: String)
     case publisherSignatureInvalid(keyId: String)
     case publisherVerificationFailed(keyId: String, reason: String)
     case artifactUnavailable(artifactId: String, reason: String)
@@ -121,6 +123,10 @@ public struct VerifyUpdateBootstrapEnvelopeUseCase {
             break
         case .keyUnavailable(let keyId):
             throw VerifyUpdateBootstrapEnvelopeError.publisherKeyUnavailable(
+                keyId: keyId
+            )
+        case .keyRevoked(let keyId):
+            throw VerifyUpdateBootstrapEnvelopeError.publisherKeyRevoked(
                 keyId: keyId
             )
         case .invalidSignature:

@@ -1034,12 +1034,13 @@ def write_update_bootstrap_trust_store(path: Path) -> Path:
     path.write_text(
         json.dumps(
             {
-                "schemaVersion": "v1",
+                "schemaVersion": "v2",
                 "keys": [
                     {
                         "id": "release-key-1",
                         "algorithm": "ed25519",
                         "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                        "state": "active",
                     }
                 ],
             }

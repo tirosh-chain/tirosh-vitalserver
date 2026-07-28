@@ -22,8 +22,13 @@ final class UpdateBootstrapVerificationAdaptersTests: XCTestCase {
         let payload = Data("signed bootstrap payload".utf8)
         let signature = try privateKey.signature(for: payload).base64EncodedString()
         let verifier = UpdateBootstrapPublisherSignatureVerifier(
-            publicKeysById: [
-                "helper-release-key-2026": privateKey.publicKey.rawRepresentation
+            publisherKeysById: [
+                "helper-release-key-2026": TrustedUpdatePublisherKey(
+                    id: "helper-release-key-2026",
+                    algorithm: .ed25519,
+                    publicKey: privateKey.publicKey.rawRepresentation.base64EncodedString(),
+                    state: .active
+                )
             ]
         )
 
@@ -44,6 +49,38 @@ final class UpdateBootstrapVerificationAdaptersTests: XCTestCase {
                 signature: signature
             ),
             .invalidSignature
+        )
+    }
+
+    func testRejectsRevokedAndUnknownPublisherKeysDistinctly() {
+        let verifier = UpdateBootstrapPublisherSignatureVerifier(
+            publisherKeysById: [
+                "revoked-key": TrustedUpdatePublisherKey(
+                    id: "revoked-key",
+                    algorithm: .ed25519,
+                    publicKey: Data(repeating: 0, count: 32).base64EncodedString(),
+                    state: .revoked
+                ),
+            ]
+        )
+
+        XCTAssertEqual(
+            verifier.verify(
+                keyId: "revoked-key",
+                algorithm: .ed25519,
+                payload: Data(),
+                signature: ""
+            ),
+            .keyRevoked(keyId: "revoked-key")
+        )
+        XCTAssertEqual(
+            verifier.verify(
+                keyId: "unknown-key",
+                algorithm: .ed25519,
+                payload: Data(),
+                signature: ""
+            ),
+            .keyUnavailable(keyId: "unknown-key")
         )
     }
 

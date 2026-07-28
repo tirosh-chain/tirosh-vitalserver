@@ -20,12 +20,13 @@ PUBLIC_KEY = "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
 
 def valid_document() -> dict[str, object]:
     return {
-        "schemaVersion": "v1",
+        "schemaVersion": "v2",
         "keys": [
             {
                 "id": "helper-release-key-2026",
                 "algorithm": "ed25519",
                 "publicKey": PUBLIC_KEY,
+                "state": "active",
             }
         ],
     }

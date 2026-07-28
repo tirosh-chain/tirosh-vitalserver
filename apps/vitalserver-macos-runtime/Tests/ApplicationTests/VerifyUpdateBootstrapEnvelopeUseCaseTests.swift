@@ -48,6 +48,19 @@ final class VerifyUpdateBootstrapEnvelopeUseCaseTests: XCTestCase {
         XCTAssertTrue(harness.observedArtifactIds.isEmpty)
     }
 
+    func testPreservesRevokedPublisherKeyAsRevoked() {
+        let harness = VerificationHarness()
+        harness.publisherResult = .keyRevoked(keyId: "helper-release-key-2026")
+
+        XCTAssertThrowsError(try harness.verify()) { error in
+            XCTAssertEqual(
+                error as? VerifyUpdateBootstrapEnvelopeError,
+                .publisherKeyRevoked(keyId: "helper-release-key-2026")
+            )
+        }
+        XCTAssertTrue(harness.observedArtifactIds.isEmpty)
+    }
+
     func testPreservesUnavailableArtifactWithoutConvertingItToMismatch() {
         let harness = VerificationHarness()
         harness.artifactResults["helper-next-updater"] = .unavailable(

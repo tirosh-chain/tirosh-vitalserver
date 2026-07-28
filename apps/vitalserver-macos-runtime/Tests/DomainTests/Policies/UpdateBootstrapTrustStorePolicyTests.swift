@@ -10,7 +10,7 @@ final class UpdateBootstrapTrustStorePolicyTests: XCTestCase {
     func testRejectsDuplicateKeyOwner() {
         let key = publisherKey()
         XCTAssertThrowsError(try UpdateBootstrapTrustStorePolicy.validate(
-            UpdateBootstrapTrustStore(schemaVersion: "v1", keys: [key, key])
+            UpdateBootstrapTrustStore(schemaVersion: "v2", keys: [key, key])
         )) { error in
             XCTAssertEqual(
                 error as? UpdateBootstrapTrustStoreValidationError,
@@ -21,7 +21,7 @@ final class UpdateBootstrapTrustStorePolicyTests: XCTestCase {
 
     func testRejectsEmptyTrustStore() {
         XCTAssertThrowsError(try UpdateBootstrapTrustStorePolicy.validate(
-            UpdateBootstrapTrustStore(schemaVersion: "v1", keys: [])
+            UpdateBootstrapTrustStore(schemaVersion: "v2", keys: [])
         )) { error in
             XCTAssertEqual(
                 error as? UpdateBootstrapTrustStoreValidationError,
@@ -32,7 +32,7 @@ final class UpdateBootstrapTrustStorePolicyTests: XCTestCase {
 
     private func store() -> UpdateBootstrapTrustStore {
         UpdateBootstrapTrustStore(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             keys: [publisherKey()]
         )
     }
@@ -41,7 +41,8 @@ final class UpdateBootstrapTrustStorePolicyTests: XCTestCase {
         TrustedUpdatePublisherKey(
             id: "release-key",
             algorithm: .ed25519,
-            publicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+            publicKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            state: .active
         )
     }
 }

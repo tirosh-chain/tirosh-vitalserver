@@ -3,7 +3,7 @@
 > ID: TS-191
 > Category: Packaging / Update / Local development
 > Owner: update release publisher tooling
-> Status: active
+> Status: resolved
 
 ## Symptoms
 
@@ -45,13 +45,15 @@ test ! -L "${VM_UPDATE_BOOTSTRAP_TRUST_STORE}"
   --update-bootstrap-trust-store "${VM_UPDATE_BOOTSTRAP_TRUST_STORE}"
 ```
 
-The file must use strict schema `v1`, contain at least one unique key ID, use
-`algorithm: ed25519`, and encode exactly 32 public-key bytes as base64.
+The file must use strict schema `v2`, contain at least one unique key ID, use
+`algorithm: ed25519`, encode exactly 32 public-key bytes as base64, and declare
+each key as `active` or `revoked`.
 
 ## Actions
 
 Materialize the release-approved **public-key-only** trust store outside the
-repository, then pass its exact path to the complete delivery gate:
+repository with `update-bootstrap-trust-store-create`, `rotate`, or `revoke`.
+Then pass its exact path to the complete delivery gate:
 
 ```sh
 export VM_UPDATE_BOOTSTRAP_TRUST_STORE=/secure/release/update-bootstrap-trust-store.json
@@ -71,9 +73,15 @@ file byte-for-byte with the same release input.
 
 ## Operational Notes
 
-Rotating a publisher key means deliberately changing the release input and its
-key IDs. It is not inferred from the private key used to sign a bundle. The
-bundle `publisherKeyId` must match a key admitted in the installed trust store.
+Rotation deliberately adds a new active public key while retaining the prior
+key for an overlap deployment. Revocation retains the prior key identity and
+public material with `state: revoked`; it does not remove the record or turn a
+revoked key into an unknown key. Neither operation derives public trust from the
+private signing key.
+
+The bundle `publisherKeyId` must match an active key admitted in the installed
+trust store. Missing, invalid, duplicated, revoked, and unknown keys all fail
+closed with distinct evidence where the contract provides it.
 
 ## Related Cases
 
@@ -84,3 +92,6 @@ bundle `publisherKeyId` must match a key admitted in the installed trust store.
 
 - 2026-07-27: PKG/DMG assembly and artifact readback gained an explicit
   release-owned trust-store contract.
+- 2026-07-29: public-only create/rotate/revoke CLI and strict v2 key lifecycle
+  were added; release signing continues to require an external private-key path
+  and never provisions private material to the installed Host.

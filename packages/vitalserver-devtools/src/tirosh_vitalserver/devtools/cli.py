@@ -9,6 +9,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release import (
 )
 from tirosh_vitalserver.devtools.adapters.update_bundle import (
     bootstrap_bundle_service,
+    trust_store_service,
 )
 from tirosh_vitalserver.devtools.application import inputs as usecase_inputs
 from tirosh_vitalserver.devtools.application.usecases import (
@@ -49,6 +50,9 @@ from tirosh_vitalserver.devtools.application.usecases import (
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     update_bootstrap_bundle as update_bootstrap_bundle_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    update_bootstrap_trust_store as update_bootstrap_trust_store_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     update_bundle as update_bundle_usecases,
@@ -869,6 +873,64 @@ def main() -> int:
         )
     )
 
+    create_bootstrap_trust_store = subparsers.add_parser(
+        "update-bootstrap-trust-store-create",
+        help="create a public-only stable update publisher trust store",
+    )
+    create_bootstrap_trust_store.add_argument("--publisher-key-id", required=True)
+    create_bootstrap_trust_store.add_argument(
+        "--publisher-public-key",
+        type=Path,
+        required=True,
+    )
+    create_bootstrap_trust_store.add_argument("--output", type=Path, required=True)
+    create_bootstrap_trust_store.set_defaults(
+        handler=lambda args: update_bootstrap_trust_store_usecases.create(
+            publisher_key_id=args.publisher_key_id,
+            publisher_public_key=args.publisher_public_key,
+            output=args.output,
+            operations=update_bootstrap_trust_store_operations(),
+        )
+    )
+
+    rotate_bootstrap_trust_store = subparsers.add_parser(
+        "update-bootstrap-trust-store-rotate",
+        help="add a new active publisher key without removing prior trust evidence",
+    )
+    rotate_bootstrap_trust_store.add_argument("--trust-store", type=Path, required=True)
+    rotate_bootstrap_trust_store.add_argument("--publisher-key-id", required=True)
+    rotate_bootstrap_trust_store.add_argument(
+        "--publisher-public-key",
+        type=Path,
+        required=True,
+    )
+    rotate_bootstrap_trust_store.add_argument("--output", type=Path, required=True)
+    rotate_bootstrap_trust_store.set_defaults(
+        handler=lambda args: update_bootstrap_trust_store_usecases.rotate(
+            trust_store=args.trust_store,
+            publisher_key_id=args.publisher_key_id,
+            publisher_public_key=args.publisher_public_key,
+            output=args.output,
+            operations=update_bootstrap_trust_store_operations(),
+        )
+    )
+
+    revoke_bootstrap_trust_store = subparsers.add_parser(
+        "update-bootstrap-trust-store-revoke",
+        help="mark one known publisher key revoked while preserving its identity",
+    )
+    revoke_bootstrap_trust_store.add_argument("--trust-store", type=Path, required=True)
+    revoke_bootstrap_trust_store.add_argument("--publisher-key-id", required=True)
+    revoke_bootstrap_trust_store.add_argument("--output", type=Path, required=True)
+    revoke_bootstrap_trust_store.set_defaults(
+        handler=lambda args: update_bootstrap_trust_store_usecases.revoke(
+            trust_store=args.trust_store,
+            publisher_key_id=args.publisher_key_id,
+            output=args.output,
+            operations=update_bootstrap_trust_store_operations(),
+        )
+    )
+
     release_update_bundle = subparsers.add_parser(
         "release-update-bundle",
         help="build a release update bundle from release.json",
@@ -1299,6 +1361,15 @@ def update_bootstrap_bundle_operations(
     return update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations(
         build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
         verify_bundle=bootstrap_bundle_service.verify_bootstrap_bundle,
+    )
+
+
+def update_bootstrap_trust_store_operations(
+) -> update_bootstrap_trust_store_usecases.UpdateBootstrapTrustStoreOperations:
+    return update_bootstrap_trust_store_usecases.UpdateBootstrapTrustStoreOperations(
+        read_store=trust_store_service.read_trust_store,
+        read_ed25519_public_key=trust_store_service.read_ed25519_public_key,
+        write_new_store=trust_store_service.write_new_store,
     )
 
 

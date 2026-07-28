@@ -18,7 +18,9 @@ public struct UpdateBootstrapTrustStoreReader {
         self.validate = validate
     }
 
-    public func loadPublicKeys(from url: URL) throws -> [String: Data] {
+    public func loadPublisherKeys(
+        from url: URL
+    ) throws -> [String: TrustedUpdatePublisherKey] {
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -53,7 +55,7 @@ public struct UpdateBootstrapTrustStoreReader {
             )
         }
 
-        var keys: [String: Data] = [:]
+        var keys: [String: TrustedUpdatePublisherKey] = [:]
         for key in store.keys {
             guard let decoded = Data(base64Encoded: key.publicKey),
                   decoded.count == 32 else {
@@ -61,7 +63,7 @@ public struct UpdateBootstrapTrustStoreReader {
                     keyId: key.id
                 )
             }
-            keys[key.id] = decoded
+            keys[key.id] = key
         }
         return keys
     }

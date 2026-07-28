@@ -11,7 +11,7 @@ public enum UpdateBootstrapTrustStoreValidationError: Error, Equatable, Sendable
 
 public enum UpdateBootstrapTrustStorePolicy {
     public static func validate(_ store: UpdateBootstrapTrustStore) throws {
-        guard store.schemaVersion == "v1" else {
+        guard store.schemaVersion == "v2" else {
             throw UpdateBootstrapTrustStoreValidationError.unsupportedSchemaVersion(
                 store.schemaVersion
             )
