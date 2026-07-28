@@ -33,6 +33,14 @@ let package = Package(
             targets: ["UpdateHandoffSupervisorHost"]
         ),
         .executable(
+            name: "vitalserver-container-layer-effect-executor",
+            targets: ["ContainerLayerEffectExecutorHost"]
+        ),
+        .executable(
+            name: "vitalserver-guest-runtime-layer-effect-executor",
+            targets: ["GuestRuntimeLayerEffectExecutorHost"]
+        ),
+        .executable(
             name: "vitalserver-troubleshooting-reset-for-reinstall",
             targets: ["TroubleshootingResetForReinstall"]
         ),
@@ -146,6 +154,21 @@ let package = Package(
             ],
             path: "Sources/Hosts/UpdateHandoffSupervisor"
         ),
+        .target(
+            name: "UpdateLayerEffectExecutor",
+            dependencies: ["Contracts"],
+            path: "Sources/UpdateLayerEffectExecutor"
+        ),
+        .executableTarget(
+            name: "ContainerLayerEffectExecutorHost",
+            dependencies: ["UpdateLayerEffectExecutor"],
+            path: "Sources/Hosts/ContainerLayerEffectExecutor"
+        ),
+        .executableTarget(
+            name: "GuestRuntimeLayerEffectExecutorHost",
+            dependencies: ["UpdateLayerEffectExecutor"],
+            path: "Sources/Hosts/GuestRuntimeLayerEffectExecutor"
+        ),
         .executableTarget(
             name: "TroubleshootingResetForReinstall",
             path: "Sources/Hosts/Troubleshooting/ResetForReinstall"
@@ -237,6 +260,10 @@ let package = Package(
                 "OutboundAdapters",
                 "UpdateHandoffSupervisorHost",
             ]
+        ),
+        .testTarget(
+            name: "UpdateLayerEffectExecutorTests",
+            dependencies: ["Contracts", "UpdateLayerEffectExecutor"]
         ),
         .testTarget(
             name: "MacControlPanelHostTests",

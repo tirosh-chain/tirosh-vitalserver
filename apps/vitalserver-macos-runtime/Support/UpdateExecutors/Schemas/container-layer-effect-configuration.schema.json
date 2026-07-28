@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tirosh.internal/schemas/vitalserver/container-layer-effect-configuration-v1.json",
+  "title": "VitalServer Container Image-Set Layer Effect Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "layer",
+    "effectExecutorId",
+    "guestControlBaseURL",
+    "requestTimeoutSeconds",
+    "operationTimeoutSeconds",
+    "pollIntervalMilliseconds",
+    "apply",
+    "rollback"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "vitalserver.guest-owner-layer-effect-configuration/v1"
+    },
+    "layer": {
+      "const": "container"
+    },
+    "effectExecutorId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "guestControlBaseURL": {
+      "type": "string",
+      "pattern": "^http://127\\.0\\.0\\.1(?::[0-9]{1,5})?/?$"
+    },
+    "requestTimeoutSeconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 900
+    },
+    "operationTimeoutSeconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 3600
+    },
+    "pollIntervalMilliseconds": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 5000
+    },
+    "apply": {
+      "$ref": "#/$defs/identityTransition"
+    },
+    "rollback": {
+      "$ref": "#/$defs/identityTransition"
+    }
+  },
+  "$defs": {
+    "identityTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedIdentity",
+        "targetIdentity"
+      ],
+      "properties": {
+        "expectedIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetIdentity": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

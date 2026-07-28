@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "vitalserver.guest-owner-layer-effect-configuration/v1",
+  "layer": "guest-runtime",
+  "effectExecutorId": "vitalserver-guest-runtime-layer-effect-executor-0.2.2",
+  "guestControlBaseURL": "http://127.0.0.1:18330/",
+  "requestTimeoutSeconds": 60,
+  "operationTimeoutSeconds": 900,
+  "pollIntervalMilliseconds": 500,
+  "apply": {
+    "expectedIdentity": "guest-runtime-release-0.2.1",
+    "targetIdentity": "guest-runtime-release-0.2.2"
+  },
+  "rollback": {
+    "expectedIdentity": "guest-runtime-release-0.2.2",
+    "targetIdentity": "guest-runtime-release-0.2.1"
+  }
+}
