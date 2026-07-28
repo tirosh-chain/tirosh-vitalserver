@@ -17,6 +17,8 @@
 - VM compile fails at `initial-update-owner-artifacts` with
   `Guest Runtime source must not contain symlinks:
   /opt/tirosh/guest-tools/venv/lib64`.
+- PKG assembly fails after a successful rootfs compile with
+  `staged Guest deploy does not match rootfs artifact receipt`.
 
 ## Cause
 
@@ -51,6 +53,12 @@ non-symlink, or differently targeted entry is an explicit install failure. The
 archive continues to reject all symlinks; it does not weaken extraction or
 release-unit safety to accommodate the venv layout.
 
+The fresh-install release identity is static compiled Guest material. Package
+staging now preserves it byte-for-byte while regenerating only the run-scoped
+Host time and rootfs input metadata contracts. Removing the release identity
+from the package changed the material digest and also left first boot without
+the declaration needed to import the initial owner artifacts.
+
 After Guest SQLite migration, bootstrap verifies and imports both archives.
 On the first installation it converts the bootstrap Guest Runtime directory
 to an immutable release slot and atomically writes both owner pointers plus an
@@ -78,6 +86,8 @@ pointer, and dangling/invalid immutable state are explicit failures.
 - Normalize the known CPython `lib64 -> lib` compatibility alias at the
   installer boundary; never broaden the archive contract to accept arbitrary
   links.
+- Preserve static release identity through package staging. Regeneration is
+  limited to explicitly run-scoped contracts.
 
 ## Related cases
 

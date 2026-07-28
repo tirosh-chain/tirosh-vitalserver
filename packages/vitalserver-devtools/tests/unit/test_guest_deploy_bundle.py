@@ -742,6 +742,24 @@ def test_guest_deploy_material_digest_binds_rootfs_static_metadata(
     assert deploy_bundle.guest_deploy_material_sha256(deploy) != initial
 
 
+def test_guest_deploy_material_digest_binds_fresh_install_release_identity(
+    tmp_path: Path,
+) -> None:
+    deploy = write_materialized_guest_deploy_source(tmp_path / "deploy")
+    deploy_bundle.stage_fresh_install_release_identity(
+        deploy_dir=deploy,
+        release_label="0.2.2",
+    )
+    initial = deploy_bundle.guest_deploy_material_sha256(deploy)
+
+    deploy_bundle.stage_fresh_install_release_identity(
+        deploy_dir=deploy,
+        release_label="0.2.3",
+    )
+
+    assert deploy_bundle.guest_deploy_material_sha256(deploy) != initial
+
+
 def test_guest_deploy_material_digest_ignores_finder_metadata(
     tmp_path: Path,
 ) -> None:
@@ -780,6 +798,10 @@ def test_stage_materialized_guest_deploy_removes_volatile_contracts(
     tmp_path: Path,
 ) -> None:
     source = write_materialized_guest_deploy_source(tmp_path / "compiled-deploy")
+    deploy_bundle.stage_fresh_install_release_identity(
+        deploy_dir=source,
+        release_label="0.2.2",
+    )
     (source / ".DS_Store").write_bytes(b"finder metadata")
     (source / "vendor").mkdir()
     (source / "vendor/.DS_Store").write_bytes(b"finder metadata")
@@ -790,6 +812,11 @@ def test_stage_materialized_guest_deploy_removes_volatile_contracts(
     assert (destination / "bootstrap.sh").read_text(encoding="utf-8") == "#!/bin/sh\n"
     assert not (destination / "host-time.json").exists()
     assert not (destination / "build-metadata/rootfs-input.json").exists()
+    assert json.loads(
+        (
+            destination / "build-metadata/fresh-install-release.json"
+        ).read_text(encoding="utf-8")
+    )["releaseLabel"] == "0.2.2"
     assert not (destination / ".DS_Store").exists()
     assert not (destination / "vendor/.DS_Store").exists()
 

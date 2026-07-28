@@ -44,7 +44,6 @@ GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS = frozenset(
 )
 GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS = GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS | {
     ROOTFS_INPUT_METADATA_RELATIVE_PATH,
-    FRESH_INSTALL_RELEASE_IDENTITY_RELATIVE_PATH,
 }
 
 
@@ -52,7 +51,8 @@ def stage_materialized_guest_deploy(source: Path, destination: Path) -> None:
     """Stage the exact deploy material compiled into a golden rootfs.
 
     Host time and rootfs input metadata are intentionally not carried forward.
-    The caller owns fresh contracts for its own run.
+    The caller owns fresh contracts for its own run. The release identity is
+    static compiled material and must be preserved exactly.
     """
 
     guest_deploy_material_sha256(source)
