@@ -2530,7 +2530,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var lastAppliedSettings: RuntimeSettings?
     var settings = RuntimeSettings()
     var status = platformState()
-    var operationState = PlatformOperationState(activeOperation: nil, install: .unavailable())
+    var operationState = PlatformOperationState(
+        activeOperation: nil,
+        install: .unavailable(),
+        stableUpdate: .missing()
+    )
     var healthStatus = platformState()
     var vitalDBObservation: VitalDBObservationDocument?
     var vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(updatedAt: "2026-07-01T00:00:00+00:00")

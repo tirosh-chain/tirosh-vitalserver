@@ -24,7 +24,7 @@ final class RuntimeStatusRefresherTests: XCTestCase {
         XCTAssertNil(result.selectedLogSource)
     }
 
-    func testRefreshStatusIncludesOperationStatePresentationWhenIdle() async {
+    func testRefreshStatusDoesNotInferUpdatePresentationFromLegacyOperation() async {
         let status = platformState(
             runtimeInstallationState: .executable,
             runtimeState: .updating
@@ -33,7 +33,8 @@ final class RuntimeStatusRefresherTests: XCTestCase {
             status: status,
             operationState: PlatformOperationState(
                 activeOperation: .applyBundle,
-                install: .unavailable()
+                install: .unavailable(),
+                stableUpdate: .missing()
             )
         )
         let refresher = RuntimeStatusRefresher(snapshots: snapshots)
@@ -42,9 +43,9 @@ final class RuntimeStatusRefresherTests: XCTestCase {
 
         XCTAssertEqual(result.status, status)
         XCTAssertEqual(result.operationState.activeOperation, .applyBundle)
-        XCTAssertEqual(result.message, "Apply Bundle in progress")
-        XCTAssertEqual(result.operationDetail, "Apply Bundle in progress")
-        XCTAssertEqual(result.selectedLogSource, .command)
+        XCTAssertNil(result.message)
+        XCTAssertNil(result.operationDetail)
+        XCTAssertNil(result.selectedLogSource)
     }
 
     func testRefreshStatusDoesNotUseLegacyStatusMessageWhileBusy() async {
@@ -80,13 +81,14 @@ final class RuntimeStatusRefresherTests: XCTestCase {
         XCTAssertNil(result.selectedLogSource)
     }
 
-    func testOperationDetailUsesOperationStateInsteadOfLegacyProgressMessage() async {
+    func testOperationDetailKeepsPendingDetailWhenStableJournalIsMissing() async {
         let status = platformState()
         let snapshots = StubStatusSnapshotLoader(
             status: status,
             operationState: PlatformOperationState(
                 activeOperation: .applyBundle,
-                install: .unavailable()
+                install: .unavailable(),
+                stableUpdate: .missing()
             )
         )
         let refresher = RuntimeStatusRefresher(snapshots: snapshots)
@@ -98,7 +100,7 @@ final class RuntimeStatusRefresherTests: XCTestCase {
 
         XCTAssertEqual(result.status, status)
         XCTAssertNil(result.message)
-        XCTAssertEqual(result.operationDetail, "Apply Bundle in progress")
+        XCTAssertEqual(result.operationDetail, "Waiting")
         XCTAssertNil(result.selectedLogSource)
     }
 }
@@ -121,7 +123,8 @@ private final class StubStatusSnapshotLoader: RuntimeStatusSnapshotLoading {
         self.healthStatus = healthStatus
         self.operationState = operationState ?? PlatformOperationState(
             activeOperation: nil,
-            install: .unavailable()
+            install: .unavailable(),
+            stableUpdate: .missing()
         )
     }
 

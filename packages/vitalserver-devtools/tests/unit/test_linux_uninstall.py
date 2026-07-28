@@ -68,10 +68,13 @@ def test_linux_uninstall_preserves_or_removes_runtime_data_by_explicit_mode(
         platform,
         {
             "schemaVersion": 1,
-            "delivery": {
-                "uninstallTool": str(current / "tools/uninstall-linux.py"),
-                "schedulerKind": "systemd-transient",
-            },
+                "delivery": {
+                    "uninstallTool": str(current / "tools/uninstall-linux.py"),
+                    "supportExportTool": str(
+                        current / "tools/support-export-linux.py"
+                    ),
+                    "schedulerKind": "systemd-transient",
+                },
         },
     )
     for unit, executable in module.UNITS.items():

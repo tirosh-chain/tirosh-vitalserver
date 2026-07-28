@@ -149,5 +149,6 @@ def _operation(
             "platformVersion": platform_version,
             "runtimeBundleVersion": runtime_version,
         },
+        "artifact": None,
         "failure": None,
     }
