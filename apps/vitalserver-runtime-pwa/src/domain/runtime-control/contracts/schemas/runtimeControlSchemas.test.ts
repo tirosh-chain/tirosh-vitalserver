@@ -28,8 +28,12 @@ import {
 describe("runtime control contract schemas", () => {
   it("preserves explicit Recorder observability read states and rejects raw aggregate fields", () => {
     const detail = fullRecorderObservabilityDetail();
+    const withoutObserver = recorderWithoutObserverDetail();
 
     expect(recorderObservabilityDetailSchema.parse(detail)).toEqual(detail);
+    expect(recorderObservabilityDetailSchema.parse(withoutObserver)).toEqual(
+      withoutObserver
+    );
     expect(
       recorderObservabilityDetailSchema.safeParse({
         ...detail,
@@ -1063,6 +1067,46 @@ describe("runtime control contract schemas", () => {
         ]
       }))
     ).toThrow();
+
+    expect(
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        beds: [
+          fullVitalBedRecord({
+            linkedRecorderVersion: undefined
+          })
+        ]
+      })).beds[0]?.linkedRecorderVersion
+    ).toBeUndefined();
+
+    expect(
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        beds: [
+          fullVitalBedRecord({
+            linkedRecorderVersion: "1.18.43"
+          })
+        ]
+      })).beds[0]?.linkedRecorderVersion
+    ).toBe("1.18.43");
+  });
+
+  it("accepts legacy Recorder observability without supportSource", () => {
+    const parsed = vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+      recorders: [
+        fullVitalRecorderRecord({
+          observability: {
+            state: "notReported",
+            vrcode: "VR_TEST",
+            supportState: "unknown",
+            supportSource: undefined,
+            reportState: "notEvaluated"
+          }
+        })
+      ]
+    }));
+
+    expect(parsed.recorders[0]?.observability?.supportSource).toBeUndefined();
+    expect(parsed.recorders[0]?.observability?.supportState).toBe("unknown");
+    expect(parsed.recorders[0]?.observability?.reportState).toBe("notEvaluated");
   });
 
   it("requires explicit VitalDB read model visibility", () => {
@@ -1734,6 +1778,60 @@ function fullRecorderObservabilityDetail() {
   };
 }
 
+function recorderWithoutObserverDetail() {
+  const detail = fullRecorderObservabilityDetail();
+  return {
+    ...detail,
+    state: "notReported",
+    support: {
+      ...detail.support,
+      state: "unknown",
+      source: null
+    },
+    report: {
+      ...detail.report,
+      state: "notEvaluated",
+      receivedAt: null,
+      deviceObservedAt: null,
+      collectionState: null
+    },
+    profile: {
+      ...detail.profile,
+      state: "missing",
+      deviceId: null,
+      bootId: null
+    },
+    boot: {
+      state: "notReported",
+      orderingState: "unknown",
+      bootId: null,
+      startedAt: null,
+      cleanShutdownAt: null
+    },
+    evidenceHealth: {
+      state: "notReported",
+      checkedAt: null,
+      checkCount: 0,
+      detail: null
+    },
+    incidentState: {
+      state: "notReported",
+      policyVersion: null,
+      bootLoopState: null,
+      repeatedUndervoltageState: null,
+      evidenceState: null,
+      consecutiveUnexpectedBoots: null,
+      undervoltageBootsConsidered: null
+    },
+    operationalHealth: {
+      state: "unknown",
+      evaluatedAt: null,
+      issueCount: 0,
+      issues: []
+    }
+  };
+}
+
 function fullVitalRecorderRecord(overrides: Record<string, unknown> = {}) {
   return {
     vrcode: "VR_TEST",
@@ -1767,6 +1865,7 @@ function fullVitalBedRecord(overrides: Record<string, unknown> = {}) {
     vrcode: null,
     linkedRecorderStatus: null,
     linkedRecorderIP: null,
+    linkedRecorderVersion: null,
     linkedRecorderLastSeenAt: null,
     status: "online",
     visibility: "visible",

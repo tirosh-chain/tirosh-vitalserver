@@ -717,9 +717,25 @@ class FakeRecorderIngress:
             },
             "boot": {
                 "state": "notReported",
+                "orderingState": "unknown",
                 "bootId": None,
                 "startedAt": None,
                 "cleanShutdownAt": None,
+            },
+            "evidenceHealth": {
+                "state": "notReported",
+                "checkedAt": None,
+                "checkCount": 0,
+                "detail": None,
+            },
+            "incidentState": {
+                "state": "notReported",
+                "policyVersion": None,
+                "bootLoopState": None,
+                "repeatedUndervoltageState": None,
+                "evidenceState": None,
+                "consecutiveUnexpectedBoots": None,
+                "undervoltageBootsConsidered": None,
             },
             "operationalHealth": {
                 "state": "unknown",
@@ -2902,6 +2918,44 @@ def test_recorder_ingress_status_preserves_dependency_failure() -> None:
         "document": None,
         "readError": "Recorder ingress status service is unreachable.",
     }
+
+
+def test_recorder_observability_reports_explicit_unknown_without_adapter() -> None:
+    usecases = build_usecases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    response = usecases.get_recorder_observability("VR-without-observer")
+
+    assert response["state"] == "unavailable"
+    assert response["boot"] == {
+        "state": "notReported",
+        "orderingState": "unknown",
+        "bootId": None,
+        "startedAt": None,
+        "cleanShutdownAt": None,
+    }
+    assert response["evidenceHealth"] == {
+        "state": "notReported",
+        "checkedAt": None,
+        "checkCount": 0,
+        "detail": None,
+    }
+    assert response["incidentState"] == {
+        "state": "notReported",
+        "policyVersion": None,
+        "bootLoopState": None,
+        "repeatedUndervoltageState": None,
+        "evidenceState": None,
+        "consecutiveUnexpectedBoots": None,
+        "undervoltageBootsConsidered": None,
+    }
+    assert response["readError"] == (
+        "Recorder ingress observability adapter is unavailable."
+    )
 
 
 def test_redis_relay_status_reports_unavailable_without_adapter() -> None:

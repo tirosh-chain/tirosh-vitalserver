@@ -548,6 +548,25 @@ describe("runtime console pages", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps retained recorders behind the explicit History toggle", () => {
+    const recorderHistory = recorders();
+    recorderHistory.recorders.push({
+      ...recorderHistory.recorders[0],
+      vrcode: "VR_OLD",
+      lastSeenAt: "2026-05-30T01:00:00Z",
+      presentInLatestObservation: false
+    });
+    hooks.useVitalDBRecorders.mockReturnValue(query(recorderHistory));
+
+    renderPage(<RecordersPage />);
+
+    expect(screen.queryByText("VR_OLD")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "History" }));
+
+    expect(screen.getAllByText("VR_OLD").length).toBeGreaterThan(0);
+  });
+
   it("labels hidden recorders and keeps destructive management secondary", () => {
     const hiddenRecorders = recorders();
     hiddenRecorders.recorders[0].visibility = "hidden";
@@ -751,18 +770,44 @@ describe("runtime console pages", () => {
 
   it("renders beds, filters rows, and shows selected bed details", () => {
     hooks.useVitalDBRecorders.mockReturnValue(failedQuery(new Error("recorders denied")));
+    const hideBed = mutation({});
+    hooks.useHideVitalDBBeds.mockReturnValue(hideBed);
 
     renderPage(<BedsPage />);
 
-    expect(screen.getByText("Known beds")).toBeInTheDocument();
+    expect(screen.getByText("Beds observed")).toBeInTheDocument();
     expect(screen.getAllByText("OR-1").length).toBeGreaterThan(0);
-    expect(screen.getByText("Bed Details")).toBeInTheDocument();
-    expect(screen.getByText("VRecorder status")).toBeInTheDocument();
-    expect(screen.getByText("VRecorder IP")).toBeInTheDocument();
+    const bedPanel = screen.getByRole("heading", { name: "Beds" }).closest("section")!;
+    const bedTable = within(bedPanel).getByRole("table");
+    expect(
+      within(bedTable)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent)
+    ).toEqual([
+      "Bed status",
+      "Bed",
+      "Patient presence",
+      "Last observation",
+      "Data issue"
+    ]);
+    expect(within(bedTable).queryByText("VRecorder")).not.toBeInTheDocument();
+
+    const bedDetails = screen
+      .getByRole("heading", { name: "Bed Details" })
+      .closest("section")!;
+    expect(within(bedDetails).getByText("Patient presence")).toBeInTheDocument();
+    expect(within(bedDetails).getByText("Last observation")).toBeInTheDocument();
+    expect(within(bedDetails).queryByText("VRecorder status")).not.toBeInTheDocument();
+    expect(within(bedDetails).queryByText("VRecorder IP")).not.toBeInTheDocument();
     expect(screen.getAllByText(/Offline · warning/).length).toBeGreaterThan(0);
-    expect(screen.getByText("Relationship history")).toBeInTheDocument();
-    expect(screen.getAllByText("Assignments").length).toBeGreaterThan(0);
-    expect(screen.getByText("Events")).toBeInTheDocument();
+    expect(within(bedDetails).getByText("Relationship history")).toBeInTheDocument();
+    expect(within(bedDetails).getByText("Assignments")).toBeInTheDocument();
+    expect(within(bedDetails).getByText("Events")).toBeInTheDocument();
+
+    fireEvent.click(
+      within(bedDetails).getByRole("button", { name: "Hide from list" })
+    );
+    expect(hideBed.mutate).toHaveBeenCalledWith({ bedIDs: ["bed-1"] });
 
     fireEvent.change(screen.getByPlaceholderText("Search beds"), {
       target: { value: "none" }

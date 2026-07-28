@@ -2655,9 +2655,25 @@ def _recorder_observability_detail_unavailable_document(
         },
         "boot": {
             "state": "notReported",
+            "orderingState": "unknown",
             "bootId": None,
             "startedAt": None,
             "cleanShutdownAt": None,
+        },
+        "evidenceHealth": {
+            "state": "notReported",
+            "checkedAt": None,
+            "checkCount": 0,
+            "detail": None,
+        },
+        "incidentState": {
+            "state": "notReported",
+            "policyVersion": None,
+            "bootLoopState": None,
+            "repeatedUndervoltageState": None,
+            "evidenceState": None,
+            "consecutiveUnexpectedBoots": None,
+            "undervoltageBootsConsidered": None,
         },
         "operationalHealth": {
             "state": "unknown",

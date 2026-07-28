@@ -206,6 +206,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-200 | 현재 릴리스 계약과 화면에 legacy updater version gate가 노출됨 | Update / Packaging / Runtime Control | resolved | [Release manifest leaks the legacy updater version gate](200_release_manifest_leaks_legacy_updater_version_gate.md) |
 | TS-201 | installed release에 설치 인스턴스 identity/revision fence가 없어 재설치 전 writer를 구분하지 못함 | Install / Update / SQLite state ownership | resolved | [Installed release has no installation identity fence](201_installed_release_has_no_installation_fence.md) |
 | TS-210 | Helper update UI가 durable bootstrap journal 대신 로컬 실행 상태를 추론함 | Update / Platform Agent / Helper UI | resolved | [Helper update UI infers bootstrap state](210_helper_update_ui_infers_bootstrap_state.md) |
+| TS-214 | observer 미설치 Recorder의 명시적 `notReported` 문서가 필수 필드를 누락해 Details decode 실패 | Recorder observability / Runtime Control | implemented; package verification pending | [Recorder without observer reports a detail decode failure](214_recorder-without-observer-detail-decode-failure.md) |
+| TS-215 | Beds 탭이 Bed read failure를 숨기고 병상 중심 열을 잘라 표시함 | macOS Helper / VitalDB Beds / Presentation | implemented; package verification pending | [Beds tab hides Bed read state and clips bed-focused columns](215_beds-tab-hides-read-and-clips-bed-state.md) |
 
 ## Follow-up 규칙
 

@@ -2729,6 +2729,38 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(value.operationalIssueCount, 0)
     }
 
+    func testVitalRecorderObservabilityAcceptsLegacyMissingSupportSource() throws {
+        let data = Data("""
+        {
+          "state": "notReported",
+          "vrcode": "VR_LEGACY",
+          "supportState": "unknown",
+          "reportState": "notEvaluated",
+          "profileState": null,
+          "collectionState": null,
+          "latestObservationReceivedAt": null,
+          "lastBootStartedAt": null,
+          "readIssueCount": 0,
+          "operationalHealthState": "unknown",
+          "operationalIssueCount": 0,
+          "expectedSince": null,
+          "recorderVersion": null,
+          "producerVersion": null,
+          "protocolVersion": null,
+          "readError": null
+        }
+        """.utf8)
+
+        let value = try JSONDecoder().decode(
+            RuntimeRecorderObservability.self,
+            from: data
+        )
+
+        XCTAssertNil(value.supportSource)
+        XCTAssertEqual(value.supportState, .unknown)
+        XCTAssertEqual(value.reportState, .notEvaluated)
+    }
+
     func testVitalBedRecordEncodesNullableFieldsAsExplicitNull() throws {
         let record = RuntimeVitalBedRecord(
             bedID: "bed-null",

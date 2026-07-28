@@ -1169,6 +1169,76 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         )
     }
 
+    func testRecorderObservabilityDetailDecodesRecorderWithoutObserver() throws {
+        let missing = #"{"state":"missing","value":null,"detail":"health observation is absent","observedAt":null}"#
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state":"notReported",
+              "vrcode":"VR-legacy",
+              "support":{
+                "state":"unknown","source":null,"expectedSince":null,
+                "recorderVersion":null,"producerVersion":null,"protocolVersion":null
+              },
+              "report":{
+                "state":"notEvaluated","receivedAt":null,"deviceObservedAt":null,
+                "collectionState":null,"readIssueCount":0
+              },
+              "profile":{
+                "state":"missing","receivedAt":null,"deviceObservedAt":null,
+                "deviceId":null,"bootId":null,"software":{},
+                "collection":null,"capabilities":{}
+              },
+              "boot":{
+                "state":"notReported","orderingState":"unknown","bootId":null,
+                "startedAt":null,"cleanShutdownAt":null
+              },
+              "evidenceHealth":{
+                "state":"notReported","checkedAt":null,"checkCount":0,"detail":null
+              },
+              "incidentState":{
+                "state":"notReported","policyVersion":null,
+                "bootLoopState":null,"repeatedUndervoltageState":null,
+                "evidenceState":null,"consecutiveUnexpectedBoots":null,
+                "undervoltageBootsConsidered":null
+              },
+              "operationalHealth":{
+                "state":"unknown","evaluatedAt":null,"issueCount":0,"issues":[]
+              },
+              "readings":{
+                "temperatureCelsius":\(missing),
+                "memoryAvailableBytes":\(missing),
+                "memoryTotalBytes":\(missing),
+                "rootUsedPercent":\(missing),
+                "dataUsedPercent":\(missing),
+                "recorderActiveState":\(missing),
+                "publisherActiveState":\(missing),
+                "publisherBufferBytes":\(missing),
+                "publisherBufferLimitBytes":\(missing),
+                "networkInterfaces":[]
+              },
+              "readIssues":[],
+              "readError":null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let detail = try gateway.recorderObservabilityDetail("VR-legacy")
+
+        XCTAssertEqual(detail.state, .notReported)
+        XCTAssertEqual(detail.profile.state, .missing)
+        XCTAssertEqual(detail.boot.state, "notReported")
+        XCTAssertEqual(detail.boot.orderingState, "unknown")
+        XCTAssertEqual(detail.evidenceHealth.state, "notReported")
+        XCTAssertEqual(detail.incidentState.state, "notReported")
+        XCTAssertNil(detail.readError)
+    }
+
     func testRecorderObservabilityHistoryForwardsBoundedQueries() throws {
         let timelineClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,

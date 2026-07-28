@@ -1250,13 +1250,16 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let hideSucceeded = await viewModel.hideVitalDBRecorder(vrcode: "VR_A")
         let unhideSucceeded = await viewModel.unhideVitalDBRecorder(vrcode: "VR_A")
         let deleteSucceeded = await viewModel.deleteVitalDBRecorder(vrcode: "VR_A")
-        await viewModel.hideVitalDBBed(bedID: "bed-a")
-        await viewModel.unhideVitalDBBed(bedID: "bed-a")
-        await viewModel.deleteVitalDBBed(bedID: "bed-a")
+        let hideBedSucceeded = await viewModel.hideVitalDBBed(bedID: "bed-a")
+        let unhideBedSucceeded = await viewModel.unhideVitalDBBed(bedID: "bed-a")
+        let deleteBedSucceeded = await viewModel.deleteVitalDBBed(bedID: "bed-a")
 
         XCTAssertTrue(hideSucceeded)
         XCTAssertTrue(unhideSucceeded)
         XCTAssertTrue(deleteSucceeded)
+        XCTAssertTrue(hideBedSucceeded)
+        XCTAssertTrue(unhideBedSucceeded)
+        XCTAssertTrue(deleteBedSucceeded)
         XCTAssertEqual(client.hiddenRecorderRequests, [.init(vrcodes: ["VR_A"])])
         XCTAssertEqual(client.unhiddenRecorderRequests, [.init(vrcodes: ["VR_A"])])
         XCTAssertEqual(client.deletedRecorderRequests, [.init(vrcodes: ["VR_A"])])
@@ -1293,6 +1296,29 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(
             viewModel.vitalDBVisibilityActionMessage,
             "visibility owner unavailable"
+        )
+        XCTAssertFalse(viewModel.isRunningVitalDBVisibilityAction)
+    }
+
+    func testVitalDBBedVisibilityFailureDoesNotReportSuccess() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.vitalDBVisibilityError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "bed visibility owner unavailable"]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        let succeeded = await viewModel.hideVitalDBBed(bedID: "bed-a")
+
+        XCTAssertFalse(succeeded)
+        XCTAssertEqual(
+            viewModel.vitalDBVisibilityActionMessage,
+            "bed visibility owner unavailable"
         )
         XCTAssertFalse(viewModel.isRunningVitalDBVisibilityAction)
     }
@@ -1930,6 +1956,35 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         render(ContentView().environmentObject(viewModel))
     }
 
+    func testRecorderHealthRendersReportedAndNotReportedObserverStates() throws {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        let reported = try recorderHealthDetail(
+            vrcode: "VR-reported",
+            observerReported: true
+        )
+        let notReported = try recorderHealthDetail(
+            vrcode: "VR-not-reported",
+            observerReported: false
+        )
+        viewModel.recorderObservabilityDetails = [
+            reported.vrcode: reported,
+            notReported.vrcode: notReported,
+        ]
+
+        for detail in [reported, notReported] {
+            render(RuntimeRecorderHealthSection(
+                viewModel: viewModel,
+                vrcode: detail.vrcode,
+                recorderSummary: nil
+            ))
+        }
+    }
+
     func testRecordersPanelLeavesVerticalScrollingToSectionContainer() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
@@ -2229,6 +2284,106 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         host.frame = NSRect(x: 0, y: 0, width: 1_100, height: 900)
         host.layoutSubtreeIfNeeded()
         XCTAssertGreaterThan(host.fittingSize.width, 0, file: file, line: line)
+    }
+
+    private func recorderHealthDetail(
+        vrcode: String,
+        observerReported: Bool
+    ) throws -> RuntimeRecorderObservabilityDetail {
+        let detailState = observerReported ? "loaded" : "notReported"
+        let supportState = observerReported ? "supported" : "unknown"
+        let reportState = observerReported ? "current" : "notEvaluated"
+        let profileState = observerReported ? "associated" : "missing"
+        let bootState = observerReported ? "started" : "notReported"
+        let orderingState = observerReported ? "ordered" : "unknown"
+        let evidenceState = observerReported ? "healthy" : "notReported"
+        let incidentState = observerReported ? "reported" : "notReported"
+        let healthState = observerReported ? "healthy" : "unknown"
+        let missing = """
+        {
+          "state":"missing",
+          "value":null,
+          "detail":"health observation is absent",
+          "observedAt":null
+        }
+        """
+        let data = Data("""
+        {
+          "state":"\(detailState)",
+          "vrcode":"\(vrcode)",
+          "support":{
+            "state":"\(supportState)",
+            "source":null,
+            "expectedSince":null,
+            "recorderVersion":null,
+            "producerVersion":null,
+            "protocolVersion":null
+          },
+          "report":{
+            "state":"\(reportState)",
+            "receivedAt":null,
+            "deviceObservedAt":null,
+            "collectionState":null,
+            "readIssueCount":0
+          },
+          "profile":{
+            "state":"\(profileState)",
+            "receivedAt":null,
+            "deviceObservedAt":null,
+            "deviceId":null,
+            "bootId":null,
+            "software":{},
+            "collection":null,
+            "capabilities":{}
+          },
+          "boot":{
+            "state":"\(bootState)",
+            "orderingState":"\(orderingState)",
+            "bootId":null,
+            "startedAt":null,
+            "cleanShutdownAt":null
+          },
+          "evidenceHealth":{
+            "state":"\(evidenceState)",
+            "checkedAt":null,
+            "checkCount":0,
+            "detail":null
+          },
+          "incidentState":{
+            "state":"\(incidentState)",
+            "policyVersion":null,
+            "bootLoopState":null,
+            "repeatedUndervoltageState":null,
+            "evidenceState":null,
+            "consecutiveUnexpectedBoots":null,
+            "undervoltageBootsConsidered":null
+          },
+          "operationalHealth":{
+            "state":"\(healthState)",
+            "evaluatedAt":null,
+            "issueCount":0,
+            "issues":[]
+          },
+          "readings":{
+            "temperatureCelsius":\(missing),
+            "memoryAvailableBytes":\(missing),
+            "memoryTotalBytes":\(missing),
+            "rootUsedPercent":\(missing),
+            "dataUsedPercent":\(missing),
+            "recorderActiveState":\(missing),
+            "publisherActiveState":\(missing),
+            "publisherBufferBytes":\(missing),
+            "publisherBufferLimitBytes":\(missing),
+            "networkInterfaces":[]
+          },
+          "readIssues":[],
+          "readError":null
+        }
+        """.utf8)
+        return try JSONDecoder().decode(
+            RuntimeRecorderObservabilityDetail.self,
+            from: data
+        )
     }
 
     private func descendantScrollViews(in view: NSView) -> [NSScrollView] {
@@ -2585,6 +2740,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         _ request: RuntimeVitalDBBedVisibilityRequest
     ) async throws -> RuntimeVitalBedHistory {
         hiddenBedRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
         return vitalDBBedVisibilityHistory
     }
 
@@ -2592,6 +2750,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         _ request: RuntimeVitalDBBedVisibilityRequest
     ) async throws -> RuntimeVitalBedHistory {
         unhiddenBedRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
         return vitalDBBedVisibilityHistory
     }
 
@@ -2599,6 +2760,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         _ request: RuntimeVitalDBBedVisibilityRequest
     ) async throws -> RuntimeVitalBedHistory {
         deletedBedRequests.append(request)
+        if let vitalDBVisibilityError {
+            throw vitalDBVisibilityError
+        }
         return vitalDBBedVisibilityHistory
     }
 
