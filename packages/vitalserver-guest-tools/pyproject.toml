@@ -34,6 +34,7 @@ tirosh-vitalserver-prepare-update-shutdown = "tirosh_guest_tools.adapters.inboun
 tirosh-guest-tools-install-runtime = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_install_runtime"
 tirosh-guest-tools-install-config = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_install_config"
 tirosh-guest-tools-migrate-control-store = "tirosh_guest_tools.adapters.inbound.cli:guest_tools_migrate_control_store"
+tirosh-vitalserver-update-owner-worker = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_update_owner_worker"
 
 [build-system]
 requires = ["hatchling"]

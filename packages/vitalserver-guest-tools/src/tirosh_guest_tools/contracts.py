@@ -9,6 +9,7 @@ class RuntimeService(StrEnum):
     GUEST_CONTROL_API = "tirosh-vitalserver-guest-control-api.service"
     COMPOSE = "tirosh-vitalserver-compose.service"
     SYNC_HOST_TIME = "tirosh-vitalserver-sync-host-time.service"
+    UPDATE_OWNER_WORKER = "tirosh-vitalserver-update-owner-worker.service"
 
 
 class RuntimeFileName(StrEnum):
@@ -74,6 +75,7 @@ class RuntimeCommand(StrEnum):
     VITALSERVER_CONTAINER_LOGS = "tirosh-vitalserver-container-logs"
     VITALSERVER_DIAGNOSTICS = "tirosh-vitalserver-diagnostics"
     GUEST_TOOLS_INSTALL_CONFIG = "tirosh-guest-tools-install-config"
+    VITALSERVER_UPDATE_OWNER_WORKER = "tirosh-vitalserver-update-owner-worker"
 
 
 class RootfsSmokeStatus(StrEnum):

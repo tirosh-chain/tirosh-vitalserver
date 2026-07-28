@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
+
+CONTAINER_IMAGE_SET_IDENTITY_PATTERN = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+)
 
 
 class ContainerImageSetCommand(StrEnum):
@@ -56,9 +61,11 @@ class ContainerImageSet:
 
     @staticmethod
     def validated(identity: object, digest: object) -> ContainerImageSet:
-        if not isinstance(identity, str) or not identity.strip():
+        if not isinstance(
+            identity, str
+        ) or not CONTAINER_IMAGE_SET_IDENTITY_PATTERN.fullmatch(identity):
             raise ContainerImageSetContractError(
-                "Container image-set identity must be a non-empty string.",
+                "Container image-set identity must be a safe identifier.",
                 kind="containerImageSetIdentityInvalid",
             )
         if not isinstance(digest, str) or not digest.startswith("sha256:"):
@@ -74,7 +81,7 @@ class ContainerImageSet:
                 "Container image-set digest must contain 64 lowercase hex characters.",
                 kind="containerImageSetDigestInvalid",
             )
-        return ContainerImageSet(identity=identity.strip(), digest=digest)
+        return ContainerImageSet(identity=identity, digest=digest)
 
     def as_json(self) -> dict[str, str]:
         return {"identity": self.identity, "digest": self.digest}

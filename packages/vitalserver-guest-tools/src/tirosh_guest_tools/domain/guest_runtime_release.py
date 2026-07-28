@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
+
+GUEST_RUNTIME_RELEASE_IDENTITY_PATTERN = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+)
 
 
 class GuestRuntimeReleaseCommand(StrEnum):
@@ -61,9 +66,11 @@ class GuestRuntimeRelease:
         archive: object,
         digest: object,
     ) -> GuestRuntimeRelease:
-        if not isinstance(identity, str) or not identity.strip():
+        if not isinstance(
+            identity, str
+        ) or not GUEST_RUNTIME_RELEASE_IDENTITY_PATTERN.fullmatch(identity):
             raise GuestRuntimeReleaseContractError(
-                "Guest Runtime release identity must be a non-empty string.",
+                "Guest Runtime release identity must be a safe identifier.",
                 kind="guestRuntimeReleaseIdentityInvalid",
             )
         if not isinstance(archive, str) or not archive.strip():
@@ -86,7 +93,7 @@ class GuestRuntimeRelease:
                 kind="guestRuntimeReleaseDigestInvalid",
             )
         return GuestRuntimeRelease(
-            identity=identity.strip(),
+            identity=identity,
             archive=archive.strip(),
             digest=digest,
         )

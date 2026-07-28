@@ -129,8 +129,7 @@ class SQLiteControlRepository:
             ) from error
         if not stat.S_ISREG(file_mode):
             raise GuestControlDependencyError(
-                "control SQLite database is not a regular file: "
-                f"{self._database_path}",
+                f"control SQLite database is not a regular file: {self._database_path}",
                 kind="controlStoreUnavailable",
             )
         try:
@@ -603,6 +602,53 @@ class SQLiteControlRepository:
                 kind="containerImageSetOperationUnavailable",
             ) from error
 
+    def list_container_image_set_operations(
+        self,
+        states: frozenset[ContainerImageSetOperationState],
+    ) -> list[ContainerImageSetOperation]:
+        if not states:
+            return []
+        try:
+            with Session(self._engine) as session:
+                records = session.scalars(
+                    select(ContainerImageSetOperationRecord)
+                    .where(
+                        ContainerImageSetOperationRecord.state.in_(
+                            tuple(state.value for state in states)
+                        )
+                    )
+                    .order_by(
+                        ContainerImageSetOperationRecord.created_at,
+                        ContainerImageSetOperationRecord.operation_id,
+                    )
+                ).all()
+                operations: list[ContainerImageSetOperation] = []
+                for record in records:
+                    target = session.get(
+                        ContainerImageSetRecord,
+                        record.target_identity,
+                    )
+                    if target is None:
+                        raise ContainerImageSetDependencyError(
+                            "Container image-set operation target is missing: "
+                            f"operationId={record.operation_id}.",
+                            kind="containerImageSetOperationInvalid",
+                        )
+                    operations.append(
+                        _container_image_set_operation_from_record(
+                            record,
+                            target_digest=target.digest,
+                        )
+                    )
+                return operations
+        except (ContainerImageSetDependencyError, ContainerImageSetContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise ContainerImageSetDependencyError(
+                f"Container image-set operation list failed: {error}",
+                kind="containerImageSetOperationUnavailable",
+            ) from error
+
     def record_container_image_set_transition(
         self,
         operation: ContainerImageSetOperation,
@@ -870,6 +916,54 @@ class SQLiteControlRepository:
                 kind="guestRuntimeReleaseOperationUnavailable",
             ) from error
 
+    def list_guest_runtime_release_operations(
+        self,
+        states: frozenset[GuestRuntimeReleaseOperationState],
+    ) -> list[GuestRuntimeReleaseOperation]:
+        if not states:
+            return []
+        try:
+            with Session(self._engine) as session:
+                records = session.scalars(
+                    select(GuestRuntimeReleaseOperationRecord)
+                    .where(
+                        GuestRuntimeReleaseOperationRecord.state.in_(
+                            tuple(state.value for state in states)
+                        )
+                    )
+                    .order_by(
+                        GuestRuntimeReleaseOperationRecord.created_at,
+                        GuestRuntimeReleaseOperationRecord.operation_id,
+                    )
+                ).all()
+                operations: list[GuestRuntimeReleaseOperation] = []
+                for record in records:
+                    target = session.get(
+                        GuestRuntimeReleaseRecord,
+                        record.target_identity,
+                    )
+                    if target is None:
+                        raise GuestRuntimeReleaseDependencyError(
+                            "Guest Runtime release operation target is missing: "
+                            f"operationId={record.operation_id}.",
+                            kind="guestRuntimeReleaseOperationInvalid",
+                        )
+                    operations.append(
+                        _guest_runtime_release_operation_from_record(
+                            record,
+                            target_archive=target.archive,
+                            target_digest=target.digest,
+                        )
+                    )
+                return operations
+        except (GuestRuntimeReleaseDependencyError, GuestRuntimeReleaseContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                f"Guest Runtime release operation list failed: {error}",
+                kind="guestRuntimeReleaseOperationUnavailable",
+            ) from error
+
     def record_guest_runtime_release_transition(
         self,
         operation: GuestRuntimeReleaseOperation,
@@ -948,10 +1042,7 @@ class SQLiteControlRepository:
     ) -> None:
         existing = session.get(GuestRuntimeReleaseRecord, release.identity)
         if existing is not None:
-            if (
-                existing.archive != release.archive
-                or existing.digest != release.digest
-            ):
+            if existing.archive != release.archive or existing.digest != release.digest:
                 raise GuestRuntimeReleaseConflictError(
                     "Guest Runtime release identity already names another archive: "
                     f"identity={release.identity}.",

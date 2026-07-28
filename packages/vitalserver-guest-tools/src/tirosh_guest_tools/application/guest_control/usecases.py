@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
+from typing import BinaryIO, Protocol
 
 from tirosh_guest_tools.application.guest_control.container_image_set import (
     ContainerImageSetUseCases,
@@ -102,6 +103,26 @@ from tirosh_guest_tools.domain.vitaldb_history import (
 )
 
 
+class UpdateArtifactImporter(Protocol):
+    def import_bytes(self, *, kind: str, digest: str, content: bytes) -> str:
+        raise NotImplementedError
+
+    def import_stream(
+        self,
+        *,
+        kind: str,
+        digest: str,
+        stream: BinaryIO,
+        size_bytes: int,
+    ) -> str:
+        raise NotImplementedError
+
+
+class UpdateOwnerWorkerDispatcher(Protocol):
+    def request_work(self) -> None:
+        raise NotImplementedError
+
+
 class GuestControlUseCases:
     def __init__(
         self,
@@ -128,6 +149,8 @@ class GuestControlUseCases:
         vital_file_library: VitalFileLibraryPort | None = None,
         container_image_sets: ContainerImageSetUseCases | None = None,
         guest_runtime_releases: GuestRuntimeReleaseUseCases | None = None,
+        update_artifacts: UpdateArtifactImporter | None = None,
+        update_worker: UpdateOwnerWorkerDispatcher | None = None,
     ) -> None:
         self._service_control = service_control
         self._product_lab = product_lab
@@ -146,6 +169,8 @@ class GuestControlUseCases:
         self._vital_file_library = vital_file_library
         self._container_image_sets = container_image_sets
         self._guest_runtime_releases = guest_runtime_releases
+        self._update_artifacts = update_artifacts
+        self._update_worker = update_worker
         self._operations = operations
         self._service_status_snapshots = service_status_snapshots
         self._guest_service_resources = guest_service_resources
@@ -335,6 +360,8 @@ class GuestControlUseCases:
                     "guest-runtime-release:operations:get",
                 ]
             )
+        if self._update_artifacts is not None:
+            capabilities.append("update-artifacts:import")
 
         return {
             "schemaVersion": 1,
@@ -357,7 +384,9 @@ class GuestControlUseCases:
                 "Container image-set application boundary is unavailable.",
                 kind="containerImageSetOwnerUnavailable",
             )
-        return self._container_image_sets.apply(request)
+        operation = self._container_image_sets.apply(request)
+        self._request_update_work()
+        return operation
 
     def rollback_container_image_set(
         self, request: dict[str, object]
@@ -367,7 +396,9 @@ class GuestControlUseCases:
                 "Container image-set application boundary is unavailable.",
                 kind="containerImageSetOwnerUnavailable",
             )
-        return self._container_image_sets.rollback(request)
+        operation = self._container_image_sets.rollback(request)
+        self._request_update_work()
+        return operation
 
     def get_container_image_set_operation(
         self, operation_id: str
@@ -396,7 +427,9 @@ class GuestControlUseCases:
                 "Guest Runtime release application boundary is unavailable.",
                 kind="guestRuntimeReleaseOwnerUnavailable",
             )
-        return self._guest_runtime_releases.apply(request)
+        operation = self._guest_runtime_releases.apply(request)
+        self._request_update_work()
+        return operation
 
     def rollback_guest_runtime_release(
         self,
@@ -407,7 +440,9 @@ class GuestControlUseCases:
                 "Guest Runtime release application boundary is unavailable.",
                 kind="guestRuntimeReleaseOwnerUnavailable",
             )
-        return self._guest_runtime_releases.rollback(request)
+        operation = self._guest_runtime_releases.rollback(request)
+        self._request_update_work()
+        return operation
 
     def get_guest_runtime_release_operation(
         self,
@@ -419,6 +454,62 @@ class GuestControlUseCases:
                 kind="guestRuntimeReleaseOwnerUnavailable",
             )
         return self._guest_runtime_releases.operation(operation_id)
+
+    def import_update_artifact(
+        self,
+        *,
+        kind: str,
+        digest: str,
+        content: bytes,
+    ) -> dict[str, str]:
+        if self._update_artifacts is None:
+            raise GuestControlDependencyError(
+                "Guest update artifact owner is unavailable.",
+                kind="updateArtifactOwnerUnavailable",
+            )
+        reference = self._update_artifacts.import_bytes(
+            kind=kind,
+            digest=digest,
+            content=content,
+        )
+        return {
+            "kind": kind,
+            "digest": digest,
+            "ownerReference": reference,
+        }
+
+    def import_update_artifact_stream(
+        self,
+        *,
+        kind: str,
+        digest: str,
+        stream: BinaryIO,
+        size_bytes: int,
+    ) -> dict[str, str]:
+        if self._update_artifacts is None:
+            raise GuestControlDependencyError(
+                "Guest update artifact owner is unavailable.",
+                kind="updateArtifactOwnerUnavailable",
+            )
+        reference = self._update_artifacts.import_stream(
+            kind=kind,
+            digest=digest,
+            stream=stream,
+            size_bytes=size_bytes,
+        )
+        return {
+            "kind": kind,
+            "digest": digest,
+            "ownerReference": reference,
+        }
+
+    def _request_update_work(self) -> None:
+        if self._update_worker is None:
+            raise GuestControlDependencyError(
+                "Guest update owner worker is unavailable.",
+                kind="updateOwnerWorkerUnavailable",
+            )
+        self._update_worker.request_work()
 
     def readiness(self) -> dict[str, object]:
         required_dependencies = [

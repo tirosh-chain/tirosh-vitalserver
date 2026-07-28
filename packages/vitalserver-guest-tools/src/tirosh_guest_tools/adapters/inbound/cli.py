@@ -20,6 +20,7 @@ from tirosh_guest_tools.adapters.inbound.guest_control_api import (
 from tirosh_guest_tools.adapters.inbound.observability_daemon import (
     run_observability_daemon,
 )
+from tirosh_guest_tools.adapters.outbound.compose import ComposeGuestControlAdapter
 from tirosh_guest_tools.adapters.outbound.maintenance.postgres_backup import (
     create_postgres_backup_archive,
 )
@@ -34,8 +35,20 @@ from tirosh_guest_tools.adapters.outbound.runtime.health import check_runtime_he
 from tirosh_guest_tools.adapters.outbound.runtime.observation_writer import (
     write_runtime_observation,
 )
+from tirosh_guest_tools.adapters.outbound.sqlite_control import (
+    SQLiteControlRepository,
+)
+from tirosh_guest_tools.adapters.outbound.update_artifacts import (
+    AtomicGuestRuntimeReleaseEffect,
+    DockerComposeContainerImageSetEffect,
+    ImmutableUpdateArtifactStore,
+)
 from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
 from tirosh_guest_tools.application.compose import run_compose_action
+from tirosh_guest_tools.application.guest_control.runtime import SystemClock
+from tirosh_guest_tools.application.guest_control.update_owner_worker import (
+    GuestUpdateOwnerWorker,
+)
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
 )
@@ -92,6 +105,34 @@ from tirosh_guest_tools.infrastructure.system_install import (
     install_guest_tools_config,
     install_guest_tools_runtime,
 )
+
+
+def vitalserver_update_owner_worker() -> int:
+    owner = SQLiteControlRepository(SETTINGS.paths.control_state_dir / "control.sqlite")
+    owner.check_ready()
+    compose = ComposeGuestControlAdapter()
+    worker = GuestUpdateOwnerWorker(
+        container_owner=owner,
+        guest_runtime_owner=owner,
+        artifacts=ImmutableUpdateArtifactStore(
+            SETTINGS.paths.control_state_dir / "update-artifacts"
+        ),
+        container_effect=DockerComposeContainerImageSetEffect(
+            compose.reconcile_services
+        ),
+        guest_runtime_effect=AtomicGuestRuntimeReleaseEffect(
+            releases_root=(
+                SETTINGS.paths.guest_tools_home.parent / "guest-runtime-releases"
+            ),
+            active_link=(
+                SETTINGS.paths.guest_tools_home.parent / "active-guest-runtime"
+            ),
+            reconcile=compose.reconcile_services,
+        ),
+        clock=SystemClock(),
+    )
+    worker.recover_and_run_pending()
+    return 0
 
 
 def guest_observed() -> int:

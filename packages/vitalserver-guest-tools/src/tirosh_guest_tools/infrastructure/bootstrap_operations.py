@@ -211,6 +211,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-vitalserver-activate-update",
         "tirosh-vitalserver-prepare-update-shutdown",
         "tirosh-vitalserver-guest-control-api",
+        "tirosh-vitalserver-update-owner-worker",
     )
     service_files = (
         "tirosh-guest-observability.service",
@@ -219,6 +220,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-vitalserver-sync-host-time.service",
         "tirosh-vitalserver-container-logs.service",
         "tirosh-vitalserver-guest-control-api.service",
+        "tirosh-vitalserver-update-owner-worker.service",
     )
     run(["install", "-d", "-m", "0755", "/etc/tirosh"])
     for name in command_names:

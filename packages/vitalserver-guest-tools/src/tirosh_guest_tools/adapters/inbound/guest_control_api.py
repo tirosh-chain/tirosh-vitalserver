@@ -49,6 +49,10 @@ from tirosh_guest_tools.adapters.outbound.runtime_settings import (
     FileRuntimeSettingsRepository,
 )
 from tirosh_guest_tools.adapters.outbound.sqlite_control import SQLiteControlRepository
+from tirosh_guest_tools.adapters.outbound.update_artifacts import (
+    ImmutableUpdateArtifactStore,
+    SystemdUpdateOwnerWorkerDispatcher,
+)
 from tirosh_guest_tools.adapters.outbound.vital_files import (
     VitalServerVitalFileLibrary,
 )
@@ -62,6 +66,9 @@ from tirosh_guest_tools.application.guest_control.ports import VitalFileUploadSo
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
     UUIDOperationIdFactory,
+)
+from tirosh_guest_tools.application.guest_control.update_owner_worker import (
+    UpdateArtifactUnavailable,
 )
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.container_image_set import (
@@ -199,6 +206,10 @@ def build_default_usecases() -> GuestControlUseCases:
             operation_ids=UUIDOperationIdFactory(),
             clock=SystemClock(),
         ),
+        update_artifacts=ImmutableUpdateArtifactStore(
+            SETTINGS.paths.control_state_dir / "update-artifacts"
+        ),
+        update_worker=SystemdUpdateOwnerWorkerDispatcher(),
     )
     usecases.recover_interrupted_operations()
     usecases.initialize_guest_service_specs(DEFAULT_GUEST_SERVICE_SPECS)
@@ -247,7 +258,32 @@ def make_handler(
                     "headers": headers,
                     "usecases": usecases,
                 }
-                if method == "POST" and parsed.path == VITAL_FILE_UPLOAD_PATH:
+                request_parts = [
+                    unquote(part) for part in parsed.path.split("/") if part
+                ]
+                if (
+                    method == "PUT"
+                    and len(request_parts) == 4
+                    and request_parts[:2] == ["runtime", "update-artifacts"]
+                ):
+                    content_length = _required_update_artifact_content_length(
+                        headers
+                    )
+                    try:
+                        document = usecases.import_update_artifact_stream(
+                            kind=request_parts[2],
+                            digest=request_parts[3],
+                            stream=self.rfile,
+                            size_bytes=content_length,
+                        )
+                    except UpdateArtifactUnavailable as error:
+                        raise GuestControlAPIError(
+                            HTTPStatus.BAD_REQUEST,
+                            detail=str(error),
+                            code="updateArtifactImportInvalid",
+                        ) from error
+                    status = HTTPStatus.CREATED
+                elif method == "POST" and parsed.path == VITAL_FILE_UPLOAD_PATH:
                     content_length = _required_upload_content_length(headers)
                     content_type = headers.get("content-type")
                     if content_type is None:
@@ -508,6 +544,25 @@ def route_request(
 
     if method == "GET" and parts == ["runtime", "stack"]:
         return HTTPStatus.OK, usecases.get_stack_status().as_json()
+
+    if (
+        method == "PUT"
+        and len(parts) == 4
+        and parts[:2] == ["runtime", "update-artifacts"]
+    ):
+        try:
+            imported = usecases.import_update_artifact(
+                kind=parts[2],
+                digest=parts[3],
+                content=body,
+            )
+        except UpdateArtifactUnavailable as error:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=str(error),
+                code="updateArtifactImportInvalid",
+            ) from error
+        return HTTPStatus.CREATED, imported
 
     if method == "GET" and parts == ["runtime", "container-image-set"]:
         read = usecases.get_current_container_image_set()
@@ -1096,6 +1151,31 @@ def _required_upload_content_length(headers: dict[str, str]) -> int:
             HTTPStatus.BAD_REQUEST,
             detail="Vital Files upload Content-Length must be positive.",
             code="vitalFileUploadInvalid",
+        )
+    return content_length
+
+
+def _required_update_artifact_content_length(headers: dict[str, str]) -> int:
+    length_text = headers.get("content-length")
+    if length_text is None:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Update artifact import requires a Content-Length header.",
+            code="updateArtifactImportInvalid",
+        )
+    try:
+        content_length = int(length_text)
+    except ValueError as error:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Update artifact Content-Length must be an integer.",
+            code="updateArtifactImportInvalid",
+        ) from error
+    if content_length <= 0:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Update artifact Content-Length must be positive.",
+            code="updateArtifactImportInvalid",
         )
     return content_length
 
