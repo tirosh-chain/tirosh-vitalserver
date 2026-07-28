@@ -6,7 +6,7 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 
 | 질문 | 답 |
 |---|---|
-| update 입력 단위는? | `dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball |
+| update 입력 단위는? | signed stable Product Update는 `dist/update-bundles/<update-id>.tar.gz`, legacy VM Image Update는 기존 schema-3 tarball |
 | 현장 적용 UI는? | 0.2.2 installed macOS Host는 stable bootstrap verify/apply capability를 제공한다 |
 | CLI backend는? | Runtime Control worker가 `verify-update-bootstrap`과 `apply-update-bootstrap --request-id`를 실행한다 |
 | 검증 기준은? | publisher signature, target, bundle-owned next updater, specification digest, payload closure를 인증한다 |
@@ -145,9 +145,8 @@ bundle이 제공한 next updater에 인증된 입력을 그대로 handoff합니�
 
 아래 계약은 전환 기간 동안 남아 있는 legacy publisher/engine에만 적용됩니다.
 현재 stable Product Update나 release source of truth 계약이 아닙니다.
-현재 `make dist/update/*`도 TS-199의 real layer composer/executor wiring이 끝날
-때까지 이 legacy publisher를 사용하므로 stable release candidate proof가
-아닙니다.
+`make dist/update/*`는 이 legacy publisher를 사용하지 않습니다. 이 계약은
+`make dist/image-update/*`의 VM Image Update에만 남아 있습니다.
 
 ```json
 {
@@ -274,8 +273,8 @@ Build에서도 bridge 여부를 별도로 선언합니다.
 # 일반 VM Image Update: requiresTwoPhaseUpdate=false
 make dist/image-update/dev
 
-# 기존 Updater를 먼저 교체해야 하는 명시적 bridge Product Update
-make dist/update/dev VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE=true
+# legacy VM Image publisher에서 bridge가 실제로 필요한 경우에만 명시
+make dist/image-update/dev VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE=true
 ```
 
 ### Idempotency 기준
@@ -394,40 +393,64 @@ Release gate를 통과하지 못한 bundle은 현장 전달 대상이 아닙니�
 
 ## Update Bundle 구조
 
-Product Update bundle은 설치 파일 전체가 아니라 교체 가능한 artifact 묶음입니다.
+현재 stable Product Update는 publisher가 명시적으로 받은 세 layer의 current와
+rollback artifact를 하나의 signed closure로 묶습니다.
 
 ```text
-dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
+dist/update-bundles/<update-id>.tar.gz
 ```
 
-tarball 내부 구조:
+인증된 specification의 적용 순서는 고정입니다.
 
 ```text
-update-bundle-<channel>-<kind>-<releaseLabel>/
-  manifest.json
-  checksums.txt
-  signature
-  app-bundle.tar.gz
-  runtime-tools.tar.gz
-  nginx-bundle.tar.gz
-  guest-deploy.tar.gz
-  migrations/
+Container -> Guest Runtime -> Helper Host Platform
 ```
 
-`rootfs-base.raw.gz`는 Product Update bundle에 포함하지 않습니다. VM Image/rootfs를 바꾸는 경우에만 `make dist/image-update/release`로 별도 bundle을 만들며, 이때 manifest에 `rootfs-base` artifact가 추가됩니다.
+각 layer는 immutable current artifact, immutable rollback artifact, effect
+executor와 effect configuration을 가집니다. Helper Host Platform archive는
+Helper app과 교체 가능한 Host service를 포함하지만 다음 stable owner는
+포함하거나 교체할 수 없습니다.
 
-각 artifact의 의미는 아래와 같습니다.
+- `/usr/local/bin/vitalserver-host-installation-manager`
+- `/usr/local/bin/vitalserver-update-handoff-supervisor`
 
-| artifact | 대상 | 적용 결과 |
-|---|---|---|
-| `app-bundle.tar.gz` | `/Applications/VitalServer Helper.app` | Helper UI 교체. 적용 중 실행 중인 app과 충돌할 수 있어 재실행이 필요 |
-| `runtime-tools.tar.gz` | `/usr/local/bin` | Updater/Supervisor/VM Driver tools, `vitalserver-proxy-run`, uninstall CLI 교체 |
-| `nginx-bundle.tar.gz` | `/Library/Application Support/VitalServerHelper/nginx` | macOS host proxy binary/config asset 교체 |
-| `guest-deploy.tar.gz` | `/Library/Application Support/VitalServerHelper/vm/data/deploy` | VM 안에서 참조하는 Compose, guest bin/systemd, nginx config, Docker image bundle 교체 |
-| `rootfs-base.raw.gz` | `/Library/Application Support/VitalServerHelper/vm/runtime/rootfs-base.raw.gz` | `vm-image-update` bundle에만 포함. 이후 provisioning 기준 base artifact 교체. 기존 `vm-disk.img`에는 자동 전개하지 않음 |
-| `migrations/*` | host runtime command | 설치된 runtime 상태를 바꾸는 executable migration. 기본 bundle에는 cloud-init seed refresh migration이 포함됨 |
+Host Platform 적용이 실패하면 이미 적용된 Guest Runtime과 Container를 정확히
+역순으로 rollback합니다. execution report는 전체 ordered apply/rollback
+receipt를 보존하며, 누락되거나 순서가 다른 receipt는 성공 증거가 아닙니다.
 
-중요한 구분은 `rootfs-base.raw.gz`와 `vm-disk.img`입니다.
+`rootfs-base.raw.gz`는 stable Product Update에 포함하지 않습니다. VM
+Image/rootfs를 바꾸는 경우에만 `make dist/image-update/release`의 별도 legacy
+bundle을 사용합니다.
+
+### Installed field proof
+
+`apply-update-bootstrap`의 성공 종료는 durable handoff admission과 launch
+성공을 뜻하며 전체 layer 적용 완료를 뜻하지 않습니다. 따라서 field smoke는
+고정 sleep이나 apply exit code로 최종 결과를 추측하지 않습니다.
+
+```sh
+make dist/update/dev/apply-smoke \
+  VM_UPDATE_APPLY_SMOKE_CONFIRM=YES \
+  VM_UPDATE_APPLY_REQUEST_ID=<unique-request-id>
+
+make dist/update/dev/rollback-smoke \
+  VM_UPDATE_APPLY_SMOKE_CONFIRM=YES \
+  VM_UPDATE_ROLLBACK_PROOF_BUNDLE=/path/to/separately-signed-fault-bundle.tar.gz \
+  VM_UPDATE_ROLLBACK_PROOF_ID=<fault-update-id> \
+  VM_UPDATE_ROLLBACK_PROOF_REQUEST_ID=<unique-request-id>
+```
+
+proof command는 명시된 timeout과 poll interval 동안 Host owner SQLite journal의
+terminal state를 기다립니다. 이후 digest로 고정된 execution report와 signed
+specification을 검증하고, Runtime Control `/platform/operations`가 제공한
+stable update journal이 Host owner journal과 동일한지 확인합니다. missing,
+read/decode failure, timeout과 terminal failure는 서로 다른 오류입니다.
+
+rollback smoke의 fault bundle은 일반 bundle에서 만들어내거나 암묵적으로
+변형하지 않습니다. Host Platform effect가 의도적으로 실패하도록 별도로
+구성하고 동일 publisher로 서명한 bundle이어야 하며, proof는
+Container/Guest Runtime 적용 성공, Host Platform 적용 실패,
+Guest Runtime/Container 역순 rollback 성공 receipt를 모두 요구합니다.
 
 ```text
 rootfs-base.raw.gz = immutable base artifact

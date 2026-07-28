@@ -24,13 +24,13 @@
 | 신규 설치 release 검증 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/release` | release.json 기반 release 검증 |
 | 개발용 `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/dev` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/dev`가 소유 |
 | release `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/release` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/release`가 소유 |
-| air-gapped Product Update | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | `make dist/update/release` | TS-199 real layer composition 전까지 legacy publisher 산출물이므로 stable release candidate로 사용하지 않음 |
+| air-gapped Product Update | `dist/update-bundles/<update-id>.tar.gz` | `make dist/update/release` | publisher-signed Container, Guest Runtime, Helper Host Platform closure |
 | VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make dist/image-update/release` | rootfs-base 교체가 필요한 경우에만 사용 |
-| Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | legacy manifest/checksum integrity 검증; stable bootstrap publisher proof가 아님 |
+| Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | publisher trust, target, next updater, specification digest와 payload closure 검증 |
 | VM Image Update bundle 검증 | VM image update tarball | `make dist/image-update/verify/release` | 전달 전 manifest/checksum 검증 |
 | 개발 설치 테스트 | installed runtime | `make dist/install/dev` | 현재 repo가 있는 개발 Mac에 설치 후 `make dist/installed/health` |
 
-사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball입니다. air-gapped 환경에서는 이 파일을 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
+사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 Product Update는 `<update-id>.tar.gz` tarball입니다. air-gapped 환경에서는 이 파일을 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
 
 ## 버전 source of truth
 
@@ -250,7 +250,10 @@ Release package와 DMG build는 expensive host packaging 전에 preflight를 통
 
 `schemaVersion: 3`, `minUpdaterVersion`, `requiresTwoPhaseUpdate`를 사용하는 manifest는 전환 중인 legacy publisher/engine 계약입니다. 이 legacy serializer가 요구하는 값은 현재 product release source of truth나 Runtime Control read model로 올리지 않습니다.
 
-현재 `make dist/update/*` release composition은 실제 layer artifact와 effect executor 연결이 완료될 때까지 이 legacy publisher를 사용합니다. Stable bootstrap verifier/apply command의 존재만으로 해당 target 산출물이 stable release candidate가 되지는 않습니다. TS-199의 signed specification/payload closure가 real Container, Guest Runtime, Host Platform artifact로 완성되어야 publisher 전환이 끝납니다.
+현재 `make dist/update/*`는 real Container, Guest Runtime, Helper Host Platform
+artifact와 각 rollback artifact/effect executor/configuration을 명시적으로
+입력받아 signed specification과 payload closure를 만듭니다. legacy schema-3
+publisher는 `make dist/image-update/*`에만 남아 있습니다.
 
 Layer별 platform dependency도 update specification 설계 기준입니다. Helper UI와 VM Driver는 platform-specific이고, Updater는 host/platform-specific bootstrap 검증과 signed next-updater handoff를 소유하며, Supervisor는 host/platform-aware health/recovery loop입니다. Service Stack은 guest/service-specific 실행 세트이고, VM Image는 Linux guest OS image artifact입니다.
 
@@ -743,31 +746,32 @@ install settings JSON
 
 ### Update Bundle 계약
 
-`make dist/update/release`는 현재 아래 artifact를 만들 수 있습니다.
+`make dist/update/release`는 아래 세 layer를 모두 명시적으로 요구합니다.
 
-| artifact type | 생성 여부 | Swift verify | Swift apply |
-|---|---:|---:|---:|
-| `rootfs-base` | `make dist/image-update/release`에서만 포함 | 예 | `rootfs-base.raw.gz` 교체 |
-| `app-bundle` | 기본 포함 | 예 | `/Applications/VitalServer Helper.app` 교체 |
-| `runtime-tools` | 기본 포함 | 예 | `/usr/local/bin` Updater/Supervisor/VM Driver tools 교체 |
-| `nginx-bundle` | 기본 포함 | 예 | host nginx bundle 교체 |
-| `guest-deploy` | 기본 포함 | 예 | VM shared deploy bundle 교체 |
-| `migration` | optional | 예 | executable이면 순차 실행 |
+| layer | current/rollback artifact | effect owner |
+|---|---|---|
+| Container | immutable image-set archives | Guest container owner |
+| Guest Runtime | immutable Guest runtime release archives | Guest runtime owner |
+| Helper Host Platform | Helper-specific Host release archives | stable Host installation manager |
 
-따라서 현재 update apply의 실제 효과는 아래입니다.
+Helper Host archive는 Helper app과 교체 가능한 Host services를 담습니다.
+Host installation manager와 update handoff supervisor는 update 도중에도 살아
+있어야 하므로 archive의 file/service 목록에 포함할 수 없습니다. composer는
+app tree digest, manifest/files closure, executable entrypoint, mutable-store
+경계와 stable owner 제외를 검증합니다.
 
 ```text
-verify bundle
-stage bundle
-backup managed artifacts/runtime-version
-stop services
-replace app/runtime-tools/nginx/guest-deploy artifacts
-replace rootfs-base only when the bundle includes rootfs-base
-run executable migrations
-write runtime-version.json
-restart services if previously running
-health check
-rollback on failure
+verify publisher and signed closure
+stage immutable artifacts
+apply Container
+apply Guest Runtime
+apply Helper Host Platform
+commit installed release
+
+Host Platform failure:
+rollback Guest Runtime
+rollback Container
+persist ordered receipts and terminal journal
 ```
 
 중요한 제약은 `rootfs-base.raw.gz`와 `vm-disk.img`의 역할 차이입니다.
@@ -920,25 +924,35 @@ make dist/image-update/release
 make dist/image-update/verify/release
 ```
 
-`make dist/update/release`는 Product Update artifact staging을 `packages/vitalserver-devtools` CLI에서 수행하고 `app-bundle.tar.gz`, `runtime-tools.tar.gz`, `nginx-bundle.tar.gz`, `guest-deploy.tar.gz`를 기본 포함합니다. `app-bundle.tar.gz`에는 Swift Helper app과 Runtime Control PWA static assets (`Contents/Resources/runtime-control-pwa`)가 함께 들어갑니다. 따라서 Helper UI, PWA UI, Native Shell, Runtime Control API, Updater/Supervisor/VM Driver tools, host nginx, Service Stack/guest deploy bundle까지 같은 online/offline Product Update 계약으로 배포할 수 있습니다.
+`make dist/update/release`는 입력 artifact를 추측하거나 현재 설치 상태에서
+합성하지 않습니다. update/specification identity, 발행 시각, publisher key와
+trust store, Container/Guest Runtime의 current·rollback archive와 effect
+configuration, Helper Host Platform composition·rollback archive·effect
+configuration을 모두 명시해야 합니다. next updater와 세 effect executor는
+현재 source에서 release build합니다.
 
 update bundle도 압축이 필요합니다. 다만 압축 대상은 update artifact 단위입니다. 일반적인 현장 업데이트는 작은 `.tar.gz` artifact를 교체하는 흐름이고, 무거운 `rootfs-base.raw.gz`를 매번 다시 압축하거나 배포하는 흐름이 아닙니다.
 
-| artifact | 압축 파일 | Product Update 포함 여부 | 비고 |
-|---|---|---|---|
-| Helper UI + Runtime Control PWA | `app-bundle.tar.gz` | 기본 포함 | `/Applications/VitalServer Helper.app` 교체. PWA는 app resource static asset으로 포함 |
-| Updater/Supervisor/VM Driver tools | `runtime-tools.tar.gz` | 기본 포함 | `/usr/local/bin` local control tools 교체 |
-| host nginx bundle | `nginx-bundle.tar.gz` | 기본 포함 | host proxy binary/dylib 교체 |
-| Service Stack / guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config, compose, container image bundle 교체 |
-| migration | executable files | 기본 포함 | cloud-init seed refresh 등 설치된 VM/runtime 상태 변경 |
-| Docker images | `vitalserver-images.tar.gz` | 필요 시 포함 | container image 갱신이 있을 때만 무겁게 포함 |
-| VM Image / rootfs base | `rootfs-base.raw.gz` | `make dist/image-update/release`에서만 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
+| artifact | Product Update 포함 여부 | 비고 |
+|---|---|---|
+| Container current/rollback | 필수 | immutable image-set owner 계약 |
+| Guest Runtime current/rollback | 필수 | immutable Guest release owner 계약 |
+| Helper Host Platform current/rollback | 필수 | app/교체 가능 service; stable update owners 제외 |
+| next updater | 필수 | signed specification을 해석하는 bundle-owned 실행 파일 |
+| layer effect executors/configurations | layer마다 필수 | typed receipt를 반환하며 실패를 성공으로 바꾸지 않음 |
+| VM Image / rootfs base | 제외 | `make dist/image-update/release`만 사용 |
 
-따라서 “bundle을 만든다”는 것은 보통 작은 product artifact를 압축해 묶는다는 뜻입니다. rootfs나 Docker image 갱신이 없는 Product Update bundle은 package build보다 훨씬 가벼워야 합니다.
+따라서 “bundle을 만든다”는 것은 교체 가능한 세 layer의 현재/rollback
+artifact와 실행 계약 전체를 인증해 묶는다는 뜻입니다.
 
-기본 update bundle에는 `apps/vitalserver-macos-runtime/Support/Build/migrations` 아래의 기본 migration들이 포함됩니다. 구버전 Helper가 bundle을 적용해도 이 migration은 실행되므로, 새 `guest-deploy/bootstrap.sh`가 다음 VM 부팅에서 실행될 수 있습니다.
+### Historical: schema-3와 0.2.1
 
-추가 마이그레이션 실행 파일을 bundle에 포함하려면 build CLI를 직접 호출합니다.
+아래 `release-update-bundle`, `manifest.json`, `checksums.txt`, `signature:
+unsigned`, `app-bundle.tar.gz` 구조와 `apply-bundle` 명령은 stable Product
+Update 계약이 아닙니다. 0.2.1 진단과 현재 legacy VM Image Update를 이해할
+때만 사용합니다.
+
+legacy bundle에 추가 migration을 포함하던 명령은 다음과 같습니다.
 
 ```sh
 uv run --project packages/vitalserver-devtools vitalserver-devtools \

@@ -13,6 +13,12 @@
   `layer order mismatch`, or `file closure differs`.
 - Two release scripts can assign different IDs, paths, dependencies, or
   rollback meanings to the same Helper layer.
+- A Host release archive can accidentally contain the stable installation
+  manager or handoff supervisor that must remain alive while that archive is
+  applied.
+- A rollback smoke can report failure before the asynchronous Host owner has
+  settled its journal, or confuse successful handoff admission with successful
+  product application.
 
 ## Impact
 
@@ -48,7 +54,7 @@ present in its prepared payload root before signing:
 uv run --project packages/vitalserver-devtools \
   vitalserver-devtools verify-update-bootstrap-bundle \
   --bundle <candidate.tar.gz> \
-  --publisher-public-key <publisher-public-key.pem>
+  --publisher-trust-store <publisher-trust-store.json>
 ```
 
 ## Actions
@@ -64,6 +70,13 @@ uv run --project packages/vitalserver-devtools \
 5. Do not derive a rollback artifact from the installed machine or select a
    latest backup. If no signed baseline artifact was supplied, declare rollback
    `unsupported` with an explicit reason.
+6. Compose the Host layer with the Helper-specific Host release composer. It
+   rejects archives that contain `host-installation-manager` or
+   `update-handoff-supervisor` in their replaceable file/service closure.
+7. Run the installed success proof and a separately signed Host-failure bundle
+   proof. The latter must preserve ordered apply receipts for
+   Container, Guest Runtime, and failed Host Platform, followed by successful
+   Guest Runtime and Container rollback receipts.
 
 ## Prevention
 
@@ -75,14 +88,17 @@ uv run --project packages/vitalserver-devtools \
   executable fixtures before wiring platform effects.
 - Keep Helper product composition outside
   `bootstrap_bundle_service.py`; that generic signer must remain stable.
+- Treat `apply-update-bootstrap` success as durable handoff admission, not
+  terminal layer success. Poll the Host owner journal with explicit timeout
+  and interval, then validate the signed report and Runtime Control projection.
 
 ## Operational Notes
 
-The pure specification writer and fake closure proof are implemented. Real
-Container, Guest Runtime, and Host Platform artifact composers and effect
-executors are still required before `dist/update/*` can be moved from the
-legacy bundle path. Do not treat this focused test as an installed update or
-rollback proof.
+The public `dist/update/*` path now publishes the signed three-layer closure.
+Static verification does not replace field proof: release acceptance still
+requires an installed success cycle and a separately signed Host-failure
+rollback cycle against the packaged product. Missing journal state, owner read
+failure, timeout, terminal failure, and invalid receipt order stay distinct.
 
 ## Related Cases
 
@@ -94,5 +110,9 @@ rollback proof.
 ## Follow-up
 
 - 2026-07-29: Added the pure Helper stable update release model,
-  specification encoder, and signed fake-payload closure test. Real
-  release-artifact and executor wiring remains open.
+  specification encoder, and signed fake-payload closure test.
+- 2026-07-29: Wired real Container, Guest Runtime, and Helper Host Platform
+  layer contracts into `dist/update/*`; added publisher trust verification,
+  stable-owner exclusion, durable handoff settlement, ordered effect receipts,
+  and installed success/Host-failure rollback proof commands. Packaged field
+  evidence remains the release gate.
