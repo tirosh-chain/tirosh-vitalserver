@@ -14,7 +14,8 @@ final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
         XCTAssertFalse(policy.canApplyUpdate(
             status: status,
             capabilities: capabilities,
-            updateInProgress: false,
+            stableUpdate: .missing(),
+            isBusy: false,
             hasSelectedBundle: true,
             selectedBundleVerified: true
         ))
@@ -48,7 +49,8 @@ final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
         XCTAssertTrue(policy.canApplyUpdate(
             status: status,
             capabilities: capabilities,
-            updateInProgress: false,
+            stableUpdate: .missing(),
+            isBusy: false,
             hasSelectedBundle: true,
             selectedBundleVerified: true
         ))
@@ -83,6 +85,19 @@ final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
         XCTAssertFalse(policy.isRuntimeExecutable(missing))
     }
 
+    func testUnavailableStableUpdateJournalBlocksAdmissionWithoutInferringIdle() {
+        let status = platformState(runtimeInstallationState: .executable)
+
+        XCTAssertFalse(policy.canApplyUpdate(
+            status: status,
+            capabilities: capabilities,
+            stableUpdate: .unavailable(readError: "Platform Agent is unavailable"),
+            isBusy: false,
+            hasSelectedBundle: true,
+            selectedBundleVerified: true
+        ))
+    }
+
     func testBusyOrCapabilityDeniedInputsBlockActionsWithoutChangingRuntimeStateMeaning() {
         let status = platformState(runtimeInstallationState: .executable)
         var restricted = RuntimeControlCapabilities()
@@ -93,7 +108,8 @@ final class RuntimeControlActionAvailabilityPolicyTests: XCTestCase {
         XCTAssertFalse(policy.canApplyUpdate(
             status: status,
             capabilities: restricted,
-            updateInProgress: false,
+            stableUpdate: .missing(),
+            isBusy: false,
             hasSelectedBundle: true,
             selectedBundleVerified: true
         ))

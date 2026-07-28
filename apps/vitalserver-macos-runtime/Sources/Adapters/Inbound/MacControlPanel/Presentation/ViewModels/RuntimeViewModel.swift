@@ -46,7 +46,6 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var selectedLogSource = RuntimeLogSource.helperMessage
     @Published var logStreaming = true
     @Published var isBusy = false
-    @Published var isApplyingUpdateBundle = false
     @Published var isCreatingRedisBackup = false
     @Published var isImportingRedisBackup = false
     @Published var isRestoringRedisBackup = false
@@ -234,14 +233,14 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     var shouldShowUpdateProgress: Bool {
-        isApplyingUpdateBundle || presentationFormatter.updateOperationInProgress(operationState)
+        presentationFormatter.updateOperationInProgress(operationState)
     }
 
     var updateProgressMessage: String {
-        if isApplyingUpdateBundle {
-            return operationDetail.isEmpty ? message : operationDetail
-        }
-        return presentationFormatter.updateOperationDisplayMessage(status, operationState: operationState) ?? message
+        presentationFormatter.updateOperationDisplayMessage(
+            status,
+            operationState: operationState
+        ) ?? AppConstants.StatusText.notReported
     }
 
     var backupOperationProgressMessage: String {

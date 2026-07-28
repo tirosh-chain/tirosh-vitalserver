@@ -313,6 +313,23 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(failed.workflow.readError, "database denied")
     }
 
+    func testOperationStateReaderPreservesStableUpdateJournalMissingAndFailure() {
+        let missing = SystemPlatformOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
+            stableUpdateJournalReader: AdapterStubUpdateBootstrapJournalReader(result: .missing)
+        ).loadOperationState()
+        let failed = SystemPlatformOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
+            stableUpdateJournalReader: AdapterStubUpdateBootstrapJournalReader(
+                result: .failed(reason: "journal database denied")
+            )
+        ).loadOperationState()
+
+        XCTAssertEqual(missing.stableUpdate, .missing())
+        XCTAssertEqual(failed.stableUpdate.state, .failed)
+        XCTAssertEqual(failed.stableUpdate.readError, "journal database denied")
+    }
+
     func testApplySettingsReportsAdminPasswordCleanupFailureAsOutputIssue() async throws {
         let environment = AdapterFakeActionEnvironment()
         environment.removeError = CocoaError(.fileWriteNoPermission)
@@ -572,6 +589,18 @@ private struct AdapterStubWorkflowOperationStateReader: RuntimeWorkflowOperation
     }
 
     func loadLatestOperationState(operation: RuntimeOperation) -> RuntimeWorkflowOperationStateReadResult {
+        result
+    }
+}
+
+private struct AdapterStubUpdateBootstrapJournalReader: UpdateBootstrapJournalReading {
+    let result: UpdateBootstrapJournalReadResult
+
+    func loadUpdateBootstrapJournal(id _: String) -> UpdateBootstrapJournalReadResult {
+        result
+    }
+
+    func loadLatestUpdateBootstrapJournal() -> UpdateBootstrapJournalReadResult {
         result
     }
 }

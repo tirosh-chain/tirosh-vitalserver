@@ -11,15 +11,38 @@ public struct RuntimeControlActionAvailabilityPolicy {
     public func canApplyUpdate(
         status: PlatformState,
         capabilities: RuntimeControlCapabilities,
-        updateInProgress: Bool,
+        stableUpdate: RuntimeStableUpdateJournalResource,
+        isBusy: Bool,
         hasSelectedBundle: Bool,
         selectedBundleVerified: Bool
     ) -> Bool {
-        !updateInProgress
+        stableUpdateAllowsAdmission(stableUpdate)
+            && !isBusy
             && hasSelectedBundle
             && selectedBundleVerified
             && capabilities.canApplyBundle
             && isRuntimeExecutable(status)
+    }
+
+    private func stableUpdateAllowsAdmission(
+        _ resource: RuntimeStableUpdateJournalResource
+    ) -> Bool {
+        switch resource.state {
+        case .missing:
+            return true
+        case .unavailable, .failed:
+            return false
+        case .loaded:
+            guard let journal = resource.document else {
+                return false
+            }
+            switch journal.state {
+            case .admitted, .handoffPending, .running:
+                return false
+            case .succeeded, .failed, .interrupted:
+                return true
+            }
+        }
     }
 
     public func canApplySettings(

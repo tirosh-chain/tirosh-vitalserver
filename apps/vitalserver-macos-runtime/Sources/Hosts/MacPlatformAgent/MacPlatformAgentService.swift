@@ -1,5 +1,6 @@
 import Application
 import Darwin
+import Domain
 import Foundation
 import InboundAdapters
 import OutboundAdapters
@@ -84,10 +85,17 @@ public final class MacPlatformAgentService {
             databaseURL: installedPaths.runtimeStateDatabase,
             validate: ValidateInstalledProductReleaseUseCase().validate
         )
+        let stableUpdateJournalReader = SQLiteUpdateBootstrapJournalRepository(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            validate: ValidateUpdateBootstrapJournalUseCase().validate,
+            validateRelease: InstalledProductReleasePolicy.validate,
+            validateSettlement: InstalledProductReleasePolicy.validate
+        )
         let readWorker = MacRuntimeControlReadWorker(
             releaseInfo: .generated,
             operationLeaseReader: operationLeaseController,
             workflowOperationStateReader: workflowOperationStateRepository,
+            stableUpdateJournalReader: stableUpdateJournalReader,
             guestAddressProvider: runtimeEndpointStore,
             vmLifecycleResourceReader: vmLifecycleController,
             installedProductReleaseReader: installedProductReleaseReader,

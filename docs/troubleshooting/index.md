@@ -202,6 +202,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-199 | Helper stable update specification과 payload를 수동 조립해 signed closure가 재현되지 않음 | Update / Packaging / Release composition | active | [Helper stable update specification is hand-assembled](199_helper_stable_update_specification_is_hand_assembled.md) |
 | TS-200 | 현재 릴리스 계약과 화면에 legacy updater version gate가 노출됨 | Update / Packaging / Runtime Control | resolved | [Release manifest leaks the legacy updater version gate](200_release_manifest_leaks_legacy_updater_version_gate.md) |
 | TS-201 | installed release에 설치 인스턴스 identity/revision fence가 없어 재설치 전 writer를 구분하지 못함 | Install / Update / SQLite state ownership | resolved | [Installed release has no installation identity fence](201_installed_release_has_no_installation_fence.md) |
+| TS-210 | Helper update UI가 durable bootstrap journal 대신 로컬 실행 상태를 추론함 | Update / Platform Agent / Helper UI | resolved | [Helper update UI infers bootstrap state](210_helper_update_ui_infers_bootstrap_state.md) |
 
 ## Follow-up 규칙
 

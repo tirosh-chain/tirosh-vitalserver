@@ -66,6 +66,39 @@ final class RuntimeControlAPIPlatformStateReaderTests: XCTestCase {
         XCTAssertNil(state.runtimeEndpoint)
     }
 
+    func testOperationStateReadsCompletePlatformAgentContract() throws {
+        let expected = PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable(),
+            lease: .unavailable(),
+            workflow: .unavailable(),
+            stableUpdate: .missing()
+        )
+        let client = PlatformStateHTTPClient(responses: [jsonResponse(expected)])
+        let reader = try RuntimeControlAPIOperationStateReader(
+            baseURL: "http://127.0.0.1:18321/",
+            httpClient: client
+        )
+
+        XCTAssertEqual(reader.loadOperationState(), expected)
+        XCTAssertEqual(client.requests.map { $0.url?.path }, ["/platform/operations"])
+    }
+
+    func testOperationStateHTTPFailurePreservesStableUpdateAsUnavailable() throws {
+        let client = PlatformStateHTTPClient(responses: [
+            RuntimeControlClientHTTPResponse(statusCode: 503, data: Data("unavailable".utf8))
+        ])
+        let reader = try RuntimeControlAPIOperationStateReader(
+            baseURL: "http://127.0.0.1:18321/",
+            httpClient: client
+        )
+
+        let actual = reader.loadOperationState()
+
+        XCTAssertEqual(actual.stableUpdate.state, .unavailable)
+        XCTAssertTrue(actual.stableUpdate.readError?.contains("statusCode=503") == true)
+    }
+
     private func jsonResponse<T: Encodable>(_ value: T) -> RuntimeControlClientHTTPResponse {
         RuntimeControlClientHTTPResponse(statusCode: 200, data: try! JSONEncoder().encode(value))
     }

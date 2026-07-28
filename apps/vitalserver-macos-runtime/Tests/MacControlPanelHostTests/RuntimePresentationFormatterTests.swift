@@ -127,13 +127,14 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         let status = platformState(runtimeState: .updating)
         let operationState = PlatformOperationState(
             activeOperation: .applyBundle,
-            install: .unavailable()
+            install: .unavailable(),
+            stableUpdate: .loaded(stableUpdateJournal(state: .running))
         )
 
         XCTAssertTrue(formatter.updateOperationInProgress(operationState))
         XCTAssertEqual(
             formatter.updateOperationDisplayMessage(status, operationState: operationState),
-            "Apply Bundle in progress"
+            "Stable update running"
         )
     }
 
@@ -142,7 +143,8 @@ final class RuntimePresentationFormatterTests: XCTestCase {
 
         let operationState = PlatformOperationState(
             activeOperation: nil,
-            install: .unavailable()
+            install: .unavailable(),
+            stableUpdate: .missing()
         )
 
         XCTAssertFalse(formatter.updateOperationInProgress(operationState))
@@ -153,13 +155,14 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         let status = platformState(runtimeState: .healthy)
         let operationState = PlatformOperationState(
             activeOperation: .applyBundle,
-            install: .unavailable()
+            install: .unavailable(),
+            stableUpdate: .loaded(stableUpdateJournal(state: .handoffPending))
         )
 
         XCTAssertTrue(formatter.updateOperationInProgress(operationState))
         XCTAssertEqual(
             formatter.updateOperationDisplayMessage(status, operationState: operationState),
-            "Apply Bundle in progress"
+            "Stable update handoff pending"
         )
     }
 
@@ -169,11 +172,45 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         )
         let operationState = PlatformOperationState(
             activeOperation: nil,
-            install: .unavailable()
+            install: .unavailable(),
+            stableUpdate: .missing()
         )
 
         XCTAssertFalse(formatter.updateOperationInProgress(operationState))
         XCTAssertNil(formatter.updateOperationDisplayMessage(status, operationState: operationState))
+    }
+
+    func testUpdateOperationDisplayMessagePreservesJournalReadFailure() {
+        let status = platformState(runtimeState: .healthy)
+        let operationState = PlatformOperationState(
+            activeOperation: .applyBundle,
+            install: .unavailable(),
+            stableUpdate: .failed(readError: "SQLite permission denied")
+        )
+
+        XCTAssertFalse(formatter.updateOperationInProgress(operationState))
+        XCTAssertEqual(
+            formatter.updateOperationDisplayMessage(status, operationState: operationState),
+            "SQLite permission denied"
+        )
+    }
+
+    func testUpdateOperationDisplayMessagePreservesTerminalFailureReason() {
+        let status = platformState(runtimeState: .healthy)
+        let operationState = PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable(),
+            stableUpdate: .loaded(stableUpdateJournal(
+                state: .failed,
+                failureReason: "host activation failed"
+            ))
+        )
+
+        XCTAssertFalse(formatter.updateOperationInProgress(operationState))
+        XCTAssertEqual(
+            formatter.updateOperationDisplayMessage(status, operationState: operationState),
+            "Stable update failed: host activation failed"
+        )
     }
 
     func testActiveOperationTextUsesOperationStateResource() {
@@ -255,4 +292,55 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertEqual(formatter.systemTimeAgeText(nil, now: now), "Unknown")
         XCTAssertEqual(formatter.systemTimeAgeText("not-a-date", now: now), "not-a-date")
     }
+}
+
+private func stableUpdateJournal(
+    state: UpdateBootstrapJournalState,
+    failureReason: String? = nil
+) -> UpdateBootstrapJournal {
+    let artifact = UpdateBootstrapArtifact(
+        id: "artifact",
+        relativePath: "payload/artifact",
+        sha256: String(repeating: "a", count: 64),
+        sizeBytes: 64,
+        mediaType: "application/octet-stream"
+    )
+    let envelope = UpdateBootstrapEnvelope(
+        schemaVersion: "v1",
+        id: "envelope-1",
+        productId: "com.tirosh.vitalserver-helper",
+        target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
+        targetRelease: UpdateBootstrapRelease(
+            productVersion: "0.2.2",
+            runtimeVersion: "0.2.2"
+        ),
+        layerOrder: [.container, .guestRuntime, .hostPlatform],
+        nextUpdaterArtifact: artifact,
+        specification: artifact,
+        signature: UpdateBootstrapSignature(
+            algorithm: .ed25519,
+            keyId: "release-key",
+            signedSha256: String(repeating: "b", count: 64),
+            value: "c2lnbmF0dXJl"
+        ),
+        issuedAt: "2026-07-29T00:00:00Z"
+    )
+    return UpdateBootstrapJournal(
+        schemaVersion: "v2",
+        id: "update-1",
+        journalRevision: 1,
+        operationId: "operation-1",
+        targetInstallationId: "installation-1",
+        expectedInstallationRevision: 1,
+        requestId: "request-1",
+        envelope: envelope,
+        bootstrapSignedSHA256: String(repeating: "b", count: 64),
+        state: state,
+        stagedUpdaterRelativePath: nil,
+        stagedSpecificationRelativePath: nil,
+        completion: nil,
+        failureReason: failureReason,
+        createdAt: "2026-07-29T00:00:00Z",
+        updatedAt: "2026-07-29T00:00:01Z"
+    )
 }

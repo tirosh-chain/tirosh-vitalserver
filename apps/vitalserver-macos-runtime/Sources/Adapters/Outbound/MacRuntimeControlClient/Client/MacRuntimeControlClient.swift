@@ -82,7 +82,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     public init(
         releaseInfo: RuntimeReleaseInfo,
         platformStateReader: any PlatformStateReading,
-        operationLeaseReader: any RuntimeOperationLeaseReading,
+        operationStateReader: any PlatformOperationStateReading,
         guestAddressProvider: any RuntimeGuestAddressProvider,
         settingsReader: any RuntimeSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker
@@ -90,9 +90,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         self.init(
             releaseInfo: releaseInfo,
             platformStateReader: platformStateReader,
-            operationStateReader: SystemPlatformOperationStateReader.live(
-                operationLeaseReader: operationLeaseReader
-            ),
+            operationStateReader: operationStateReader,
             observabilityReader: SystemRuntimeObservabilityReader.live(
                 paths: RuntimeObservabilityPaths(),
                 guestAddressProvider: guestAddressProvider

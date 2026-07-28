@@ -114,20 +114,40 @@ public struct RuntimePresentationFormatter {
     }
 
     public func updateOperationInProgress(_ operationState: PlatformOperationState) -> Bool {
-        RuntimeActiveOperationPolicy.isUpdateOperation(operationState.operationForPresentation)
+        guard operationState.stableUpdate.state == .loaded,
+              let state = operationState.stableUpdate.document?.state else {
+            return false
+        }
+        switch state {
+        case .admitted, .handoffPending, .running:
+            return true
+        case .succeeded, .failed, .interrupted:
+            return false
+        }
     }
 
     public func updateOperationDisplayMessage(
-        _ status: PlatformState,
+        _: PlatformState,
         operationState: PlatformOperationState
     ) -> String? {
-        guard updateOperationInProgress(operationState) else {
+        switch operationState.stableUpdate.state {
+        case .missing:
             return nil
+        case .unavailable, .failed:
+            return operationState.stableUpdate.readError
+        case .loaded:
+            guard let journal = operationState.stableUpdate.document else {
+                return "Stable update journal contract is loaded without a document"
+            }
+            let stateText = journal.state.rawValue.replacingOccurrences(of: "-", with: " ")
+            if journal.state == .failed || journal.state == .interrupted {
+                guard let failureReason = journal.failureReason, !failureReason.isEmpty else {
+                    return "Stable update \(stateText); failure reason is missing"
+                }
+                return "Stable update \(stateText): \(failureReason)"
+            }
+            return "Stable update \(stateText)"
         }
-        if let operation = operationState.operationForPresentation {
-            return "\(operationText(operation)) in progress"
-        }
-        return vocabulary.updateBundleApplyingText
     }
 
     public func systemTimeText(_ timestamp: String?, timeZone: TimeZone = .current) -> String {

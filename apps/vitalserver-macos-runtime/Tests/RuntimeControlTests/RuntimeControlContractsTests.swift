@@ -1086,6 +1086,40 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertTrue(leaseDocumentJSON["message"] is NSNull)
     }
 
+    func testPlatformOperationStateRequiresCompleteStableUpdateResource() throws {
+        let state = PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable(),
+            stableUpdate: .missing()
+        )
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(state)) as? [String: Any]
+        )
+        let stableUpdate = try XCTUnwrap(json["stableUpdate"] as? [String: Any])
+        XCTAssertEqual(stableUpdate["state"] as? String, "missing")
+        XCTAssertTrue(stableUpdate["document"] is NSNull)
+        XCTAssertTrue(stableUpdate["readError"] is NSNull)
+
+        json.removeValue(forKey: "stableUpdate")
+        XCTAssertThrowsError(try JSONDecoder().decode(
+            PlatformOperationState.self,
+            from: JSONSerialization.data(withJSONObject: json)
+        ))
+    }
+
+    func testStableUpdateResourceRejectsLoadedWithoutDocumentAndFailureWithoutReason() throws {
+        for resource in [
+            ["state": "loaded", "document": NSNull(), "readError": NSNull()],
+            ["state": "failed", "document": NSNull(), "readError": ""],
+            ["state": "unavailable", "document": NSNull(), "readError": NSNull()],
+        ] as [[String: Any]] {
+            XCTAssertThrowsError(try JSONDecoder().decode(
+                RuntimeStableUpdateJournalResource.self,
+                from: JSONSerialization.data(withJSONObject: resource)
+            ))
+        }
+    }
+
     func testPlatformOperationStateRequiresExplicitOwnerSubresourceFields() throws {
         for payload in [
             """
