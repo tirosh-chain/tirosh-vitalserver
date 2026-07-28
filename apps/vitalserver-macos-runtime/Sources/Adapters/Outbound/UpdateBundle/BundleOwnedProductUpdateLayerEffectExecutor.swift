@@ -3,9 +3,10 @@ import Contracts
 import Foundation
 
 public struct BundleOwnedProductUpdateLayerEffectExecutorOperations {
-    public let observe: (
-        UpdateBootstrapArtifact
-    ) -> UpdateBootstrapArtifactObservation
+    public let observe:
+        (
+            UpdateBootstrapArtifact
+        ) -> UpdateBootstrapArtifactObservation
     public let fileState: (URL) -> RuntimeFileState
     public let pathState: (URL) -> RuntimePathState
     public let createDirectory: (URL, Bool) throws -> Void
@@ -15,9 +16,10 @@ public struct BundleOwnedProductUpdateLayerEffectExecutorOperations {
     public let run: (String, [String]) -> RuntimeProcessResult
 
     public init(
-        observe: @escaping (
-            UpdateBootstrapArtifact
-        ) -> UpdateBootstrapArtifactObservation,
+        observe:
+            @escaping (
+                UpdateBootstrapArtifact
+            ) -> UpdateBootstrapArtifactObservation,
         fileState: @escaping (URL) -> RuntimeFileState,
         pathState: @escaping (URL) -> RuntimePathState,
         createDirectory: @escaping (URL, Bool) throws -> Void,
@@ -99,8 +101,16 @@ public struct BundleOwnedProductUpdateLayerEffectExecutor {
             try requireMissing(paths.receipt)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let artifactURL = try resolve(request.artifact.relativePath)
+            let configurationURL = try resolve(
+                request.effectExecutor.configurationArtifact.relativePath
+            )
             let data = try encoder.encode(
-                ProductUpdateLayerEffectInvocation(request: request)
+                ProductUpdateLayerEffectInvocation(
+                    request: request,
+                    artifactPath: artifactURL.path,
+                    configurationPath: configurationURL.path
+                )
             )
             try operations.createDirectory(
                 paths.request.deletingLastPathComponent(),
@@ -185,14 +195,17 @@ public struct BundleOwnedProductUpdateLayerEffectExecutor {
     }
 
     private func resolve(_ relativePath: String) throws -> URL {
-        let url = stagedBundleRoot
+        let url =
+            stagedBundleRoot
             .appendingPathComponent(relativePath)
             .standardizedFileURL
-        let prefix = stagedBundleRoot.path.hasSuffix("/")
+        let prefix =
+            stagedBundleRoot.path.hasSuffix("/")
             ? stagedBundleRoot.path
             : stagedBundleRoot.path + "/"
         guard !relativePath.hasPrefix("/"), url.path.hasPrefix(prefix) else {
-            throw BundleOwnedProductUpdateInputReadError
+            throw
+                BundleOwnedProductUpdateInputReadError
                 .pathEscapesStagedBundle(relativePath: relativePath)
         }
         return url

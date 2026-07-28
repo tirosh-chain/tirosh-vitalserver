@@ -119,8 +119,10 @@ public struct ProductUpdateLayerEffectInvocation:
     public let effectExecutorId: String
     public let operation: ProductUpdateLayerEffectOperation
     public let artifactRelativePath: String
+    public let artifactPath: String
     public let artifactSHA256: String
     public let configurationRelativePath: String
+    public let configurationPath: String
     public let configurationSHA256: String
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -130,12 +132,18 @@ public struct ProductUpdateLayerEffectInvocation:
         case effectExecutorId
         case operation
         case artifactRelativePath
+        case artifactPath
         case artifactSHA256 = "artifactSha256"
         case configurationRelativePath
+        case configurationPath
         case configurationSHA256 = "configurationSha256"
     }
 
-    public init(request: ProductUpdateLayerEffectRequest) {
+    public init(
+        request: ProductUpdateLayerEffectRequest,
+        artifactPath: String,
+        configurationPath: String
+    ) {
         schemaVersion =
             ProductUpdateExecutionContract.layerEffectInvocationSchemaVersion
         updateId = request.updateId
@@ -143,9 +151,11 @@ public struct ProductUpdateLayerEffectInvocation:
         effectExecutorId = request.effectExecutor.id
         operation = request.operation
         artifactRelativePath = request.artifact.relativePath
+        self.artifactPath = artifactPath
         artifactSHA256 = request.artifact.sha256
         configurationRelativePath =
             request.effectExecutor.configurationArtifact.relativePath
+        self.configurationPath = configurationPath
         configurationSHA256 =
             request.effectExecutor.configurationArtifact.sha256
     }
@@ -157,8 +167,10 @@ public struct ProductUpdateLayerEffectInvocation:
         effectExecutorId: String,
         operation: ProductUpdateLayerEffectOperation,
         artifactRelativePath: String,
+        artifactPath: String,
         artifactSHA256: String,
         configurationRelativePath: String,
+        configurationPath: String,
         configurationSHA256: String
     ) {
         self.schemaVersion = schemaVersion
@@ -167,8 +179,10 @@ public struct ProductUpdateLayerEffectInvocation:
         self.effectExecutorId = effectExecutorId
         self.operation = operation
         self.artifactRelativePath = artifactRelativePath
+        self.artifactPath = artifactPath
         self.artifactSHA256 = artifactSHA256
         self.configurationRelativePath = configurationRelativePath
+        self.configurationPath = configurationPath
         self.configurationSHA256 = configurationSHA256
     }
 
@@ -198,6 +212,10 @@ public struct ProductUpdateLayerEffectInvocation:
                 String.self,
                 forKey: .artifactRelativePath
             ),
+            artifactPath: try container.decode(
+                String.self,
+                forKey: .artifactPath
+            ),
             artifactSHA256: try container.decode(
                 String.self,
                 forKey: .artifactSHA256
@@ -205,6 +223,10 @@ public struct ProductUpdateLayerEffectInvocation:
             configurationRelativePath: try container.decode(
                 String.self,
                 forKey: .configurationRelativePath
+            ),
+            configurationPath: try container.decode(
+                String.self,
+                forKey: .configurationPath
             ),
             configurationSHA256: try container.decode(
                 String.self,

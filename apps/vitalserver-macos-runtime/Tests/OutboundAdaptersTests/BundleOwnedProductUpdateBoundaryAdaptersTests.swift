@@ -152,6 +152,14 @@ final class BundleOwnedProductUpdateBoundaryAdaptersTests: XCTestCase {
             ProductUpdateExecutionContract.layerEffectInvocationSchemaVersion
         )
         XCTAssertEqual(invocation.artifactSHA256, request.artifact.sha256)
+        XCTAssertEqual(
+            invocation.artifactPath,
+            "/updates/update-42/payload/host.pkg"
+        )
+        XCTAssertEqual(
+            invocation.configurationPath,
+            "/updates/update-42/config/host.json"
+        )
     }
 
     func testZeroExitWithoutReceiptIsUnavailableNotSuccess() {
