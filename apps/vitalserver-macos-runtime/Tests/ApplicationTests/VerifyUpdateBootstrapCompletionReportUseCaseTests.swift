@@ -61,6 +61,8 @@ private func settledRecoveryJournal() -> UpdateBootstrapJournal {
         id: running.id,
         journalRevision: running.journalRevision + 1,
         operationId: running.operationId,
+        targetInstallationId: running.targetInstallationId,
+        expectedInstallationRevision: running.expectedInstallationRevision,
         requestId: running.requestId,
         envelope: running.envelope,
         bootstrapSignedSHA256: running.bootstrapSignedSHA256,
@@ -88,4 +90,3 @@ private func settledRecoveryJournal() -> UpdateBootstrapJournal {
         updatedAt: "2026-07-27T02:00:00Z"
     )
 }
-

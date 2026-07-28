@@ -114,6 +114,8 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
     public let id: String
     public let journalRevision: Int
     public let operationId: String
+    public let targetInstallationId: String
+    public let expectedInstallationRevision: Int
     public let requestId: String
     public let envelope: UpdateBootstrapEnvelope
     public let bootstrapSignedSHA256: String
@@ -130,6 +132,8 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
         case id
         case journalRevision
         case operationId
+        case targetInstallationId
+        case expectedInstallationRevision
         case requestId
         case envelope
         case bootstrapSignedSHA256
@@ -147,6 +151,8 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
         id: String,
         journalRevision: Int,
         operationId: String,
+        targetInstallationId: String,
+        expectedInstallationRevision: Int,
         requestId: String,
         envelope: UpdateBootstrapEnvelope,
         bootstrapSignedSHA256: String,
@@ -162,6 +168,8 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
         self.id = id
         self.journalRevision = journalRevision
         self.operationId = operationId
+        self.targetInstallationId = targetInstallationId
+        self.expectedInstallationRevision = expectedInstallationRevision
         self.requestId = requestId
         self.envelope = envelope
         self.bootstrapSignedSHA256 = bootstrapSignedSHA256
@@ -186,6 +194,8 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
             id: try container.decode(String.self, forKey: .id),
             journalRevision: try container.decode(Int.self, forKey: .journalRevision),
             operationId: try container.decode(String.self, forKey: .operationId),
+            targetInstallationId: try container.decode(String.self, forKey: .targetInstallationId),
+            expectedInstallationRevision: try container.decode(Int.self, forKey: .expectedInstallationRevision),
             requestId: try container.decode(String.self, forKey: .requestId),
             envelope: try container.decode(
                 UpdateBootstrapEnvelope.self,

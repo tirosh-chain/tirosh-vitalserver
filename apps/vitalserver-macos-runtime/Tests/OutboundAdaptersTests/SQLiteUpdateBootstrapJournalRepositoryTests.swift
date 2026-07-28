@@ -257,7 +257,10 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         )) { error in
             XCTAssertEqual(
                 error as? SQLiteUpdateBootstrapJournalRepositoryError,
-                .staleInstallationRevision(expected: 9, actual: 1)
+                .settlementInstallationRevisionMismatch(
+                    journal: 1,
+                    caller: 9
+                )
             )
         }
         guard case .loaded(let unchanged) =
@@ -273,7 +276,7 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
         )
     }
 
-    func testDifferentInstallationIdentityChangesNeitherJournalNorRelease() throws {
+    func testPreReinstallWriterWithDifferentInstallationIdentityChangesNeitherAggregate() throws {
         let context = try makeContext()
         let admitted = journal()
         try context.repository.saveUpdateBootstrapJournal(
@@ -355,6 +358,21 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
             validateSettlement: InstalledProductReleasePolicy.validate
         )
         try repository.settlePackageInstallRelease(try baselineRelease())
+        try SQLiteRuntimeOperationLeaseRepository(
+            databaseURL: databaseURL
+        ).acquire(
+            RuntimeOperationLeaseDocument(
+                operationId: "operation-1",
+                operation: .applyUpdateBootstrap,
+                targetInstallationId: "installation-1",
+                expectedInstallationRevision: 1,
+                ownerPID: 123,
+                startedAt: "2026-07-27T00:00:00Z",
+                heartbeatAt: "2026-07-27T00:00:00Z",
+                expiresAt: "2026-07-27T01:00:00Z",
+                message: nil
+            )
+        )
         return (repository, databaseURL)
     }
 
@@ -416,10 +434,12 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
 
     private func journal() -> UpdateBootstrapJournal {
         UpdateBootstrapJournal(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "update-operation-1",
             journalRevision: 1,
             operationId: "operation-1",
+            targetInstallationId: "installation-1",
+            expectedInstallationRevision: 1,
             requestId: "request-1",
             envelope: envelope(),
             bootstrapSignedSHA256: String(repeating: "c", count: 64),

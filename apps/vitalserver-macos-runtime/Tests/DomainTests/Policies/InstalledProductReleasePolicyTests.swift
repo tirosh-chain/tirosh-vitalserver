@@ -129,10 +129,12 @@ final class InstalledProductReleasePolicyTests: XCTestCase {
 
     private func succeededJournal() throws -> UpdateBootstrapJournal {
         let admitted = UpdateBootstrapJournal(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "update-42",
             journalRevision: 1,
             operationId: "operation-42",
+            targetInstallationId: "installation-42",
+            expectedInstallationRevision: 1,
             requestId: "request-42",
             envelope: envelope(),
             bootstrapSignedSHA256: String(repeating: "c", count: 64),

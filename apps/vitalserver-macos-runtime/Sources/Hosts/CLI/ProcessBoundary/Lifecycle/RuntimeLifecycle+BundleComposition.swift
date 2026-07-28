@@ -85,6 +85,27 @@ extension RuntimeLifecycle {
         return document
     }
 
+    func acquireRuntimeOperationLease(
+        _ operation: RuntimeOperation,
+        targetInstallationId: String,
+        expectedInstallationRevision: Int
+    ) throws -> RuntimeOperationLeaseDocument {
+        let timestamps = runtimeOperationLeaseTimestamps(now: clock.now)
+        let document = RuntimeOperationLeaseDocument(
+            operationId: UUID().uuidString,
+            operation: operation,
+            targetInstallationId: targetInstallationId,
+            expectedInstallationRevision: expectedInstallationRevision,
+            ownerPID: Int(ProcessInfo.processInfo.processIdentifier),
+            startedAt: timestamps.now,
+            heartbeatAt: timestamps.now,
+            expiresAt: timestamps.expiresAt,
+            message: nil
+        )
+        try runtimeOperationLeaseOwner().acquire(document)
+        return document
+    }
+
     func makeRuntimeOperationLeaseDocument(_ operation: RuntimeOperation) -> RuntimeOperationLeaseDocument {
         makeRuntimeOperationLeaseDocument(operation, now: clock.now)
     }

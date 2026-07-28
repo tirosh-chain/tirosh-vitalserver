@@ -8,6 +8,7 @@ public struct AdmitUpdateBootstrapUseCase {
         envelope: UpdateBootstrapEnvelope,
         verification: VerifiedUpdateBootstrapClosure,
         operationId: String,
+        installedRelease: InstalledProductRelease,
         requestId: String,
         admittedAt: String
     ) throws -> UpdateBootstrapJournal {
@@ -15,6 +16,7 @@ public struct AdmitUpdateBootstrapUseCase {
             envelope: envelope,
             verification: verification,
             operationId: operationId,
+            installedRelease: installedRelease,
             requestId: requestId,
             admittedAt: admittedAt
         )

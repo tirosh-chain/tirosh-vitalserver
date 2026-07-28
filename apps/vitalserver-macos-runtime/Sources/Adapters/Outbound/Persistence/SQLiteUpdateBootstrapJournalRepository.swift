@@ -16,6 +16,10 @@ public enum SQLiteUpdateBootstrapJournalRepositoryError:
     case installedReleaseMissing
     case installedReleaseIdentityMismatch(expected: String, actual: String)
     case staleInstallationRevision(expected: Int, actual: Int)
+    case settlementInstallationRevisionMismatch(journal: Int, caller: Int)
+    case operationLeaseMissing
+    case operationLeaseNotActive(state: String)
+    case operationLeaseMismatch(field: String, expected: String, actual: String)
     case installedReleaseCASFailed(
         installationId: String,
         expectedInstallationRevision: Int,
@@ -272,11 +276,19 @@ public struct SQLiteUpdateBootstrapJournalRepository:
             throw SQLiteUpdateBootstrapJournalRepositoryError
                 .invalidInstalledRelease(reason: String(describing: error))
         }
+        guard expectedInstallationRevision == journal.expectedInstallationRevision else {
+            throw SQLiteUpdateBootstrapJournalRepositoryError
+                .settlementInstallationRevisionMismatch(
+                    journal: journal.expectedInstallationRevision,
+                    caller: expectedInstallationRevision
+                )
+        }
 
         do {
             try connection.withWritableDatabase { db in
                 _ = try SQLiteHostRuntimeStateSchema.validate(db)
                 try connection.withImmediateTransaction(db) {
+                    try validateActiveOperationLease(db, journal: journal)
                     guard let current =
                         try SQLiteInstalledProductReleaseRecordReader.load(
                             db,
@@ -373,6 +385,58 @@ public struct SQLiteUpdateBootstrapJournalRepository:
             throw SQLiteUpdateBootstrapJournalRepositoryError.writeFailed(
                 path: databaseURL.path,
                 reason: String(describing: error)
+            )
+        }
+    }
+
+    private func validateActiveOperationLease(
+        _ db: OpaquePointer,
+        journal: UpdateBootstrapJournal
+    ) throws {
+        guard let row = try SQLiteHostRuntimeStateStatement.stringRow(
+            db,
+            sql: """
+            SELECT state, operation_id, operation, target_installation_id,
+                   expected_installation_revision
+            FROM runtime_operation_lease
+            WHERE singleton_id = 1
+            """,
+            columnCount: 5
+        ) else {
+            throw SQLiteUpdateBootstrapJournalRepositoryError.operationLeaseMissing
+        }
+        guard row[0] == "active" else {
+            throw SQLiteUpdateBootstrapJournalRepositoryError
+                .operationLeaseNotActive(state: row[0] ?? "NULL")
+        }
+        try requireLeaseField("operationId", expected: journal.operationId, actual: row[1])
+        try requireLeaseField(
+            "operation",
+            expected: RuntimeOperation.applyUpdateBootstrap.rawValue,
+            actual: row[2]
+        )
+        try requireLeaseField(
+            "targetInstallationId",
+            expected: journal.targetInstallationId,
+            actual: row[3]
+        )
+        try requireLeaseField(
+            "expectedInstallationRevision",
+            expected: String(journal.expectedInstallationRevision),
+            actual: row[4]
+        )
+    }
+
+    private func requireLeaseField(
+        _ field: String,
+        expected: String,
+        actual: String?
+    ) throws {
+        guard actual == expected else {
+            throw SQLiteUpdateBootstrapJournalRepositoryError.operationLeaseMismatch(
+                field: field,
+                expected: expected,
+                actual: actual ?? "NULL"
             )
         }
     }

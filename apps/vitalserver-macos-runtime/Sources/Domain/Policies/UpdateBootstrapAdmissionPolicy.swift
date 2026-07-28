@@ -11,6 +11,7 @@ public enum UpdateBootstrapAdmissionPolicy {
         envelope: UpdateBootstrapEnvelope,
         verification: VerifiedUpdateBootstrapClosure,
         operationId: String,
+        installedRelease: InstalledProductRelease,
         requestId: String,
         admittedAt: String
     ) throws -> UpdateBootstrapJournal {
@@ -40,10 +41,12 @@ public enum UpdateBootstrapAdmissionPolicy {
         }
 
         let journal = UpdateBootstrapJournal(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: envelope.id,
             journalRevision: 1,
             operationId: operationId,
+            targetInstallationId: installedRelease.installationId,
+            expectedInstallationRevision: installedRelease.installationRevision,
             requestId: requestId,
             envelope: envelope,
             bootstrapSignedSHA256: verification.canonicalPayloadSHA256,

@@ -28,7 +28,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         let metadata = try database.initialize()
 
         XCTAssertEqual(metadata, RuntimeHostStateStoreMetadata(
-            schemaVersion: 10,
+            schemaVersion: 11,
             databaseID: "host-db-1",
             createdAt: "2026-07-14T05:00:00Z",
             updatedAt: "2026-07-14T05:00:00Z"
@@ -49,7 +49,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
             "vm_lifecycle",
             "workflow_operation_states",
         ])
-        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 10)
+        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 11)
         XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM diagnostic_outbox"), 0)
     }
 
@@ -73,7 +73,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         XCTAssertEqual(metadata.databaseID, "host-db-original")
         XCTAssertEqual(metadata.createdAt, "2026-07-14T05:00:00Z")
         XCTAssertEqual(metadata.updatedAt, "2026-07-14T05:00:00Z")
-        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 10)
+        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 11)
     }
 
     func testInitializeUpgradesVersion1DatabaseToLatestWithoutReplacingIdentity() throws {
@@ -89,12 +89,12 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         let metadata = try database.initialize()
 
         XCTAssertEqual(metadata, RuntimeHostStateStoreMetadata(
-            schemaVersion: 10,
+            schemaVersion: 11,
             databaseID: "host-db-v1",
             createdAt: "2026-07-14T05:00:00Z",
             updatedAt: "2026-07-14T06:00:00Z"
         ))
-        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 10)
+        XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM schema_migrations"), 11)
         XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM runtime_operation_lease"), 0)
         XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM legacy_state_imports"), 0)
         XCTAssertEqual(try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM workflow_operation_states"), 0)
@@ -114,7 +114,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
             timestamp: { "2026-07-29T00:00:00Z" }
         ).initialize()
 
-        XCTAssertEqual(metadata.schemaVersion, 10)
+        XCTAssertEqual(metadata.schemaVersion, 11)
         XCTAssertEqual(
             try scalarString(
                 databaseURL,
@@ -240,7 +240,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         _ = try database.initialize()
         try executeSQL(
             databaseURL,
-            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (11, '2099-01-01T00:00:00Z')"
+            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (12, '2099-01-01T00:00:00Z')"
         )
 
         guard case .failed(let failure) = database.loadHostStateStoreReadiness() else {
@@ -251,7 +251,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         XCTAssertThrowsError(try database.initialize()) { error in
             XCTAssertEqual(
                 error as? SQLiteHostRuntimeStateDatabaseError,
-                .unsupportedSchemaVersion(found: 11, supported: 10)
+                .unsupportedSchemaVersion(found: 12, supported: 11)
             )
         }
     }
@@ -296,6 +296,8 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
         try executeSQL(databaseURL, sql: "UPDATE runtime_metadata SET schema_version = 6")
         try executeSQL(databaseURL, sql: "DROP TABLE installed_product_release")
         try executeSQL(databaseURL, sql: "DROP TABLE update_bootstrap_journals")
+        try executeSQL(databaseURL, sql: "ALTER TABLE runtime_operation_lease DROP COLUMN target_installation_id")
+        try executeSQL(databaseURL, sql: "ALTER TABLE runtime_operation_lease DROP COLUMN expected_installation_revision")
         try executeSQL(databaseURL, sql: "ALTER TABLE host_runtime_settings DROP COLUMN applied_vm_config_json")
         try executeSQL(databaseURL, sql: "ALTER TABLE host_runtime_settings DROP COLUMN applied_guest_runtime_config_json")
         try executeSQL(databaseURL, sql: "ALTER TABLE host_runtime_settings DROP COLUMN applied_guest_runtime_settings_json")
@@ -305,7 +307,7 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
             timestamp: { "2026-07-14T08:00:00Z" }
         ).initialize()
 
-        XCTAssertEqual(migrated.schemaVersion, 10)
+        XCTAssertEqual(migrated.schemaVersion, 11)
         XCTAssertEqual(
             try scalarInt(databaseURL, sql: "SELECT COUNT(*) FROM host_runtime_settings WHERE applied_revision IS NULL AND applied_run_id IS NULL AND applied_at IS NULL"),
             1
@@ -523,8 +525,10 @@ final class SQLiteHostRuntimeStateDatabaseTests: XCTestCase {
 
     private func prepareVersion9InstalledRelease(_ url: URL) throws {
         try executeSQL(url, sql: """
-        DELETE FROM schema_migrations WHERE version = 10;
+        DELETE FROM schema_migrations WHERE version >= 10;
         UPDATE runtime_metadata SET schema_version = 9;
+        ALTER TABLE runtime_operation_lease DROP COLUMN target_installation_id;
+        ALTER TABLE runtime_operation_lease DROP COLUMN expected_installation_revision;
         DROP TABLE installed_product_release;
         CREATE TABLE installed_product_release (
           singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),

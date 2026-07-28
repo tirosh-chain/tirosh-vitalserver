@@ -46,7 +46,7 @@ final class UpdateBootstrapJournalStateMachineTests: XCTestCase {
     func testRejectsCompletionForAnotherSpecification() throws {
         let running = try runningJournal()
         let different = UpdateBootstrapCompletionReceipt(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             updateId: running.id,
             requestId: running.requestId,
             bootstrapEnvelopeId: running.envelope.id,
@@ -117,6 +117,8 @@ final class UpdateBootstrapJournalStateMachineTests: XCTestCase {
             id: "update-operation-1",
             journalRevision: 1,
             operationId: "operation-1",
+            targetInstallationId: "installation-1",
+            expectedInstallationRevision: 1,
             requestId: "request-1",
             envelope: envelope(),
             bootstrapSignedSHA256: String(repeating: "c", count: 64),

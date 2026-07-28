@@ -12,7 +12,7 @@ public enum UpdateBootstrapJournalValidationError: Error, Equatable, Sendable {
 
 public enum UpdateBootstrapJournalPolicy {
     public static func validate(_ journal: UpdateBootstrapJournal) throws {
-        guard journal.schemaVersion == "v1" else {
+        guard journal.schemaVersion == "v2" else {
             throw UpdateBootstrapJournalValidationError.unsupportedSchemaVersion(
                 journal.schemaVersion
             )
@@ -24,6 +24,12 @@ public enum UpdateBootstrapJournalPolicy {
         }
         try requireIdentity(journal.id, field: "id")
         try requireIdentity(journal.operationId, field: "operationId")
+        try requireIdentity(journal.targetInstallationId, field: "targetInstallationId")
+        guard journal.expectedInstallationRevision > 0 else {
+            throw UpdateBootstrapJournalValidationError.invalidRevision(
+                journal.expectedInstallationRevision
+            )
+        }
         try requireIdentity(journal.requestId, field: "requestId")
         guard journal.bootstrapSignedSHA256
                 == journal.envelope.signature.signedSha256 else {

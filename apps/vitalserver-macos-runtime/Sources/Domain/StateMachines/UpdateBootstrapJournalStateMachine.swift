@@ -202,6 +202,8 @@ public enum UpdateBootstrapJournalStateMachine {
             id: journal.id,
             journalRevision: journal.journalRevision + 1,
             operationId: journal.operationId,
+            targetInstallationId: journal.targetInstallationId,
+            expectedInstallationRevision: journal.expectedInstallationRevision,
             requestId: journal.requestId,
             envelope: journal.envelope,
             bootstrapSignedSHA256: journal.bootstrapSignedSHA256,

@@ -105,10 +105,12 @@ final class RequireUpdateBootstrapRecoveryStateUseCaseTests: XCTestCase {
 
     func testExplicitFailureRejectsTerminalJournal() {
         let journal = UpdateBootstrapJournal(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "update-42",
             journalRevision: 4,
             operationId: "operation-42",
+            targetInstallationId: "installation-1",
+            expectedInstallationRevision: 1,
             requestId: "request-42",
             envelope: recoveryJournal(state: .running).envelope,
             bootstrapSignedSHA256: String(repeating: "a", count: 64),
@@ -148,10 +150,12 @@ func recoveryJournal(
 ) -> UpdateBootstrapJournal {
     let hasStaging = state != .admitted
     return UpdateBootstrapJournal(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
         id: "update-42",
         journalRevision: state == .handoffPending ? 2 : 3,
         operationId: "operation-42",
+        targetInstallationId: "installation-1",
+        expectedInstallationRevision: 1,
         requestId: "request-42",
         envelope: recoveryEnvelope(),
         bootstrapSignedSHA256: String(repeating: "a", count: 64),

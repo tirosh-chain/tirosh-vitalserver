@@ -52,6 +52,20 @@ public enum InstalledProductReleasePolicy {
         from journal: UpdateBootstrapJournal
     ) throws -> InstalledProductRelease {
         try validate(current)
+        guard current.installationId == journal.targetInstallationId else {
+            throw InstalledProductReleaseValidationError.journalMismatch(
+                field: "targetInstallationId",
+                expected: journal.targetInstallationId,
+                actual: current.installationId
+            )
+        }
+        guard current.installationRevision == journal.expectedInstallationRevision else {
+            throw InstalledProductReleaseValidationError.journalMismatch(
+                field: "expectedInstallationRevision",
+                expected: String(journal.expectedInstallationRevision),
+                actual: String(current.installationRevision)
+            )
+        }
         guard current.productId == journal.envelope.productId else {
             throw InstalledProductReleaseValidationError.productMismatch(
                 expected: current.productId,

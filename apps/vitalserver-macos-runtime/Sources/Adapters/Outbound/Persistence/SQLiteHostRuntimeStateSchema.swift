@@ -5,7 +5,7 @@ import Foundation
 import SQLite3
 
 enum SQLiteHostRuntimeStateSchema {
-    static let supportedVersion = 10
+    static let supportedVersion = 11
 
     static func migrate(
         _ db: OpaquePointer,
@@ -72,6 +72,9 @@ enum SQLiteHostRuntimeStateSchema {
                     migratedInstallationID: migratedInstallationID,
                     appliedAt: timestamp()
                 )
+            }
+            if currentVersion < 11 {
+                try applyVersion11(db, appliedAt: timestamp())
             }
 
             return try loadMetadata(db)
@@ -153,6 +156,14 @@ enum SQLiteHostRuntimeStateSchema {
                 "installation_id",
                 "installation_revision",
                 "release_revision",
+            ]
+        )
+        try requireColumns(
+            db,
+            table: "runtime_operation_lease",
+            columns: [
+                "target_installation_id",
+                "expected_installation_revision",
             ]
         )
 
@@ -749,6 +760,40 @@ enum SQLiteHostRuntimeStateSchema {
             db,
             sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             bindings: [.int(10), .text(appliedAt)]
+        )
+    }
+
+    private static func applyVersion11(
+        _ db: OpaquePointer,
+        appliedAt: String
+    ) throws {
+        guard !appliedAt.isEmpty else {
+            throw SQLiteHostRuntimeStateDatabaseError.metadataInvalid(
+                field: "appliedAt",
+                value: appliedAt
+            )
+        }
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "ALTER TABLE runtime_operation_lease ADD COLUMN target_installation_id TEXT"
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "ALTER TABLE runtime_operation_lease ADD COLUMN expected_installation_revision INTEGER"
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            UPDATE runtime_metadata
+            SET schema_version = 11, updated_at = ?
+            WHERE singleton_id = 1
+            """,
+            bindings: [.text(appliedAt)]
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            bindings: [.int(11), .text(appliedAt)]
         )
     }
 

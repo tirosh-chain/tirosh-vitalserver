@@ -9,6 +9,8 @@ import OutboundAdapters
 import Workflow
 
 enum RuntimeUpdateBootstrapCompositionError: Error, Equatable {
+    case installedReleaseMissing
+    case installedReleaseReadFailed(reason: String)
     case operationSucceededButLeaseReleaseFailed(
         operationId: String,
         reason: String
@@ -66,7 +68,23 @@ extension RuntimeLifecycle {
     func applyUpdateBootstrap(
         _ command: RuntimeApplyUpdateBootstrapCommand
     ) throws {
-        let lease = try acquireRuntimeOperationLease(.applyUpdateBootstrap)
+        let repository = updateBootstrapJournalRepository()
+        let leaseTarget: InstalledProductRelease
+        switch repository.loadInstalledProductRelease() {
+        case .loaded(let release):
+            try ValidateInstalledProductReleaseUseCase().validate(release)
+            leaseTarget = release
+        case .missing:
+            throw RuntimeUpdateBootstrapCompositionError.installedReleaseMissing
+        case .failed(let reason):
+            throw RuntimeUpdateBootstrapCompositionError
+                .installedReleaseReadFailed(reason: reason)
+        }
+        let lease = try acquireRuntimeOperationLease(
+            .applyUpdateBootstrap,
+            targetInstallationId: leaseTarget.installationId,
+            expectedInstallationRevision: leaseTarget.installationRevision
+        )
         do {
             try applyUpdateBootstrapWithOwnedLease(command, lease: lease)
             do {
@@ -153,12 +171,19 @@ extension RuntimeLifecycle {
                 journal: repository.loadUpdateBootstrapJournal(id: envelope.id)
             )
         try ValidateInstalledProductReleaseUseCase().validate(currentRelease)
+        guard currentRelease.installationId == lease.targetInstallationId,
+              currentRelease.installationRevision == lease.expectedInstallationRevision else {
+            throw RuntimeUpdateBootstrapCompositionError.installedReleaseReadFailed(
+                reason: "installed release changed after operation lease acquisition"
+            )
+        }
 
         let admittedAt = updateBootstrapTimestamp()
         let journal = try AdmitUpdateBootstrapUseCase().admit(
             envelope: envelope,
             verification: verification,
-            operationId: UUID().uuidString.lowercased(),
+            operationId: lease.operationId,
+            installedRelease: currentRelease,
             requestId: requestId,
             admittedAt: admittedAt
         )

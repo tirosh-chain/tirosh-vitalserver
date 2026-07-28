@@ -46,7 +46,6 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         try writeSignedBundle(bundle, privateKey: privateKey)
 
         let runner = SuccessfulUpdateBootstrapRunner()
-        let leaseOwner = UpdateBootstrapOperationLeaseOwnerSpy()
         let lifecycle = RuntimeLifecycle(
             paths: LauncherPaths(
                 home: installed.runtimeHome,
@@ -55,8 +54,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
                 pidFile: installed.pidFile
             ),
             clock: UpdateBootstrapFixedClock(),
-            commandRunner: runner,
-            runtimeOperationLeaseOwnerFactory: { leaseOwner }
+            commandRunner: runner
         )
 
         try lifecycle.applyUpdateBootstrap(
@@ -83,15 +81,12 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         XCTAssertEqual(release.releaseRevision, 2)
         XCTAssertEqual(release.source, .update)
         XCTAssertEqual(runner.invocations.count, 1)
-        XCTAssertEqual(leaseOwner.acquired.count, 1)
         XCTAssertEqual(
-            leaseOwner.acquired.first?.operation,
-            .applyUpdateBootstrap
+            SQLiteRuntimeOperationLeaseRepository(
+                databaseURL: installed.runtimeStateDatabase
+            ).loadOperationLease(),
+            .missing
         )
-        XCTAssertEqual(leaseOwner.released, [
-            leaseOwner.acquired[0].operationId,
-        ])
-        XCTAssertFalse(leaseOwner.heartbeats.isEmpty)
     }
 
     func testResumesOnlyVerifiedPendingStagedHandoff() throws {
@@ -139,6 +134,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             pending,
             expectedRevision: admitted.journalRevision
         )
+        try seedActiveLease(pending, databaseURL: installed.runtimeStateDatabase)
 
         let runner = SuccessfulUpdateBootstrapRunner()
         let lifecycle = makeLifecycle(
@@ -241,6 +237,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
                 "completion-receipt.json"
             )
         )
+        try seedActiveLease(running, databaseURL: installed.runtimeStateDatabase)
 
         let runner = SuccessfulUpdateBootstrapRunner()
         let lifecycle = makeLifecycle(
@@ -363,10 +360,12 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
     ) -> UpdateBootstrapJournal {
         let isAdmitted = state == .admitted
         return UpdateBootstrapJournal(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: envelope.id,
             journalRevision: revision,
             operationId: "operation-1",
+            targetInstallationId: "installation-1",
+            expectedInstallationRevision: 1,
             requestId: "request-1",
             envelope: envelope,
             bootstrapSignedSHA256: envelope.signature.signedSha256,
@@ -392,6 +391,27 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             validateRelease: InstalledProductReleasePolicy.validate,
             validateSettlement: InstalledProductReleasePolicy.validate
         )
+    }
+
+    private func seedActiveLease(
+        _ journal: UpdateBootstrapJournal,
+        databaseURL: URL
+    ) throws {
+        try SQLiteRuntimeOperationLeaseRepository(databaseURL: databaseURL)
+            .acquire(
+                RuntimeOperationLeaseDocument(
+                    operationId: journal.operationId,
+                    operation: .applyUpdateBootstrap,
+                    targetInstallationId: journal.targetInstallationId,
+                    expectedInstallationRevision:
+                        journal.expectedInstallationRevision,
+                    ownerPID: 123,
+                    startedAt: "2026-07-27T00:00:00Z",
+                    heartbeatAt: "2026-07-27T00:00:00Z",
+                    expiresAt: "2026-07-27T01:00:00Z",
+                    message: nil
+                )
+            )
     }
 
     private func writeTrustStore(_ publicKey: Data, to url: URL) throws {
@@ -516,35 +536,6 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
 
 private struct UpdateBootstrapFixedClock: RuntimeClock {
     let now = Date(timeIntervalSince1970: 1_785_110_400)
-}
-
-private final class UpdateBootstrapOperationLeaseOwnerSpy:
-    RuntimeOperationLeaseOwner,
-    @unchecked Sendable
-{
-    private(set) var acquired: [RuntimeOperationLeaseDocument] = []
-    private(set) var heartbeats: [String] = []
-    private(set) var released: [String] = []
-
-    func loadOperationLease() -> RuntimeOperationLeaseLoadResult {
-        acquired.last.map(RuntimeOperationLeaseLoadResult.loaded) ?? .missing
-    }
-
-    func acquire(_ document: RuntimeOperationLeaseDocument) throws {
-        acquired.append(document)
-    }
-
-    func heartbeat(
-        operationId: String,
-        heartbeatAt: String,
-        expiresAt: String?
-    ) throws {
-        heartbeats.append(operationId)
-    }
-
-    func release(operationId: String) throws {
-        released.append(operationId)
-    }
 }
 
 private final class SuccessfulUpdateBootstrapRunner: RuntimeCommandRunner {

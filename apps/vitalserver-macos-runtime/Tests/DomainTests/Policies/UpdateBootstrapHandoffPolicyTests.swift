@@ -68,10 +68,12 @@ final class UpdateBootstrapHandoffPolicyTests: XCTestCase {
 
     private func admittedJournal() -> UpdateBootstrapJournal {
         UpdateBootstrapJournal(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "update-42",
             journalRevision: 1,
             operationId: "operation-42",
+            targetInstallationId: "installation-1",
+            expectedInstallationRevision: 1,
             requestId: "request-42",
             envelope: envelope(),
             bootstrapSignedSHA256: String(repeating: "a", count: 64),

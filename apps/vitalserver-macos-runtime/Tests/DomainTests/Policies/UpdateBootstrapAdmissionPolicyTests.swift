@@ -9,6 +9,7 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
             envelope: envelope,
             verification: verification(for: envelope),
             operationId: "operation-42",
+            installedRelease: installedRelease(),
             requestId: "request-42",
             admittedAt: "2026-07-27T08:00:00Z"
         )
@@ -16,6 +17,8 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
         XCTAssertEqual(journal.id, envelope.id)
         XCTAssertEqual(journal.journalRevision, 1)
         XCTAssertEqual(journal.operationId, "operation-42")
+        XCTAssertEqual(journal.targetInstallationId, "installation-42")
+        XCTAssertEqual(journal.expectedInstallationRevision, 7)
         XCTAssertEqual(journal.requestId, "request-42")
         XCTAssertEqual(journal.state, .admitted)
         XCTAssertEqual(
@@ -40,6 +43,7 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
                 ]
             ),
             operationId: "operation-42",
+            installedRelease: installedRelease(),
             requestId: "request-42",
             admittedAt: "2026-07-27T08:00:00Z"
         )) { error in
@@ -64,6 +68,7 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
                 verifiedArtifactIds: [envelope.nextUpdaterArtifact.id]
             ),
             operationId: "operation-42",
+            installedRelease: installedRelease(),
             requestId: "request-42",
             admittedAt: "2026-07-27T08:00:00Z"
         )) { error in
@@ -90,6 +95,26 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
                 envelope.nextUpdaterArtifact.id,
                 envelope.specification.id,
             ]
+        )
+    }
+
+    private func installedRelease() -> InstalledProductRelease {
+        InstalledProductRelease(
+            schemaVersion: "v2",
+            installationId: "installation-42",
+            installationRevision: 7,
+            productId: "ai.tirosh.vitalserver.helper",
+            productVersion: "0.2.1",
+            runtimeVersion: "0.2.1",
+            releaseRevision: 7,
+            source: .update,
+            installOperationId: nil,
+            updateId: "update-previous",
+            journalId: "update-previous",
+            journalRevision: 4,
+            reportRelativePath: "handoff/report.json",
+            reportSHA256: String(repeating: "d", count: 64),
+            settledAt: "2026-07-26T07:00:00Z"
         )
     }
 

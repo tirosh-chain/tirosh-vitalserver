@@ -96,10 +96,12 @@ private func admissionInstalledRelease() -> InstalledProductRelease {
 
 private func admissionJournal() -> UpdateBootstrapJournal {
     UpdateBootstrapJournal(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
         id: "update-1",
         journalRevision: 1,
         operationId: "operation-1",
+        targetInstallationId: "installation-1",
+        expectedInstallationRevision: 1,
         requestId: "request-1",
         envelope: UpdateBootstrapEnvelope(
             schemaVersion: "v1",
