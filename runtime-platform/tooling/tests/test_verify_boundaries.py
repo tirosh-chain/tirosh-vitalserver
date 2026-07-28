@@ -79,6 +79,28 @@ class VerifyBoundariesTests(unittest.TestCase):
         self.assertEqual("legacy-coupling", violations[0].code)
         self.assertIn("relative path", violations[0].message)
 
+    def test_rejects_a_legacy_installed_updater_compatibility_gate(self) -> None:
+        for marker, value in (
+            ("minUpdaterVersion", '"0.2.2"'),
+            ("requiresTwoPhaseUpdate", "true"),
+        ):
+            with self.subTest(marker=marker):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    root = Path(temporary_directory)
+                    create_required_directories(root)
+                    source_file = root / "product/update/release-manifest.json"
+                    source_file.parent.mkdir(parents=True)
+                    source_file.write_text(
+                        f'{{"schemaVersion":"v1","{marker}":{value}}}\n',
+                        encoding="utf-8",
+                    )
+
+                    violations = verify_boundaries.validate(root)
+
+                self.assertEqual(1, len(violations))
+                self.assertEqual("legacy-update-gate-not-allowed", violations[0].code)
+                self.assertIn("bundle-owned next updater", violations[0].message)
+
     def test_rejects_a_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

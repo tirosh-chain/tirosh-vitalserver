@@ -44,6 +44,10 @@ class LinuxHostPackageDpkgAcceptanceTests(unittest.TestCase):
         temporary_root.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="linux-dpkg-acceptance-", dir=temporary_root) as temporary:
             root = Path(temporary)
+            self.build_ownership_fixture(
+                repository_root=repository_root,
+                destination=root / "host-update-ownership-fixture",
+            )
             package = self.compose_package(root, manager_source)
             result = subprocess.run(
                 [docker_executable, "run", "--rm", "--platform", "linux/amd64", "--mount", "type=bind,source=" + str(root) + ",target=/work,readonly", "debian:bookworm-slim", "sh", "-ceu", self.removal_command(package.name)],
@@ -87,6 +91,10 @@ class LinuxHostPackageDpkgAcceptanceTests(unittest.TestCase):
         temporary_root.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="linux-product-dpkg-acceptance-", dir=temporary_root) as temporary:
             root = Path(temporary)
+            ownership_fixture = self.build_ownership_fixture(
+                repository_root=repository_root,
+                destination=root / "host-update-ownership-fixture",
+            )
             fake_systemctl = root / "vitalserver-test-systemctl"
             fake_systemctl.write_text("#!/bin/sh\nif [ \"${1:-}\" = show ]; then printf '%s\\n' not-found; fi\nexit 0\n", encoding="utf-8")
             fake_systemctl.chmod(0o755)
@@ -97,8 +105,10 @@ class LinuxHostPackageDpkgAcceptanceTests(unittest.TestCase):
                 systemctl_executable_path="/work/vitalserver-test-systemctl",
             ))
             self.assertEqual(str(package), result_package["artifactPath"])
+            manifest = json.loads(selected.manifest_path.read_text(encoding="utf-8"))
+            installation_id = manifest["installationId"]
             result = subprocess.run(
-                [docker_executable, "run", "--rm", "--platform", "linux/amd64", "--mount", "type=bind,source=" + str(root) + ",target=/work,readonly", "debian:bookworm-slim", "sh", "-ceu", self.removal_command(package.name)],
+                [docker_executable, "run", "--rm", "--platform", "linux/amd64", "--mount", "type=bind,source=" + str(root) + ",target=/work,readonly", "debian:bookworm-slim", "sh", "-ceu", self.removal_command(package.name, installation_id=installation_id, ownership_fixture=ownership_fixture.name)],
                 text=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -110,10 +120,19 @@ class LinuxHostPackageDpkgAcceptanceTests(unittest.TestCase):
             self.assertIn('"packageReceiptRemoval":"removed-by-os-package-manager"', result.stdout)
 
     @staticmethod
-    def removal_command(package_file_name: str = "com.tirosh.vitalserver.runtime-platform_0.2.0-dev_amd64.deb") -> str:
+    def removal_command(
+        package_file_name: str = "com.tirosh.vitalserver.runtime-platform_0.2.0-dev_amd64.deb",
+        *,
+        installation_id: str = "vitalserver-runtime-platform",
+        ownership_fixture: str = "host-update-ownership-fixture",
+    ) -> str:
         return "\n".join((
             "dpkg --install /work/" + package_file_name,
             "for path in /opt/vitalserver-runtime-platform/current /etc/systemd/system/vitalserver-host-agent.service /opt/vitalserver-runtime-platform/control/runtime-console-bootstrap.json; do if ! test -e \"$path\"; then echo \"missing installed package payload: $path\" >&2; exit 1; fi; done",
+            "/work/" + ownership_fixture + " --socket /run/vitalserver-runtime-platform/host-agent.sock --descriptor /opt/vitalserver-runtime-platform/control/host-agent.local.json --installation-id " + installation_id + " --installation-revision 1 &",
+            "fixture_pid=$!",
+            "for attempt in 1 2 3 4 5; do test -f /opt/vitalserver-runtime-platform/control/host-agent.local.json && break; sleep 1; done",
+            "if ! test -f /opt/vitalserver-runtime-platform/control/host-agent.local.json; then echo 'explicit Host update ownership fixture did not publish its descriptor' >&2; kill \"$fixture_pid\" || true; exit 1; fi",
             "dpkg --remove com.tirosh.vitalserver.runtime-platform",
             "for path in /opt/vitalserver-runtime-platform/releases /opt/vitalserver-runtime-platform/current /etc/systemd/system/vitalserver-host-agent.service /opt/vitalserver-runtime-platform/control/runtime-console-bootstrap.json; do if test -e \"$path\"; then echo \"unexpected remaining package payload: $path\" >&2; exit 1; fi; done",
             "receipt=/var/lib/vitalserver-runtime-platform/data/installation-manager/latest-removal-receipt.json; if ! test -f \"$receipt\"; then echo \"missing C54 terminal receipt: $receipt\" >&2; exit 1; fi",
@@ -121,6 +140,34 @@ class LinuxHostPackageDpkgAcceptanceTests(unittest.TestCase):
             "if ! grep -Eq '\"packageReceiptRemoval\"[[:space:]]*:[[:space:]]*\"removed-by-os-package-manager\"' \"$receipt\"; then echo 'C54 receipt does not name OS package-manager removal' >&2; exit 1; fi",
             "status=$(dpkg-query -W -f='${Status}' com.tirosh.vitalserver.runtime-platform); if test \"$status\" != 'deinstall ok config-files'; then echo \"unexpected final dpkg status: $status\" >&2; exit 1; fi",
         ))
+
+    @staticmethod
+    def build_ownership_fixture(*, repository_root: Path, destination: Path) -> Path:
+        environment = dict(os.environ)
+        environment.update({"GOOS": "linux", "GOARCH": "amd64", "CGO_ENABLED": "0"})
+        result = subprocess.run(
+            [
+                environment.get("GO", "go"),
+                "build",
+                "-trimpath",
+                "-o",
+                str(destination),
+                ".",
+            ],
+            cwd=repository_root / "tooling" / "host-update-ownership-fixture",
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise AssertionError(
+                "failed to build explicit Host update ownership fixture:\n"
+                + result.stdout
+                + result.stderr
+            )
+        return destination
 
     def compose_package(self, root: Path, manager_source: Path) -> Path:
         release_id = "runtime-platform-0.2.0-dev-build-001"

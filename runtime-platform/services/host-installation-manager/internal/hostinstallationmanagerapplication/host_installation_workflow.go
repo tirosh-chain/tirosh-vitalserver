@@ -30,6 +30,10 @@ type HostInstallationReceiptStore interface {
 	WriteHostInstallationReceipt(context.Context, string, hostinstallationmanagerdomain.HostInstallationReceipt) error
 }
 
+type HostUpdateOperationOwnershipReader interface {
+	ReadHostUpdateOperationOwnership(context.Context) (hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation, error)
+}
+
 // HostProductRemovalJournalStore persists the independent C54 lifecycle.
 // C50 installation transactions and C54 removal transactions must never be
 // decoded as one another merely because both happen below product data.
@@ -83,6 +87,7 @@ type HostInstallationWorkflow struct {
 	footprintObserver   HostInstallationFootprintObserver
 	journalStore        HostInstallationJournalStore
 	receiptStore        HostInstallationReceiptStore
+	updateOwnership     HostUpdateOperationOwnershipReader
 	releaseActivator    HostProductReleaseActivator
 	serviceQuiescer     HostProductServiceQuiescer
 	serviceReconciler   HostProductServiceReconciler
@@ -97,12 +102,13 @@ func NewHostInstallationWorkflow(
 	footprintObserver HostInstallationFootprintObserver,
 	journalStore HostInstallationJournalStore,
 	receiptStore HostInstallationReceiptStore,
+	updateOwnership HostUpdateOperationOwnershipReader,
 	releaseActivator HostProductReleaseActivator,
 	serviceQuiescer HostProductServiceQuiescer,
 	serviceReconciler HostProductServiceReconciler,
 	clock HostInstallationClock,
 ) (*HostInstallationWorkflow, error) {
-	if manifestReader == nil || footprintObserver == nil || journalStore == nil || receiptStore == nil || releaseActivator == nil || serviceQuiescer == nil || serviceReconciler == nil || clock == nil {
+	if manifestReader == nil || footprintObserver == nil || journalStore == nil || receiptStore == nil || updateOwnership == nil || releaseActivator == nil || serviceQuiescer == nil || serviceReconciler == nil || clock == nil {
 		return nil, fmt.Errorf("Host Installation Manager workflow dependencies are required")
 	}
 	return &HostInstallationWorkflow{
@@ -110,6 +116,7 @@ func NewHostInstallationWorkflow(
 		footprintObserver: footprintObserver,
 		journalStore:      journalStore,
 		receiptStore:      receiptStore,
+		updateOwnership:   updateOwnership,
 		releaseActivator:  releaseActivator,
 		serviceQuiescer:   serviceQuiescer,
 		serviceReconciler: serviceReconciler,
@@ -125,6 +132,7 @@ func NewHostInstallationWorkflowWithRemoval(
 	footprintObserver HostInstallationFootprintObserver,
 	journalStore HostInstallationJournalStore,
 	receiptStore HostInstallationReceiptStore,
+	updateOwnership HostUpdateOperationOwnershipReader,
 	releaseActivator HostProductReleaseActivator,
 	serviceQuiescer HostProductServiceQuiescer,
 	serviceReconciler HostProductServiceReconciler,
@@ -133,7 +141,7 @@ func NewHostInstallationWorkflowWithRemoval(
 	removalEffects HostProductRemovalEffects,
 	clock HostInstallationClock,
 ) (*HostInstallationWorkflow, error) {
-	workflow, err := NewHostInstallationWorkflow(manifestReader, footprintObserver, journalStore, receiptStore, releaseActivator, serviceQuiescer, serviceReconciler, clock)
+	workflow, err := NewHostInstallationWorkflow(manifestReader, footprintObserver, journalStore, receiptStore, updateOwnership, releaseActivator, serviceQuiescer, serviceReconciler, clock)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +209,16 @@ func (workflow *HostInstallationWorkflow) ExecuteHostInstallationPreflight(
 	receipt := hostInstallationReceiptForDecision(request, manifest, decision, now)
 	if decision.State != "admitted" {
 		return receipt, nil
+	}
+	if hostinstallationmanagerdomain.HostInstallationDecisionRequiresUpdateIdle(decision) {
+		ownership, err := workflow.updateOwnership.ReadHostUpdateOperationOwnership(context)
+		if err != nil {
+			return hostinstallationmanagerdomain.HostInstallationReceipt{}, fmt.Errorf("read Host update ownership before installation: %w", err)
+		}
+		coordinationDecision := hostinstallationmanagerdomain.DecideHostMutationAgainstUpdateOwnership(manifest, ownership, "active-host-update-blocks-installation")
+		if coordinationDecision.State != "admitted" {
+			return hostInstallationReceiptForDecision(request, manifest, coordinationDecision, now), nil
+		}
 	}
 	journal := hostinstallationmanagerdomain.HostInstallationJournal{
 		SchemaVersion:  hostinstallationmanagerdomain.HostInstallationDocumentSchemaVersion,
@@ -541,6 +559,14 @@ func (workflow *HostInstallationWorkflow) ExecuteHostProductRemoval(
 	now := workflow.clock.Now().UTC().Format(time.RFC3339)
 	if decision.State != "admitted" {
 		return hostProductRemovalReceiptForDecision(request, manifest, decision, now), nil
+	}
+	ownership, err := workflow.updateOwnership.ReadHostUpdateOperationOwnership(context)
+	if err != nil {
+		return hostinstallationmanagerdomain.HostProductRemovalReceipt{}, fmt.Errorf("read Host update ownership before product removal: %w", err)
+	}
+	coordinationDecision := hostinstallationmanagerdomain.DecideHostMutationAgainstUpdateOwnership(manifest, ownership, "active-host-update-blocks-removal")
+	if coordinationDecision.State != "admitted" {
+		return hostProductRemovalReceiptForDecision(request, manifest, coordinationDecision, now), nil
 	}
 	if existingJournal, readError := workflow.removalJournalStore.ReadHostProductRemovalJournal(context, removalJournalPath); readError == nil {
 		if existingJournal.InstallationID != manifest.InstallationID || existingJournal.ReleaseID != manifest.Release.ID || existingJournal.State != hostinstallationmanagerdomain.HostProductRemovalJournalCompleted {

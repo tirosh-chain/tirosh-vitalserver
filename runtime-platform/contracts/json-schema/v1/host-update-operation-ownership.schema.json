@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-operation-ownership",
+  "title": "HostUpdateOperationOwnership",
+  "description": "The Host Agent-owned explicit projection of whether one durable Host Update Journal currently owns an installation. Consumers must not infer idle from a missing, failed, unavailable, or invalid read.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "installationId",
+    "installationRevision",
+    "state"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "installationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "installationRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "state": {
+      "enum": [
+        "idle",
+        "active"
+      ]
+    },
+    "updateId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "operationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "updateState": {
+      "enum": [
+        "requested",
+        "bootstrap-staged",
+        "handoff-pending",
+        "applying"
+      ]
+    },
+    "interruptionRequested": {
+      "type": "boolean"
+    },
+    "interruptionRequestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "journalRevision": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "active"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "updateId",
+          "operationId",
+          "requestId",
+          "updateState",
+          "journalRevision"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "updateId"
+              ]
+            },
+            {
+              "required": [
+                "operationId"
+              ]
+            },
+            {
+              "required": [
+                "requestId"
+              ]
+            },
+            {
+              "required": [
+                "updateState"
+              ]
+            },
+            {
+              "required": [
+                "journalRevision"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

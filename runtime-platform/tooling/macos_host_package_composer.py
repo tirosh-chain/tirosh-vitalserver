@@ -1824,6 +1824,13 @@ def compose_preinstall_script(
     """
 
     installation = required_object(documents.host_agent_deployment, "installation", "C33")
+    control = required_object(documents.host_agent_deployment, "control", "C33")
+    local_administration = required_object(control, "localAdministration", "C33 control")
+    host_administration_descriptor_path = required_string(
+        local_administration,
+        "descriptorPath",
+        "C33 localAdministration",
+    )
     data_directory = PurePosixPath(required_string(installation, "dataDirectory", "C33 installation"))
     journal_path = data_directory / "installation-manager" / "current-transaction.json"
     receipt_path = data_directory / "installation-manager" / "latest-installation-receipt.json"
@@ -1841,6 +1848,8 @@ def compose_preinstall_script(
             + ' --request-id "$installation_request_id"'
             + " --installation-id " + shell_quote(required_string(installation, "installationId", "C33 installation"))
             + " --release-id " + shell_quote(composition.release_slot_id)
+            + " --host-administration-descriptor " + shell_quote(host_administration_descriptor_path)
+            + " --host-administration-timeout-milliseconds 5000"
             + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl",
             "",
         ]
@@ -1854,6 +1863,7 @@ def compose_postinstall_script(
     virtual_machine: Mapping[str, Any],
 ) -> str:
     control = required_object(host_agent_deployment, "control", "C33")
+    local_administration = required_object(control, "localAdministration", "C33 control")
     installation = required_object(host_agent_deployment, "installation", "C33")
     update_bootstrap = required_object(host_agent_deployment, "updateBootstrap", "C33")
     state_database_path = PurePosixPath(required_string(control, "stateDatabasePath", "C33 control"))
@@ -1933,6 +1943,9 @@ def compose_postinstall_script(
         + shell_quote(str(installation_journal_path))
         + " --receipt "
         + shell_quote(str(installation_receipt_path))
+        + " --host-administration-descriptor "
+        + shell_quote(required_string(local_administration, "descriptorPath", "C33 localAdministration"))
+        + " --host-administration-timeout-milliseconds 5000"
         + " --pkgutil /usr/sbin/pkgutil --launchctl /bin/launchctl"
     )
     return "\n".join(

@@ -1,7 +1,7 @@
-// Package guestproductreleaseupdatecomposition owns release-process-only
-// preparation of the concrete Guest Product C26 payload. It does not sign C25,
-// activate Guest state, or interpret a staged Host update.
-package guestproductreleaseupdatecomposition
+// Package productupdatecomposition owns release-process-only preparation of a
+// complete Product Update Specification and its immutable payload. It does not
+// sign the bootstrap envelope or activate runtime state.
+package productupdatecomposition
 
 import (
 	"crypto/sha256"
@@ -17,39 +17,44 @@ import (
 )
 
 const (
-	schemaVersion            = "v1"
-	guestReleaseArchiveMedia = "application/vnd.tirosh.vitalserver.guest-product-release+tar+gzip"
-	effectExecutorMedia      = "application/vnd.tirosh.vitalserver.update-layer-effect-executor"
-	effectConfigurationMedia = "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json"
-	imageSetArchiveMedia     = "application/vnd.tirosh.vitalserver.bundled-upstream-image-set+tar+gzip"
-	maximumCompositionBytes  = 1 << 20
-	guestProductReleaseRoot  = "/opt/vitalserver/releases/"
-	guestReleaseManagerPath  = "/v1/guest-product-release-updates"
+	schemaVersion                    = "v1"
+	guestReleaseArchiveMedia         = "application/vnd.tirosh.vitalserver.guest-product-release+tar+gzip"
+	effectExecutorMedia              = "application/vnd.tirosh.vitalserver.update-layer-effect-executor"
+	effectConfigurationMedia         = "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json"
+	imageSetArchiveMedia             = "application/vnd.tirosh.vitalserver.bundled-upstream-image-set+tar+gzip"
+	hostPlatformReleaseArchiveMedia  = "application/vnd.tirosh.vitalserver.host-platform-release+tar+gzip"
+	maximumCompositionBytes          = 1 << 20
+	guestProductReleaseRoot          = "/opt/vitalserver/releases/"
+	guestReleaseManagerPath          = "/v1/guest-product-release-updates"
+	macOSHostInstallationManagerPath = "/Library/Application Support/VitalServerRuntimePlatform/current/bin/host-installation-manager"
+	macOSActiveReleaseManifestPath   = "/Library/Application Support/VitalServerRuntimePlatform/current/installation-manifest.json"
 )
 
 var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
-// GuestProductReleaseUpdateComposition is a build-local release selection
-// document. Source paths are intentionally not a C25/C26 contract: they are
-// consumed only by this release tool and never leave the trusted release
-// workspace. Resulting C25, C26, and C61 documents carry immutable IDs,
-// digests, sizes, and payload-relative locations instead.
-type GuestProductReleaseUpdateComposition struct {
-	SchemaVersion       string                                  `json:"schemaVersion"`
-	BundleID            string                                  `json:"bundleId"`
-	ProductID           string                                  `json:"productId"`
-	Target              UpdateTarget                            `json:"target"`
-	TargetRelease       TargetRelease                           `json:"targetRelease"`
-	SigningKeyID        string                                  `json:"signingKeyId"`
-	IssuedAt            string                                  `json:"issuedAt"`
-	SpecificationID     string                                  `json:"specificationId"`
-	NextUpdater         SourceArtifact                          `json:"nextUpdater"`
-	GuestProductRelease GuestProductReleaseUpdateSource         `json:"guestProductRelease"`
-	EffectExecutor      GuestProductReleaseEffectExecutorSource `json:"effectExecutor"`
+// ProductUpdateComposition is a build-local complete Product release
+// selection. Source paths are consumed only by this release tool and never
+// leave the trusted release workspace. Deployed bootstrap, specification, and
+// layer configuration documents carry immutable identities instead.
+type ProductUpdateComposition struct {
+	SchemaVersion   string                   `json:"schemaVersion"`
+	BundleID        string                   `json:"bundleId"`
+	ProductID       string                   `json:"productId"`
+	Target          UpdateTarget             `json:"target"`
+	TargetRelease   TargetRelease            `json:"targetRelease"`
+	SigningKeyID    string                   `json:"signingKeyId"`
+	IssuedAt        string                   `json:"issuedAt"`
+	SpecificationID string                   `json:"specificationId"`
+	NextUpdater     SourceArtifact           `json:"nextUpdater"`
+	GuestRuntime    GuestRuntimeUpdateSource `json:"guestRuntime"`
 	// BundledUpstreamImageSet is optional because an external-Upstream release
 	// has no Guest-owned Container layer. When present it is always emitted
-	// before the Guest Product layer in C25/C26.
+	// before the Guest Runtime layer in the bootstrap and detailed plan.
 	BundledUpstreamImageSet *GuestBundledUpstreamImageSetUpdateSource `json:"bundledUpstreamImageSet,omitempty"`
+	// HostPlatformRelease is optional for a Guest-only update. When present it
+	// is always emitted after every Guest-owned layer because it may replace
+	// the Host updater and service boundary executing this handoff.
+	HostPlatformRelease *HostPlatformReleaseUpdateSource `json:"hostPlatformRelease,omitempty"`
 }
 
 type UpdateTarget struct {
@@ -65,6 +70,13 @@ type TargetRelease struct {
 type SourceArtifact struct {
 	ID         string `json:"id"`
 	SourcePath string `json:"sourcePath"`
+}
+
+// GuestRuntimeUpdateSource keeps the Guest Runtime layer's selected Product
+// release and its release-owned effect executor under one explicit owner.
+type GuestRuntimeUpdateSource struct {
+	ProductRelease GuestProductReleaseUpdateSource         `json:"productRelease"`
+	EffectExecutor GuestProductReleaseEffectExecutorSource `json:"effectExecutor"`
 }
 
 type GuestProductReleaseUpdateSource struct {
@@ -87,8 +99,8 @@ type GuestProductReleaseEffectExecutorSource struct {
 }
 
 // GuestBundledUpstreamImageSetUpdateSource is the release-process input for
-// C66. It names immutable archive and C55 executable bytes, while the actual
-// selected active image-set remains a C64 compare-and-swap input.
+// Container layer. It names immutable archive and effect-executor bytes, while
+// the active image-set remains the Guest image-set manager's state.
 type GuestBundledUpstreamImageSetUpdateSource struct {
 	Apply          GuestBundledUpstreamImageSetTransitionSource     `json:"apply"`
 	Rollback       *GuestBundledUpstreamImageSetTransitionSource    `json:"rollback,omitempty"`
@@ -108,20 +120,43 @@ type GuestBundledUpstreamImageSetEffectExecutorSource struct {
 	RequestTimeoutMilliseconds int            `json:"requestTimeoutMilliseconds"`
 }
 
-type ComposeGuestProductReleaseUpdateRequest struct {
+// HostPlatformReleaseUpdateSource is the release-process selection for the
+// final Host Platform layer. The fixed installed Installation Manager paths
+// are derived from Target.Platform rather than accepted from release input.
+type HostPlatformReleaseUpdateSource struct {
+	Apply          HostPlatformReleaseTransitionSource     `json:"apply"`
+	Rollback       *HostPlatformReleaseTransitionSource    `json:"rollback,omitempty"`
+	EffectExecutor HostPlatformReleaseEffectExecutorSource `json:"effectExecutor"`
+}
+
+type HostPlatformReleaseTransitionSource struct {
+	ExpectedActiveReleaseID string         `json:"expectedActiveReleaseId"`
+	TargetReleaseID         string         `json:"targetReleaseId"`
+	Artifact                SourceArtifact `json:"artifact"`
+}
+
+type HostPlatformReleaseEffectExecutorSource struct {
+	Executor                   SourceArtifact `json:"executor"`
+	ConfigurationArtifactID    string         `json:"configurationArtifactId"`
+	RequestTimeoutMilliseconds int            `json:"requestTimeoutMilliseconds"`
+}
+
+type ComposeProductUpdateRequest struct {
 	CompositionPath string
 	OutputDirectory string
 }
 
-// ComposedGuestProductReleaseUpdate contains the prepared inputs to the
-// generic signer. The generic signer remains the sole owner of C25 signing.
-type ComposedGuestProductReleaseUpdate struct {
-	OutputDirectory                  string `json:"outputDirectory"`
-	PayloadDirectory                 string `json:"payloadDirectory"`
-	ReleaseBundleCompositionPath     string `json:"releaseBundleCompositionPath"`
-	ProductUpdateSpecificationPath   string `json:"productUpdateSpecificationPath"`
-	EffectConfigurationPath          string `json:"effectConfigurationPath"`
-	ContainerEffectConfigurationPath string `json:"containerEffectConfigurationPath,omitempty"`
+// ComposedProductUpdate contains the prepared inputs to the
+// generic signer. The generic signer remains the sole bootstrap-envelope
+// signing owner.
+type ComposedProductUpdate struct {
+	OutputDirectory                     string `json:"outputDirectory"`
+	PayloadDirectory                    string `json:"payloadDirectory"`
+	ReleaseBundleCompositionPath        string `json:"releaseBundleCompositionPath"`
+	ProductUpdateSpecificationPath      string `json:"productUpdateSpecificationPath"`
+	EffectConfigurationPath             string `json:"effectConfigurationPath"`
+	ContainerEffectConfigurationPath    string `json:"containerEffectConfigurationPath,omitempty"`
+	HostPlatformEffectConfigurationPath string `json:"hostPlatformEffectConfigurationPath,omitempty"`
 }
 
 type releaseBundleComposition struct {
@@ -229,92 +264,112 @@ type bundledUpstreamImageSetOperationIntent struct {
 	TargetImageSetID       string                  `json:"targetImageSetId"`
 }
 
-// ComposeGuestProductReleaseUpdate copies selected immutable source bytes,
-// derives C26 integrity declarations from the copied payload, writes C61, and
-// emits a C25 signer input. It publishes only by rename and never replaces a
-// previous prepared release workspace.
-func ComposeGuestProductReleaseUpdate(request ComposeGuestProductReleaseUpdateRequest) (ComposedGuestProductReleaseUpdate, error) {
+type hostPlatformReleaseEffectExecutorConfiguration struct {
+	SchemaVersion           string                              `json:"schemaVersion"`
+	EffectExecutorID        string                              `json:"effectExecutorId"`
+	HostInstallationManager hostInstallationManagerEndpoint     `json:"hostInstallationManager"`
+	Apply                   hostPlatformReleaseOperationIntent  `json:"apply"`
+	Rollback                *hostPlatformReleaseOperationIntent `json:"rollback,omitempty"`
+}
+
+type hostInstallationManagerEndpoint struct {
+	Platform                   string `json:"platform"`
+	ExecutablePath             string `json:"executablePath"`
+	ActiveReleaseManifestPath  string `json:"activeReleaseManifestPath"`
+	RequestTimeoutMilliseconds int    `json:"requestTimeoutMilliseconds"`
+}
+
+type hostPlatformReleaseOperationIntent struct {
+	ExpectedActiveReleaseID string `json:"expectedActiveReleaseId"`
+	TargetReleaseID         string `json:"targetReleaseId"`
+}
+
+// ComposeProductUpdate copies selected immutable source bytes, derives the
+// detailed update plan and layer configuration identities from copied bytes,
+// and emits a bootstrap signer input. It publishes only by rename and never
+// replaces a previous prepared release workspace.
+func ComposeProductUpdate(request ComposeProductUpdateRequest) (ComposedProductUpdate, error) {
 	composition, err := readComposition(request.CompositionPath)
 	if err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	if err := validateComposition(composition); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	outputDirectory, err := requireNewOutputDirectory(request.OutputDirectory)
 	if err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	temporary, err := os.MkdirTemp(filepath.Dir(outputDirectory), "."+filepath.Base(outputDirectory)+".compose-")
 	if err != nil {
-		return ComposedGuestProductReleaseUpdate{}, fmt.Errorf("create temporary Guest Product release update workspace: %w", err)
+		return ComposedProductUpdate{}, fmt.Errorf("create temporary Product update workspace: %w", err)
 	}
 	defer os.RemoveAll(temporary)
 	payloadDirectory := filepath.Join(temporary, "payload")
 	if err := os.Mkdir(payloadDirectory, 0o700); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, fmt.Errorf("create payload directory: %w", err)
+		return ComposedProductUpdate{}, fmt.Errorf("create payload directory: %w", err)
 	}
 	nextUpdater, err := copySourceArtifact(composition.NextUpdater, filepath.Join(payloadDirectory, "host-updater"), "next updater", true)
 	if err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	nextUpdater.RelativePath = "payload/host-updater"
 	nextUpdater.MediaType = "application/octet-stream"
-	applyArchiveRelativePath := filepath.ToSlash(filepath.Join("payload", "guest-product-releases", composition.GuestProductRelease.Apply.TargetReleaseID+".tar.gz"))
-	applyArchive, err := copySourceArtifact(composition.GuestProductRelease.Apply.Artifact, filepath.Join(temporary, filepath.FromSlash(applyArchiveRelativePath)), "Guest Product apply archive", false)
+	applyArchiveRelativePath := filepath.ToSlash(filepath.Join("payload", "guest-product-releases", composition.GuestRuntime.ProductRelease.Apply.TargetReleaseID+".tar.gz"))
+	applyArchive, err := copySourceArtifact(composition.GuestRuntime.ProductRelease.Apply.Artifact, filepath.Join(temporary, filepath.FromSlash(applyArchiveRelativePath)), "Guest Product apply archive", false)
 	if err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	applyArchive.RelativePath = applyArchiveRelativePath
 	applyArchive.MediaType = guestReleaseArchiveMedia
-	executorRelativePath := filepath.ToSlash(filepath.Join("payload", "effect-executors", composition.EffectExecutor.Executor.ID))
-	executor, err := copySourceArtifact(composition.EffectExecutor.Executor, filepath.Join(temporary, filepath.FromSlash(executorRelativePath)), "Guest Product release effect executor", true)
+	executorRelativePath := filepath.ToSlash(filepath.Join("payload", "effect-executors", composition.GuestRuntime.EffectExecutor.Executor.ID))
+	executor, err := copySourceArtifact(composition.GuestRuntime.EffectExecutor.Executor, filepath.Join(temporary, filepath.FromSlash(executorRelativePath)), "Guest Product release effect executor", true)
 	if err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	executor.RelativePath = executorRelativePath
 	configuration := guestProductReleaseEffectExecutorConfiguration{
 		SchemaVersion:    schemaVersion,
-		EffectExecutorID: composition.EffectExecutor.Executor.ID,
+		EffectExecutorID: composition.GuestRuntime.EffectExecutor.Executor.ID,
 		GuestProductReleaseManagerEndpoint: guestProductReleaseManagerEndpoint{
-			Scheme: "http", Host: "127.0.0.1", Port: composition.EffectExecutor.GuestProductReleaseManagerPort,
-			Path: guestReleaseManagerPath, RequestTimeoutMilliseconds: composition.EffectExecutor.RequestTimeoutMilliseconds,
+			Scheme: "http", Host: "127.0.0.1", Port: composition.GuestRuntime.EffectExecutor.GuestProductReleaseManagerPort,
+			Path: guestReleaseManagerPath, RequestTimeoutMilliseconds: composition.GuestRuntime.EffectExecutor.RequestTimeoutMilliseconds,
 		},
-		Apply: intentFromTransition(composition.GuestProductRelease.Apply),
+		Apply: intentFromTransition(composition.GuestRuntime.ProductRelease.Apply),
 	}
-	if composition.GuestProductRelease.Rollback != nil {
-		rollbackIntent := intentFromTransition(*composition.GuestProductRelease.Rollback)
+	if composition.GuestRuntime.ProductRelease.Rollback != nil {
+		rollbackIntent := intentFromTransition(*composition.GuestRuntime.ProductRelease.Rollback)
 		configuration.Rollback = &rollbackIntent
 	}
-	configurationRelativePath := filepath.ToSlash(filepath.Join("payload", "effect-configurations", composition.EffectExecutor.ConfigurationArtifactID+".json"))
+	configurationRelativePath := filepath.ToSlash(filepath.Join("payload", "effect-configurations", composition.GuestRuntime.EffectExecutor.ConfigurationArtifactID+".json"))
 	configurationPath := filepath.Join(temporary, filepath.FromSlash(configurationRelativePath))
 	if err := writeJSONFile(configurationPath, configuration, 0o600); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, fmt.Errorf("write C61 Guest Product release effect configuration: %w", err)
+		return ComposedProductUpdate{}, fmt.Errorf("write Guest Runtime effect configuration: %w", err)
 	}
-	configurationArtifact, err := artifactFromPath(composition.EffectExecutor.ConfigurationArtifactID, configurationRelativePath, configurationPath, effectConfigurationMedia)
+	configurationArtifact, err := artifactFromPath(composition.GuestRuntime.EffectExecutor.ConfigurationArtifactID, configurationRelativePath, configurationPath, effectConfigurationMedia)
 	if err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	var rollback productUpdateRollback
-	if composition.GuestProductRelease.Rollback == nil {
+	if composition.GuestRuntime.ProductRelease.Rollback == nil {
 		rollback = productUpdateRollback{State: "unsupported", Reason: "no immutable prior Guest Product release archive was selected for this bundle"}
 	} else {
-		rollbackRelativePath := filepath.ToSlash(filepath.Join("payload", "guest-product-releases", composition.GuestProductRelease.Rollback.TargetReleaseID+".tar.gz"))
-		rollbackArtifact, copyErr := copySourceArtifact(composition.GuestProductRelease.Rollback.Artifact, filepath.Join(temporary, filepath.FromSlash(rollbackRelativePath)), "Guest Product rollback archive", false)
+		rollbackRelativePath := filepath.ToSlash(filepath.Join("payload", "guest-product-releases", composition.GuestRuntime.ProductRelease.Rollback.TargetReleaseID+".tar.gz"))
+		rollbackArtifact, copyErr := copySourceArtifact(composition.GuestRuntime.ProductRelease.Rollback.Artifact, filepath.Join(temporary, filepath.FromSlash(rollbackRelativePath)), "Guest Product rollback archive", false)
 		if copyErr != nil {
-			return ComposedGuestProductReleaseUpdate{}, copyErr
+			return ComposedProductUpdate{}, copyErr
 		}
 		rollbackArtifact.RelativePath = rollbackRelativePath
 		rollbackArtifact.MediaType = guestReleaseArchiveMedia
 		rollback = productUpdateRollback{State: "available", Artifact: &rollbackArtifact}
 	}
-	layerPlan := make([]productUpdateLayerPlan, 0, 2)
-	layerOrder := make([]string, 0, 2)
+	layerPlan := make([]productUpdateLayerPlan, 0, 3)
+	layerOrder := make([]string, 0, 3)
 	containerEffectConfigurationPath := ""
 	if composition.BundledUpstreamImageSet != nil {
 		containerLayer, configurationPath, composeErr := composeBundledUpstreamImageSetLayer(*composition.BundledUpstreamImageSet, temporary)
 		if composeErr != nil {
-			return ComposedGuestProductReleaseUpdate{}, composeErr
+			return ComposedProductUpdate{}, composeErr
 		}
 		layerPlan = append(layerPlan, containerLayer)
 		layerOrder = append(layerOrder, "container")
@@ -330,20 +385,34 @@ func ComposeGuestProductReleaseUpdate(request ComposeGuestProductReleaseUpdateRe
 		Rollback:       rollback,
 	})
 	layerOrder = append(layerOrder, "guest-runtime")
+	hostPlatformEffectConfigurationPath := ""
+	if composition.HostPlatformRelease != nil {
+		hostPlatformLayer, configurationPath, composeErr := composeHostPlatformReleaseLayer(
+			*composition.HostPlatformRelease,
+			composition.Target,
+			temporary,
+		)
+		if composeErr != nil {
+			return ComposedProductUpdate{}, composeErr
+		}
+		layerPlan = append(layerPlan, hostPlatformLayer)
+		layerOrder = append(layerOrder, "host-platform")
+		hostPlatformEffectConfigurationPath = configurationPath
+	}
 	specification := productUpdateSpecification{
 		SchemaVersion: schemaVersion, ID: composition.SpecificationID, BootstrapEnvelopeID: composition.BundleID, LayerPlan: layerPlan,
 	}
 	specificationRelativePath := "payload/product-update.json"
 	specificationPath := filepath.Join(temporary, filepath.FromSlash(specificationRelativePath))
 	if err := writeJSONFile(specificationPath, specification, 0o600); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, fmt.Errorf("write C26 product update specification: %w", err)
+		return ComposedProductUpdate{}, fmt.Errorf("write Product Update Specification: %w", err)
 	}
 	specificationArtifact, err := artifactFromPath(composition.SpecificationID, specificationRelativePath, specificationPath, "application/json")
 	if err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	if nextUpdater.ID == specificationArtifact.ID || nextUpdater.SHA256 == specificationArtifact.SHA256 || nextUpdater.RelativePath == specificationArtifact.RelativePath {
-		return ComposedGuestProductReleaseUpdate{}, fmt.Errorf("next updater and product update specification must stay distinct")
+		return ComposedProductUpdate{}, fmt.Errorf("next updater and product update specification must stay distinct")
 	}
 	signerInput := releaseBundleComposition{
 		SchemaVersion: schemaVersion, BundleID: composition.BundleID, ProductID: composition.ProductID, Target: composition.Target, TargetRelease: composition.TargetRelease,
@@ -354,21 +423,21 @@ func ComposeGuestProductReleaseUpdate(request ComposeGuestProductReleaseUpdateRe
 	}
 	signerInputPath := filepath.Join(temporary, "release-bundle-composition.json")
 	if err := writeJSONFile(signerInputPath, signerInput, 0o600); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, fmt.Errorf("write C25 release bundle composition: %w", err)
+		return ComposedProductUpdate{}, fmt.Errorf("write bootstrap release bundle composition: %w", err)
 	}
 	if err := syncDirectory(payloadDirectory); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	if err := syncDirectory(temporary); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
 	if err := os.Rename(temporary, outputDirectory); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, fmt.Errorf("publish Guest Product release update workspace: %w", err)
+		return ComposedProductUpdate{}, fmt.Errorf("publish Guest Product release update workspace: %w", err)
 	}
 	if err := syncDirectory(filepath.Dir(outputDirectory)); err != nil {
-		return ComposedGuestProductReleaseUpdate{}, err
+		return ComposedProductUpdate{}, err
 	}
-	return ComposedGuestProductReleaseUpdate{
+	return ComposedProductUpdate{
 		OutputDirectory: outputDirectory, PayloadDirectory: filepath.Join(outputDirectory, "payload"),
 		ReleaseBundleCompositionPath:   filepath.Join(outputDirectory, "release-bundle-composition.json"),
 		ProductUpdateSpecificationPath: filepath.Join(outputDirectory, filepath.FromSlash(specificationRelativePath)),
@@ -378,6 +447,12 @@ func ComposeGuestProductReleaseUpdate(request ComposeGuestProductReleaseUpdateRe
 				return ""
 			}
 			return filepath.Join(outputDirectory, filepath.FromSlash(containerEffectConfigurationPath))
+		}(),
+		HostPlatformEffectConfigurationPath: func() string {
+			if hostPlatformEffectConfigurationPath == "" {
+				return ""
+			}
+			return filepath.Join(outputDirectory, filepath.FromSlash(hostPlatformEffectConfigurationPath))
 		}(),
 	}, nil
 }
@@ -412,7 +487,7 @@ func composeBundledUpstreamImageSetLayer(source GuestBundledUpstreamImageSetUpda
 	configurationRelativePath := filepath.ToSlash(filepath.Join("payload", "effect-configurations", source.EffectExecutor.ConfigurationArtifactID+".json"))
 	configurationPath := filepath.Join(workspace, filepath.FromSlash(configurationRelativePath))
 	if err := writeJSONFile(configurationPath, configuration, 0o600); err != nil {
-		return productUpdateLayerPlan{}, "", fmt.Errorf("write C66 bundled Upstream image-set effect configuration: %w", err)
+		return productUpdateLayerPlan{}, "", fmt.Errorf("write Container effect configuration: %w", err)
 	}
 	configurationArtifact, err := artifactFromPath(source.EffectExecutor.ConfigurationArtifactID, configurationRelativePath, configurationPath, effectConfigurationMedia)
 	if err != nil {
@@ -436,50 +511,129 @@ func composeBundledUpstreamImageSetLayer(source GuestBundledUpstreamImageSetUpda
 	}, configurationRelativePath, nil
 }
 
-func readComposition(path string) (GuestProductReleaseUpdateComposition, error) {
+func composeHostPlatformReleaseLayer(source HostPlatformReleaseUpdateSource, target UpdateTarget, workspace string) (productUpdateLayerPlan, string, error) {
+	applyRelativePath := filepath.ToSlash(filepath.Join("payload", "host-platform-releases", source.Apply.TargetReleaseID+".tar.gz"))
+	applyArtifact, err := copySourceArtifact(source.Apply.Artifact, filepath.Join(workspace, filepath.FromSlash(applyRelativePath)), "Host Platform apply archive", false)
+	if err != nil {
+		return productUpdateLayerPlan{}, "", err
+	}
+	applyArtifact.RelativePath = applyRelativePath
+	applyArtifact.MediaType = hostPlatformReleaseArchiveMedia
+	executorRelativePath := filepath.ToSlash(filepath.Join("payload", "effect-executors", source.EffectExecutor.Executor.ID))
+	executor, err := copySourceArtifact(source.EffectExecutor.Executor, filepath.Join(workspace, filepath.FromSlash(executorRelativePath)), "Host Platform release effect executor", true)
+	if err != nil {
+		return productUpdateLayerPlan{}, "", err
+	}
+	executor.RelativePath = executorRelativePath
+	manager, err := hostInstallationManagerEndpointForTarget(target, source.EffectExecutor.RequestTimeoutMilliseconds)
+	if err != nil {
+		return productUpdateLayerPlan{}, "", err
+	}
+	configuration := hostPlatformReleaseEffectExecutorConfiguration{
+		SchemaVersion:           schemaVersion,
+		EffectExecutorID:        source.EffectExecutor.Executor.ID,
+		HostInstallationManager: manager,
+		Apply:                   hostPlatformReleaseIntent(source.Apply),
+	}
+	if source.Rollback != nil {
+		rollbackIntent := hostPlatformReleaseIntent(*source.Rollback)
+		configuration.Rollback = &rollbackIntent
+	}
+	configurationRelativePath := filepath.ToSlash(filepath.Join("payload", "effect-configurations", source.EffectExecutor.ConfigurationArtifactID+".json"))
+	configurationPath := filepath.Join(workspace, filepath.FromSlash(configurationRelativePath))
+	if err := writeJSONFile(configurationPath, configuration, 0o600); err != nil {
+		return productUpdateLayerPlan{}, "", fmt.Errorf("write Host Platform release effect configuration: %w", err)
+	}
+	configurationArtifact, err := artifactFromPath(source.EffectExecutor.ConfigurationArtifactID, configurationRelativePath, configurationPath, effectConfigurationMedia)
+	if err != nil {
+		return productUpdateLayerPlan{}, "", err
+	}
+	rollback := productUpdateRollback{State: "unsupported", Reason: "no immutable prior Host Platform release archive was selected for this bundle"}
+	if source.Rollback != nil {
+		rollbackRelativePath := filepath.ToSlash(filepath.Join("payload", "host-platform-releases", source.Rollback.TargetReleaseID+".tar.gz"))
+		rollbackArtifact, copyErr := copySourceArtifact(source.Rollback.Artifact, filepath.Join(workspace, filepath.FromSlash(rollbackRelativePath)), "Host Platform rollback archive", false)
+		if copyErr != nil {
+			return productUpdateLayerPlan{}, "", copyErr
+		}
+		rollbackArtifact.RelativePath = rollbackRelativePath
+		rollbackArtifact.MediaType = hostPlatformReleaseArchiveMedia
+		rollback = productUpdateRollback{State: "available", Artifact: &rollbackArtifact}
+	}
+	return productUpdateLayerPlan{
+		Layer:     "host-platform",
+		DependsOn: []string{"guest-runtime"},
+		Artifact:  applyArtifact,
+		EffectExecutor: productUpdateEffectExecutor{
+			ID: executor.ID, RelativePath: executor.RelativePath, SHA256: executor.SHA256, SizeBytes: executor.SizeBytes,
+			MediaType: effectExecutorMedia, ConfigurationArtifact: configurationArtifact,
+		},
+		Rollback: rollback,
+	}, configurationRelativePath, nil
+}
+
+func hostInstallationManagerEndpointForTarget(target UpdateTarget, timeoutMilliseconds int) (hostInstallationManagerEndpoint, error) {
+	switch target.Platform {
+	case "macos":
+		return hostInstallationManagerEndpoint{
+			Platform: target.Platform, ExecutablePath: macOSHostInstallationManagerPath,
+			ActiveReleaseManifestPath: macOSActiveReleaseManifestPath, RequestTimeoutMilliseconds: timeoutMilliseconds,
+		}, nil
+	default:
+		return hostInstallationManagerEndpoint{}, fmt.Errorf("Host Platform release composition is unavailable for target platform %q", target.Platform)
+	}
+}
+
+func hostPlatformReleaseIntent(transition HostPlatformReleaseTransitionSource) hostPlatformReleaseOperationIntent {
+	return hostPlatformReleaseOperationIntent{
+		ExpectedActiveReleaseID: transition.ExpectedActiveReleaseID,
+		TargetReleaseID:         transition.TargetReleaseID,
+	}
+}
+
+func readComposition(path string) (ProductUpdateComposition, error) {
 	contents, err := readRegularFile(path, maximumCompositionBytes)
 	if err != nil {
-		return GuestProductReleaseUpdateComposition{}, fmt.Errorf("read Guest Product release update composition: %w", err)
+		return ProductUpdateComposition{}, fmt.Errorf("read Product update composition: %w", err)
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(contents)))
 	decoder.DisallowUnknownFields()
-	var composition GuestProductReleaseUpdateComposition
+	var composition ProductUpdateComposition
 	if err := decoder.Decode(&composition); err != nil {
-		return GuestProductReleaseUpdateComposition{}, fmt.Errorf("decode Guest Product release update composition: %w", err)
+		return ProductUpdateComposition{}, fmt.Errorf("decode Product update composition: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return GuestProductReleaseUpdateComposition{}, fmt.Errorf("Guest Product release update composition must contain exactly one JSON object")
+		return ProductUpdateComposition{}, fmt.Errorf("Product update composition must contain exactly one JSON object")
 	}
 	return composition, nil
 }
 
-func validateComposition(composition GuestProductReleaseUpdateComposition) error {
+func validateComposition(composition ProductUpdateComposition) error {
 	if composition.SchemaVersion != schemaVersion || !validIdentifier(composition.BundleID) || !validIdentifier(composition.ProductID) || !validIdentifier(composition.SigningKeyID) || !validIdentifier(composition.SpecificationID) || composition.Target.Platform != "macos" || composition.Target.Architecture != "arm64" || composition.TargetRelease.ProductVersion == "" || composition.TargetRelease.RuntimeVersion == "" || composition.IssuedAt == "" {
-		return fmt.Errorf("Guest Product release update identity or current macOS arm64 target is invalid")
+		return fmt.Errorf("Product update identity or current macOS arm64 target is invalid")
 	}
 	if err := validateSourceArtifact(composition.NextUpdater, "next updater", true); err != nil {
 		return err
 	}
-	if err := validateTransition(composition.GuestProductRelease.Apply, "apply"); err != nil {
+	if err := validateTransition(composition.GuestRuntime.ProductRelease.Apply, "apply"); err != nil {
 		return err
 	}
-	if composition.GuestProductRelease.Rollback != nil {
-		if err := validateTransition(*composition.GuestProductRelease.Rollback, "rollback"); err != nil {
+	if composition.GuestRuntime.ProductRelease.Rollback != nil {
+		if err := validateTransition(*composition.GuestRuntime.ProductRelease.Rollback, "rollback"); err != nil {
 			return err
 		}
-		if composition.GuestProductRelease.Rollback.ExpectedActiveReleaseID != composition.GuestProductRelease.Apply.TargetReleaseID || composition.GuestProductRelease.Rollback.TargetReleaseID != composition.GuestProductRelease.Apply.ExpectedActiveReleaseID {
+		if composition.GuestRuntime.ProductRelease.Rollback.ExpectedActiveReleaseID != composition.GuestRuntime.ProductRelease.Apply.TargetReleaseID || composition.GuestRuntime.ProductRelease.Rollback.TargetReleaseID != composition.GuestRuntime.ProductRelease.Apply.ExpectedActiveReleaseID {
 			return fmt.Errorf("Guest Product rollback transition must reverse the selected apply transition")
 		}
 	}
-	if err := validateSourceArtifact(composition.EffectExecutor.Executor, "Guest Product release effect executor", true); err != nil {
+	if err := validateSourceArtifact(composition.GuestRuntime.EffectExecutor.Executor, "Guest Product release effect executor", true); err != nil {
 		return err
 	}
-	if !validIdentifier(composition.EffectExecutor.ConfigurationArtifactID) || composition.EffectExecutor.ConfigurationArtifactID == composition.EffectExecutor.Executor.ID || composition.EffectExecutor.GuestProductReleaseManagerPort < 1 || composition.EffectExecutor.GuestProductReleaseManagerPort > 65535 || composition.EffectExecutor.RequestTimeoutMilliseconds < 1 || composition.EffectExecutor.RequestTimeoutMilliseconds > 900000 {
-		return fmt.Errorf("Guest Product release effect executor configuration identity or C32 endpoint is invalid")
+	if !validIdentifier(composition.GuestRuntime.EffectExecutor.ConfigurationArtifactID) || composition.GuestRuntime.EffectExecutor.ConfigurationArtifactID == composition.GuestRuntime.EffectExecutor.Executor.ID || composition.GuestRuntime.EffectExecutor.GuestProductReleaseManagerPort < 1 || composition.GuestRuntime.EffectExecutor.GuestProductReleaseManagerPort > 65535 || composition.GuestRuntime.EffectExecutor.RequestTimeoutMilliseconds < 1 || composition.GuestRuntime.EffectExecutor.RequestTimeoutMilliseconds > 900000 {
+		return fmt.Errorf("Guest Runtime effect executor configuration identity or Host-loopback endpoint is invalid")
 	}
-	ids := []string{composition.NextUpdater.ID, composition.SpecificationID, composition.GuestProductRelease.Apply.Artifact.ID, composition.EffectExecutor.Executor.ID, composition.EffectExecutor.ConfigurationArtifactID}
-	if composition.GuestProductRelease.Rollback != nil {
-		ids = append(ids, composition.GuestProductRelease.Rollback.Artifact.ID)
+	ids := []string{composition.NextUpdater.ID, composition.SpecificationID, composition.GuestRuntime.ProductRelease.Apply.Artifact.ID, composition.GuestRuntime.EffectExecutor.Executor.ID, composition.GuestRuntime.EffectExecutor.ConfigurationArtifactID}
+	if composition.GuestRuntime.ProductRelease.Rollback != nil {
+		ids = append(ids, composition.GuestRuntime.ProductRelease.Rollback.Artifact.ID)
 	}
 	if composition.BundledUpstreamImageSet != nil {
 		if err := validateBundledUpstreamImageSetUpdate(*composition.BundledUpstreamImageSet); err != nil {
@@ -494,14 +648,60 @@ func validateComposition(composition GuestProductReleaseUpdateComposition) error
 			ids = append(ids, composition.BundledUpstreamImageSet.Rollback.Artifact.ID)
 		}
 	}
+	if composition.HostPlatformRelease != nil {
+		if err := validateHostPlatformReleaseUpdate(*composition.HostPlatformRelease); err != nil {
+			return err
+		}
+		ids = append(ids,
+			composition.HostPlatformRelease.Apply.Artifact.ID,
+			composition.HostPlatformRelease.EffectExecutor.Executor.ID,
+			composition.HostPlatformRelease.EffectExecutor.ConfigurationArtifactID,
+		)
+		if composition.HostPlatformRelease.Rollback != nil {
+			ids = append(ids, composition.HostPlatformRelease.Rollback.Artifact.ID)
+		}
+	}
 	seenIDs := map[string]bool{}
 	for _, id := range ids {
 		if seenIDs[id] {
-			return fmt.Errorf("C25/C26 artifact identities must be distinct across all selected update layers")
+			return fmt.Errorf("bootstrap and Product Update Specification artifact identities must be distinct across all selected layers")
 		}
 		seenIDs[id] = true
 	}
 	return nil
+}
+
+func validateHostPlatformReleaseUpdate(source HostPlatformReleaseUpdateSource) error {
+	if err := validateHostPlatformReleaseTransition(source.Apply, "apply"); err != nil {
+		return err
+	}
+	if source.Rollback != nil {
+		if err := validateHostPlatformReleaseTransition(*source.Rollback, "rollback"); err != nil {
+			return err
+		}
+		if source.Rollback.ExpectedActiveReleaseID != source.Apply.TargetReleaseID || source.Rollback.TargetReleaseID != source.Apply.ExpectedActiveReleaseID {
+			return fmt.Errorf("Host Platform rollback transition must reverse the selected apply transition")
+		}
+	}
+	if err := validateSourceArtifact(source.EffectExecutor.Executor, "Host Platform release effect executor", true); err != nil {
+		return err
+	}
+	if !validIdentifier(source.EffectExecutor.ConfigurationArtifactID) ||
+		source.EffectExecutor.ConfigurationArtifactID == source.EffectExecutor.Executor.ID ||
+		source.EffectExecutor.RequestTimeoutMilliseconds < 1 ||
+		source.EffectExecutor.RequestTimeoutMilliseconds > 900000 {
+		return fmt.Errorf("Host Platform release effect executor configuration identity or timeout is invalid")
+	}
+	return nil
+}
+
+func validateHostPlatformReleaseTransition(transition HostPlatformReleaseTransitionSource, action string) error {
+	if !validIdentifier(transition.ExpectedActiveReleaseID) ||
+		!validIdentifier(transition.TargetReleaseID) ||
+		transition.ExpectedActiveReleaseID == transition.TargetReleaseID {
+		return fmt.Errorf("Host Platform %s release transition is invalid", action)
+	}
+	return validateSourceArtifact(transition.Artifact, "Host Platform "+action+" archive", false)
 }
 
 func validateTransition(transition GuestProductReleaseTransitionSource, action string) error {
@@ -530,7 +730,7 @@ func validateBundledUpstreamImageSetUpdate(source GuestBundledUpstreamImageSetUp
 		return err
 	}
 	if !validIdentifier(source.EffectExecutor.ConfigurationArtifactID) || source.EffectExecutor.ConfigurationArtifactID == source.EffectExecutor.Executor.ID || source.EffectExecutor.ImageSetManagerPort < 1 || source.EffectExecutor.ImageSetManagerPort > 65535 || source.EffectExecutor.RequestTimeoutMilliseconds < 1 || source.EffectExecutor.RequestTimeoutMilliseconds > 900000 {
-		return fmt.Errorf("bundled Upstream image-set effect executor configuration identity or C32 endpoint is invalid")
+		return fmt.Errorf("Container effect executor configuration identity or Host-loopback endpoint is invalid")
 	}
 	return nil
 }
@@ -639,14 +839,14 @@ func requireNewOutputDirectory(path string) (string, error) {
 		return "", err
 	}
 	if _, err := os.Lstat(output); err == nil {
-		return "", fmt.Errorf("Guest Product release update output already exists: %s", output)
+		return "", fmt.Errorf("Product update output already exists: %s", output)
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("inspect Guest Product release update output: %w", err)
+		return "", fmt.Errorf("inspect Product update output: %w", err)
 	}
 	parent := filepath.Dir(output)
 	info, err := os.Lstat(parent)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return "", fmt.Errorf("Guest Product release update output parent must be an existing non-symlink directory")
+		return "", fmt.Errorf("Product update output parent must be an existing non-symlink directory")
 	}
 	return output, nil
 }

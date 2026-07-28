@@ -51,6 +51,31 @@ func (service *HostUpdateApplicationService) ReadHostUpdateJournal(ctx context.C
 	return hostagentdomain.ReadResult{SchemaVersion: hostagentdomain.SchemaVersion, State: "available", ObservedAt: now, Value: journal, SourceRevision: &revision}
 }
 
+func (service *HostUpdateApplicationService) ReadHostUpdateOperationOwnership(ctx context.Context) hostagentdomain.ReadResult {
+	now := hostagentdomain.Timestamp(service.clock.Now())
+	installation, err := service.repository.ReadHostPlatformInstallation(ctx)
+	if errors.Is(err, ErrHostAgentOwnedResourceNotFound) {
+		return missingRead(now, "platform-installation-missing", "Host installation state has not been configured")
+	}
+	if err != nil {
+		return failedRead(now, "host-installation-state-read-failed", err.Error(), "host-state-store")
+	}
+	activeJournals, err := service.repository.ReadActiveHostUpdateJournals(ctx)
+	if err != nil {
+		return failedRead(now, "active-host-update-state-read-failed", err.Error(), "host-state-store")
+	}
+	ownership, issue := hostagentdomain.ProjectHostUpdateOperationOwnership(installation, activeJournals)
+	if issue != nil {
+		return invalidRead(now, issue.Code, issue.Message)
+	}
+	return hostagentdomain.ReadResult{
+		SchemaVersion: hostagentdomain.SchemaVersion,
+		State:         "available",
+		ObservedAt:    now,
+		Value:         ownership,
+	}
+}
+
 // RecoverDurableHostUpdateHandoffs is startup recovery for the one state whose effect is
 // safe to repeat: a durable bootstrap-staged or handoff-pending journal.  It
 // never guesses about an applying next updater.  That updater must later send
@@ -134,6 +159,16 @@ func (service *HostUpdateApplicationService) ExecuteHostUpdateCommand(ctx contex
 	if installation.ResourceRevision != command.ExpectedInstallationRevision {
 		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: "resource-revision-conflict", Message: "expectedInstallationRevision does not match the Host-owned installation"}), nil
 	}
+	activeJournals, err := service.repository.ReadActiveHostUpdateJournals(ctx)
+	if err != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "active-host-update-state-read-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+	}
+	if issue := hostagentdomain.DecideHostUpdateAdmission(activeJournals); issue != nil {
+		if issue.Code == "host-update-operation-active" {
+			return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, *issue), nil
+		}
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", *issue)
+	}
 	operationID, err := service.identifiers.NewRequestCorrelationIdentifier("host-update-operation")
 	if err != nil {
 		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "not-admitted", hostagentdomain.Issue{Code: "host-update-operation-id-unavailable", Message: "Host Agent could not allocate an update operation identifier", Retryable: hostagentdomain.Bool(true), Dependency: "host-agent"})
@@ -167,6 +202,12 @@ func (service *HostUpdateApplicationService) ExecuteHostUpdateCommand(ctx contex
 			if readErr == nil {
 				return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: "request-id-reused-with-different-command", Message: "requestId already belongs to a different Host update command"}), nil
 			}
+			activeJournals, activeReadErr := service.repository.ReadActiveHostUpdateJournals(ctx)
+			if activeReadErr == nil {
+				if issue := hostagentdomain.DecideHostUpdateAdmission(activeJournals); issue != nil && issue.Code == "host-update-operation-active" {
+					return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, *issue), nil
+				}
+			}
 		}
 		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "host-state-store-write-outcome-unknown", Message: "Host Agent could not determine whether the update was durably admitted", Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
 	}
@@ -198,6 +239,80 @@ func (service *HostUpdateApplicationService) ExecuteHostUpdateCommand(ctx contex
 	return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, nil
 }
 
+// RequestHostUpdateInterruption records cancellation intent while preserving
+// active ownership. Installation/removal workflows must continue to wait until
+// the supervisor confirms process termination and the journal becomes
+// terminal.
+func (service *HostUpdateApplicationService) RequestHostUpdateInterruption(ctx context.Context, command hostagentdomain.HostUpdateInterruptionRequest) (HostUpdateWorkflowOutcome, *hostagentdomain.CommandRejection, *hostagentdomain.CommandAdmissionFailure) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if issue := hostagentdomain.ValidateHostUpdateInterruptionRequest(command); issue != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, *issue), nil
+	}
+	journal, err := service.repository.ReadHostUpdateJournal(ctx, command.UpdateID)
+	if errors.Is(err, ErrHostAgentOwnedResourceNotFound) {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: "host-update-not-found", Message: "Host update interruption target does not exist"}), nil
+	}
+	if err != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "host-update-state-read-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+	}
+	if issue := hostagentdomain.ValidateHostUpdateJournal(journal); issue != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", *issue)
+	}
+	operation, err := service.repository.ReadHostOperation(ctx, journal.OperationID)
+	if err != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "host-update-operation-read-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+	}
+	if hostagentdomain.HostUpdateInterruptionRequestIsReplay(journal, command) {
+		return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, nil
+	}
+	next, transitionErr := hostagentdomain.RequestUpdateInterruption(journal, command, hostagentdomain.Timestamp(service.clock.Now()))
+	if transitionErr != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: transitionErr.Error(), Message: "Host update interruption request does not own the current update journal"}), nil
+	}
+	if err := service.repository.PersistHostUpdateProgress(ctx, operation, next); err != nil {
+		return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, service.persistenceFailure(command.RequestID, "persist update interruption request", err)
+	}
+	return HostUpdateWorkflowOutcome{Operation: operation, Journal: next}, nil, nil
+}
+
+func (service *HostUpdateApplicationService) ConfirmHostUpdateInterruption(ctx context.Context, command hostagentdomain.HostUpdateInterruptionConfirmation) (HostUpdateWorkflowOutcome, *hostagentdomain.CommandRejection, *hostagentdomain.CommandAdmissionFailure) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if issue := hostagentdomain.ValidateHostUpdateInterruptionConfirmation(command); issue != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, *issue), nil
+	}
+	journal, err := service.repository.ReadHostUpdateJournal(ctx, command.UpdateID)
+	if errors.Is(err, ErrHostAgentOwnedResourceNotFound) {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: "host-update-not-found", Message: "Host update interruption confirmation target does not exist"}), nil
+	}
+	if err != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "host-update-state-read-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+	}
+	operation, err := service.repository.ReadHostOperation(ctx, journal.OperationID)
+	if err != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", hostagentdomain.Issue{Code: "host-update-operation-read-failed", Message: err.Error(), Retryable: hostagentdomain.Bool(true), Dependency: "host-state-store"})
+	}
+	if hostagentdomain.HostUpdateInterruptionConfirmationIsReplay(journal, command) {
+		return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, nil
+	}
+	if issue := hostagentdomain.ValidateHostUpdateJournal(journal); issue != nil {
+		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.RequestID, "unknown", *issue)
+	}
+	nextJournal, transitionErr := hostagentdomain.ConfirmUpdateInterruption(journal, command)
+	if transitionErr != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: transitionErr.Error(), Message: "Host update interruption confirmation does not own the active interruption request"}), nil
+	}
+	nextOperation, transitionErr := hostagentdomain.TransitionOperation(operation, "interrupted", command.ObservedAt, &command.Outcome)
+	if transitionErr != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.RequestID, hostagentdomain.Issue{Code: "host-update-operation-interruption-transition-failed", Message: transitionErr.Error()}), nil
+	}
+	if err := service.repository.CommitHostUpdateOutcome(ctx, nextOperation, nextJournal, nil); err != nil {
+		return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, service.persistenceFailure(command.RequestID, "persist update interruption confirmation", err)
+	}
+	return HostUpdateWorkflowOutcome{Operation: nextOperation, Journal: nextJournal}, nil, nil
+}
+
 func (service *HostUpdateApplicationService) CompleteHostUpdateExecution(ctx context.Context, command hostagentdomain.UpdateCompletionCommand) (HostUpdateWorkflowOutcome, *hostagentdomain.CommandRejection, *hostagentdomain.CommandAdmissionFailure) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
@@ -222,7 +337,7 @@ func (service *HostUpdateApplicationService) CompleteHostUpdateExecution(ctx con
 	if digestErr != nil {
 		return HostUpdateWorkflowOutcome{}, nil, service.admissionFailure(command.Report.RequestID, "not-admitted", hostagentdomain.Issue{Code: "update-execution-report-digest-failed", Message: digestErr.Error(), Retryable: hostagentdomain.Bool(false), Dependency: "host-agent"})
 	}
-	if journal.State == "succeeded" || journal.State == "failed" {
+	if journal.State == "succeeded" || journal.State == "failed" || journal.State == "interrupted" {
 		if journal.ExecutionDigest == reportDigest {
 			return HostUpdateWorkflowOutcome{Operation: operation, Journal: journal}, nil, nil
 		}
@@ -230,6 +345,9 @@ func (service *HostUpdateApplicationService) CompleteHostUpdateExecution(ctx con
 	}
 	if command.ExpectedJournalRevision != journal.JournalRevision {
 		return HostUpdateWorkflowOutcome{}, service.rejection(command.Report.RequestID, hostagentdomain.Issue{Code: "update-journal-revision-conflict", Message: "expectedJournalRevision does not match the Host-owned update journal"}), nil
+	}
+	if journal.Interruption != nil {
+		return HostUpdateWorkflowOutcome{}, service.rejection(command.Report.RequestID, hostagentdomain.Issue{Code: "update-interruption-pending", Message: "update completion is blocked until the accepted interruption request is settled"}), nil
 	}
 	if journal.State == "handoff-pending" {
 		journal, err = hostagentdomain.BeginUpdateExecution(journal, hostagentdomain.Timestamp(service.clock.Now()))

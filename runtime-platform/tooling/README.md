@@ -316,12 +316,12 @@ Assembly](../../docs/architecture/macos-release-package-assembly-boundary.md).
 caller supplies `MACOS_RELEASE_PACKAGE_ASSEMBLY_DECLARATION`; it has no
 implicit declaration path.
 
-`guest-product-release-update-composer/` is the product-specific release
-preparation tool for the concrete C61 Guest Product update effect. It copies
-only explicitly selected regular source artifacts to a new payload workspace,
-derives C61 and C26 immutable identities from those bytes, and emits input for
-the generic C25 signing tool. It never signs an update, activates a Guest
-release, or reads Host/Guest runtime state.
+`product-update-composer/` is the Product release preparation owner. It copies
+explicitly selected Container, Guest Runtime, and Host Platform artifacts and
+effect executors to a new payload workspace, derives immutable identities and
+layer-specific configurations from those bytes, and emits input for the
+generic bootstrap-envelope signer. It never signs an update, activates a
+runtime layer, or reads Host/Guest runtime state.
 
 `guest-product-release-archive-composer/` forms the C59-compatible immutable
 tar+gzip artifact from one explicit Guest Product release tree. It preserves

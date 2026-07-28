@@ -759,6 +759,14 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
                 b"host-update-handoff-supervisor",
                 (release_root / "bin/host-update-handoff-supervisor").read_bytes(),
             )
+            self.assertEqual(
+                self.c58_path.read_bytes(),
+                (release_root / "config/update-trust-store.json").read_bytes(),
+            )
+            self.assertFalse(
+                (release_root / "bin/host-updater").exists(),
+                "the evolving updater belongs to a signed release bundle, not the installed Host baseline",
+            )
             self.assertEqual(b"platformctl", (release_root / "bin/platformctl").read_bytes())
             self.assertEqual(b"virtual-machine-supervisor", (release_root / "bin/macos-virtual-machine-supervisor").read_bytes())
             self.assertEqual(b"kernel", (release_root / "vm/assets/Image").read_bytes())
@@ -905,6 +913,10 @@ class MacOSHostPackageComposerTests(unittest.TestCase):
         self.assertIn('"$script_directory/host-installation-manager" --mode preflight', preinstall)
         self.assertNotIn('"$script_directory/host-installation-manager" --mode quiesce', preinstall)
         self.assertIn("--release-id 'runtime-platform-0.1.0-dev-build-001'", preinstall)
+        self.assertIn("--host-administration-descriptor '/var/lib/vitalserver/control/host-agent.local.json'", preinstall)
+        self.assertIn("--host-administration-timeout-milliseconds 5000", preinstall)
+        self.assertIn("--host-administration-descriptor '/var/lib/vitalserver/control/host-agent.local.json'", script)
+        self.assertIn("--host-administration-timeout-milliseconds 5000", script)
         self.assertNotIn("/bin/launchctl bootout", preinstall)
         self.assertNotIn("/bin/launchctl bootout", script)
         self.assertNotIn("/bin/launchctl bootstrap", script)

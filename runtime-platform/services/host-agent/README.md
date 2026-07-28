@@ -48,6 +48,21 @@ The detailed design history and acceptance evidence are in [Host/Guest Control S
 - `handoff-pending` is persisted before the idempotent native handoff effect. Startup recovery repeats only `bootstrap-staged`/`handoff-pending` handoff; it never guesses whether an `applying` next updater is alive.
 - When all three explicit update paths are configured (`--update-bundle-store`, `--update-staging-directory`, and `--update-trust-store`), the Host uses `StagedBundleBootstrapper`: it verifies C25 with the configured Ed25519 trust store, stages the complete bundle atomically, then creates C30 only after C29 is durably `handoff-pending`. C30 carries the original request ID and exact journal revision required for completion before the Host writes a C31 reference into its handoff queue. Supplying only some paths is a startup error. Supplying none selects the explicit unavailable adapter.
 - Publishing C31 is a durable handoff request, not a claim that a next updater has already executed. The separate deployment supervisor resolves C31 to C30; layer effect adapters remain product composition responsibilities.
+- Host Update Operation Ownership (contract C80) is the explicit Host-local
+  coordination read for installation lifecycle consumers. The Host state store
+  atomically permits at most one non-terminal Update Journal. `idle` is emitted
+  only after the installation and active-journal query both succeed; a missing,
+  invalid, failed, or unavailable read never permits install or removal.
+- Host Update Interruption Request (contract C81) records exact-owner
+  cancellation intent without claiming process termination. The journal keeps
+  its existing active state, the ownership projection reports
+  `interruptionRequested`, and completion is fenced until the handoff
+  supervisor supplies explicit termination evidence.
+- Host Update Interruption Confirmation (contract C82) is the only terminal
+  settlement path for that request. It fences installation identity/revision,
+  Update Journal revision, and interruption request identity, then commits the
+  interrupted Operation and Journal atomically with typed process-termination
+  evidence.
 - C69 is the operator entry boundary for an offline release bundle. The Host-local `update-bundles:import` command accepts one OS-selected directory, rejects links/partial trees/conflicting bytes, and atomically publishes it below the configured bundle store. Its `declared` C25 view means only that immutable bytes are present; C25 signature verification still happens at the existing C27 bootstrap boundary. `update-bundles/{id}:apply` reads that Host-owned declaration and binds it to the normal C27/C29 workflow, so Console and CLI cannot author an envelope or substitute a path after import.
 
 See [Product Composition and Staged Update](../../../docs/architecture/product-composition-and-staged-update.md) for C25–C31 ownership, API scope, acceptance evidence, and remaining native delivery proof.

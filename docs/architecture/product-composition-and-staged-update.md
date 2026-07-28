@@ -91,30 +91,30 @@ layer-effect invocation, atomic C28 publication, and C52-local C27 completion
 submission by a separate `host-updater` process. For the Guest Runtime layer,
 the release-owned C61 executor is concrete: it sends a re-verified Guest
 Product archive through the direct C32 Host-local bridge to C59 and maps its
-terminal operation to C55. The concrete release process now uses
-`guest-product-release-update-composer` to select immutable C61/C26 inputs:
-the next updater, apply archive, C55 executable, and optionally the reverse
-rollback archive. It writes a prepared payload and generic signer input, then
-`release-composer` owns C25 signing. The composer currently rejects non-macOS
-arm64 targets because C61 depends on the concrete macOS C32 AF_VSOCK bridge;
-the shared C25–C31 contract does not imply a nonexistent platform effect. The
-packaged
+terminal operation to a Layer Effect Receipt. The concrete release process now
+uses `product-update-composer` to select immutable inputs for one complete
+Product update: the next updater, optional Container image-set transition,
+required Guest Runtime transition, optional final Host Platform transition,
+their effect executors, and explicitly selected rollback archives. It writes a
+prepared payload and generic signer input, then `release-composer` owns
+bootstrap-envelope signing. The composer currently rejects non-macOS arm64
+targets because the Guest Runtime transition depends on the concrete macOS
+Host-loopback bridge; the shared bootstrap/handoff contracts do not imply a
+nonexistent platform effect. The packaged
 `host-update-handoff-supervisor` also consumes C31 and launches only the
 C25-selected updater, publishing C57 rather than inferring update success from
-process exit. It does not claim that a concrete release package was activated,
-that a release-composition owner selected the target Guest archive and C61
-configuration for an actual signed bundle, that any Container/Host replacement
-occurred, or that a matching OS package manager performed rollback. Those remain separate
-product-composition responsibilities:
+process exit. Composition does not claim that a concrete release package was
+activated or that a matching OS package manager performed rollback. Installed
+managers and clean-host evidence remain the owners of those physical outcomes:
 
-- **Release-owned layer effect executors** apply or compensate container and
-  Host-platform changes selected by the pure
+- **Release-owned layer effect executors** apply or compensate Container and
+  Host Platform changes selected by the pure
   `UpdateExecutionPlan`. Each must implement the fixed C55 protocol and write
   only its own correlated receipt.
-- **Guest Product release composition** selects immutable target bytes and
-  generates the C61 apply/rollback transition for each signed C25/C26 bundle.
-  C59 owns Guest activation and rollback; C61 does not become a second Guest
-  release-state owner.
+- **Product update composition** selects immutable target bytes and generates
+  each layer-specific apply/rollback transition for the signed bundle. The
+  Guest Product Release Manager owns Guest activation and rollback; its effect
+  configuration does not become a second Guest release-state owner.
 - **Next updater execution workflow** validates C55 against C30/C26 and
   creates one C28 layer/rollback report. `execute` creates C28 only;
   `complete` reads that immutable report and submits C27 through C52 without
@@ -123,5 +123,7 @@ product-composition responsibilities:
 - **Release delivery proof** attaches C24 clean-host install, update, rollback,
   and uninstall evidence for each target platform.
 
-The executable proof is `make -C runtime-platform release-composer-test` plus
+The executable composition proof is
+`make -C runtime-platform product-update-composition-acceptance`; the separate
+runtime handoff proof is
 `make -C runtime-platform installation-update-acceptance`.

@@ -1,10 +1,10 @@
 # Installation and update foundation
 
-> 상태: **C25–C31 + C52/C55 실행·portable acceptance 및 C47 macOS PKG
-> composition 완료.** C47은 실제 Guest bootstrap artifact와 Host Agent,
-> Edge Proxy, Update Handoff Supervisor를 하나의 PKG에 조립·검증한다.
-> release-owned Guest/Container/Host artifact replacement executor와 clean-host
-> 설치·update platform package activation은 후속 delivery work이며 C24에서는
+> 상태: **서명된 bootstrap, durable handoff, next-updater 실행, 세 Product
+> layer의 effect executor 및 complete-bundle composition acceptance 완료.**
+> macOS PKG composition은 실제 Guest bootstrap artifact, Host Agent, Edge
+> Proxy, Update Handoff Supervisor를 하나의 PKG에 조립·검증한다. 실제
+> clean-host 설치, layer activation, rollback, uninstall delivery proof는
 > 계속 `pending`이다.
 
 Installation and update foundation은 update를 “새 파일을 덮어쓴다”가 아니라 서로 다른 호환성 언어를
@@ -114,6 +114,66 @@ stale object나 empty state를 반환하지 않는다.
 | C31 `StagedUpdateHandoff` | Host staging queue 안에서 C30의 상대 위치를 가리키는 durable handoff item |
 | C52 `HostLocalAdministrationEndpointDescriptor` | Host Agent가 공개한 OS-local Unix socket/Windows named pipe 주소. next updater는 이 descriptor 이외의 completion target을 선택하지 않음 |
 | C55 `StagedUpdateLayerEffectReceipt` | C26-declared executor가 고정 protocol apply/rollback 뒤 기록하는 typed layer outcome. process exit/log은 C55를 대체하지 못함 |
+| Host Update Operation Ownership (C80) | 현재 installation identity/revision에 대해 active Update Journal이 없다는 `idle` 또는 유일한 active owner를 Host Agent가 명시적으로 제공하는 Host-local coordination read |
+| Host Update Interruption Request (C81) | exact installation/update/journal revision owner에게 취소 의도를 기록하되 process 종료 전까지 active ownership을 유지하는 Host-local command |
+| Host Update Interruption Confirmation (C82) | Supervisor가 exact child updater를 cancel하고 wait한 뒤 제출하는 typed termination evidence와 terminal settlement command |
+
+## Active update ownership
+
+Host Agent는 `requested`, `bootstrap-staged`, `handoff-pending`, `applying`
+Update Journal 전체를 active owner로 취급한다. Host SQLite의 partial unique
+index가 이 상태의 journal을 최대 하나로 제한하고, application admission
+policy도 기존 owner를 읽고 검증한 뒤 두 번째 update command를 거부한다.
+
+`GET /v1/platform/update-operation-ownership`은 이 상태를 다른 Host
+lifecycle workflow에 제공한다. `available` read 안의 `state=idle`만 update
+owner가 없다는 의미다. endpoint 부재, state-store read 실패, decode 실패,
+installation identity/revision 불일치는 install/remove 허가로 변환하지
+않는다.
+
+Host Installation Manager는 same-release reinstall/repair와 remove를
+admit하기 전에 이 read를 소비한다. 정확한 current installation의
+`available/idle`만 허용하며 active, missing, invalid, failed, unavailable,
+identity/revision mismatch는 C50/C54 persistence와 effect 전에 차단한다.
+C49가 clean Host를 증명한 fresh install은 아직 C80 owner인 Host Agent가
+존재하지 않으므로 이 read를 요구하지 않는다.
+
+이 구현은 fail-closed coordination read이며 원자적 lifecycle claim은 아니다.
+idle read 직후 update admission이 들어오는 TOCTOU 구간이 남는다. 다음
+coordination 단계는 installation/removal claim 획득과 update admission을
+Host-owned SQLite transaction에서 상호 배타적으로 만들어야 한다. read
+guard만으로 경쟁이 해결됐다고 해석하지 않는다.
+
+취소 요청은 `POST
+/v1/platform/updates/{updateId}:request-interruption`으로 제출한다. Host
+Agent는 요청 identity와 installation/update/journal revision을 모두
+대조하고 Update Journal의 기존 active state를 유지한 채 additive
+`interruption` 사실을 기록한다. 따라서 `interruptionRequested=true`인
+ownership도 여전히 `active`다. 요청 수락이나 signal 전송만으로
+`interrupted` 또는 `idle`을 만들지 않는다. Update Handoff Supervisor가
+child updater 종료를 확인한 뒤 별도 termination evidence로 terminal
+transition을 확정해야 한다.
+
+종료 확인은 `POST
+/v1/platform/updates/{updateId}:confirm-interruption`으로만 수행한다.
+confirmation은 installation identity/revision, Update Journal revision,
+interruption request ID와 termination evidence를 모두 포함한다. Host Agent는
+이 값이 현재 owner와 정확히 일치할 때 Update Journal과 Operation을 하나의
+SQLite transaction으로 `interrupted` 처리한다. 다른 installation 또는
+이전 journal revision을 가진 Supervisor/next updater는 terminal state를
+쓸 수 없다.
+
+Update Handoff Supervisor는 C52 Host-local transport로 C80 ownership을
+C56의 명시적 poll interval마다 읽는다. exact update의 interruption이
+관찰되면 macOS/Linux에서는 전용 process group, Windows에서는 생성 시점에
+결합한 kill-on-close Job Object 전체를 종료하고 direct process `Wait`가
+끝날 때까지 ownership을 유지한다. next updater parent만 종료하면 C55
+layer-effect executor가 계속 mutation을 수행할 수 있으므로 C82 termination
+evidence가 될 수 없다. process tree 종료 뒤 C82 confirmation이 Host Agent에서
+accepted된 경우에만 interruption 처리가 완료된다. completion 제출과
+interruption 요청이 경합해 next updater가 먼저 오류로 종료되더라도,
+Supervisor는 마지막 ownership read로 accepted interruption을 다시
+확인한다.
 
 Host-local routes는 `contracts/openapi/control.v1.json`에 `x-network-scope:
 host-local`로 명시했다.
@@ -122,6 +182,10 @@ host-local`로 명시했다.
 - `GET /v1/platform/updates/{updateId}` — C29 `ReadResult`
 - `POST /v1/platform/updates/{updateId}:complete` — staged next updater의 C27
   completion + C28 report → `{ operation, journal }`
+- `POST /v1/platform/updates/{updateId}:request-interruption` — exact active
+  owner에 cancellation intent를 기록하되 ownership은 유지
+- `POST /v1/platform/updates/{updateId}:confirm-interruption` — Supervisor의
+  exact process termination evidence를 검증하고 ownership을 terminal 처리
 
 이 route들은 browser/public maintenance API가 아니다. operator
 authentication/authorization과 public maintenance surface를 설계하기 전에는
@@ -161,3 +225,5 @@ evidence로 바꾼다.
 | SQLite JSON은 decode되지만 bootstrap digest/receipt/report가 서로 맞지 않음 | JSON decode만으로 Host-owned state를 신뢰함 | C29 cross-field validation 후 `invalid`/admission failure로 노출 | decode 성공과 유효한 owned state를 같은 의미로 취급하지 않는다 |
 | 재시작 후 updater가 무엇을 하던 중인지 알 수 없음 | Host가 process/layer internal state를 소유하지 않음 | `applying`은 유지하고 C28 또는 별도 운영 policy를 요구 | Host는 Guest/next-updater internals를 추측하지 않는다 |
 | future spec을 old updater가 parse하려 함 | C25와 C26 경계가 섞임 | next updater module만 C26 parser를 import | evolution은 stable bootstrap handoff로 처리한다 |
+| interruption 후에도 layer effect가 계속 실행됨 | supervisor가 next updater parent만 종료하고 descendant executor를 소유하지 않음 | Unix process group 또는 Windows creation-time Job Object 전체를 종료하고 direct process를 wait한 뒤 C82 제출 | cancellation evidence는 mutation process tree 전체의 종료를 증명해야 한다 |
+| update 중 package reinstall/remove가 시작됨 | Installation Manager가 Host update owner를 읽지 않거나 read 실패를 idle로 간주함 | C52를 통해 C80을 읽고 exact `available/idle`만 effect 전에 admit | dependency failure, identity mismatch, active ownership은 설치 가능 상태가 아니며 read guard 이후의 TOCTOU는 별도 atomic claim으로 닫는다 |

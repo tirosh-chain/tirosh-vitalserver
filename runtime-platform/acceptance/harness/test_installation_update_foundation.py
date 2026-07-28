@@ -302,7 +302,14 @@ printf '{{"schemaVersion":"v1","updateId":"%s","layer":"%s","effectExecutorId":"
         private_key_path.write_text("nWGxne/9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2DXWpgBgrEKt9VL/tPJZAc6DuFy89qmIyWvAhpo9wdRGg==", encoding="utf-8")
         trust_store_path.write_text(json.dumps({"schemaVersion": "v1", "keys": [{"id": "acceptance-rfc8032-key", "algorithm": "ed25519", "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="}]}, separators=(",", ":")), encoding="utf-8")
         composed = subprocess.run(
-            [str(self.release_composer_binary), "--composition", str(composition_path), "--payload-directory", str(payload_directory), "--private-key", str(private_key_path), "--output-directory", str(bundle_store)],
+            [
+                str(self.release_composer_binary),
+                "--composition", str(composition_path),
+                "--payload-directory", str(payload_directory),
+                "--private-key", str(private_key_path),
+                "--trust-store", str(trust_store_path),
+                "--output-directory", str(bundle_store),
+            ],
             capture_output=True,
             text=True,
             check=False,

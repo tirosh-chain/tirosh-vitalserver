@@ -183,3 +183,42 @@ func TestFilesystemRejectsTamperedSignedArtifactBeforePublishingStage(t *testing
 		t.Fatalf("tampered bundle unexpectedly staged: %v", err)
 	}
 }
+
+func TestStagedBundleBootstrapperAcceptsRotationOverlapAndRejectsRevokedSigningKey(t *testing.T) {
+	bootstrapper, journal, envelope, stagingDirectory := stagedFixture(t)
+	trustStorePath := filepath.Join(filepath.Dir(stagingDirectory), "update-trust.json")
+	encoded, err := os.ReadFile(trustStorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var store trustStore
+	if err := json.Unmarshal(encoded, &store); err != nil {
+		t.Fatal(err)
+	}
+	replacementPublicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := trustedUpdateKey{
+		ID: "release-key-2027", Algorithm: "ed25519",
+		PublicKey: base64.StdEncoding.EncodeToString(replacementPublicKey),
+	}
+	store.Keys = append(store.Keys, replacement)
+	writeJSON(t, trustStorePath, store)
+
+	overlapReceipt := bootstrapper.Stage(context.Background(), journal, envelope)
+	if overlapReceipt.State != "staged" || overlapReceipt.Issue != nil {
+		t.Fatalf("rotation overlap rejected the retained signing key: %+v", overlapReceipt)
+	}
+
+	writeJSON(t, trustStorePath, trustStore{
+		SchemaVersion: "v1",
+		Keys:          []trustedUpdateKey{replacement},
+	})
+	revokedReceipt := bootstrapper.Stage(context.Background(), journal, envelope)
+	if revokedReceipt.State != "failed" || revokedReceipt.Issue == nil ||
+		revokedReceipt.Issue.Code != "update-bootstrap-signature-invalid" ||
+		!strings.Contains(revokedReceipt.Issue.Message, `has no key "release-key-2026"`) {
+		t.Fatalf("removed signing key was not rejected explicitly: %+v", revokedReceipt)
+	}
+}

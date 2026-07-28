@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "v1",
+  "transitionId": "release-key-rotation-2027",
+  "action": "rotate",
+  "sourceTrustStoreSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "resultTrustStoreSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "resultKeyCount": 2,
+  "addedKeyIds": ["vitalserver-release-key-2027"],
+  "removedKeyIds": [],
+  "retainedKeyIds": ["vitalserver-release-key-2026"],
+  "transitionedAt": "2026-07-27T00:00:00Z"
+}

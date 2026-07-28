@@ -37,14 +37,15 @@ release key, it produces one new bundle directory containing the complete
 payload bytes; it does not trust caller-supplied integrity values. Reusing an
 existing output directory is rejected rather than silently replacing a bundle.
 
-For the current macOS arm64 Guest Product activation path,
-`tooling/guest-product-release-update-composer` prepares that generic payload.
-It consumes one release-process-only source selection document, copies the
-selected next updater, Guest Product archive(s), and C55 executor as regular
-immutable payload files, and generates C61 plus C26 from their resulting
-digests. It then emits the `ReleaseBundleComposition` that the generic signer
-uses for C25. This keeps C61/C59 knowledge out of the generic signing tool and
-keeps source filesystem paths out of deployed contracts.
+For the current macOS arm64 Product update path,
+`tooling/product-update-composer` prepares that generic payload. It consumes
+one release-process-only source selection document and composes the selected
+Container, Guest Runtime, and Host Platform transitions in that order. It
+copies the next updater, selected archives, and each layer effect executor as
+regular immutable payload files, generates the layer-specific configurations
+and Product Update Specification from their resulting digests, then emits the
+`ReleaseBundleComposition` consumed by the generic signer. Source filesystem
+paths do not enter deployed contracts.
 
 `tooling/guest-product-release-archive-composer` is the preceding release
 artifact step. It turns a selected release tree into the exact tar+gzip media
@@ -134,6 +135,42 @@ There is no `minimumUpdaterVersion` contract. Compatibility is held at the
 small C25 boundary: if its schema, signature, artifact, or trust evidence
 cannot be verified, the Host returns a typed failed/unavailable bootstrap
 receipt and does not attempt an old-spec parser or another update path.
+
+## Publisher trust lifecycle
+
+The Host package contains only the public C58 Host Update Trust Store.
+`tooling/update-trust-store-manager` is the release-process owner for initial
+provisioning, overlap rotation, and revocation. It emits a C83
+`UpdatePublisherTrustTransitionReceipt` binding the exact input/output store
+digests and affected key IDs; private keys are not valid input to that
+boundary.
+
+Rotation is deliberately two release-process transitions, not an updater
+bridge. First, a release signed by an already trusted key installs an overlap
+store containing both old and new public keys. After that release is observed,
+later bundles may use the new signing key. A subsequent bundle signed by the
+new key may install a store with the old key removed. Removing the final key,
+reusing a key ID for different bytes, changing the reviewed source store, or
+signing with a private key that does not match the selected packaged public
+key is rejected before bundle publication.
+
+## Installed product baseline
+
+Runtime Platform is a clean-install product root, not an in-place extension of
+the legacy macOS Helper. Its installed update baseline contains the Host
+Agent's stable envelope verifier and journal, the Update Handoff Supervisor,
+the public Host Update Trust Store, and the Runtime Console import/apply
+interface. The installed baseline deliberately does not contain a current
+`host-updater` executable: every signed release bundle supplies the exact next
+updater that owns that bundle's Product Update Specification.
+
+The legacy Helper's `minUpdaterVersion` and `requiresTwoPhaseUpdate` policy
+remains outside this product root as historical product code. Runtime Platform
+does not call it, package it, or migrate its update state. The independent-root
+boundary check rejects either legacy gate if it is introduced into Runtime
+Platform production code or configuration. A future Helper-to-Runtime-Platform
+transition, if required, is a separately specified migration and must not
+become a fallback update path.
 
 `../delivery/support-matrix.v1.json` names macOS arm64 as the first planned
 clean-install target and records Windows/Linux as planned consumers of the

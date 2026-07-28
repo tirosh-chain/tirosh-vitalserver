@@ -161,6 +161,9 @@ class WindowsHostMSIComposerTests(unittest.TestCase):
         self.assertIn('Action="C54PackageManagerCompletion" Before="InstallFinalize" Condition="REMOVE=&quot;ALL&quot;"', content)
         self.assertIn('Id="C54PackageManagerCompletion" BinaryRef="Wix4UtilCA_$(sys.BUILDARCHSHORT)" DllEntry="WixQuietExec64" Return="check" Impersonate="no" Execute="commit"', content)
         self.assertIn(r'package-manager-removal-completion.exe', content)
+        self.assertIn("--host-administration-descriptor", content)
+        self.assertIn("host-agent.local.json&quot;", content)
+        self.assertIn("--host-administration-timeout-milliseconds 5000", content)
         self.assertEqual(1, content.count('Source="' + str(self.release / "bin" / "host-installation-manager.exe") + '"'))
 
     def test_rejects_non_numeric_msi_receipt_version(self) -> None:

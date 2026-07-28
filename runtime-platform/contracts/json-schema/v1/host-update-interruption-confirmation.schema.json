@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-interruption-confirmation",
+  "title": "HostUpdateInterruptionConfirmation",
+  "description": "The Host Update Handoff Supervisor's exact-owner confirmation that it cancelled and waited for the staged next-updater process before Host update ownership is released.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "updateId",
+    "installationId",
+    "expectedInstallationRevision",
+    "expectedJournalRevision",
+    "interruptionRequestId",
+    "terminationEvidence",
+    "outcome",
+    "observedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion" },
+    "requestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "updateId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "installationId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "expectedInstallationRevision": { "type": "integer", "minimum": 1 },
+    "expectedJournalRevision": { "type": "integer", "minimum": 1 },
+    "interruptionRequestId": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier" },
+    "terminationEvidence": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference" },
+    "outcome": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue" },
+    "observedAt": { "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp" }
+  }
+}

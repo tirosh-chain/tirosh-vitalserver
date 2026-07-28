@@ -873,6 +873,8 @@ def verify_postinstall_service_reconciliation(
         "set -eu",
         "transaction_started=0",
         "trap recover_installation 0",
+        "--host-administration-descriptor",
+        "--host-administration-timeout-milliseconds 5000",
         "--mode recover",
         "--mode quiesce",
         "--mode activate",
@@ -951,6 +953,8 @@ def verify_preinstall_host_installation_transaction(
     required_lines = (
         "set -eu",
         '"$script_directory/host-installation-manager" --mode preflight',
+        "--host-administration-descriptor",
+        "--host-administration-timeout-milliseconds 5000",
         "--release-id '" + verification.release_slot_id + "'",
         '--manifest "$script_directory/installation-manifest.json"',
     )

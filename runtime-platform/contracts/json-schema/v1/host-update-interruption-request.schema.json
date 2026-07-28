@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-interruption-request",
+  "title": "HostUpdateInterruptionRequest",
+  "description": "A Host-local request to cancel the exact active update owner. Acceptance records cancellation intent but does not claim that the staged next updater process has terminated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requestId",
+    "updateId",
+    "installationId",
+    "expectedInstallationRevision",
+    "expectedJournalRevision",
+    "reason"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+    },
+    "requestId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "updateId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "installationId": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+    },
+    "expectedInstallationRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "expectedJournalRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reason": {
+      "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+    }
+  }
+}

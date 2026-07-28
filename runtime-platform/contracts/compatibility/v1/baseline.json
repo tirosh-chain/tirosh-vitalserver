@@ -387,6 +387,21 @@
             }
           ]
         },
+        "HostUpdateOperationOwnershipReadResult": {
+          "allOf": [
+            {
+              "$ref": "../json-schema/v1/read-result.schema.json"
+            },
+            {
+              "properties": {
+                "value": {
+                  "$ref": "../json-schema/v1/host-update-operation-ownership.schema.json"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        },
         "HostUpdateWorkflowOutcome": {
           "additionalProperties": false,
           "properties": {
@@ -1397,6 +1412,37 @@
           "x-owner": "host-update-bundle-store"
         }
       },
+      "/v1/platform/update-operation-ownership": {
+        "get": {
+          "description": "Host-local lifecycle coordination read. Only an available value with state idle permits another installation lifecycle to proceed; missing, invalid, failed, and unavailable reads are not idle.",
+          "operationId": "getHostUpdateOperationOwnership",
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HostUpdateOperationOwnershipReadResult"
+                  }
+                }
+              },
+              "description": "Explicit idle or active Host update operation ownership read"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HostUpdateOperationOwnershipReadResult"
+                  }
+                }
+              },
+              "description": "Host update ownership provider is unavailable"
+            }
+          },
+          "summary": "Read the explicit Host update operation owner for the current installation",
+          "x-network-scope": "host-local",
+          "x-owner": "host-agent-update-journal"
+        }
+      },
       "/v1/platform/updates": {
         "post": {
           "description": "Host-local update channel. The browser-facing authentication and maintenance surface is a later product capability; this endpoint must not be exposed beyond its Host-local transport boundary.",
@@ -1525,6 +1571,118 @@
             }
           },
           "summary": "Settle a Host update from staged next-updater evidence",
+          "x-network-scope": "host-local",
+          "x-owner": "host-agent-update-journal"
+        }
+      },
+      "/v1/platform/updates/{updateId}:confirm-interruption": {
+        "post": {
+          "description": "Host-local supervisor channel. The exact installation, update, interruption request, and journal revision must match. Host Agent releases active ownership only after typed process termination evidence is accepted.",
+          "operationId": "confirmHostUpdateInterruption",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/UpdateId"
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/host-update-interruption-confirmation.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HostUpdateWorkflowOutcome"
+                  }
+                }
+              },
+              "description": "Interruption terminal state durably committed or idempotently replayed"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "Interruption confirmation rejected"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+                  }
+                }
+              },
+              "description": "Host interruption settlement outcome is unavailable or unknown"
+            }
+          },
+          "summary": "Settle an accepted interruption after staged next-updater termination",
+          "x-network-scope": "host-local",
+          "x-owner": "host-agent-update-journal"
+        }
+      },
+      "/v1/platform/updates/{updateId}:request-interruption": {
+        "post": {
+          "description": "Host-local lifecycle coordination command. Acceptance records cancellation-requested and retains active ownership; it does not claim that the supervisor or staged next updater process has terminated.",
+          "operationId": "requestHostUpdateInterruption",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/UpdateId"
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "../json-schema/v1/host-update-interruption-request.schema.json"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HostUpdateWorkflowOutcome"
+                  }
+                }
+              },
+              "description": "Cancellation intent durably recorded while update ownership remains active"
+            },
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-rejection.schema.json"
+                  }
+                }
+              },
+              "description": "Interruption request rejected"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "../json-schema/v1/command-admission-failure.schema.json"
+                  }
+                }
+              },
+              "description": "Host update interruption admission outcome is unavailable or unknown"
+            }
+          },
+          "summary": "Request cancellation of the exact active Host update owner",
           "x-network-scope": "host-local",
           "x-owner": "host-agent-update-journal"
         }
@@ -16551,6 +16709,102 @@
       "title": "HostUpdateHandoffSupervisorConfiguration",
       "type": "object"
     },
+    "json-schema/v1/host-update-interruption-confirmation.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-interruption-confirmation",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "The Host Update Handoff Supervisor's exact-owner confirmation that it cancelled and waited for the staged next-updater process before Host update ownership is released.",
+      "properties": {
+        "expectedInstallationRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expectedJournalRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "interruptionRequestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "observedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        },
+        "outcome": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "terminationEvidence": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+        },
+        "updateId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "updateId",
+        "installationId",
+        "expectedInstallationRevision",
+        "expectedJournalRevision",
+        "interruptionRequestId",
+        "terminationEvidence",
+        "outcome",
+        "observedAt"
+      ],
+      "title": "HostUpdateInterruptionConfirmation",
+      "type": "object"
+    },
+    "json-schema/v1/host-update-interruption-request.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-interruption-request",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "A Host-local request to cancel the exact active update owner. Acceptance records cancellation intent but does not claim that the staged next updater process has terminated.",
+      "properties": {
+        "expectedInstallationRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expectedJournalRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "installationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "reason": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "updateId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "updateId",
+        "installationId",
+        "expectedInstallationRevision",
+        "expectedJournalRevision",
+        "reason"
+      ],
+      "title": "HostUpdateInterruptionRequest",
+      "type": "object"
+    },
     "json-schema/v1/host-update-journal.schema.json": {
       "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-journal",
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -16703,6 +16957,45 @@
         "installationId": {
           "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
         },
+        "interruption": {
+          "additionalProperties": false,
+          "properties": {
+            "confirmationRequestId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "confirmedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "interruptedState": {
+              "enum": [
+                "requested",
+                "bootstrap-staged",
+                "handoff-pending",
+                "applying"
+              ],
+              "type": "string"
+            },
+            "reason": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Issue"
+            },
+            "requestId": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+            },
+            "requestedAt": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+            },
+            "terminationEvidence": {
+              "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/EvidenceReference"
+            }
+          },
+          "required": [
+            "requestId",
+            "interruptedState",
+            "reason",
+            "requestedAt"
+          ],
+          "type": "object"
+        },
         "journalRevision": {
           "minimum": 1,
           "type": "integer"
@@ -16771,6 +17064,119 @@
         "updatedAt"
       ],
       "title": "HostUpdateJournal",
+      "type": "object"
+    },
+    "json-schema/v1/host-update-operation-ownership.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:host-update-operation-ownership",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "updateId"
+                  ]
+                },
+                {
+                  "required": [
+                    "operationId"
+                  ]
+                },
+                {
+                  "required": [
+                    "requestId"
+                  ]
+                },
+                {
+                  "required": [
+                    "updateState"
+                  ]
+                },
+                {
+                  "required": [
+                    "journalRevision"
+                  ]
+                }
+              ]
+            }
+          },
+          "if": {
+            "properties": {
+              "state": {
+                "const": "active"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "updateId",
+              "operationId",
+              "requestId",
+              "updateState",
+              "journalRevision"
+            ]
+          }
+        }
+      ],
+      "description": "The Host Agent-owned explicit projection of whether one durable Host Update Journal currently owns an installation. Consumers must not infer idle from a missing, failed, unavailable, or invalid read.",
+      "properties": {
+        "installationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "installationRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "interruptionRequestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "interruptionRequested": {
+          "type": "boolean"
+        },
+        "journalRevision": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "operationId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "requestId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "state": {
+          "enum": [
+            "idle",
+            "active"
+          ]
+        },
+        "updateId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "updateState": {
+          "enum": [
+            "requested",
+            "bootstrap-staged",
+            "handoff-pending",
+            "applying"
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "installationId",
+        "installationRevision",
+        "state"
+      ],
+      "title": "HostUpdateOperationOwnership",
       "type": "object"
     },
     "json-schema/v1/host-update-trust-store.schema.json": {
@@ -26018,6 +26424,170 @@
         "rollback"
       ],
       "title": "UpdateExecutionReport",
+      "type": "object"
+    },
+    "json-schema/v1/update-publisher-trust-transition-receipt.schema.json": {
+      "$id": "urn:tirosh:vitalserver:runtime-platform:v1:update-publisher-trust-transition-receipt",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "provision"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "sourceTrustStoreSha256"
+              ]
+            },
+            "properties": {
+              "addedKeyIds": {
+                "maxItems": 1,
+                "minItems": 1
+              },
+              "removedKeyIds": {
+                "maxItems": 0
+              },
+              "retainedKeyIds": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "rotate"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "addedKeyIds": {
+                "maxItems": 1,
+                "minItems": 1
+              },
+              "removedKeyIds": {
+                "maxItems": 0
+              },
+              "retainedKeyIds": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sourceTrustStoreSha256"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "revoke"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "addedKeyIds": {
+                "maxItems": 0
+              },
+              "removedKeyIds": {
+                "maxItems": 1,
+                "minItems": 1
+              },
+              "retainedKeyIds": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "sourceTrustStoreSha256"
+            ]
+          }
+        }
+      ],
+      "description": "Release-process evidence for provisioning, rotating, or revoking public Update Bootstrap Envelope verification keys. It identifies trust-store bytes and key IDs only; private signing material is forbidden.",
+      "properties": {
+        "action": {
+          "enum": [
+            "provision",
+            "rotate",
+            "revoke"
+          ],
+          "type": "string"
+        },
+        "addedKeyIds": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          },
+          "maxItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "removedKeyIds": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          },
+          "maxItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "resultKeyCount": {
+          "maximum": 128,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "resultTrustStoreSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "retainedKeyIds": {
+          "items": {
+            "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+          },
+          "maxItems": 128,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "schemaVersion": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/SchemaVersion"
+        },
+        "sourceTrustStoreSha256": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Sha256"
+        },
+        "transitionId": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Identifier"
+        },
+        "transitionedAt": {
+          "$ref": "urn:tirosh:vitalserver:runtime-platform:v1:common#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "transitionId",
+        "action",
+        "resultTrustStoreSha256",
+        "resultKeyCount",
+        "addedKeyIds",
+        "removedKeyIds",
+        "retainedKeyIds",
+        "transitionedAt"
+      ],
+      "title": "UpdatePublisherTrustTransitionReceipt",
       "type": "object"
     },
     "json-schema/v1/vital-replay-corpus-manifest.schema.json": {

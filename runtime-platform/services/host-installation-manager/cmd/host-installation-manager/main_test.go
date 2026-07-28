@@ -1,20 +1,27 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-installation-manager/internal/hostinstallationmanagerdomain"
 )
 
+type hostUpdateOwnershipReaderFake struct{}
+
+func (hostUpdateOwnershipReaderFake) ReadHostUpdateOperationOwnership(context.Context) (hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation, error) {
+	return hostinstallationmanagerdomain.HostUpdateOperationOwnershipObservation{}, nil
+}
+
 func TestNewHostInstallationWorkflowForPlatformComposesDeclaredLinuxAdapters(t *testing.T) {
-	workflow, err := newHostInstallationWorkflowForPlatform("linux", "/usr/sbin/pkgutil", "/bin/launchctl", "/usr/bin/dpkg-query", "/usr/bin/systemctl", `C:\Windows\System32\reg.exe`, `C:\Windows\System32\sc.exe`, `C:\Windows\System32\fsutil.exe`, `C:\Windows\System32\cmd.exe`)
+	workflow, err := newHostInstallationWorkflowForPlatform("linux", hostUpdateOwnershipReaderFake{}, "/usr/sbin/pkgutil", "/bin/launchctl", "/usr/bin/dpkg-query", "/usr/bin/systemctl", `C:\Windows\System32\reg.exe`, `C:\Windows\System32\sc.exe`, `C:\Windows\System32\fsutil.exe`, `C:\Windows\System32\cmd.exe`)
 	if err != nil || workflow == nil {
 		t.Fatalf("workflow=%v err=%v", workflow, err)
 	}
 }
 
 func TestNewHostInstallationWorkflowForPlatformComposesDeclaredWindowsAdapters(t *testing.T) {
-	workflow, err := newHostInstallationWorkflowForPlatform("windows", "pkgutil", "launchctl", "dpkg-query", "systemctl", `C:\Windows\System32\reg.exe`, `C:\Windows\System32\sc.exe`, `C:\Windows\System32\fsutil.exe`, `C:\Windows\System32\cmd.exe`)
+	workflow, err := newHostInstallationWorkflowForPlatform("windows", hostUpdateOwnershipReaderFake{}, "pkgutil", "launchctl", "dpkg-query", "systemctl", `C:\Windows\System32\reg.exe`, `C:\Windows\System32\sc.exe`, `C:\Windows\System32\fsutil.exe`, `C:\Windows\System32\cmd.exe`)
 	if err != nil || workflow == nil {
 		t.Fatalf("workflow=%v err=%v", workflow, err)
 	}

@@ -68,10 +68,10 @@ endif
 	guest-bundled-upstream-image-set-archive-composer-test \
 	host-platform-release-effect-executor-test \
 	host-platform-release-effect-executor-cross-platform-build \
-	guest-product-release-update-composer-test \
+	product-update-composer-test \
 	guest-product-release-archive-composer-test \
 	host-platform-release-archive-composer-test \
-	guest-product-release-update-composition-acceptance \
+	product-update-composition-acceptance \
 	platformctl-test \
 	platformctl-cross-platform-build \
 	ensure-runtime-console-node \
@@ -171,6 +171,7 @@ endif
 	host-service-runner-cross-platform-build \
 	host-installation-manager-test \
 	host-installation-manager-build \
+	update-trust-store-manager-test \
 	release-composer-test \
 	installation-update-acceptance \
 	check
@@ -179,7 +180,7 @@ endif
 # model macOS contracts remain here. The Host package composer keeps its pure
 # cases here too and explicitly skips only five real pkgbuild/pkgutil effects
 # away from macOS. Apple SDK compilation belongs to `macos-native-check`.
-check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test guest-product-amd64-build guest-product-release-manager-test guest-product-release-effect-executor-test guest-product-release-effect-executor-cross-platform-build guest-bundled-upstream-image-set-manager-test guest-bundled-upstream-image-set-manager-linux-build guest-bundled-upstream-image-set-effect-executor-test guest-bundled-upstream-image-set-effect-executor-cross-platform-build guest-bundled-upstream-image-set-archive-composer-test guest-product-release-update-composer-test guest-product-release-archive-composer-test host-platform-release-archive-composer-test guest-product-release-update-composition-acceptance platformctl-test platformctl-cross-platform-build runtime-console-test host-guest-acceptance guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test native-guest-artifact-input-preparer-test guest-telemetry-collector-artifact-builder-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-linux-source-disk-materializer-test guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test linux-host-package-composer-test linux-host-release-input-preparer-test windows-host-msi-composer-test windows-host-release-input-preparer-test macos-release-package-assembly-test macos-development-release-input-preparer-test macos-development-guest-boot-input-assembly-test macos-clean-host-release-evidence-runner-test guest-installed-runtime-evidence-runner-test vital-replay-corpus-test windows-clean-host-release-evidence-runner-test linux-clean-host-release-evidence-runner-test release-delivery-proof-attachment-test release-artifact-sbom-notices-test host-platform-release-transition-evidence-test macos-development-installation-evidence-runner-test recorder-gateway-check lab-recorder-runner-check guest-node-services-bundle-test recorder-gateway-acceptance lab-recorder-runner-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test host-update-handoff-supervisor-test host-service-runner-test host-service-runner-cross-platform-build host-installation-manager-test host-installation-manager-build release-composer-test installation-update-acceptance
+check: test-boundaries boundary-check test-reference-fixtures reference-fixture-check test-contracts contract-check service-go-test host-edge-proxy-test guest-product-process-supervisor-test guest-product-amd64-build guest-product-release-manager-test guest-product-release-effect-executor-test guest-product-release-effect-executor-cross-platform-build guest-bundled-upstream-image-set-manager-test guest-bundled-upstream-image-set-manager-linux-build guest-bundled-upstream-image-set-effect-executor-test guest-bundled-upstream-image-set-effect-executor-cross-platform-build guest-bundled-upstream-image-set-archive-composer-test product-update-composer-test guest-product-release-archive-composer-test host-platform-release-archive-composer-test product-update-composition-acceptance platformctl-test platformctl-cross-platform-build runtime-console-test host-guest-acceptance guest-artifact-compiler-test guest-artifact-compilation-input-assembler-test native-guest-artifact-input-preparer-test guest-telemetry-collector-artifact-builder-test guest-linux-boot-artifact-extractor-test guest-linux-boot-artifact-extractor-cross-platform-build guest-linux-source-disk-materializer-test guest-root-storage-partition-assembler-test guest-product-bootstrap-volume-composer-test guest-product-bootstrap-volume-composer-cross-platform-build guest-product-bootstrap-artifact-composer-test guest-product-systemd-service-unit-composer-test macos-guest-artifact-manifest-composer-test macos-installer-component-cpio-test macos-host-package-composer-test linux-host-package-composer-test linux-host-release-input-preparer-test windows-host-msi-composer-test windows-host-release-input-preparer-test macos-release-package-assembly-test macos-development-release-input-preparer-test macos-development-guest-boot-input-assembly-test macos-clean-host-release-evidence-runner-test guest-installed-runtime-evidence-runner-test vital-replay-corpus-test windows-clean-host-release-evidence-runner-test linux-clean-host-release-evidence-runner-test release-delivery-proof-attachment-test release-artifact-sbom-notices-test host-platform-release-transition-evidence-test macos-development-installation-evidence-runner-test recorder-gateway-check lab-recorder-runner-check guest-node-services-bundle-test recorder-gateway-acceptance lab-recorder-runner-gateway-acceptance lab-archive-acceptance external-time-observability-acceptance portable-provider-test source-inventory-check delivery-proof-check cross-platform-delivery-acceptance host-updater-test host-update-handoff-supervisor-test host-service-runner-test host-service-runner-cross-platform-build host-installation-manager-test host-installation-manager-build update-trust-store-manager-test release-composer-test installation-update-acceptance
 
 bootstrap-contract-tools:
 	$(SYSTEM_PYTHON) -m venv $(VENV)
@@ -293,8 +294,8 @@ check: operator-delivery-kit-composer-test
 
 check: product-delivery-release-plan-test
 
-guest-product-release-update-composer-test: ensure-go
-	cd tooling/guest-product-release-update-composer && GOTOOLCHAIN=go1.25.7+auto $(GO) test ./...
+product-update-composer-test: ensure-go
+	cd tooling/product-update-composer && GOTOOLCHAIN=go1.25.7+auto $(GO) test ./...
 
 guest-product-release-archive-composer-test: ensure-go
 	cd tooling/guest-product-release-archive-composer && GOTOOLCHAIN=go1.25.7+auto $(GO) test ./...
@@ -302,8 +303,8 @@ guest-product-release-archive-composer-test: ensure-go
 host-platform-release-archive-composer-test: ensure-go
 	cd tooling/host-platform-release-archive-composer && GOTOOLCHAIN=go1.25.7+auto $(GO) test ./...
 
-guest-product-release-update-composition-acceptance: ensure-go
-	RUNTIME_PLATFORM_GO="$(GO)" $(SYSTEM_PYTHON) -m unittest acceptance.harness.test_guest_product_release_update_composition
+product-update-composition-acceptance: ensure-go
+	RUNTIME_PLATFORM_GO="$(GO)" $(SYSTEM_PYTHON) -m unittest acceptance.harness.test_product_update_composition
 
 platformctl-test: ensure-go
 	cd interfaces/platformctl && $(GO) test ./...
@@ -976,6 +977,9 @@ host-installation-manager-build: ensure-go
 	cd services/host-installation-manager && GOOS=darwin GOARCH=arm64 $(GO) build -o .build/darwin-arm64-host-installation-manager ./cmd/host-installation-manager
 	cd services/host-installation-manager && GOOS=linux GOARCH=amd64 $(GO) build -o .build/linux-amd64-host-installation-manager ./cmd/host-installation-manager
 	cd services/host-installation-manager && GOOS=windows GOARCH=amd64 $(GO) build -o .build/windows-amd64-host-installation-manager.exe ./cmd/host-installation-manager
+
+update-trust-store-manager-test: ensure-go
+	cd tooling/update-trust-store-manager && $(GO) test ./...
 
 release-composer-test: ensure-go
 	cd tooling/release-composer && $(GO) test ./...

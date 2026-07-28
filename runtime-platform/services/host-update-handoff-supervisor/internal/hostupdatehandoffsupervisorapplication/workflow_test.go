@@ -31,6 +31,47 @@ func (process updaterProcess) Dispatch(context.Context, hostupdatehandoffsupervi
 	return process.submission, process.err
 }
 
+type interruptionMonitor struct {
+	observation hostupdatehandoffsupervisordomain.HostUpdateInterruptionObservation
+	err         error
+	wait        bool
+}
+
+func (monitor interruptionMonitor) ObserveInterruption(context.Context, string, string, time.Duration) (hostupdatehandoffsupervisordomain.HostUpdateInterruptionObservation, bool, error) {
+	if monitor.err != nil {
+		return hostupdatehandoffsupervisordomain.HostUpdateInterruptionObservation{}, false, monitor.err
+	}
+	if monitor.wait {
+		return hostupdatehandoffsupervisordomain.HostUpdateInterruptionObservation{}, false, nil
+	}
+	return monitor.observation, true, nil
+}
+
+func (monitor interruptionMonitor) WaitForInterruption(ctx context.Context, _ string, _ string, _ time.Duration, _ time.Duration) (hostupdatehandoffsupervisordomain.HostUpdateInterruptionObservation, error) {
+	if monitor.wait {
+		<-ctx.Done()
+		return hostupdatehandoffsupervisordomain.HostUpdateInterruptionObservation{}, ctx.Err()
+	}
+	return monitor.observation, monitor.err
+}
+
+type confirmationPublisher struct {
+	confirmation *hostupdatehandoffsupervisordomain.HostUpdateInterruptionConfirmation
+	err          error
+}
+
+func (publisher *confirmationPublisher) PublishInterruptionConfirmation(_ context.Context, _ string, _ time.Duration, confirmation hostupdatehandoffsupervisordomain.HostUpdateInterruptionConfirmation) error {
+	publisher.confirmation = &confirmation
+	return publisher.err
+}
+
+type cancellableUpdaterProcess struct{}
+
+func (cancellableUpdaterProcess) Dispatch(ctx context.Context, _ hostupdatehandoffsupervisordomain.StagedNextUpdaterDispatchInput) (hostupdatehandoffsupervisordomain.StagedNextUpdaterCompletionSubmission, error) {
+	<-ctx.Done()
+	return hostupdatehandoffsupervisordomain.StagedNextUpdaterCompletionSubmission{}, ctx.Err()
+}
+
 func testConfiguration() hostupdatehandoffsupervisordomain.HostUpdateHandoffSupervisorConfiguration {
 	return hostupdatehandoffsupervisordomain.HostUpdateHandoffSupervisorConfiguration{SchemaVersion: "v1", ID: "dispatcher", StagingDirectory: "/staging", HandoffQueueDirectory: "/staging/handoff-queue", ExecutionEvidenceDirectory: "/evidence", LayerEffectReceiptDirectory: "/effects", HostLocalAdministrationDescriptorPath: "/control/host.json", LayerEffectTimeoutMilliseconds: 1000, CompletionTimeoutMilliseconds: 1000, ServicePollIntervalMilliseconds: 100}
 }
@@ -40,7 +81,7 @@ func testInput() hostupdatehandoffsupervisordomain.StagedNextUpdaterDispatchInpu
 }
 
 func TestDispatchRecordsCompletionSubmissionWithoutCallingItUpdateSuccess(t *testing.T) {
-	workflow, err := NewHostUpdateHandoffSupervisorWorkflow(inputReader{input: testInput()}, updaterProcess{submission: hostupdatehandoffsupervisordomain.StagedNextUpdaterCompletionSubmission{CompletionCommandSHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}, fixedClock{})
+	workflow, err := NewHostUpdateHandoffSupervisorWorkflow(inputReader{input: testInput()}, updaterProcess{submission: hostupdatehandoffsupervisordomain.StagedNextUpdaterCompletionSubmission{CompletionCommandSHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}, interruptionMonitor{wait: true}, &confirmationPublisher{}, fixedClock{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +96,7 @@ func TestDispatchRecordsCompletionSubmissionWithoutCallingItUpdateSuccess(t *tes
 
 func TestDispatchPreservesUnavailableInputAsUnavailableReceipt(t *testing.T) {
 	inputFailure := hostupdatehandoffsupervisordomain.DispatchFailure{State: "unavailable", Issue: hostupdatehandoffsupervisordomain.DispatchIssue{Code: "handoff-missing", Message: "queue entry is missing", Dependency: "handoff-queue"}}
-	workflow, err := NewHostUpdateHandoffSupervisorWorkflow(inputReader{err: inputFailure}, updaterProcess{}, fixedClock{})
+	workflow, err := NewHostUpdateHandoffSupervisorWorkflow(inputReader{err: inputFailure}, updaterProcess{}, interruptionMonitor{wait: true}, &confirmationPublisher{}, fixedClock{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +110,7 @@ func TestDispatchPreservesUnavailableInputAsUnavailableReceipt(t *testing.T) {
 }
 
 func TestDispatchTurnsUnclassifiedProcessFailureIntoFailedReceipt(t *testing.T) {
-	workflow, err := NewHostUpdateHandoffSupervisorWorkflow(inputReader{input: testInput()}, updaterProcess{err: errors.New("process exited")}, fixedClock{})
+	workflow, err := NewHostUpdateHandoffSupervisorWorkflow(inputReader{input: testInput()}, updaterProcess{err: errors.New("process exited")}, interruptionMonitor{wait: true}, &confirmationPublisher{}, fixedClock{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,5 +120,52 @@ func TestDispatchTurnsUnclassifiedProcessFailureIntoFailedReceipt(t *testing.T) 
 	}
 	if receipt.State != "failed" || receipt.Issue == nil || receipt.Issue.Code != "next-updater-dispatch-failed" {
 		t.Fatalf("receipt=%+v", receipt)
+	}
+}
+
+func TestDispatchCancelsWaitsAndConfirmsObservedInterruption(t *testing.T) {
+	publisher := &confirmationPublisher{}
+	monitor := interruptionMonitor{observation: hostupdatehandoffsupervisordomain.HostUpdateInterruptionObservation{
+		InstallationID:        "installation-1",
+		InstallationRevision:  4,
+		UpdateID:              "update-020",
+		JournalRevision:       7,
+		InterruptionRequestID: "interruption-request-1",
+	}}
+	workflow, err := NewHostUpdateHandoffSupervisorWorkflow(inputReader{input: testInput()}, cancellableUpdaterProcess{}, monitor, publisher, fixedClock{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := workflow.Dispatch(context.Background(), testConfiguration(), "attempt-023", "/staging/handoff-queue/update-020.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.State != "failed" || receipt.Issue == nil || receipt.Issue.Code != "next-updater-interrupted" {
+		t.Fatalf("receipt=%+v", receipt)
+	}
+	if publisher.confirmation == nil || publisher.confirmation.UpdateID != "update-020" || publisher.confirmation.ExpectedJournalRevision != 7 || publisher.confirmation.InterruptionRequestID != "interruption-request-1" || publisher.confirmation.TerminationEvidence.ID != "attempt-023" {
+		t.Fatalf("confirmation=%+v", publisher.confirmation)
+	}
+}
+
+func TestDispatchRechecksInterruptionAfterUpdaterExitsWithRejectedCompletion(t *testing.T) {
+	publisher := &confirmationPublisher{}
+	monitor := interruptionMonitor{observation: hostupdatehandoffsupervisordomain.HostUpdateInterruptionObservation{
+		InstallationID:        "installation-1",
+		InstallationRevision:  4,
+		UpdateID:              "update-020",
+		JournalRevision:       7,
+		InterruptionRequestID: "interruption-request-1",
+	}}
+	workflow, err := NewHostUpdateHandoffSupervisorWorkflow(inputReader{input: testInput()}, updaterProcess{err: errors.New("completion rejected after interruption")}, monitor, publisher, fixedClock{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := workflow.Dispatch(context.Background(), testConfiguration(), "attempt-024", "/staging/handoff-queue/update-020.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Issue == nil || receipt.Issue.Code != "next-updater-interrupted" || publisher.confirmation == nil || publisher.confirmation.TerminationEvidence.ID != "attempt-024" {
+		t.Fatalf("receipt=%+v confirmation=%+v", receipt, publisher.confirmation)
 	}
 }

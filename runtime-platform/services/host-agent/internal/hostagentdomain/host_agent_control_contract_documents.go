@@ -35,6 +35,23 @@ type Release struct {
 	RuntimeVersion string `json:"runtimeVersion"`
 }
 
+func ValidatePlatformInstallation(installation PlatformInstallation) *Issue {
+	if installation.SchemaVersion != SchemaVersion ||
+		!ValidIdentifier(installation.ID) ||
+		installation.ResourceRevision < 1 ||
+		installation.Release.ProductVersion == "" ||
+		installation.Release.RuntimeVersion == "" ||
+		installation.DataDirectory == "" {
+		return &Issue{Code: "platform-installation-invalid", Message: "Host installation identity, revision, release, and data directory are required"}
+	}
+	installedAt, installedErr := time.Parse(time.RFC3339, installation.InstalledAt)
+	updatedAt, updatedErr := time.Parse(time.RFC3339, installation.UpdatedAt)
+	if installedErr != nil || updatedErr != nil || updatedAt.Before(installedAt) {
+		return &Issue{Code: "platform-installation-invalid", Message: "Host installation timestamps are invalid"}
+	}
+	return nil
+}
+
 // ConfiguredGuestRuntimeControlHTTPAddress is Host deployment input copied
 // into the Host-owned endpoint resource. It is never a discovered Guest address
 // or transport reachability observation.

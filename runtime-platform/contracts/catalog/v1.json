@@ -754,6 +754,42 @@
       "schemas": [
         "json-schema/v1/vital-replay-corpus-manifest.schema.json"
       ]
+    },
+    {
+      "id": "C80",
+      "name": "HostUpdateOperationOwnership",
+      "owner": "Host Agent",
+      "boundary": "explicit Host-local projection of idle or one active durable Update Journal owner for an exact installation identity and revision",
+      "schemas": [
+        "json-schema/v1/host-update-operation-ownership.schema.json"
+      ]
+    },
+    {
+      "id": "C81",
+      "name": "HostUpdateInterruptionRequest",
+      "owner": "Host Agent",
+      "boundary": "Host-local exact-owner cancellation intent that remains active until supervisor termination evidence settles the Update Journal",
+      "schemas": [
+        "json-schema/v1/host-update-interruption-request.schema.json"
+      ]
+    },
+    {
+      "id": "C82",
+      "name": "HostUpdateInterruptionConfirmation",
+      "owner": "Host Update Handoff Supervisor",
+      "boundary": "exact-owner staged next-updater termination evidence submitted after cancel and wait, before Host Agent releases update ownership",
+      "schemas": [
+        "json-schema/v1/host-update-interruption-confirmation.schema.json"
+      ]
+    },
+    {
+      "id": "C83",
+      "name": "UpdatePublisherTrustTransitionReceipt",
+      "owner": "Release process",
+      "boundary": "public Update Bootstrap Envelope verification-key provisioning, overlap rotation, and revocation evidence; private signing material never crosses this boundary",
+      "schemas": [
+        "json-schema/v1/update-publisher-trust-transition-receipt.schema.json"
+      ]
     }
   ]
 }

@@ -74,6 +74,8 @@ func (server *HostAgentControlHTTPServer) ServeHTTP(response http.ResponseWriter
 		server.executeLifecycle(response, request, "reboot")
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/platform/updates":
 		server.applyUpdate(response, request)
+	case request.Method == http.MethodGet && request.URL.Path == "/v1/platform/update-operation-ownership":
+		server.getUpdateOperationOwnership(response, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/platform/update-bundles:import":
 		server.importUpdateBundle(response, request)
 	case request.Method == http.MethodPost && updateBundleApplyID(request.URL.Path) != "":
@@ -84,6 +86,10 @@ func (server *HostAgentControlHTTPServer) ServeHTTP(response http.ResponseWriter
 		server.getUpdate(response, request, pathParameter(request.URL.Path, "/v1/platform/updates/"))
 	case request.Method == http.MethodPost && updateCompletionID(request.URL.Path) != "":
 		server.completeUpdate(response, request, updateCompletionID(request.URL.Path))
+	case request.Method == http.MethodPost && updateInterruptionRequestID(request.URL.Path) != "":
+		server.requestUpdateInterruption(response, request, updateInterruptionRequestID(request.URL.Path))
+	case request.Method == http.MethodPost && updateInterruptionConfirmationID(request.URL.Path) != "":
+		server.confirmUpdateInterruption(response, request, updateInterruptionConfirmationID(request.URL.Path))
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/platform/time/authorities":
 		server.applyTimeAuthority(response, request)
 	case request.Method == http.MethodGet && pathParameter(request.URL.Path, "/v1/platform/time/authorities/") != "":
@@ -198,6 +204,14 @@ func (server *HostAgentControlHTTPServer) getUpdate(response http.ResponseWriter
 	writeJSON(response, http.StatusOK, server.updates.ReadHostUpdateJournal(request.Context(), updateID))
 }
 
+func (server *HostAgentControlHTTPServer) getUpdateOperationOwnership(response http.ResponseWriter, request *http.Request) {
+	if server.updates == nil {
+		writeJSON(response, http.StatusServiceUnavailable, unavailableRead("host-update-unavailable", "Host update module is not configured"))
+		return
+	}
+	writeJSON(response, http.StatusOK, server.updates.ReadHostUpdateOperationOwnership(request.Context()))
+}
+
 func (server *HostAgentControlHTTPServer) completeUpdate(response http.ResponseWriter, request *http.Request, updateID string) {
 	if server.updates == nil {
 		writeJSON(response, http.StatusServiceUnavailable, unavailableAdmission(requestIDFromRequest(request), "host-update-unavailable", "Host update module is not configured"))
@@ -214,6 +228,60 @@ func (server *HostAgentControlHTTPServer) completeUpdate(response http.ResponseW
 		return
 	}
 	outcome, rejection, admissionFailure := server.updates.CompleteHostUpdateExecution(request.Context(), command)
+	if rejection != nil {
+		writeJSON(response, http.StatusBadRequest, rejection)
+		return
+	}
+	if admissionFailure != nil {
+		writeJSON(response, http.StatusServiceUnavailable, admissionFailure)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, outcome)
+}
+
+func (server *HostAgentControlHTTPServer) requestUpdateInterruption(response http.ResponseWriter, request *http.Request, updateID string) {
+	if server.updates == nil {
+		writeJSON(response, http.StatusServiceUnavailable, unavailableAdmission(requestIDFromRequest(request), "host-update-unavailable", "Host update module is not configured"))
+		return
+	}
+	var command hostagentdomain.HostUpdateInterruptionRequest
+	requestID, err := decodeStrictCommand(request, &command)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(requestID, "invalid-host-update-interruption-request", err.Error()))
+		return
+	}
+	if command.UpdateID != updateID {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(command.RequestID, "update-id-route-mismatch", "updateId must match the requested route"))
+		return
+	}
+	outcome, rejection, admissionFailure := server.updates.RequestHostUpdateInterruption(request.Context(), command)
+	if rejection != nil {
+		writeJSON(response, http.StatusBadRequest, rejection)
+		return
+	}
+	if admissionFailure != nil {
+		writeJSON(response, http.StatusServiceUnavailable, admissionFailure)
+		return
+	}
+	writeJSON(response, http.StatusAccepted, outcome)
+}
+
+func (server *HostAgentControlHTTPServer) confirmUpdateInterruption(response http.ResponseWriter, request *http.Request, updateID string) {
+	if server.updates == nil {
+		writeJSON(response, http.StatusServiceUnavailable, unavailableAdmission(requestIDFromRequest(request), "host-update-unavailable", "Host update module is not configured"))
+		return
+	}
+	var command hostagentdomain.HostUpdateInterruptionConfirmation
+	requestID, err := decodeStrictCommand(request, &command)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(requestID, "invalid-host-update-interruption-confirmation", err.Error()))
+		return
+	}
+	if command.UpdateID != updateID {
+		writeJSON(response, http.StatusBadRequest, malformedRejection(command.RequestID, "update-id-route-mismatch", "updateId must match the requested route"))
+		return
+	}
+	outcome, rejection, admissionFailure := server.updates.ConfirmHostUpdateInterruption(request.Context(), command)
 	if rejection != nil {
 		writeJSON(response, http.StatusBadRequest, rejection)
 		return
@@ -586,6 +654,32 @@ func pathParameter(path string, prefix string) string {
 func updateCompletionID(path string) string {
 	const prefix = "/v1/platform/updates/"
 	const suffix = ":complete"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	value := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	if value == "" || strings.Contains(value, "/") {
+		return ""
+	}
+	return value
+}
+
+func updateInterruptionRequestID(path string) string {
+	const prefix = "/v1/platform/updates/"
+	const suffix = ":request-interruption"
+	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	value := strings.TrimSuffix(strings.TrimPrefix(path, prefix), suffix)
+	if value == "" || strings.Contains(value, "/") {
+		return ""
+	}
+	return value
+}
+
+func updateInterruptionConfirmationID(path string) string {
+	const prefix = "/v1/platform/updates/"
+	const suffix = ":confirm-interruption"
 	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
 		return ""
 	}

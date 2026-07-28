@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tirosh-chain/vitalserver-runtime-platform/host-update-handoff-supervisor/internal/adapters/hostlocalupdatecoordination"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-update-handoff-supervisor/internal/adapters/hostupdatehandoffconfigurationfile"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-update-handoff-supervisor/internal/adapters/hostupdatehandoffdispatchreceiptfile"
 	"github.com/tirosh-chain/vitalserver-runtime-platform/host-update-handoff-supervisor/internal/adapters/stagednextupdaterdispatchinputfile"
@@ -47,7 +48,8 @@ func main() {
 	if err != nil {
 		fatal(2, "read C56 supervisor configuration", err)
 	}
-	workflow, err := hostupdatehandoffsupervisorapplication.NewHostUpdateHandoffSupervisorWorkflow(stagednextupdaterdispatchinputfile.StagedNextUpdaterDispatchInputFileReader{}, stagednextupdaterprocess.StagedNextUpdaterProcessRunner{}, wallClock{})
+	coordination := hostlocalupdatecoordination.Client{}
+	workflow, err := hostupdatehandoffsupervisorapplication.NewHostUpdateHandoffSupervisorWorkflow(stagednextupdaterdispatchinputfile.StagedNextUpdaterDispatchInputFileReader{}, stagednextupdaterprocess.StagedNextUpdaterProcessRunner{}, coordination, coordination, wallClock{})
 	if err != nil {
 		fatal(2, "configure C31 handoff supervisor", err)
 	}

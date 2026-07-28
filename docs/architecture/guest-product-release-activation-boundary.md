@@ -70,12 +70,13 @@ protocol and re-verifies every C26 artifact immediately before execution.
 The release process now has two adjacent, non-runtime tools:
 `guest-product-release-archive-composer` turns one explicitly selected release
 tree into the C59-safe tar+gzip artifact, and
-`guest-product-release-update-composer` selects that artifact plus the next
-updater and C55 executable, generates C61/C26, and passes a prepared payload
-to the generic C25 signer. Neither tool reads `current`, activates a Guest
-release, or becomes a Guest state owner.
+`product-update-composer` selects that artifact plus the next updater and
+layer effect executable, generates the Guest Runtime transition inside the
+complete Product Update Specification, and passes a prepared payload to the
+generic bootstrap-envelope signer. Neither tool reads `current`, activates a
+Guest release, or becomes a Guest state owner.
 
-Clean-host update and rollback proof remains a C24 release-delivery
-responsibility for each target OS. Container and Host-platform C55 effects are
-also separate owners; they must not reuse C59 merely because their work occurs
-near the Guest Product.
+Clean-host update and rollback proof remains a release-delivery responsibility
+for each target OS. Container and Host Platform effects are separate owners;
+they must not reuse the Guest Product Release Manager merely because their work
+occurs near the Guest Product.
