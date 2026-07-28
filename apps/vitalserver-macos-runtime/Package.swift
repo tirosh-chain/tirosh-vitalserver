@@ -29,6 +29,10 @@ let package = Package(
             targets: ["UpdateRunnerHost"]
         ),
         .executable(
+            name: "vitalserver-update-handoff-supervisor",
+            targets: ["UpdateHandoffSupervisorHost"]
+        ),
+        .executable(
             name: "vitalserver-troubleshooting-reset-for-reinstall",
             targets: ["TroubleshootingResetForReinstall"]
         ),
@@ -133,6 +137,16 @@ let package = Package(
             path: "Sources/Hosts/UpdateRunner"
         ),
         .executableTarget(
+            name: "UpdateHandoffSupervisorHost",
+            dependencies: [
+                "Contracts",
+                "Application",
+                "Workflow",
+                "OutboundAdapters",
+            ],
+            path: "Sources/Hosts/UpdateHandoffSupervisor"
+        ),
+        .executableTarget(
             name: "TroubleshootingResetForReinstall",
             path: "Sources/Hosts/Troubleshooting/ResetForReinstall"
         ),
@@ -214,6 +228,15 @@ let package = Package(
         .testTarget(
             name: "UpdateRunnerHostTests",
             dependencies: ["UpdateRunnerHost"]
+        ),
+        .testTarget(
+            name: "UpdateHandoffSupervisorHostTests",
+            dependencies: [
+                "Contracts",
+                "Workflow",
+                "OutboundAdapters",
+                "UpdateHandoffSupervisorHost",
+            ]
         ),
         .testTarget(
             name: "MacControlPanelHostTests",

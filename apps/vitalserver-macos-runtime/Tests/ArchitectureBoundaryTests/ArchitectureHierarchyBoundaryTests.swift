@@ -5636,6 +5636,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 "ResumeUpdateBootstrapHandoffWorkflow.swift",
                 "SettleRunningUpdateBootstrapWorkflow.swift",
                 "UpdateBootstrapHandoffWorkflow.swift",
+                "UpdateHandoffSupervisorWorkflow.swift",
             ],
             "RuntimeUpdateLifecycle Workflow must keep only stateful runners: \(fileNames.sorted())"
         )
