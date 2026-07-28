@@ -171,6 +171,8 @@ struct RuntimeLifecycle {
             try resumeUpdateBootstrapHandoff(command)
         case .settleUpdateBootstrapHandoff(let command):
             try settleUpdateBootstrapHandoff(command)
+        case .proveUpdateBootstrap(let command):
+            try proveUpdateBootstrap(command)
         case .failUpdateBootstrap(let command):
             try failUpdateBootstrap(command)
         case .rollback(let command):

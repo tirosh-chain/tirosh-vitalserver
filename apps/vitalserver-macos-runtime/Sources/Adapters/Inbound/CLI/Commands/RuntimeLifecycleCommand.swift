@@ -23,6 +23,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case settleUpdateBootstrapHandoff(
         RuntimeUpdateBootstrapRecoveryCommand
     )
+    case proveUpdateBootstrap(RuntimeProveUpdateBootstrapCommand)
     case failUpdateBootstrap(RuntimeFailUpdateBootstrapCommand)
     case rollback(RuntimeRollbackCommand)
     case redisBackup
@@ -108,6 +109,10 @@ extension RuntimeLifecycleCommand {
                     usage:
                         "usage: vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>"
                 )
+            )
+        case "prove-update-bootstrap":
+            return .proveUpdateBootstrap(
+                try parseProveUpdateBootstrapCommand(remaining)
             )
         case "fail-update-bootstrap":
             return .failUpdateBootstrap(
@@ -235,6 +240,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>
       vitalserver-vm runtime resume-update-bootstrap-handoff <update-id>
       vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>
+      vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back
       vitalserver-vm runtime fail-update-bootstrap <update-id> --reason <reason>
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
@@ -343,6 +349,25 @@ extension RuntimeLifecycleCommand {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         return RuntimeUpdateBootstrapRecoveryCommand(updateId: updateId)
+    }
+
+    private static func parseProveUpdateBootstrapCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeProveUpdateBootstrapCommand {
+        let usage =
+            "usage: vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back"
+        guard arguments.count == 3,
+              !arguments[0].isEmpty,
+              arguments[1] == "--expect",
+              let expectation = UpdateBootstrapLifecycleProofExpectation(
+                rawValue: arguments[2]
+              ) else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return RuntimeProveUpdateBootstrapCommand(
+            updateId: arguments[0],
+            expectation: expectation
+        )
     }
 
     private static func parseFailUpdateBootstrapCommand(

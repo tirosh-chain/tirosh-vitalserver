@@ -30,6 +30,9 @@ enum RuntimeUpdateBootstrapCompositionError: Error, Equatable {
         cleanupReason: String
     )
     case handoffJobConflict(jobId: String, reason: String)
+    case completionReportDecodeFailed(path: String, reason: String)
+    case platformOperationJournalMismatch(updateId: String)
+    case platformOperationContractInvalid(reason: String)
 }
 
 extension RuntimeLifecycle {
@@ -414,6 +417,124 @@ extension RuntimeLifecycle {
         print("state: \(failed.state.rawValue)")
         print("reason: \(command.reason)")
     }
+
+    func proveUpdateBootstrap(
+        _ command: RuntimeProveUpdateBootstrapCommand
+    ) throws {
+        let repository = updateBootstrapJournalRepository()
+        let journalRead = repository.loadUpdateBootstrapJournal(
+            id: command.updateId
+        )
+        let proof = ProveUpdateBootstrapLifecycleUseCase()
+        let journal = try proof.requireJournal(
+            updateId: command.updateId,
+            journalRead: journalRead
+        )
+        guard let completion = journal.completion else {
+            throw ProveUpdateBootstrapLifecycleError.completionMissing(
+                id: journal.id
+            )
+        }
+        let stagedRoot = installedPaths.updateBootstrapStagingDirectory
+            .appendingPathComponent(journal.id, isDirectory: true)
+        let input = try BundleOwnedProductUpdateInputReader(
+            operations: BundleOwnedProductUpdateInputReadOperations(
+                pathState: fileStore.pathState,
+                fileSize: fileStore.fileSize,
+                readData: fileStore.readData
+            )
+        ).read(
+            invocationURL: stagedRoot
+                .appendingPathComponent("handoff", isDirectory: true)
+                .appendingPathComponent("invocation.json")
+        )
+        let reportRead = updateBootstrapReportReader().readCompletionReport(
+            relativePath: completion.reportRelativePath,
+            beneath: stagedRoot
+        )
+        try VerifyUpdateBootstrapCompletionReportUseCase().verify(
+            settledJournal: journal,
+            reportRead: reportRead
+        )
+        let reportURL = stagedRoot.appendingPathComponent(
+            completion.reportRelativePath
+        )
+        let report: ProductUpdateExecutionReport
+        do {
+            report = try JSONDecoder().decode(
+                ProductUpdateExecutionReport.self,
+                from: fileStore.readData(reportURL)
+            )
+        } catch {
+            throw RuntimeUpdateBootstrapCompositionError
+                .completionReportDecodeFailed(
+                    path: completion.reportRelativePath,
+                    reason: String(describing: error)
+                )
+        }
+        let plan = try PlanBundleOwnedProductUpdateUseCase().execute(
+            invocation: input.invocation,
+            specification: input.specification
+        )
+        try ValidateProductUpdateExecutionReportUseCase().execute(
+            report: report,
+            invocation: input.invocation,
+            plan: plan
+        )
+        let proven = try proof.execute(
+            expectation: command.expectation,
+            journal: journal,
+            report: report
+        )
+        let operationState = try RuntimeControlAPIOperationStateReader(
+            baseURL: RuntimeControlAPIAutomationEndpoint().baseURL(),
+            httpClient: RuntimeControlAPILocalSessionHTTPClient()
+        ).loadOperationState()
+        let platformJournalRead: UpdateBootstrapJournalReadResult
+        switch operationState.stableUpdate.state {
+        case .loaded:
+            if let document = operationState.stableUpdate.document {
+                platformJournalRead = .loaded(document)
+            } else {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .platformOperationContractInvalid(
+                        reason: "loaded stable update resource has no document"
+                    )
+            }
+        case .missing:
+            platformJournalRead = .missing
+        case .unavailable, .failed:
+            guard let readError = operationState.stableUpdate.readError,
+                  !readError.isEmpty else {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .platformOperationContractInvalid(
+                        reason:
+                            "failed stable update resource has no read error"
+                    )
+            }
+            platformJournalRead = .failed(
+                reason: readError
+            )
+        }
+        let platformJournal = try proof.requireJournal(
+            updateId: command.updateId,
+            journalRead: platformJournalRead
+        )
+        guard platformJournal == journal else {
+            throw RuntimeUpdateBootstrapCompositionError
+                .platformOperationJournalMismatch(updateId: command.updateId)
+        }
+        _ = try proof.execute(
+            expectation: command.expectation,
+            journal: platformJournal,
+            report: report
+        )
+        print("update bootstrap lifecycle proof verified")
+        print("journal: \(proven.id)")
+        print("state: \(proven.state.rawValue)")
+        print("expectation: \(command.expectation.rawValue)")
+    }
+
 
     private func loadAndVerifyUpdateBootstrapClosure(
         bundleRoot: URL

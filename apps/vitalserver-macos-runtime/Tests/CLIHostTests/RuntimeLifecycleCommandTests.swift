@@ -284,6 +284,20 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
     func testParsesExplicitUpdateBootstrapRecoveryCommands() throws {
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse([
+                "prove-update-bootstrap",
+                "update-42",
+                "--expect",
+                "failed-rolled-back",
+            ]),
+            .proveUpdateBootstrap(
+                RuntimeProveUpdateBootstrapCommand(
+                    updateId: "update-42",
+                    expectation: .failedRolledBack
+                )
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
                 "resume-update-bootstrap-handoff",
                 "update-42",
             ]),
@@ -328,6 +342,10 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             ["settle-update-bootstrap-handoff"],
             ["settle-update-bootstrap-handoff", ""],
             ["settle-update-bootstrap-handoff", "update-42", "extra"],
+            ["prove-update-bootstrap"],
+            ["prove-update-bootstrap", "update-42"],
+            ["prove-update-bootstrap", "update-42", "--expect", "unknown"],
+            ["prove-update-bootstrap", "update-42", "--unknown", "succeeded"],
             ["fail-update-bootstrap"],
             ["fail-update-bootstrap", "update-42"],
             ["fail-update-bootstrap", "update-42", "--reason", ""],
