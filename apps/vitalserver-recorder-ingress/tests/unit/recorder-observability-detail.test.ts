@@ -98,6 +98,7 @@ test("detail mapper exposes typed state without leaking aggregate JSONB", () => 
       bootEvent: {
         started: {
           document: {
+            schemaVersion: "v1",
             bootId: "boot-001",
             deviceObservedAt: "2026-07-23T23:50:00Z",
           },
@@ -112,6 +113,7 @@ test("detail mapper exposes typed state without leaking aggregate JSONB", () => 
   assert.strictEqual(detail.profile.collection.observationIntervalSeconds, 60);
   assert.strictEqual(detail.profile.software.vitalRecorderVersion.value, "4.0.1");
   assert.strictEqual(detail.boot.state, "started");
+  assert.strictEqual(detail.boot.orderingState, "unknown");
   assert.strictEqual(detail.operationalHealth.state, "healthy");
   assert.strictEqual(detail.readIssues[0].state, "failed");
   assert.strictEqual(JSON.stringify(detail).includes("raw-event-id"), false);
@@ -140,6 +142,37 @@ test("detail mapper preserves absent health as missing readings", () => {
   assert.strictEqual(detail.profile.collection, null);
   assert.strictEqual(detail.boot.state, "notReported");
   assert.strictEqual(detail.operationalHealth.state, "unknown");
+});
+
+test("detail mapper reports v2 boot ordering explicitly", () => {
+  const detail = mapRecorderObservabilityDetail({
+    vrcode: "VR-v2",
+    supportState: "supported",
+    supportSource: "accepted_report",
+    reportState: "notEvaluated",
+    profileState: null,
+    collectionState: null,
+    latestObservationReceivedAt: null,
+    readIssueCount: 0,
+    expectedSince: null,
+    recorderVersion: null,
+    producerVersion: "2.0.0",
+    protocolVersion: "2",
+    resources: {
+      bootEvent: {
+        started: {
+          document: {
+            schemaVersion: "v2",
+            bootId: "boot-v2",
+            deviceObservedAt: "2026-07-24T00:00:00Z",
+          },
+        },
+      },
+    },
+  });
+
+  assert.strictEqual(detail.boot.state, "started");
+  assert.strictEqual(detail.boot.orderingState, "ordered");
 });
 
 test("detail mapper does not combine shutdown and start from different boots", () => {

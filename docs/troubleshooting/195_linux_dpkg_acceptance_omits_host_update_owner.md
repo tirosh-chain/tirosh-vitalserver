@@ -1,4 +1,4 @@
-# TS-199: Linux dpkg acceptance omits the Host update owner
+# TS-195: Linux dpkg acceptance omits the Host update owner
 
 ## Symptom
 

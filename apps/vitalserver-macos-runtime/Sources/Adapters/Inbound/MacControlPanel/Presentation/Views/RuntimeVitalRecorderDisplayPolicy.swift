@@ -3,6 +3,11 @@ import Foundation
 import RuntimeControl
 import Errors
 
+struct RuntimeVitalHistoryTableLayout {
+    static let headerMinimumHeight: CGFloat = 28
+    static let rowMinimumHeight: CGFloat = 52
+}
+
 public struct RuntimeVitalRecorderDisplayPolicy {
     private static let productLabVersion = "vitalserver-lab"
 

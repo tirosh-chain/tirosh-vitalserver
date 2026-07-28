@@ -487,6 +487,58 @@ The Swift Helper ViewModel keeps `vitalBeds` as a distinct published read
 result; Recorder panels may link to beds for display, but they must read those
 links from the Bed read result rather than the Recorder history payload.
 
+The Beds presentation renders `RuntimeVitalBedHistory.state`, `summary`, and
+`readError` directly. A failed Bed read is not an empty successful list, and a
+partially loaded read keeps its retained rows together with the reported issue.
+The clinician-facing Swift and PWA Bed surfaces do not request or render Recorder
+observability detail, incident history, version, IP address, boot state, or
+resource readings. Those remain Recorder operations concerns. The Bed list
+prioritizes explicit Bed status, Bed identity, patient presence, last
+observation time, and Bed data issues. Bed ID and list visibility remain
+secondary detail and management fields.
+
+Recorder History remains an explicit retained-data view. When a Recorder is
+absent from the latest observation, `presentInLatestObservation` keeps that
+absence distinct from deletion and the History toggle continues to expose the
+retained record. Bed details also keep the owner-provided relationship history
+for Recorder assignments and handoff events. Relationship history is retained
+evidence, not Recorder health detail, and its read failure must remain visible.
+
+The Bed table uses bounded fixed-width columns inside horizontal scrolling so
+headers and trailing content cannot be clipped by flexible minimum-width
+distribution. Sorting is a presentation-only operation over reported Bed name,
+ID, patient presence, last observation, or status, and keeps missing values
+distinct. The Recorder History toggle remains Recorder-only because its
+contract explicitly provides `presentInLatestObservation`; the Bed
+presentation must not construct an equivalent current/history state from Bed
+status.
+
+Patient identity, encounter state, available clinical signals, last valid
+clinical sample, and data-gap coverage are not part of the current Bed
+contract. A future clinical Bed summary must receive those meanings explicitly
+from their owning patient, encounter, and observation providers. Presentation
+must not infer them from Bed presence, Recorder linkage, or infrastructure
+health.
+
+Current Bed providers emit `linkedRecorderVersion` explicitly. Runtime clients
+accept its absence only as a documented legacy wire migration. The field may be
+used by owner workflows such as Product Lab cleanup, but it is not presented as
+clinical Bed detail and a missing version is never classified as a Vital
+Recorder or Product Lab source.
+
+Current Recorder providers also emit observability `supportSource` explicitly,
+using `null` when no source established support. Runtime clients accept an
+omitted `supportSource` only as a documented legacy wire migration for retained
+Recorder documents. The provider-owned `supportState` and `reportState` remain
+required; the client must not derive either state from a missing source.
+
+The Swift VitalDB Recorder and Bed presentations share one large operational
+typography scale. Supporting text is at least 14 points, table headers 16
+points, primary table and detail values 18 points, status 20 points, summary
+values 22 points, and selected identities 24 points. The Bed table keeps
+bounded columns sized for that scale and horizontal scrolling, so increasing
+clinical readability does not reintroduce header or trailing-column clipping.
+
 CLI automation uses the same boundary. `vitalserver-vm runtime lab-*` commands call Guest Control `/runtime/lab/*` and print the returned Product Lab contracts as JSON. The Host CLI must not read Lab fixture files, TestKit state files, or container-local process state to infer session state.
 
 Swift Helper navigation now treats Lab as a primary product section. Observability and Logs move toward diagnostics/More surfaces, while Lab scenario creation, session control, and `.vital` replay use the Runtime Control Product Lab client contract instead of direct TestKit container calls.

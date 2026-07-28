@@ -462,7 +462,7 @@ export function createRecorderObservabilityRepository(config: {
                   claimed_event_id,
                   received_at,
                   'kernel'::text AS category,
-                  ('kernel-' || document->>'incidentType')::text AS code,
+                  ('kernel-' || (document->>'incidentType'))::text AS code,
                   CASE WHEN document->>'incidentType' = 'unknown'
                     THEN 'warning'::text
                     ELSE 'critical'::text

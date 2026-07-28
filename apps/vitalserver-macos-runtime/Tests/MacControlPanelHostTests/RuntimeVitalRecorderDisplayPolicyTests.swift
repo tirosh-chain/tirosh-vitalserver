@@ -9,8 +9,43 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
     private let policy = RuntimeVitalRecorderDisplayPolicy()
 
     func testRecorderTableLayoutReservesHeaderAndTwoLineIPCellHeight() {
-        XCTAssertGreaterThanOrEqual(RuntimeRecorderTableLayout.headerMinimumHeight, 20)
-        XCTAssertGreaterThanOrEqual(RuntimeRecorderTableLayout.rowMinimumHeight, 40)
+        XCTAssertGreaterThanOrEqual(RuntimeVitalHistoryTableLayout.headerMinimumHeight, 20)
+        XCTAssertGreaterThanOrEqual(RuntimeVitalHistoryTableLayout.rowMinimumHeight, 40)
+    }
+
+    func testVitalPresentationTypographyUsesLargeSharedOperationalText() {
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.supportingPointSize,
+            14
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.panelTitlePointSize,
+            20
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.tableHeaderPointSize,
+            16
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.tableValuePointSize,
+            18
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.detailValuePointSize,
+            RuntimeVitalPresentationTypography.tableValuePointSize
+        )
+        XCTAssertGreaterThan(
+            RuntimeVitalPresentationTypography.summaryValuePointSize,
+            RuntimeVitalPresentationTypography.summaryLabelPointSize
+        )
+        XCTAssertGreaterThan(
+            RuntimeVitalPresentationTypography.identityPointSize,
+            RuntimeVitalPresentationTypography.tableValuePointSize
+        )
+        XCTAssertGreaterThanOrEqual(
+            RuntimeVitalPresentationTypography.statusPointSize,
+            RuntimeVitalPresentationTypography.tableValuePointSize
+        )
     }
 
     func testRecorderAndBedStatusTextPreservesExplicitStates() {
@@ -148,4 +183,5 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
             presentInLatestObservation: presentInLatestObservation
         )
     }
+
 }

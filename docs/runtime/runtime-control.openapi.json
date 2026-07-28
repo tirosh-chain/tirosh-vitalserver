@@ -4252,6 +4252,7 @@
         "additionalProperties": false,
         "required": [
           "state",
+          "orderingState",
           "bootId",
           "startedAt",
           "cleanShutdownAt"
@@ -5022,7 +5023,6 @@
           "state",
           "vrcode",
           "supportState",
-          "supportSource",
           "reportState",
           "profileState",
           "collectionState",
@@ -5050,7 +5050,8 @@
             "enum": ["supported", "unsupported", "unknown"]
           },
           "supportSource": {
-            "type": ["string", "null"]
+            "type": ["string", "null"],
+            "description": "Source that established Recorder observability support. Current providers emit this field explicitly; legacy providers may omit it."
           },
           "reportState": {
             "type": "string",
@@ -5409,6 +5410,13 @@
               "null"
             ],
             "description": "IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available."
+          },
+          "linkedRecorderVersion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version reported by the VRecorder linked to this bed. Current providers emit this field explicitly; legacy providers may omit it."
           },
           "linkedRecorderLastSeenAt": {
             "type": [

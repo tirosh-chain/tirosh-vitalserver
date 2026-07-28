@@ -190,10 +190,12 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-187 | Standard uninstall 보존 자료가 product root를 다시 만들어 fresh install을 막음 | Uninstall / Packaging | implemented; package verification pending | [Standard uninstall retained data blocks fresh package install](187_standard-uninstall-retained-data-blocks-fresh-install.md) |
 | TS-188 | integrity 확인 성공이 trusted publisher 인증으로 오해되어 0.2.1 unsigned bundle apply가 열릴 수 있음 | Update / Packaging | active | [Update bundle integrity is mistaken for publisher authenticity](188_update_bundle_integrity_mistaken_for_publisher_trust.md) |
 | TS-189 | Linux portable gate가 mocked macOS command를 실제 system path로 검증하다 실패함 | Packaging / Local development | resolved | [Portable CI declares macOS system tools as test fixtures](189_portable_ci_declares_macos_system_tools.md) |
-| TS-190 | active Host update 중 reinstall/repair/remove가 시작될 수 있음 | Update / Packaging / Uninstall | active | [Installation or removal starts during an active Host update](190_installation_mutation_during_active_host_update.md) |
-| TS-191 | release signing key가 Host trust store에 없거나 조기 revoke되어 bundle 발행/검증이 실패함 | Update / Packaging | active | [Update bundle signing key is not provisioned or was revoked](191_update_bundle_signing_key_not_provisioned_or_revoked.md) |
-| TS-192 | Ubuntu cloud image의 빈 `/boot`를 Guest kernel source로 선언해 C42가 패키지 조립을 중단함 | Packaging / Guest bootstrap | active | [Ubuntu cloud image has no Guest boot artifacts](192_ubuntu_cloud_image_has_no_guest_boot_artifacts.md) |
-| TS-199 | Linux dpkg acceptance가 명시적인 Host update owner 없이 제거를 실행함 | Runtime Platform / Linux / Package acceptance | resolved | [Linux dpkg acceptance omits the Host update owner](199_linux_dpkg_acceptance_omits_host_update_owner.md) |
+| TS-190 | observer 미설치 Recorder의 명시적 `notReported` 문서가 필수 필드를 누락해 Details decode 실패 | Recorder observability / Runtime Control | implemented; package verification pending | [Recorder without observer reports a detail decode failure](190_recorder-without-observer-detail-decode-failure.md) |
+| TS-191 | Beds 탭이 Bed read failure를 숨기고 병상 중심 열을 잘라 표시함 | macOS Helper / VitalDB Beds / Presentation | implemented; package verification pending | [Beds tab hides Bed read state and clips bed-focused columns](191_beds-tab-hides-read-and-clips-bed-state.md) |
+| TS-192 | active Host update 중 reinstall/repair/remove가 시작될 수 있음 | Update / Packaging / Uninstall | active | [Installation or removal starts during an active Host update](192_installation_mutation_during_active_host_update.md) |
+| TS-193 | release signing key가 Host trust store에 없거나 조기 revoke되어 bundle 발행/검증이 실패함 | Update / Packaging | active | [Update bundle signing key is not provisioned or was revoked](193_update_bundle_signing_key_not_provisioned_or_revoked.md) |
+| TS-194 | Ubuntu cloud image의 빈 `/boot`를 Guest kernel source로 선언해 C42가 패키지 조립을 중단함 | Packaging / Guest bootstrap | active | [Ubuntu cloud image has no Guest boot artifacts](194_ubuntu_cloud_image_has_no_guest_boot_artifacts.md) |
+| TS-195 | Linux dpkg acceptance가 명시적인 Host update owner 없이 제거를 실행함 | Runtime Platform / Linux / Package acceptance | resolved | [Linux dpkg acceptance omits the Host update owner](195_linux_dpkg_acceptance_omits_host_update_owner.md) |
 
 ## Follow-up 규칙
 

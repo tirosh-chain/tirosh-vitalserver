@@ -1,6 +1,6 @@
 # Ubuntu cloud image has no Guest boot artifacts
 
-- **ID:** TS-192
+- **ID:** TS-194
 - **Category:** Packaging / Guest bootstrap
 - **Owner:** macOS release input process
 - **Status:** active
