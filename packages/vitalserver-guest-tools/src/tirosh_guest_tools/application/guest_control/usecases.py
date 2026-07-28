@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from tirosh_guest_tools.application.guest_control.container_image_set import (
+    ContainerImageSetUseCases,
+)
 from tirosh_guest_tools.application.guest_control.ports import (
     Clock,
     DatastoreRepairPort,
@@ -25,6 +28,10 @@ from tirosh_guest_tools.application.guest_control.ports import (
     VitalDBReadModelPort,
     VitalFileLibraryPort,
     VitalFileUploadSource,
+)
+from tirosh_guest_tools.domain.container_image_set import (
+    ContainerImageSetOperation,
+    ContainerImageSetRead,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
     GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
@@ -112,6 +119,7 @@ class GuestControlUseCases:
         update_activation: UpdateActivationPort | None = None,
         update_shutdown: UpdateShutdownPort | None = None,
         vital_file_library: VitalFileLibraryPort | None = None,
+        container_image_sets: ContainerImageSetUseCases | None = None,
     ) -> None:
         self._service_control = service_control
         self._product_lab = product_lab
@@ -128,6 +136,7 @@ class GuestControlUseCases:
         self._update_activation = update_activation
         self._update_shutdown = update_shutdown
         self._vital_file_library = vital_file_library
+        self._container_image_sets = container_image_sets
         self._operations = operations
         self._service_status_snapshots = service_status_snapshots
         self._guest_service_resources = guest_service_resources
@@ -299,11 +308,58 @@ class GuestControlUseCases:
                     "vitaldb:relationships:get",
                 ]
             )
+        if self._container_image_sets is not None:
+            capabilities.extend(
+                [
+                    "container-image-set:current:get",
+                    "container-image-set:apply",
+                    "container-image-set:rollback",
+                    "container-image-set:operations:get",
+                ]
+            )
 
         return {
             "schemaVersion": 1,
             "capabilities": capabilities,
         }
+
+    def get_current_container_image_set(self) -> ContainerImageSetRead:
+        if self._container_image_sets is None:
+            raise GuestControlDependencyError(
+                "Container image-set application boundary is unavailable.",
+                kind="containerImageSetOwnerUnavailable",
+            )
+        return self._container_image_sets.read_current()
+
+    def apply_container_image_set(
+        self, request: dict[str, object]
+    ) -> ContainerImageSetOperation:
+        if self._container_image_sets is None:
+            raise GuestControlDependencyError(
+                "Container image-set application boundary is unavailable.",
+                kind="containerImageSetOwnerUnavailable",
+            )
+        return self._container_image_sets.apply(request)
+
+    def rollback_container_image_set(
+        self, request: dict[str, object]
+    ) -> ContainerImageSetOperation:
+        if self._container_image_sets is None:
+            raise GuestControlDependencyError(
+                "Container image-set application boundary is unavailable.",
+                kind="containerImageSetOwnerUnavailable",
+            )
+        return self._container_image_sets.rollback(request)
+
+    def get_container_image_set_operation(
+        self, operation_id: str
+    ) -> ContainerImageSetOperation | None:
+        if self._container_image_sets is None:
+            raise GuestControlDependencyError(
+                "Container image-set application boundary is unavailable.",
+                kind="containerImageSetOwnerUnavailable",
+            )
+        return self._container_image_sets.operation(operation_id)
 
     def readiness(self) -> dict[str, object]:
         required_dependencies = [

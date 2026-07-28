@@ -9,8 +9,10 @@ from sqlalchemy import Connection, inspect, text
 
 from tirosh_guest_tools.domain.guest_control.models import GuestControlDependencyError
 
-CONTROL_SCHEMA_VERSION = "0001"
-CONTROL_SCHEMA_CHECKSUM = "f5b6a98ac7a8d61d"
+CONTROL_SCHEMA_REVISIONS = (
+    ("0001", "f5b6a98ac7a8d61d"),
+    ("0002", "90d219e32282638f"),
+)
 CONTROL_SCHEMA_COLUMNS: dict[str, frozenset[str]] = {
     "control_schema_migrations": frozenset({"version", "checksum", "applied_at"}),
     "service_operations": frozenset(
@@ -35,6 +37,20 @@ CONTROL_SCHEMA_COLUMNS: dict[str, frozenset[str]] = {
     "redis_relay_status_snapshots": frozenset(
         {"snapshot_id", "document", "observed_at"}
     ),
+    "container_image_sets": frozenset({"identity", "digest", "created_at"}),
+    "current_container_image_set": frozenset({"owner_key", "identity", "updated_at"}),
+    "container_image_set_operations": frozenset(
+        {
+            "operation_id",
+            "command",
+            "expected_current_identity",
+            "target_identity",
+            "state",
+            "document",
+            "created_at",
+            "updated_at",
+        }
+    ),
 }
 
 
@@ -52,6 +68,9 @@ def migrate_control_schema(connection: Connection) -> None:
                     kind="controlStoreSchemaMismatch",
                 )
             _upgrade_0001(connection)
+        applied = _applied_revisions(connection)
+        if applied == list(CONTROL_SCHEMA_REVISIONS[:1]):
+            _upgrade_0002(connection)
         validate_control_schema(connection)
     except GuestControlDependencyError:
         raise
@@ -98,14 +117,8 @@ def validate_control_schema(connection: Connection) -> None:
                 kind="controlStoreSchemaMismatch",
             )
 
-        applied = connection.execute(
-            text(
-                "SELECT version, checksum FROM control_schema_migrations "
-                "ORDER BY applied_at DESC"
-            )
-        ).all()
-        actual = [tuple(row) for row in applied]
-        if actual != [(CONTROL_SCHEMA_VERSION, CONTROL_SCHEMA_CHECKSUM)]:
+        actual = _applied_revisions(connection)
+        if actual != list(CONTROL_SCHEMA_REVISIONS):
             raise GuestControlDependencyError(
                 f"control SQLite schema version is unsupported: {actual!r}",
                 kind="controlStoreSchemaMismatch",
@@ -219,11 +232,76 @@ def _upgrade_0001(connection: Connection) -> None:
             "(:version, :checksum, :applied_at)"
         ),
         {
-            "version": CONTROL_SCHEMA_VERSION,
-            "checksum": CONTROL_SCHEMA_CHECKSUM,
+            "version": CONTROL_SCHEMA_REVISIONS[0][0],
+            "checksum": CONTROL_SCHEMA_REVISIONS[0][1],
             # `text()` does not carry SQLAlchemy's DateTime bind processor.
             # Persist an explicit ISO-8601 string instead of relying on the
             # deprecated sqlite3 implicit datetime adapter.
             "applied_at": datetime.now(UTC).isoformat(),
         },
     )
+
+
+def _upgrade_0002(connection: Connection) -> None:
+    context = MigrationContext.configure(connection)
+    operations = Operations(context)
+    operations.create_table(
+        "container_image_sets",
+        sa.Column("identity", sa.String(), primary_key=True),
+        sa.Column("digest", sa.String(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_table(
+        "current_container_image_set",
+        sa.Column("owner_key", sa.String(), primary_key=True),
+        sa.Column(
+            "identity",
+            sa.String(),
+            sa.ForeignKey("container_image_sets.identity"),
+            nullable=False,
+        ),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_table(
+        "container_image_set_operations",
+        sa.Column("operation_id", sa.String(), primary_key=True),
+        sa.Column("command", sa.String(), nullable=False),
+        sa.Column("expected_current_identity", sa.String(), nullable=False),
+        sa.Column(
+            "target_identity",
+            sa.String(),
+            sa.ForeignKey("container_image_sets.identity"),
+            nullable=False,
+        ),
+        sa.Column("state", sa.String(), nullable=False),
+        sa.Column("document", sa.Text(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+    )
+    operations.create_index(
+        "container_image_set_operations_updated_at_idx",
+        "container_image_set_operations",
+        ["updated_at"],
+    )
+    connection.execute(
+        text(
+            "INSERT INTO control_schema_migrations "
+            "(version, checksum, applied_at) VALUES "
+            "(:version, :checksum, :applied_at)"
+        ),
+        {
+            "version": CONTROL_SCHEMA_REVISIONS[1][0],
+            "checksum": CONTROL_SCHEMA_REVISIONS[1][1],
+            "applied_at": datetime.now(UTC).isoformat(),
+        },
+    )
+
+
+def _applied_revisions(connection: Connection) -> list[tuple[str, str]]:
+    applied = connection.execute(
+        text(
+            "SELECT version, checksum FROM control_schema_migrations "
+            "ORDER BY version ASC"
+        )
+    ).all()
+    return [tuple(row) for row in applied]

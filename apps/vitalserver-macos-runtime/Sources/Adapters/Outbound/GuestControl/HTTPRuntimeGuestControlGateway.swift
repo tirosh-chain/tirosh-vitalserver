@@ -367,6 +367,7 @@ private struct RuntimeGuestControlUpdateShutdownRequest: Encodable {
 }
 
 public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
+    RuntimeContainerImageSetGateway,
     RuntimeGuestProductLabGateway,
     RuntimeVitalDBGuestControlGateway
 {
@@ -497,6 +498,53 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
 
     public func stackStatus() throws -> RuntimeGuestControlStackStatus {
         try decode(RuntimeGuestControlStackStatus.self, method: "GET", path: "/runtime/stack")
+    }
+
+    public func currentContainerImageSet() throws -> RuntimeContainerImageSetRead {
+        let response = try httpClient.send(
+            request(method: "GET", path: "/runtime/container-image-set", body: nil),
+            bodyFileURL: nil
+        )
+        if response.statusCode == 503 {
+            do {
+                return try decoder.decode(RuntimeContainerImageSetRead.self, from: response.data)
+            } catch {
+                throw requestFailed(response)
+            }
+        }
+        return try decode(RuntimeContainerImageSetRead.self, from: response)
+    }
+
+    public func applyContainerImageSet(
+        _ request: RuntimeContainerImageSetMutationRequest
+    ) throws -> RuntimeContainerImageSetOperation {
+        try decode(
+            RuntimeContainerImageSetOperation.self,
+            method: "POST",
+            path: "/runtime/container-image-set/apply",
+            body: request
+        )
+    }
+
+    public func rollbackContainerImageSet(
+        _ request: RuntimeContainerImageSetMutationRequest
+    ) throws -> RuntimeContainerImageSetOperation {
+        try decode(
+            RuntimeContainerImageSetOperation.self,
+            method: "POST",
+            path: "/runtime/container-image-set/rollback",
+            body: request
+        )
+    }
+
+    public func containerImageSetOperation(
+        _ operationId: String
+    ) throws -> RuntimeContainerImageSetOperation {
+        try decode(
+            RuntimeContainerImageSetOperation.self,
+            method: "GET",
+            path: "/runtime/container-image-set/operations/\(pathSegment(operationId))"
+        )
     }
 
     public func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {

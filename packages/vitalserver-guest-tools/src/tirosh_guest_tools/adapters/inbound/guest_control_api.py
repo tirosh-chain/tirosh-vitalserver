@@ -52,12 +52,20 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control import SQLiteControlRep
 from tirosh_guest_tools.adapters.outbound.vital_files import (
     VitalServerVitalFileLibrary,
 )
+from tirosh_guest_tools.application.guest_control.container_image_set import (
+    ContainerImageSetUseCases,
+)
 from tirosh_guest_tools.application.guest_control.ports import VitalFileUploadSource
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
     UUIDOperationIdFactory,
 )
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
+from tirosh_guest_tools.domain.container_image_set import (
+    ContainerImageSetConflictError,
+    ContainerImageSetContractError,
+    ContainerImageSetDependencyError,
+)
 from tirosh_guest_tools.domain.guest_control.models import (
     RUNTIME_OPERATION_EVENT_TYPES,
     GuestControlDependencyError,
@@ -172,6 +180,11 @@ def build_default_usecases() -> GuestControlUseCases:
             base_url=VITALSERVER_FILE_LIBRARY_BASE_URL,
             guest_mount=SETTINGS.shares.vital_files_mount,
             runtime_config=lambda: load_config(SETTINGS.paths.runtime_config_file),
+        ),
+        container_image_sets=ContainerImageSetUseCases(
+            state_owner=operations,
+            operation_ids=UUIDOperationIdFactory(),
+            clock=SystemClock(),
         ),
     )
     usecases.recover_interrupted_operations()
@@ -321,6 +334,24 @@ def make_handler(
                     },
                 )
                 return
+            except ContainerImageSetContractError as error:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except ContainerImageSetConflictError as error:
+                self._write_json(
+                    HTTPStatus.CONFLICT,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except ContainerImageSetDependencyError as error:
+                self._write_json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
             except VitalDBReadModelDependencyError as error:
                 self._write_json(
                     HTTPStatus.SERVICE_UNAVAILABLE,
@@ -446,6 +477,41 @@ def route_request(
 
     if method == "GET" and parts == ["runtime", "stack"]:
         return HTTPStatus.OK, usecases.get_stack_status().as_json()
+
+    if method == "GET" and parts == ["runtime", "container-image-set"]:
+        read = usecases.get_current_container_image_set()
+        status = (
+            HTTPStatus.OK
+            if read.state == "available"
+            else HTTPStatus.SERVICE_UNAVAILABLE
+        )
+        return status, read.as_json()
+
+    if method == "POST" and parts == ["runtime", "container-image-set", "apply"]:
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.apply_container_image_set(_json_body(body)).as_json(),
+        )
+
+    if method == "POST" and parts == ["runtime", "container-image-set", "rollback"]:
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.rollback_container_image_set(_json_body(body)).as_json(),
+        )
+
+    if (
+        method == "GET"
+        and len(parts) == 4
+        and parts[:3] == ["runtime", "container-image-set", "operations"]
+    ):
+        operation = usecases.get_container_image_set_operation(parts[3])
+        if operation is None:
+            raise GuestControlAPIError(
+                HTTPStatus.NOT_FOUND,
+                detail=f"Container image-set operation is not available: {parts[3]}",
+                code="containerImageSetOperationNotFound",
+            )
+        return HTTPStatus.OK, operation.as_json()
 
     if (
         method == "GET"

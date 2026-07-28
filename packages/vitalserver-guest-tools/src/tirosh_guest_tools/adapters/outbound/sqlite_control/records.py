@@ -83,3 +83,46 @@ class RedisRelayStatusRecord(ControlRecordBase):
     observed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+
+
+class ContainerImageSetRecord(ControlRecordBase):
+    __tablename__ = "container_image_sets"
+
+    identity: Mapped[str] = mapped_column(String, primary_key=True)
+    digest: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class CurrentContainerImageSetRecord(ControlRecordBase):
+    __tablename__ = "current_container_image_set"
+
+    owner_key: Mapped[str] = mapped_column(String, primary_key=True)
+    identity: Mapped[str] = mapped_column(
+        ForeignKey("container_image_sets.identity"),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class ContainerImageSetOperationRecord(ControlRecordBase):
+    __tablename__ = "container_image_set_operations"
+
+    operation_id: Mapped[str] = mapped_column(String, primary_key=True)
+    command: Mapped[str] = mapped_column(String, nullable=False)
+    expected_current_identity: Mapped[str] = mapped_column(String, nullable=False)
+    target_identity: Mapped[str] = mapped_column(
+        ForeignKey("container_image_sets.identity"),
+        nullable=False,
+    )
+    state: Mapped[str] = mapped_column(String, nullable=False)
+    document: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )

@@ -30,11 +30,26 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control.migrations import (
 )
 from tirosh_guest_tools.adapters.outbound.sqlite_control.records import (
     ActiveOperationLeaseRecord,
+    ContainerImageSetOperationRecord,
+    ContainerImageSetRecord,
+    CurrentContainerImageSetRecord,
     GuestServiceResourceRecord,
     OperationEventRecord,
     RedisRelayStatusRecord,
     ServiceOperationRecord,
     ServiceStatusSnapshotRecord,
+)
+from tirosh_guest_tools.domain.container_image_set import (
+    TERMINAL_CONTAINER_IMAGE_SET_OPERATION_STATES,
+    ContainerImageSet,
+    ContainerImageSetCommand,
+    ContainerImageSetConflictError,
+    ContainerImageSetContractError,
+    ContainerImageSetDependencyError,
+    ContainerImageSetFailure,
+    ContainerImageSetOperation,
+    ContainerImageSetOperationState,
+    transition_container_image_set_operation,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
     GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
@@ -434,6 +449,251 @@ class SQLiteControlRepository:
             "readError": None,
         }
 
+    def provision_current_container_image_set(
+        self,
+        image_set: ContainerImageSet,
+        *,
+        observed_at: datetime,
+    ) -> None:
+        """Persist an installer-observed initial current image-set explicitly."""
+
+        def write(session: Session) -> None:
+            self._require_immutable_image_set(session, image_set, observed_at)
+            current = session.get(CurrentContainerImageSetRecord, "current")
+            if current is not None:
+                raise ContainerImageSetConflictError(
+                    "Current container image-set is already provisioned: "
+                    f"identity={current.identity}.",
+                    kind="containerImageSetAlreadyProvisioned",
+                )
+            session.add(
+                CurrentContainerImageSetRecord(
+                    owner_key="current",
+                    identity=image_set.identity,
+                    updated_at=observed_at,
+                )
+            )
+
+        self._container_image_set_write("container image-set provision", write)
+
+    def read_current(self) -> ContainerImageSet:
+        try:
+            with Session(self._engine) as session:
+                current = session.get(CurrentContainerImageSetRecord, "current")
+                if current is None:
+                    raise ContainerImageSetDependencyError(
+                        "Current container image-set state is not provisioned.",
+                        kind="containerImageSetCurrentMissing",
+                    )
+                image_set = session.get(ContainerImageSetRecord, current.identity)
+                if image_set is None:
+                    raise ContainerImageSetDependencyError(
+                        "Current container image-set identity has no immutable digest: "
+                        f"identity={current.identity}.",
+                        kind="containerImageSetStateInvalid",
+                    )
+                return ContainerImageSet.validated(
+                    image_set.identity,
+                    image_set.digest,
+                )
+        except (ContainerImageSetDependencyError, ContainerImageSetContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise ContainerImageSetDependencyError(
+                f"Container image-set current-state read failed: {error}",
+                kind="containerImageSetStateUnavailable",
+            ) from error
+
+    def accept(self, operation: ContainerImageSetOperation) -> None:
+        if operation.state != ContainerImageSetOperationState.PENDING:
+            raise ContainerImageSetDependencyError(
+                "Container image-set command must enter the owner as pending.",
+                kind="containerImageSetOperationAcceptanceInvalid",
+            )
+
+        def write(session: Session) -> None:
+            current = session.get(CurrentContainerImageSetRecord, "current")
+            if current is None:
+                raise ContainerImageSetDependencyError(
+                    "Current container image-set state is not provisioned.",
+                    kind="containerImageSetCurrentMissing",
+                )
+            if current.identity != operation.expected_current_identity:
+                raise ContainerImageSetConflictError(
+                    "Container image-set compare-and-swap rejected the command: "
+                    f"expected={operation.expected_current_identity} "
+                    f"actual={current.identity}.",
+                    kind="containerImageSetRevisionConflict",
+                )
+            existing_operation = session.get(
+                ContainerImageSetOperationRecord,
+                operation.operation_id,
+            )
+            if existing_operation is not None:
+                raise ContainerImageSetConflictError(
+                    "Container image-set operation already exists: "
+                    f"operationId={operation.operation_id}.",
+                    kind="containerImageSetOperationAlreadyExists",
+                )
+            active = session.scalar(
+                select(ContainerImageSetOperationRecord).where(
+                    ContainerImageSetOperationRecord.state.not_in(
+                        tuple(
+                            state.value
+                            for state in TERMINAL_CONTAINER_IMAGE_SET_OPERATION_STATES
+                        )
+                    )
+                )
+            )
+            if active is not None:
+                raise ContainerImageSetConflictError(
+                    "A container image-set operation is already active: "
+                    f"operationId={active.operation_id}.",
+                    kind="containerImageSetOperationInProgress",
+                )
+            self._require_immutable_image_set(
+                session,
+                operation.target,
+                operation.created_at,
+            )
+            session.add(_container_image_set_operation_record(operation))
+
+        self._container_image_set_write("container image-set acceptance", write)
+
+    def get_operation(
+        self,
+        operation_id: str,
+    ) -> ContainerImageSetOperation | None:
+        try:
+            with Session(self._engine) as session:
+                record = session.get(ContainerImageSetOperationRecord, operation_id)
+                if record is None:
+                    return None
+                target = session.get(ContainerImageSetRecord, record.target_identity)
+                if target is None:
+                    raise ContainerImageSetDependencyError(
+                        "Container image-set operation target is missing: "
+                        f"operationId={record.operation_id}.",
+                        kind="containerImageSetOperationInvalid",
+                    )
+                return _container_image_set_operation_from_record(
+                    record,
+                    target_digest=target.digest,
+                )
+        except (ContainerImageSetDependencyError, ContainerImageSetContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise ContainerImageSetDependencyError(
+                f"Container image-set operation read failed: {error}",
+                kind="containerImageSetOperationUnavailable",
+            ) from error
+
+    def record_container_image_set_transition(
+        self,
+        operation: ContainerImageSetOperation,
+    ) -> None:
+        def write(session: Session) -> None:
+            record = session.get(
+                ContainerImageSetOperationRecord,
+                operation.operation_id,
+            )
+            if record is None:
+                raise ContainerImageSetDependencyError(
+                    "Container image-set operation is missing: "
+                    f"operationId={operation.operation_id}.",
+                    kind="containerImageSetOperationMissing",
+                )
+            target = session.get(ContainerImageSetRecord, record.target_identity)
+            if target is None:
+                raise ContainerImageSetDependencyError(
+                    "Container image-set operation target is missing: "
+                    f"operationId={record.operation_id}.",
+                    kind="containerImageSetOperationInvalid",
+                )
+            persisted = _container_image_set_operation_from_record(
+                record,
+                target_digest=target.digest,
+            )
+            expected = transition_container_image_set_operation(
+                persisted,
+                state=operation.state,
+                updated_at=operation.updated_at,
+                failure=operation.failure,
+            )
+            if expected != operation:
+                raise ContainerImageSetDependencyError(
+                    "Container image-set operation immutable fields changed.",
+                    kind="containerImageSetOperationInvalid",
+                )
+            if operation.state == ContainerImageSetOperationState.SUCCEEDED:
+                current = session.get(CurrentContainerImageSetRecord, "current")
+                if current is None:
+                    raise ContainerImageSetDependencyError(
+                        "Current container image-set state is not provisioned.",
+                        kind="containerImageSetCurrentMissing",
+                    )
+                if current.identity != operation.expected_current_identity:
+                    raise ContainerImageSetConflictError(
+                        "Container image-set changed before operation settlement: "
+                        f"expected={operation.expected_current_identity} "
+                        f"actual={current.identity}.",
+                        kind="containerImageSetRevisionConflict",
+                    )
+                current.identity = operation.target.identity
+                current.updated_at = operation.updated_at
+            record.state = operation.state.value
+            record.document = canonical_json(operation.as_json())
+            record.updated_at = sqlite_utc_naive_timestamp(
+                operation.updated_at,
+                kind="containerImageSetOperationInvalid",
+                field="updatedAt",
+            )
+
+        self._container_image_set_write("container image-set transition", write)
+
+    def _require_immutable_image_set(
+        self,
+        session: Session,
+        image_set: ContainerImageSet,
+        observed_at: datetime,
+    ) -> None:
+        existing = session.get(ContainerImageSetRecord, image_set.identity)
+        if existing is not None:
+            if existing.digest != image_set.digest:
+                raise ContainerImageSetConflictError(
+                    "Container image-set identity already has a different digest: "
+                    f"identity={image_set.identity}.",
+                    kind="containerImageSetIdentityDigestConflict",
+                )
+            return
+        session.add(
+            ContainerImageSetRecord(
+                identity=image_set.identity,
+                digest=image_set.digest,
+                created_at=observed_at,
+            )
+        )
+        session.flush()
+
+    def _container_image_set_write(
+        self,
+        stage: str,
+        action: Callable[[Session], T],
+    ) -> T:
+        try:
+            return self._write(stage, action)
+        except (
+            ContainerImageSetConflictError,
+            ContainerImageSetContractError,
+            ContainerImageSetDependencyError,
+        ):
+            raise
+        except GuestControlDependencyError as error:
+            raise ContainerImageSetDependencyError(
+                error.message,
+                kind="containerImageSetStateUnavailable",
+            ) from error
+
     def _write(self, stage: str, action: Callable[[Session], T]) -> T:
         return self._write_connection(
             stage,
@@ -523,10 +783,108 @@ def _require_wal_mode(connection: Connection) -> None:
     journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar_one()
     if str(journal_mode).lower() != "wal":
         raise GuestControlDependencyError(
-            "control SQLite journal mode is not WAL: "
-            f"actual={journal_mode!r}",
+            f"control SQLite journal mode is not WAL: actual={journal_mode!r}",
             kind="controlStoreJournalModeInvalid",
         )
+
+
+def _container_image_set_operation_record(
+    operation: ContainerImageSetOperation,
+) -> ContainerImageSetOperationRecord:
+    return ContainerImageSetOperationRecord(
+        operation_id=operation.operation_id,
+        command=operation.command.value,
+        expected_current_identity=operation.expected_current_identity,
+        target_identity=operation.target.identity,
+        state=operation.state.value,
+        document=canonical_json(operation.as_json()),
+        created_at=sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="containerImageSetOperationInvalid",
+            field="createdAt",
+        ),
+        updated_at=sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="containerImageSetOperationInvalid",
+            field="updatedAt",
+        ),
+    )
+
+
+def _container_image_set_operation_from_record(
+    record: ContainerImageSetOperationRecord,
+    *,
+    target_digest: str,
+) -> ContainerImageSetOperation:
+    document = parse_document(
+        record.document,
+        kind="containerImageSetOperationInvalid",
+    )
+    try:
+        target = document["target"]
+        failure_document = document.get("failure")
+        operation = ContainerImageSetOperation(
+            operation_id=str(document["operationId"]),
+            command=ContainerImageSetCommand(str(document["command"])),
+            expected_current_identity=str(document["expectedCurrentIdentity"]),
+            target=ContainerImageSet.validated(
+                target["identity"],
+                target["digest"],
+            ),
+            state=ContainerImageSetOperationState(str(document["state"])),
+            created_at=datetime.fromisoformat(str(document["createdAt"])),
+            updated_at=datetime.fromisoformat(str(document["updatedAt"])),
+            failure=(
+                ContainerImageSetFailure(
+                    kind=str(failure_document["kind"]),
+                    message=str(failure_document["message"]),
+                )
+                if isinstance(failure_document, dict)
+                else None
+            ),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise ContainerImageSetDependencyError(
+            "Container image-set operation document is invalid: "
+            f"operationId={record.operation_id}.",
+            kind="containerImageSetOperationInvalid",
+        ) from error
+    if (
+        operation.operation_id != record.operation_id
+        or operation.command.value != record.command
+        or operation.expected_current_identity != record.expected_current_identity
+        or operation.target.identity != record.target_identity
+        or operation.target.digest != target_digest
+        or operation.state.value != record.state
+        or record.created_at
+        != sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="containerImageSetOperationInvalid",
+            field="createdAt",
+        )
+        or record.updated_at
+        != sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="containerImageSetOperationInvalid",
+            field="updatedAt",
+        )
+    ):
+        raise ContainerImageSetDependencyError(
+            "Container image-set operation index and document disagree: "
+            f"operationId={record.operation_id}.",
+            kind="containerImageSetOperationInvalid",
+        )
+    failure_required = operation.state in {
+        ContainerImageSetOperationState.FAILED,
+        ContainerImageSetOperationState.UNAVAILABLE,
+    }
+    if failure_required != (operation.failure is not None):
+        raise ContainerImageSetDependencyError(
+            "Container image-set operation state and failure disagree: "
+            f"operationId={record.operation_id}.",
+            kind="containerImageSetOperationInvalid",
+        )
+    return operation
 
 
 def event_record_from_operation(operation: ServiceOperation) -> OperationEventRecord:
