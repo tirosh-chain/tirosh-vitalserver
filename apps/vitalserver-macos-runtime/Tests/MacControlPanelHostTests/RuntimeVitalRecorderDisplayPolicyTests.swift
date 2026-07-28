@@ -61,15 +61,6 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
         XCTAssertFalse(policy.isProductLabRecorder(version: nil))
     }
 
-    func testLinkedRecorderHealthRequiresExplicitNonBlankVrcode() {
-        XCTAssertEqual(
-            policy.linkedRecorderHealthVrcode(bed(vrcode: " 06311eba ")),
-            "06311eba"
-        )
-        XCTAssertNil(policy.linkedRecorderHealthVrcode(bed(vrcode: nil)))
-        XCTAssertNil(policy.linkedRecorderHealthVrcode(bed(vrcode: "   ")))
-    }
-
     func testRecorderAnomalyTextDistinguishesHistoryFromCurrentZero() {
         XCTAssertEqual(policy.recorderAnomalyText(recorder(currentAnomalyCount: 0)), "-")
         XCTAssertEqual(
@@ -158,18 +149,4 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
         )
     }
 
-    private func bed(vrcode: String?) -> RuntimeVitalBedRecord {
-        RuntimeVitalBedRecord(
-            bedID: "bed-1",
-            name: "OR 1",
-            vrcode: vrcode,
-            status: .online,
-            patientConnected: true,
-            firstSeenAt: nil,
-            lastSeenAt: nil,
-            observationCount: 1,
-            currentAnomalyCount: 0,
-            latestAnomalySeverity: nil
-        )
-    }
 }

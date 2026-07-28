@@ -6,25 +6,22 @@ struct RuntimeRecorderHealthSection: View {
     @ObservedObject var viewModel: RuntimeViewModel
     let vrcode: String
     let recorderSummary: RuntimeRecorderObservability?
-    let title: String
 
     private let displayPolicy = RuntimeRecorderObservabilityDisplayPolicy()
 
     init(
         viewModel: RuntimeViewModel,
         vrcode: String,
-        recorderSummary: RuntimeRecorderObservability?,
-        title: String = "Health report"
+        recorderSummary: RuntimeRecorderObservability?
     ) {
         self.viewModel = viewModel
         self.vrcode = vrcode
         self.recorderSummary = recorderSummary
-        self.title = title
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle(title)
+            sectionTitle("Health report")
             if let detail = viewModel.recorderObservabilityDetails[vrcode] {
                 observabilityDetail(detail)
             } else {

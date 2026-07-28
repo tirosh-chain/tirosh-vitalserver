@@ -6,7 +6,7 @@ struct RuntimeBedHistoryDisplayPolicy {
     enum BedSortOption: String, CaseIterable, Identifiable, Equatable, Sendable {
         case name
         case bedID
-        case recorder
+        case patient
         case lastSeen
         case status
 
@@ -18,8 +18,8 @@ struct RuntimeBedHistoryDisplayPolicy {
                 return "Name"
             case .bedID:
                 return "Bed ID"
-            case .recorder:
-                return "VRecorder"
+            case .patient:
+                return "Patient"
             case .lastSeen:
                 return "Last seen"
             case .status:
@@ -58,15 +58,6 @@ struct RuntimeBedHistoryDisplayPolicy {
         history.state == .readFailed ? "Unavailable" : "\(value)"
     }
 
-    func relationshipEventPageText(
-        _ history: RuntimeVitalRelationshipHistory
-    ) -> String {
-        guard history.state != .readFailed else {
-            return "Unavailable"
-        }
-        return "\(history.events.count) of \(history.eventTotalCount)"
-    }
-
     func sortedBeds(
         _ beds: [RuntimeVitalBedRecord],
         by option: BedSortOption
@@ -85,12 +76,13 @@ struct RuntimeBedHistoryDisplayPolicy {
                     rhs.bedID,
                     tieBreaker: lhs.bedID < rhs.bedID
                 )
-            case .recorder:
-                return compareText(
-                    lhs.vrcode,
-                    rhs.vrcode,
-                    tieBreaker: lhs.bedID < rhs.bedID
-                )
+            case .patient:
+                let lhsRank = patientRank(lhs.patientConnected)
+                let rhsRank = patientRank(rhs.patientConnected)
+                if lhsRank != rhsRank {
+                    return lhsRank < rhsRank
+                }
+                return lhs.bedID < rhs.bedID
             case .lastSeen:
                 switch compareReportedTimestamp(lhs.lastSeenAt, rhs.lastSeenAt) {
                 case .orderedDescending:
@@ -185,6 +177,17 @@ struct RuntimeBedHistoryDisplayPolicy {
             return 3
         case .unknown:
             return 4
+        }
+    }
+
+    private func patientRank(_ patientConnected: Bool?) -> Int {
+        switch patientConnected {
+        case true:
+            return 0
+        case false:
+            return 1
+        case nil:
+            return 2
         }
     }
 }

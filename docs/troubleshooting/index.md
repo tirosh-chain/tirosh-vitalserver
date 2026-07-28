@@ -191,7 +191,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-188 | integrity 확인 성공이 trusted publisher 인증으로 오해되어 0.2.1 unsigned bundle apply가 열릴 수 있음 | Update / Packaging | active | [Update bundle integrity is mistaken for publisher authenticity](188_update_bundle_integrity_mistaken_for_publisher_trust.md) |
 | TS-189 | Linux portable gate가 mocked macOS command를 실제 system path로 검증하다 실패함 | Packaging / Local development | resolved | [Portable CI declares macOS system tools as test fixtures](189_portable_ci_declares_macos_system_tools.md) |
 | TS-190 | observer 미설치 Recorder의 명시적 `notReported` 문서가 필수 필드를 누락해 Details decode 실패 | Recorder observability / Runtime Control | implemented; package verification pending | [Recorder without observer reports a detail decode failure](190_recorder-without-observer-detail-decode-failure.md) |
-| TS-191 | Beds 탭이 Bed read failure와 연결 Recorder health 상태를 숨김 | macOS Helper / VitalDB Beds / Recorder observability | active | [Beds tab hides Bed read and linked Recorder health state](191_beds-tab-hides-read-and-linked-health-state.md) |
+| TS-191 | Beds 탭이 Bed read failure를 숨기고 병상 중심 열을 잘라 표시함 | macOS Helper / VitalDB Beds / Presentation | implemented; package verification pending | [Beds tab hides Bed read state and clips bed-focused columns](191_beds-tab-hides-read-and-clips-bed-state.md) |
 
 ## Follow-up 규칙
 

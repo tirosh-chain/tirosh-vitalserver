@@ -4,6 +4,24 @@ import RuntimeControl
 import SwiftUI
 import Errors
 
+struct RuntimeBedTableLayout {
+    static let spacing: CGFloat = 12
+    static let horizontalPadding: CGFloat = 10
+    static let statusWidth: CGFloat = 110
+    static let bedWidth: CGFloat = 260
+    static let patientWidth: CGFloat = 150
+    static let lastObservationWidth: CGFloat = 150
+    static let dataIssueWidth: CGFloat = 260
+    static let contentWidth =
+        statusWidth
+        + bedWidth
+        + patientWidth
+        + lastObservationWidth
+        + dataIssueWidth
+        + spacing * 4
+        + horizontalPadding * 2
+}
+
 struct RuntimeBedsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
@@ -104,15 +122,17 @@ struct RuntimeBedsPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 ScrollView(.horizontal) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
                         bedHeaderRow
                         ForEach(filteredBeds) { bed in
                             Divider()
                             bedRow(bed)
                         }
                     }
-                    .frame(minWidth: 1_400, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(
+                        width: RuntimeBedTableLayout.contentWidth,
+                        alignment: .leading
+                    )
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -129,10 +149,6 @@ struct RuntimeBedsPanel: View {
                     selectedBedSummary(bed)
                     Divider()
                     bedMetadata(bed)
-                    Divider()
-                    linkedRecorderHealth(bed)
-                    Divider()
-                    bedRelationshipHistory(bed)
                     if bed.visibility == .hidden, showingHiddenBeds {
                         Divider()
                         bedDataManagement(bed)
@@ -178,22 +194,52 @@ struct RuntimeBedsPanel: View {
     private var summaryMetrics: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 18) {
-                summaryMetric(AppConstants.Labels.knownBeds, bedSummaryValue(viewModel.vitalBeds.summary.knownBeds))
-                summaryMetric(AppConstants.Labels.onlineBeds, bedSummaryValue(viewModel.vitalBeds.summary.onlineBeds))
-                summaryMetric(AppConstants.Labels.staleBeds, bedSummaryValue(viewModel.vitalBeds.summary.staleBeds))
-                summaryMetric("Assignments", bedSummaryValue(viewModel.vitalBeds.summary.bedAssignments))
-                summaryMetric("Events", relationshipEventPageText)
-                summaryMetric(AppConstants.Labels.bedAnomalies, bedSummaryValue(viewModel.vitalBeds.summary.bedAnomalies))
-                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalBeds.updatedAt))
+                summaryMetric(
+                    "Beds observed",
+                    bedSummaryValue(viewModel.vitalBeds.summary.knownBeds)
+                )
+                summaryMetric(
+                    "Online beds",
+                    bedSummaryValue(viewModel.vitalBeds.summary.onlineBeds)
+                )
+                summaryMetric(
+                    "Stale beds",
+                    bedSummaryValue(viewModel.vitalBeds.summary.staleBeds)
+                )
+                summaryMetric(
+                    "Data issues",
+                    bedSummaryValue(viewModel.vitalBeds.summary.bedAnomalies)
+                )
+                summaryMetric(
+                    "Data updated",
+                    viewModel.presentationFormatter.systemTimeText(
+                        viewModel.vitalBeds.updatedAt
+                    )
+                )
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], alignment: .leading, spacing: 8) {
-                summaryMetric(AppConstants.Labels.knownBeds, bedSummaryValue(viewModel.vitalBeds.summary.knownBeds))
-                summaryMetric(AppConstants.Labels.onlineBeds, bedSummaryValue(viewModel.vitalBeds.summary.onlineBeds))
-                summaryMetric(AppConstants.Labels.staleBeds, bedSummaryValue(viewModel.vitalBeds.summary.staleBeds))
-                summaryMetric("Assignments", bedSummaryValue(viewModel.vitalBeds.summary.bedAssignments))
-                summaryMetric("Events", relationshipEventPageText)
-                summaryMetric(AppConstants.Labels.bedAnomalies, bedSummaryValue(viewModel.vitalBeds.summary.bedAnomalies))
-                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalBeds.updatedAt))
+                summaryMetric(
+                    "Beds observed",
+                    bedSummaryValue(viewModel.vitalBeds.summary.knownBeds)
+                )
+                summaryMetric(
+                    "Online beds",
+                    bedSummaryValue(viewModel.vitalBeds.summary.onlineBeds)
+                )
+                summaryMetric(
+                    "Stale beds",
+                    bedSummaryValue(viewModel.vitalBeds.summary.staleBeds)
+                )
+                summaryMetric(
+                    "Data issues",
+                    bedSummaryValue(viewModel.vitalBeds.summary.bedAnomalies)
+                )
+                summaryMetric(
+                    "Data updated",
+                    viewModel.presentationFormatter.systemTimeText(
+                        viewModel.vitalBeds.updatedAt
+                    )
+                )
             }
         }
     }
@@ -207,8 +253,6 @@ struct RuntimeBedsPanel: View {
             [
                 bed.bedID,
                 bed.name,
-                bed.vrcode,
-                displayPolicy.recorderSourceText(bed.linkedRecorderVersion),
             ]
             .compactMap { $0?.lowercased() }
             .contains { $0.contains(query) }
@@ -225,48 +269,62 @@ struct RuntimeBedsPanel: View {
     }
 
     private var bedHeaderRow: some View {
-        HStack(spacing: 12) {
-            tableHeader("Status", minWidth: 110)
-            tableHeader("Name", minWidth: 170)
-            tableHeader("Bed ID", minWidth: 250)
-            tableHeader("VRecorder", minWidth: 170)
-            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 140)
-            tableHeader("Patient", minWidth: 120)
-            tableHeader(AppConstants.Labels.anomaly, minWidth: 190)
-            tableHeader("Visibility", minWidth: 100)
+        HStack(spacing: RuntimeBedTableLayout.spacing) {
+            tableHeader(
+                "Bed status",
+                width: RuntimeBedTableLayout.statusWidth
+            )
+            tableHeader(
+                "Bed",
+                width: RuntimeBedTableLayout.bedWidth
+            )
+            tableHeader(
+                "Patient presence",
+                width: RuntimeBedTableLayout.patientWidth
+            )
+            tableHeader(
+                "Last observation",
+                width: RuntimeBedTableLayout.lastObservationWidth
+            )
+            tableHeader(
+                "Data issue",
+                width: RuntimeBedTableLayout.dataIssueWidth
+            )
         }
         .frame(
             minHeight: RuntimeVitalHistoryTableLayout.headerMinimumHeight,
             alignment: .center
         )
-        .padding(10)
+        .padding(RuntimeBedTableLayout.horizontalPadding)
     }
 
     private func bedRow(_ bed: RuntimeVitalBedRecord) -> some View {
         Button {
             selectedBedID = bed.bedID
         } label: {
-            HStack(spacing: 12) {
-                bedStatusValue(bed.status, minWidth: 110)
-                tableValue(
-                    reportedText(bed.name, missing: "Bed name not reported"),
-                    minWidth: 170,
-                    weight: .semibold
+            HStack(spacing: RuntimeBedTableLayout.spacing) {
+                bedStatusValue(
+                    bed.status,
+                    width: RuntimeBedTableLayout.statusWidth
                 )
-                tableValue(bed.bedID, minWidth: 250)
+                bedIdentityValue(
+                    bed,
+                    width: RuntimeBedTableLayout.bedWidth
+                )
                 tableValue(
-                    reportedText(bed.vrcode, missing: "VRecorder not reported"),
-                    minWidth: 170
+                    patientText(bed.patientConnected),
+                    width: RuntimeBedTableLayout.patientWidth
                 )
                 tableValue(
                     viewModel.presentationFormatter.systemTimeAgeText(
                         bed.lastSeenAt
                     ),
-                    minWidth: 140
+                    width: RuntimeBedTableLayout.lastObservationWidth
                 )
-                tableValue(patientText(bed.patientConnected), minWidth: 120)
-                tableValue(bedAnomalyText(bed), minWidth: 190)
-                tableValue(visibilityText(bed.visibility), minWidth: 100)
+                tableValue(
+                    bedAnomalyText(bed),
+                    width: RuntimeBedTableLayout.dataIssueWidth
+                )
             }
             .contentShape(Rectangle())
         }
@@ -275,7 +333,7 @@ struct RuntimeBedsPanel: View {
             minHeight: RuntimeVitalHistoryTableLayout.rowMinimumHeight,
             alignment: .center
         )
-        .padding(10)
+        .padding(RuntimeBedTableLayout.horizontalPadding)
         .background(selectedBed?.bedID == bed.bedID ? Color.accentColor.opacity(0.10) : Color.clear)
     }
 
@@ -370,7 +428,14 @@ struct RuntimeBedsPanel: View {
                 .font(.title3)
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(bed.status))
-            RuntimeRecorderSourceBadge(version: bed.linkedRecorderVersion)
+            Text("Patient: \(patientText(bed.patientConnected))")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(Capsule())
             if bed.visibility == .hidden {
                 Text("Hidden from list")
                     .font(.caption)
@@ -416,182 +481,38 @@ struct RuntimeBedsPanel: View {
             .fontWeight(.semibold)
     }
 
-    @ViewBuilder
-    private func linkedRecorderHealth(_ bed: RuntimeVitalBedRecord) -> some View {
-        if let vrcode = displayPolicy.linkedRecorderHealthVrcode(bed) {
-            RuntimeRecorderHealthSection(
-                viewModel: viewModel,
-                vrcode: vrcode,
-                recorderSummary: nil,
-                title: "Linked Recorder health"
-            )
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                detailSectionTitle("Linked Recorder health")
-                Text("Linked Recorder has not been reported for this Bed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
     private func bedMetadata(_ bed: RuntimeVitalBedRecord) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            detailSectionTitle("Overview")
+            detailSectionTitle("Bed overview")
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-                detailRow("Bed ID", bed.bedID)
-                detailRow("Name", reportedText(bed.name, missing: "Bed name not reported"))
-                detailRow("Visibility", visibilityText(bed.visibility))
-                detailRow(AppConstants.Labels.patient, patientText(bed.patientConnected))
                 detailRow(
-                    "First seen",
-                    viewModel.presentationFormatter.systemTimeText(bed.firstSeenAt)
+                    "Patient presence",
+                    patientText(bed.patientConnected)
                 )
                 detailRow(
-                    AppConstants.Labels.recorderLastSeen,
+                    "Bed status",
+                    statusLabel(bed.status)
+                )
+                detailRow(
+                    "Last observation",
                     viewModel.presentationFormatter.systemTimeTextWithAge(
                         bed.lastSeenAt
                     )
                 )
-                detailRow("Latest anomaly", bedAnomalyDetailText(bed))
-            }
-            detailSectionTitle("Linked Recorder")
-                .padding(.top, 4)
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
                 detailRow(
-                    "VRecorder",
-                    reportedText(bed.vrcode, missing: "VRecorder not reported")
+                    "First observed",
+                    viewModel.presentationFormatter.systemTimeText(bed.firstSeenAt)
                 )
                 detailRow(
-                    AppConstants.Labels.recorderSource,
-                    displayPolicy.recorderSourceText(bed.linkedRecorderVersion)
+                    "Data issue",
+                    bedAnomalyDetailText(bed)
                 )
-                detailRow(
-                    AppConstants.Labels.recorderVersion,
-                    reportedText(
-                        bed.linkedRecorderVersion,
-                        missing: "Version not reported"
-                    )
-                )
-                detailRow("VRecorder status", linkedRecorderStatusText(bed))
-                detailRow(
-                    "VRecorder IP",
-                    reportedText(
-                        bed.linkedRecorderIP,
-                        missing: bed.vrcode == nil
-                            ? "VRecorder not reported"
-                            : "VRecorder IP not reported"
-                    )
-                )
-                detailRow(
-                    "VRecorder last seen",
-                    viewModel.presentationFormatter.systemTimeTextWithAge(
-                        bed.linkedRecorderLastSeenAt
-                    )
-                )
+                detailRow("Bed ID", bed.bedID)
+                detailRow("List visibility", visibilityText(bed.visibility))
             }
         }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func bedRelationshipHistory(_ bed: RuntimeVitalBedRecord) -> some View {
-        let history = viewModel.relationshipPresentationHistory(bedID: bed.bedID)
-        let assignments = history.assignments
-        let events = history.events
-
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("Relationship history")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            relationshipReadIssue
-            if assignments.isEmpty, events.isEmpty, viewModel.vitalRelationships.state == .loaded {
-                Text("No bed relationship history has been observed.")
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
-            } else if viewModel.vitalRelationships.state != .readFailed {
-                if !assignments.isEmpty {
-                    relationshipSubsection("Assignments")
-                    ForEach(assignments) { assignment in
-                        relationshipRow(
-                            title: assignment.vrcode,
-                            detail: "\(viewModel.presentationFormatter.systemTimeText(assignment.startedAt)) - \(viewModel.presentationFormatter.systemTimeText(assignment.endedAt))",
-                            trailing: assignment.status.rawValue.capitalized
-                        )
-                    }
-                }
-                if !events.isEmpty {
-                    relationshipSubsection("Events")
-                    ForEach(events) { event in
-                        relationshipRow(
-                            title: "\(event.severity.rawValue.capitalized) · \(event.eventType.rawValue)",
-                            detail: event.message,
-                            trailing: viewModel.presentationFormatter.systemTimeText(event.observedAt)
-                        )
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private var relationshipReadIssue: some View {
-        switch viewModel.vitalRelationships.state {
-        case .loaded:
-            if let readError = viewModel.vitalRelationships.readError {
-                Text("Relationship history contract issue: \(readError)")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
-        case .partiallyLoaded:
-            Text(
-                "Relationship history is partially loaded: "
-                    + (viewModel.vitalRelationships.readError
-                        ?? "No failure detail was provided.")
-            )
-            .font(.caption)
-            .foregroundStyle(.orange)
-            .textSelection(.enabled)
-        case .readFailed:
-            Text(
-                "Relationship history read failed: "
-                    + (viewModel.vitalRelationships.readError
-                        ?? "No failure detail was provided.")
-            )
-            .font(.caption)
-            .foregroundStyle(.red)
-            .textSelection(.enabled)
-        }
-    }
-
-    private func relationshipSubsection(_ title: String) -> some View {
-        Text(title)
-            .font(.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
-    }
-
-    private func relationshipRow(title: String, detail: String, trailing: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .frame(minWidth: 120, alignment: .leading)
-            Text(detail)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer()
-            Text(trailing)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .font(.caption)
     }
 
     private func summaryMetric(_ label: String, _ value: String) -> some View {
@@ -603,12 +524,6 @@ struct RuntimeBedsPanel: View {
                 .font(.title3)
                 .fontWeight(.semibold)
         }
-    }
-
-    private var relationshipEventPageText: String {
-        bedHistoryDisplayPolicy.relationshipEventPageText(
-            viewModel.vitalRelationships
-        )
     }
 
     private func bedSummaryValue(_ value: Int) -> String {
@@ -628,22 +543,45 @@ struct RuntimeBedsPanel: View {
         }
     }
 
-    private func tableHeader(_ text: String, minWidth: CGFloat) -> some View {
+    private func tableHeader(_ text: String, width: CGFloat) -> some View {
         Text(text)
             .font(.caption)
             .fontWeight(.semibold)
             .foregroundStyle(.secondary)
-            .frame(minWidth: minWidth, alignment: .leading)
+            .frame(width: width, alignment: .leading)
     }
 
-    private func tableValue(_ text: String, minWidth: CGFloat, weight: Font.Weight = .regular) -> some View {
+    private func tableValue(
+        _ text: String,
+        width: CGFloat,
+        weight: Font.Weight = .regular
+    ) -> some View {
         Text(text)
             .font(.caption)
             .fontWeight(weight)
             .lineLimit(1)
             .truncationMode(.middle)
             .textSelection(.enabled)
-            .frame(minWidth: minWidth, alignment: .leading)
+            .frame(width: width, alignment: .leading)
+    }
+
+    private func bedIdentityValue(
+        _ bed: RuntimeVitalBedRecord,
+        width: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(reportedText(bed.name, missing: "Bed name not reported"))
+                .font(.callout)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+            Text(bed.bedID)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .textSelection(.enabled)
+        .frame(width: width, alignment: .leading)
     }
 
     private func bedAnomalyText(_ bed: RuntimeVitalBedRecord) -> String {
@@ -659,16 +597,9 @@ struct RuntimeBedsPanel: View {
         )
     }
 
-    private func linkedRecorderStatusText(_ bed: RuntimeVitalBedRecord) -> String {
-        guard let status = bed.linkedRecorderStatus else {
-            return bed.vrcode == nil ? "VRecorder not reported" : "VRecorder status not reported"
-        }
-        return displayPolicy.statusText(status)
-    }
-
     private func bedStatusValue(
         _ status: RuntimeVitalBedStatus,
-        minWidth: CGFloat
+        width: CGFloat
     ) -> some View {
         HStack(spacing: 8) {
             Circle()
@@ -680,7 +611,7 @@ struct RuntimeBedsPanel: View {
                 .foregroundStyle(statusColor(status))
                 .lineLimit(1)
         }
-        .frame(minWidth: minWidth, alignment: .leading)
+        .frame(width: width, alignment: .leading)
     }
 
     private func statusColor(_ status: RuntimeVitalBedStatus) -> Color {

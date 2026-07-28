@@ -490,25 +490,33 @@ links from the Bed read result rather than the Recorder history payload.
 The Beds presentation renders `RuntimeVitalBedHistory.state`, `summary`, and
 `readError` directly. A failed Bed read is not an empty successful list, and a
 partially loaded read keeps its retained rows together with the reported issue.
-When a selected Bed explicitly reports a non-blank `vrcode`, the presentation
-may request that Recorder's observability detail and incident history through
-the Recorder-owned endpoints. It must not copy observability into the Bed
-contract or join the Recorder list to manufacture Bed or linked-recorder state.
-No Recorder health request is made when the Bed does not report a `vrcode`, and
-Recorder detail or incident failures remain scoped to the linked Recorder
-health section.
+The clinician-facing Bed surface does not request or render Recorder
+observability detail, incident history, version, IP address, boot state, or
+resource readings. Those remain Recorder operations concerns. The Bed list
+prioritizes explicit Bed status, Bed identity, patient presence, last
+observation time, and Bed data issues. Bed ID and list visibility remain
+secondary detail and management fields.
 
-The Recorder and Bed tabs share the same list composition rules for search,
-sort, visibility filtering, refresh, status-first rows, selection, row height,
-and detail-card structure. Sorting is a presentation-only operation over the
-reported records and keeps missing names, links, and timestamps distinct. The
-Recorder History toggle remains Recorder-only because its contract explicitly
-provides `presentInLatestObservation`; the Bed presentation must not construct
-an equivalent current/history state from Bed status.
+The Bed table uses bounded fixed-width columns inside horizontal scrolling so
+headers and trailing content cannot be clipped by flexible minimum-width
+distribution. Sorting is a presentation-only operation over reported Bed name,
+ID, patient presence, last observation, or status, and keeps missing values
+distinct. The Recorder History toggle remains Recorder-only because its
+contract explicitly provides `presentInLatestObservation`; the Bed
+presentation must not construct an equivalent current/history state from Bed
+status.
+
+Patient identity, encounter state, available clinical signals, last valid
+clinical sample, and data-gap coverage are not part of the current Bed
+contract. A future clinical Bed summary must receive those meanings explicitly
+from their owning patient, encounter, and observation providers. Presentation
+must not infer them from Bed presence, Recorder linkage, or infrastructure
+health.
 
 Current Bed providers emit `linkedRecorderVersion` explicitly. Runtime clients
-accept its absence only as a documented legacy wire migration and display that
-absence as not reported; they do not classify a missing version as a Vital
+accept its absence only as a documented legacy wire migration. The field may be
+used by owner workflows such as Product Lab cleanup, but it is not presented as
+clinical Bed detail and a missing version is never classified as a Vital
 Recorder or Product Lab source.
 
 CLI automation uses the same boundary. `vitalserver-vm runtime lab-*` commands call Guest Control `/runtime/lab/*` and print the returned Product Lab contracts as JSON. The Host CLI must not read Lab fixture files, TestKit state files, or container-local process state to infer session state.

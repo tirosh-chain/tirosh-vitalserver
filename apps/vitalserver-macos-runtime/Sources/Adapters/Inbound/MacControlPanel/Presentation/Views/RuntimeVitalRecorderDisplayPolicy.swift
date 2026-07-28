@@ -105,17 +105,6 @@ public struct RuntimeVitalRecorderDisplayPolicy {
         version == Self.productLabVersion
     }
 
-    public func linkedRecorderHealthVrcode(
-        _ bed: RuntimeVitalBedRecord
-    ) -> String? {
-        guard let vrcode = bed.vrcode?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !vrcode.isEmpty else {
-            return nil
-        }
-        return vrcode
-    }
-
     public func recorderAnomalyText(_ recorder: RuntimeVitalRecorderRecord) -> String {
         if !recorder.presentInLatestObservation {
             return "History"

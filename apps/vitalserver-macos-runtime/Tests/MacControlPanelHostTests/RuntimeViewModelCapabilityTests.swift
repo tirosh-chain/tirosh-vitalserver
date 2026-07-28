@@ -1956,7 +1956,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         render(ContentView().environmentObject(viewModel))
     }
 
-    func testRecorderHealthRendersObserverAndSelectionContextCombinations() throws {
+    func testRecorderHealthRendersReportedAndNotReportedObserverStates() throws {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -1981,12 +1981,6 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
                 viewModel: viewModel,
                 vrcode: detail.vrcode,
                 recorderSummary: nil
-            ))
-            render(RuntimeRecorderHealthSection(
-                viewModel: viewModel,
-                vrcode: detail.vrcode,
-                recorderSummary: nil,
-                title: "Linked Recorder health"
             ))
         }
     }

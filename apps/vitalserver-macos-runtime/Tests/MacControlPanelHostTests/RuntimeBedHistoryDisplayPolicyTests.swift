@@ -6,6 +6,12 @@ import XCTest
 final class RuntimeBedHistoryDisplayPolicyTests: XCTestCase {
     private let policy = RuntimeBedHistoryDisplayPolicy()
 
+    func testBedTableUsesBoundedFixedWidthForStandardPanel() {
+        XCTAssertLessThanOrEqual(RuntimeBedTableLayout.contentWidth, 1_100)
+        XCTAssertGreaterThan(RuntimeBedTableLayout.bedWidth, 0)
+        XCTAssertGreaterThan(RuntimeBedTableLayout.dataIssueWidth, 0)
+    }
+
     func testLoadedEmptyHistoryRemainsDistinctFromReadFailure() {
         let loaded = RuntimeVitalBedHistory(
             state: .loaded,
@@ -39,22 +45,10 @@ final class RuntimeBedHistoryDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(policy.summaryText(2, history: partial), "2")
     }
 
-    func testRelationshipReadFailureIsNotRenderedAsZeroEvents() {
-        let failed = RuntimeVitalRelationshipHistory(
-            state: .readFailed,
-            readError: "relationship owner unavailable"
-        )
-
-        XCTAssertEqual(
-            policy.relationshipEventPageText(failed),
-            "Unavailable"
-        )
-    }
-
     func testBedSortOptionsExposeExplicitPresentationLabels() {
         XCTAssertEqual(
             RuntimeBedHistoryDisplayPolicy.BedSortOption.allCases.map(\.title),
-            ["Name", "Bed ID", "VRecorder", "Last seen", "Status"]
+            ["Name", "Bed ID", "Patient", "Last seen", "Status"]
         )
     }
 
@@ -87,25 +81,25 @@ final class RuntimeBedHistoryDisplayPolicyTests: XCTestCase {
         )
     }
 
-    func testSortedBedsCanUseStatusAndExplicitLinkedRecorder() {
+    func testSortedBedsCanUseStatusAndPatientPresence() {
         let beds = [
             bed(
                 id: "bed-stale",
                 name: "OR C",
-                vrcode: "VR-B",
-                status: .stale
+                status: .stale,
+                patientConnected: false
             ),
             bed(
                 id: "bed-unknown",
                 name: "OR B",
-                vrcode: nil,
-                status: .unknown
+                status: .unknown,
+                patientConnected: nil
             ),
             bed(
                 id: "bed-online",
                 name: "OR A",
-                vrcode: "VR-A",
-                status: .online
+                status: .online,
+                patientConnected: true
             ),
         ]
 
@@ -114,7 +108,7 @@ final class RuntimeBedHistoryDisplayPolicyTests: XCTestCase {
             ["bed-online", "bed-stale", "bed-unknown"]
         )
         XCTAssertEqual(
-            policy.sortedBeds(beds, by: .recorder).map(\.bedID),
+            policy.sortedBeds(beds, by: .patient).map(\.bedID),
             ["bed-online", "bed-stale", "bed-unknown"]
         )
     }
@@ -122,16 +116,16 @@ final class RuntimeBedHistoryDisplayPolicyTests: XCTestCase {
     private func bed(
         id: String,
         name: String?,
-        vrcode: String? = "VR-A",
         status: RuntimeVitalBedStatus = .online,
-        lastSeenAt: String? = nil
+        lastSeenAt: String? = nil,
+        patientConnected: Bool? = nil
     ) -> RuntimeVitalBedRecord {
         RuntimeVitalBedRecord(
             bedID: id,
             name: name,
-            vrcode: vrcode,
+            vrcode: nil,
             status: status,
-            patientConnected: nil,
+            patientConnected: patientConnected,
             firstSeenAt: nil,
             lastSeenAt: lastSeenAt,
             observationCount: 1,
