@@ -159,6 +159,8 @@ struct RuntimeLifecycle {
             try configure(command)
         case .verifyBundle(let bundleURL):
             try verifyBundle(bundleURL)
+        case .verifyUpdateBootstrap(let bundleURL):
+            try verifyUpdateBootstrap(bundleURL)
         case .stageBundle(let bundleURL):
             _ = try stageBundle(bundleURL)
         case .applyBundle(let command):

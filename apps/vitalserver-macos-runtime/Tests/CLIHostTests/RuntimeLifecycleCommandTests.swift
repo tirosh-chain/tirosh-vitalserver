@@ -194,6 +194,13 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             .verifyBundle(bundleURL)
         )
         XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "verify-update-bootstrap",
+                bundleURL.path,
+            ]),
+            .verifyUpdateBootstrap(bundleURL)
+        )
+        XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["stage-bundle", bundleURL.path]),
             .stageBundle(bundleURL)
         )
@@ -525,6 +532,10 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["verify-bundle"]),
             expectedMessage: "usage: vitalserver-vm runtime verify-bundle <bundle.tar.gz>"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["verify-update-bootstrap"]),
+            expectedMessage: "usage: vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz>"
         )
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["stage-bundle"]),

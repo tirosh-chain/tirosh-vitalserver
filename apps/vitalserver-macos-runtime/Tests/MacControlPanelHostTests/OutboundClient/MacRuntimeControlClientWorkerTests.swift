@@ -74,7 +74,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             logExporter: exporter,
             guestMaintenanceController: AdapterFakeGuestMaintenanceController(),
             guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
-            guestControlBaseURLOverride: "http://127.0.0.1:18330"
+            guestControlBaseURLOverride: "http://127.0.0.1:18330",
+            updateRequestID: { "request-1" }
         )
         let releaseInfo = RuntimeReleaseInfo(
             helperVersion: "helper",
@@ -150,9 +151,14 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertFalse(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
         let applyCommand = try XCTUnwrap(
-            runner.shellCommands.first { $0.contains("apply-bundle") }
+            runner.shellCommands.first { $0.contains("apply-update-bootstrap") }
         )
-        XCTAssertFalse(applyCommand.contains("--allow-unsigned-dev-bundle"))
+        XCTAssertTrue(applyCommand.contains("'--request-id' 'request-1'"))
+        XCTAssertFalse(runner.shellCommands.contains { $0.contains("'apply-bundle'") })
+        XCTAssertEqual(
+            RuntimeControlClientConstants.RuntimeCommand.verifyUpdateBootstrap,
+            "verify-update-bootstrap"
+        )
     }
 
     func testCommandWorkerPreservesFailedGuestDatastoreRepairOperation() async throws {

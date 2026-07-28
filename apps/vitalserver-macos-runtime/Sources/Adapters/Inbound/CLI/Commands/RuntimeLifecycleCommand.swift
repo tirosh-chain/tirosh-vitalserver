@@ -13,6 +13,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case watchdog
     case configure(RuntimeConfigureCommand)
     case verifyBundle(URL)
+    case verifyUpdateBootstrap(URL)
     case stageBundle(URL)
     case applyBundle(RuntimeApplyBundleCommand)
     case applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand)
@@ -74,6 +75,12 @@ extension RuntimeLifecycleCommand {
             return .verifyBundle(try requiredBundleURL(
                 in: remaining,
                 usage: "usage: vitalserver-vm runtime verify-bundle <bundle.tar.gz>"
+            ))
+        case "verify-update-bootstrap":
+            return .verifyUpdateBootstrap(try requiredBundleURL(
+                in: remaining,
+                usage:
+                    "usage: vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz>"
             ))
         case "stage-bundle":
             return .stageBundle(try requiredBundleURL(

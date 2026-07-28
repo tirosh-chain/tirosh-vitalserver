@@ -9,56 +9,64 @@ import RuntimeControl
 @testable import InboundAdapters
 
 final class RuntimeFileReaderTests: XCTestCase {
-    func testUpdateBundleSummaryReadsManifestArtifacts() throws {
+    func testUpdateBundleSummaryReadsStableBootstrapEnvelope() throws {
         let directory = try temporaryDirectory()
         try """
         {
-          "schemaVersion": 2,
-          "product": "vitalserver",
-          "bundleKind": "product-update",
-          "channel": "dev",
-          "helperVersion": "1.2.3",
-          "releaseLabel": "1.2.3",
-          "targetPlatform": "macos-arm64",
-          "components": {
-            "updater": "1.2.3"
+          "schemaVersion": "vitalserver.update-bootstrap-envelope/v1",
+          "id": "update-1",
+          "productId": "ai.tirosh.vitalserver.helper",
+          "target": {"platform": "macos", "architecture": "arm64"},
+          "targetRelease": {"productVersion": "1.2.3", "runtimeVersion": "4.5.6"},
+          "layerOrder": ["container", "guest-runtime", "host-platform"],
+          "nextUpdaterArtifact": {
+            "id": "next-updater", "relativePath": "payload/bin/vitalserver-update",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sizeBytes": 1, "mediaType": "application/octet-stream"
           },
-          "createdAt": "2026-05-30T00:00:00Z",
-          "artifacts": [
-            { "type": "rootfs-base", "name": "rootfs.img.gz", "sha256": "rootfs-digest", "size": 100 },
-            { "type": "app-bundle", "name": "vitalserver.tar.gz", "sha256": "app-digest", "size": 200 }
-          ],
-          "migrations": []
+          "specification": {
+            "id": "specification", "relativePath": "payload/update-specification.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "sizeBytes": 1, "mediaType": "application/json"
+          },
+          "signature": {
+            "algorithm": "ed25519", "keyId": "release-key",
+            "signedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "value": "signature"
+          },
+          "issuedAt": "2026-05-30T00:00:00Z"
         }
         """.write(
-            to: directory.appendingPathComponent("manifest.json"),
+            to: directory.appendingPathComponent("bootstrap-envelope.json"),
             atomically: true,
             encoding: .utf8
         )
 
         let summary = displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: directory))
 
-        XCTAssertTrue(summary.contains("Version: 1.2.3"))
-        XCTAssertTrue(summary.contains("rootfs-base: rootfs.img.gz"))
-        XCTAssertTrue(summary.contains("app-bundle: vitalserver.tar.gz"))
+        XCTAssertTrue(summary.contains("Product version: 1.2.3"))
+        XCTAssertTrue(summary.contains("Runtime version: 4.5.6"))
+        XCTAssertTrue(summary.contains("Target: macos-arm64"))
+        XCTAssertTrue(summary.contains("Layers: container, guest-runtime, host-platform"))
+        XCTAssertTrue(summary.contains("Update ID: update-1"))
     }
 
-    func testUpdateBundleSummaryReportsMissingManifest() throws {
+    func testUpdateBundleSummaryReportsMissingBootstrapEnvelope() throws {
         let directory = try temporaryDirectory()
 
         XCTAssertEqual(
             SystemRuntimeHostFileReader().updateBundleSummaryResult(url: directory),
-            .missing(.message("Missing manifest.json"))
+            .missing(.message("Missing bootstrap-envelope.json"))
         )
         XCTAssertEqual(
             displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: directory)),
-            "Missing manifest.json"
+            "Missing bootstrap-envelope.json"
         )
     }
 
     func testUpdateBundleSummaryReportsManifestPathInspectionFailure() {
         let directory = URL(fileURLWithPath: "/bundle")
-        let manifestURL = directory.appendingPathComponent("manifest.json")
+        let manifestURL = directory.appendingPathComponent("bootstrap-envelope.json")
         let reader = SystemRuntimeHostFileReader(
             fileStore: PathStateRuntimeFileStore(pathStates: [
                 manifestURL.path: .inspectFailed("permission denied"),
@@ -67,25 +75,25 @@ final class RuntimeFileReaderTests: XCTestCase {
 
         XCTAssertEqual(
             reader.updateBundleSummaryResult(url: directory),
-            .failed("Manifest path inspection failed: /bundle/manifest.json reason=permission denied")
+            .failed("Bootstrap envelope path inspection failed: /bundle/bootstrap-envelope.json reason=permission denied")
         )
         XCTAssertEqual(
             displayHostText(reader.updateBundleSummaryResult(url: directory)),
-            "Manifest path inspection failed: /bundle/manifest.json reason=permission denied"
+            "Bootstrap envelope path inspection failed: /bundle/bootstrap-envelope.json reason=permission denied"
         )
     }
 
-    func testUpdateBundleSummaryReportsInvalidManifest() throws {
+    func testUpdateBundleSummaryReportsInvalidBootstrapEnvelope() throws {
         let directory = try temporaryDirectory()
         try "{invalid-json".write(
-            to: directory.appendingPathComponent("manifest.json"),
+            to: directory.appendingPathComponent("bootstrap-envelope.json"),
             atomically: true,
             encoding: .utf8
         )
 
         XCTAssertTrue(
             displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: directory))
-                .hasPrefix("Invalid manifest.json:")
+                .hasPrefix("Invalid bootstrap-envelope.json:")
         )
     }
 
@@ -94,7 +102,7 @@ final class RuntimeFileReaderTests: XCTestCase {
 
         XCTAssertEqual(
             displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: archive)),
-            "Archive: update-bundle-1.2.3.tar.gz\nCheck integrity to inspect manifest and checksums. Publisher authenticity is unverified."
+            "Archive: update-bundle-1.2.3.tar.gz\nVerify the stable bootstrap envelope, publisher signature, and complete declared payload before applying."
         )
     }
 

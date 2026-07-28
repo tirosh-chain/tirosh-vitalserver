@@ -31,31 +31,58 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
 
     func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
         if url.lastPathComponent.hasSuffix(".tar.gz") || url.lastPathComponent.hasSuffix(".tgz") {
-            return .loaded("Archive: \(url.lastPathComponent)\nCheck integrity to inspect manifest and checksums. Publisher authenticity is unverified.")
+            return .loaded(
+                "Archive: \(url.lastPathComponent)\n"
+                    + "Verify the stable bootstrap envelope, publisher signature, "
+                    + "and complete declared payload before applying."
+            )
         }
-        let manifestURL = url.appendingPathComponent("manifest.json")
-        let manifestState = fileStore.pathState(at: manifestURL)
-        switch manifestState {
+        let envelopeURL = url.appendingPathComponent(
+            UpdateBootstrapBundleLayout.envelopeRelativePath
+        )
+        let envelopeState = fileStore.pathState(at: envelopeURL)
+        switch envelopeState {
         case .file:
             break
         case .missing:
-            return .missing(.message("Missing manifest.json"))
+            return .missing(
+                .message(
+                    "Missing \(UpdateBootstrapBundleLayout.envelopeRelativePath)"
+                )
+            )
         case .inspectFailed(let reason):
-            return .failed("Manifest path inspection failed: \(manifestURL.path) reason=\(reason)")
+            return .failed(
+                "Bootstrap envelope path inspection failed: "
+                    + "\(envelopeURL.path) reason=\(reason)"
+            )
         case .directory, .other, .unknown:
-            return .failed("Manifest path state is unexpected: \(manifestURL.path) state=\(manifestState.rawValue)")
+            return .failed(
+                "Bootstrap envelope path state is unexpected: "
+                    + "\(envelopeURL.path) state=\(envelopeState.rawValue)"
+            )
         }
-        let manifest: UpdateBundleManifest
+        let envelope: UpdateBootstrapEnvelope
         do {
-            let data = try fileStore.readData(manifestURL)
-            manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: data)
+            let data = try fileStore.readData(envelopeURL)
+            envelope = try JSONDecoder().decode(
+                UpdateBootstrapEnvelope.self,
+                from: data
+            )
         } catch {
-            return .failed("Invalid manifest.json: \(error.localizedDescription)")
+            return .failed(
+                "Invalid \(UpdateBootstrapBundleLayout.envelopeRelativePath): "
+                    + error.localizedDescription
+            )
         }
-        let artifacts = manifest.artifacts
-            .map { artifact in "\(artifact.type.rawValue): \(artifact.name)" }
-            .joined(separator: "\n")
-        return .loaded("Version: \(manifest.version)\nArtifacts:\n\(artifacts)")
+        let layers = envelope.layerOrder.map(\.rawValue).joined(separator: ", ")
+        return .loaded(
+            "Product version: \(envelope.targetRelease.productVersion)\n"
+                + "Runtime version: \(envelope.targetRelease.runtimeVersion)\n"
+                + "Target: \(envelope.target.platform.rawValue)-"
+                + "\(envelope.target.architecture.rawValue)\n"
+                + "Layers: \(layers)\n"
+                + "Update ID: \(envelope.id)"
+        )
     }
 
     func backups(latestBackupPath: String?) throws -> [RuntimeBackup] {

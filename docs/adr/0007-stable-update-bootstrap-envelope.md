@@ -254,6 +254,11 @@ specification must exist at its exact relative path with the declared size and
 SHA-256. The composer copies and verifier re-checks that complete file closure;
 an undeclared, missing, symlinked, or mismatched member fails the release.
 
+The Helper UI and Runtime Control API keep their user-facing update action, but
+the Host command adapter invokes `verify-update-bootstrap` and
+`apply-update-bootstrap`. Each apply receives an explicit request ID; production
+entry points do not invoke the legacy `apply-bundle` engine.
+
 The private key path is an explicit release-publisher input. The tool neither
 searches for a key nor falls back to another signer. Secret storage and key
 materialization remain responsibilities of the release environment.

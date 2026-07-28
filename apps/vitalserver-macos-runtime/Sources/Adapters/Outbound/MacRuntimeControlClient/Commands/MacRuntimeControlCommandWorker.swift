@@ -18,6 +18,7 @@ public actor MacRuntimeControlCommandWorker {
     private let guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling
     private let guestAddressProvider: any RuntimeGuestAddressProvider
     private let guestControlBaseURLOverride: String?
+    private let updateRequestID: @Sendable () -> String
 
     public init() {
         self.init(
@@ -56,7 +57,10 @@ public actor MacRuntimeControlCommandWorker {
         guestProductServiceController: any RuntimeGuestProductServiceCommandControlling = UnavailableRuntimeGuestProductServiceController(),
         guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling = UnavailableRuntimeGuestMaintenanceController(),
         guestAddressProvider: any RuntimeGuestAddressProvider,
-        guestControlBaseURLOverride: String? = nil
+        guestControlBaseURLOverride: String? = nil,
+        updateRequestID: @escaping @Sendable () -> String = {
+            UUID().uuidString.lowercased()
+        }
     ) {
         self.privilegedCommandRunner = privilegedCommandRunner
         self.actionEnvironment = actionEnvironment
@@ -65,6 +69,7 @@ public actor MacRuntimeControlCommandWorker {
         self.guestMaintenanceController = guestMaintenanceController
         self.guestAddressProvider = guestAddressProvider
         self.guestControlBaseURLOverride = guestControlBaseURLOverride
+        self.updateRequestID = updateRequestID
     }
 
     public func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
@@ -139,8 +144,10 @@ public actor MacRuntimeControlCommandWorker {
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
                 RuntimeControlClientConstants.RuntimeCommand.runtime,
-                RuntimeControlClientConstants.RuntimeCommand.applyBundle,
+                RuntimeControlClientConstants.RuntimeCommand.applyUpdateBootstrap,
                 url.path,
+                RuntimeControlClientConstants.RuntimeCommand.optionRequestID,
+                updateRequestID(),
             ]
         ))
     }

@@ -21,6 +21,39 @@ enum RuntimeUpdateBootstrapCompositionError: Error, Equatable {
 }
 
 extension RuntimeLifecycle {
+    func verifyUpdateBootstrap(_ bundleURL: URL) throws {
+        let materialized = try materializeRuntimeUpdateBundle(bundleURL)
+        do {
+            let verified = try loadAndVerifyUpdateBootstrapClosure(
+                bundleRoot: materialized.bundleURL
+            )
+            try cleanupMaterializedUpdateBootstrapBundle(materialized)
+            print("update bootstrap verified")
+            print("update: \(verified.envelope.id)")
+            print(
+                "release: \(verified.envelope.targetRelease.productVersion)"
+            )
+            print(
+                "digest: \(verified.verification.canonicalPayloadSHA256)"
+            )
+        } catch {
+            guard let temporaryRoot = materialized.temporaryRoot else {
+                throw error
+            }
+            do {
+                try fileStore.removeItem(at: temporaryRoot)
+            } catch let cleanupError {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .operationAndMaterializedBundleCleanupFailed(
+                        operationReason: String(describing: error),
+                        path: temporaryRoot.path,
+                        cleanupReason: String(describing: cleanupError)
+                    )
+            }
+            throw error
+        }
+    }
+
     func applyUpdateBootstrap(
         _ command: RuntimeApplyUpdateBootstrapCommand
     ) throws {

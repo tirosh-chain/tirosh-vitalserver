@@ -81,7 +81,7 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
             launcher,
             arguments: [
                 RuntimeControlClientConstants.RuntimeCommand.runtime,
-                RuntimeControlClientConstants.RuntimeCommand.verifyBundle,
+                RuntimeControlClientConstants.RuntimeCommand.verifyUpdateBootstrap,
                 bundleURL.path,
             ]
         )
