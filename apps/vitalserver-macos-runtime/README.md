@@ -137,12 +137,19 @@ endpoint를 probe하지 않습니다. Guest도 `apt-get update`와 `apt-get inst
 
 ```text
 .tmp/vitalserver-vm-pkg/
-  apt-prepared-rootfs.raw.gz
-  apt-prepared-rootfs.raw.gz.sha256
-  apt-prepared-rootfs.contract
+  apt-prepared-rootfs/
+    <contract-fingerprint>/
+      apt-prepared-rootfs.raw.gz
+      apt-prepared-rootfs.raw.gz.sha256
+      apt-prepared-rootfs.contract
   rootfs-base.raw.gz
   rootfs-base.contract
 ```
+
+APT-prepared cache는 contract fingerprint별로 보관하므로 서로 다른 branch나
+package 목록의 cache가 같은 파일을 덮어쓰지 않습니다. 과거 고정 경로의 cache는
+checksum과 contract stamp가 모두 유효할 때 해당 fingerprint 디렉터리로 복사되며,
+원본은 자동 삭제하지 않습니다.
 
 APT package 추가·삭제는
 `Support/Guest/rootfs-apt-packages.txt`에서 수행합니다. snapshot source,
