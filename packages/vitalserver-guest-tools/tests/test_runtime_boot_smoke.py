@@ -43,6 +43,11 @@ def test_runtime_boot_smoke_writes_manifest_for_success(tmp_path: Path) -> None:
     )
     assert stage_status(document, "http") == "passed"
     assert stage_status(document, "compose-services") == "passed"
+    assert stage_status(document, "clock-quality") == "passed"
+    assert (
+        stage_details(document, "clock-quality")["clockQuality"]["state"]
+        == "synchronized"
+    )
     assert stage_status(document, "guest-control-api") == "passed"
     guest_control_operation = stage_details(document, "guest-control-api")["operation"]
     assert isinstance(guest_control_operation, dict)
@@ -248,6 +253,7 @@ def test_runtime_boot_smoke_rejects_unready_guest_control_api(
                 "state": "loaded",
                 "observedAt": timestamp(NOW),
                 "services": default_stack_status_services(),
+                "clockQuality": default_clock_quality(),
             }
         if url.endswith("/ready"):
             return {"status": "starting"}
@@ -352,6 +358,75 @@ def test_runtime_boot_smoke_waits_for_missing_compose_service_to_appear(
     manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == "passed"
     assert stage_status(manifest, "compose-services") == "passed"
+
+
+def test_runtime_boot_smoke_rejects_failed_clock_quality(tmp_path: Path) -> None:
+    context = runtime_boot_context(
+        tmp_path,
+        compose_ready_timeout_seconds=0,
+    )
+    write_valid_runtime_documents(context)
+
+    with pytest.raises(SystemExit):
+        run_runtime_boot_smoke(
+            context=context,
+            operations=fake_operations(
+                http_json=fake_guest_control_http_json(
+                    clock_quality={
+                        "state": "failed",
+                        "observedAt": timestamp(NOW),
+                        "issue": (
+                            "chronyc tracking exited with 1: "
+                            "506 Cannot talk to daemon"
+                        ),
+                    },
+                ),
+            ),
+        )
+
+    manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert stage_status(manifest, "clock-quality") == "failed"
+    assert "Guest clock quality is not synchronized" in failed_stage_message(
+        manifest
+    )
+    assert "506 Cannot talk to daemon" in failed_stage_message(manifest)
+
+
+def test_runtime_boot_smoke_waits_for_clock_quality_to_synchronize(
+    tmp_path: Path,
+) -> None:
+    context = runtime_boot_context(
+        tmp_path,
+        compose_ready_timeout_seconds=10,
+    )
+    write_valid_runtime_documents(context)
+    clock_quality = {
+        "state": "unsynchronized",
+        "observedAt": timestamp(NOW),
+        "issue": "chrony leap status is Not synchronised",
+    }
+
+    def mark_synchronized(seconds: float) -> None:
+        del seconds
+        clock_quality.clear()
+        clock_quality.update(default_clock_quality())
+
+    run_runtime_boot_smoke(
+        context=context,
+        operations=fake_operations(
+            http_json=fake_guest_control_http_json(
+                clock_quality=clock_quality,
+            ),
+            sleep=mark_synchronized,
+        ),
+    )
+
+    manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert stage_status(manifest, "clock-quality") == "passed"
+    assert (
+        stage_details(manifest, "clock-quality")["clockQuality"]["state"]
+        == "synchronized"
+    )
 
 
 def test_runtime_boot_smoke_uses_guest_control_capabilities_after_compose_wait(
@@ -677,6 +752,20 @@ def default_stack_status_services() -> list[dict[str, Any]]:
     ]
 
 
+def default_clock_quality() -> dict[str, Any]:
+    return {
+        "state": "synchronized",
+        "observedAt": timestamp(NOW),
+        "source": "192.168.64.1",
+        "stratum": 11,
+        "offsetMs": 0.25,
+        "uncertaintyMs": 0.8,
+        "rootDelayMs": 0.1,
+        "rootDispersionMs": 0.8,
+        "lastSyncAt": timestamp(NOW),
+    }
+
+
 def default_guest_control_capabilities() -> list[str]:
     return [
         "services:list",
@@ -776,6 +865,7 @@ def fake_operations(
 def fake_guest_control_http_json(
     *,
     stack_services: list[dict[str, Any]] | None = None,
+    clock_quality: dict[str, Any] | None = None,
     capabilities: list[str] | None = None,
     observed_timeouts: list[tuple[str, str, float]] | None = None,
 ) -> Callable[[str, str, float, dict[str, Any] | None], dict[str, Any]]:
@@ -789,6 +879,11 @@ def fake_guest_control_http_json(
         capabilities
         if capabilities is not None
         else default_guest_control_capabilities()
+    )
+    clock_quality = (
+        clock_quality
+        if clock_quality is not None
+        else default_clock_quality()
     )
 
     def request(
@@ -819,6 +914,7 @@ def fake_guest_control_http_json(
                 "state": "loaded",
                 "observedAt": timestamp(NOW),
                 "services": stack_services,
+                "clockQuality": clock_quality,
             }
         if method == "GET" and url.endswith("/runtime/recorder-ingress/status"):
             return {

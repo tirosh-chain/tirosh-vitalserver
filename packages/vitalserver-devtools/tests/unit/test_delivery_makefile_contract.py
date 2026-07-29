@@ -183,6 +183,17 @@ def test_diagnostic_runtime_smoke_requires_a_compiled_rootfs() -> None:
     assert "internal/vm/airgap-rootfs" not in require_recipe
 
 
+def test_runtime_smoke_proves_host_guest_ntp_synchronization() -> None:
+    makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    recipe = target_recipe(makefile, "internal/vm/golden-rootfs/runtime-smoke")
+
+    assert "runtime_smoke_platform_agent_bin" in recipe
+    assert "--runtime-home \"$${runtime_smoke_home}\"" in recipe
+    assert "--ntp-port \"$(VM_GOLDEN_RUNTIME_SMOKE_NTP_PORT)\"" in recipe
+    assert "runtime_smoke_platform_agent_log" in recipe
+    assert "runtime smoke Platform Agent exited unexpectedly" in recipe
+
+
 def test_release_contract_precedes_fingerprint_and_docker_compile() -> None:
     makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
 
