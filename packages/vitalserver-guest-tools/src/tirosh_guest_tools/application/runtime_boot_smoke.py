@@ -201,6 +201,11 @@ def run_runtime_boot_smoke(
         )
         execute_stage(
             run,
+            "clock-quality",
+            validate_clock_quality,
+        )
+        execute_stage(
+            run,
             "guest-control-api",
             validate_guest_control_api,
         )
@@ -839,6 +844,35 @@ def validate_compose_services(
             )
         if time.monotonic() >= deadline:
             raise RuntimeError(f"compose services are not ready: {unhealthy}")
+        run.operations.sleep(COMPOSE_READY_POLL_SECONDS)
+
+
+def validate_clock_quality(
+    run: RuntimeBootSmokeRun,
+) -> tuple[str, dict[str, Any]]:
+    deadline = time.monotonic() + run.context.compose_ready_timeout_seconds
+    while True:
+        stack_status = read_guest_control_stack_status(run)
+        clock_quality = stack_status.get("clockQuality")
+        if isinstance(clock_quality, dict):
+            state = clock_quality.get("state")
+            if state == "synchronized":
+                return (
+                    "Guest clock is synchronized to the explicit Host time authority",
+                    {
+                        "source": "guest-control-api",
+                        "clockQuality": clock_quality,
+                    },
+                )
+            issue = clock_quality.get("issue")
+        else:
+            state = "missing"
+            issue = "clockQuality document is missing"
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                "Guest clock quality is not synchronized: "
+                f"state={state} issue={issue or 'no issue reported'}"
+            )
         run.operations.sleep(COMPOSE_READY_POLL_SECONDS)
 
 

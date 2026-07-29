@@ -26,7 +26,8 @@ public final class MacPlatformAgentService {
         servesDevConsole: Bool = GeneratedRelease.testEnabled,
         port: Int? = nil,
         automationToken: String? = nil,
-        endpointSynchronizationInterval: TimeInterval = 2
+        endpointSynchronizationInterval: TimeInterval = 2,
+        ntpServerPort: UInt16 = 123
     ) throws -> MacPlatformAgentService {
         let hostStateDatabase = SQLiteHostRuntimeStateDatabase(
             url: installedPaths.runtimeStateDatabase
@@ -64,7 +65,8 @@ public final class MacPlatformAgentService {
             writeContract: RuntimeTimeAuthorityContractWriter(
                 destination: installedPaths.timeAuthority
             ).write,
-            interval: endpointSynchronizationInterval
+            interval: endpointSynchronizationInterval,
+            serverPort: ntpServerPort
         )
         let endpointSynchronizationLoop = RuntimeEndpointSynchronizationLoop(
             bootstrapReader: FileRuntimeGuestAddressBootstrapReader(
@@ -147,6 +149,21 @@ public final class MacPlatformAgentService {
             server: server,
             endpointSynchronizationLoop: endpointSynchronizationLoop,
             hostNTPController: hostNTPController
+        )
+    }
+
+    public static func runtimeSmoke(
+        runtimeHome: URL,
+        runtimeControlPort: Int,
+        automationToken: String,
+        ntpServerPort: UInt16
+    ) throws -> MacPlatformAgentService {
+        try live(
+            installedPaths: InstalledRuntimePaths(runtimeHome: runtimeHome),
+            servesDevConsole: false,
+            port: runtimeControlPort,
+            automationToken: automationToken,
+            ntpServerPort: ntpServerPort
         )
     }
 

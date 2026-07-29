@@ -95,6 +95,8 @@ VM_GOLDEN_RUNTIME_DIR := $(VM_GOLDEN_HOME)/runtime
 # Diagnostic/CI golden rootfs workspaces.
 VM_GOLDEN_NEGATIVE_HOME ?= .tmp/vitalserver-vm-golden-negative
 VM_GOLDEN_RUNTIME_SMOKE_HOME ?= .tmp/vitalserver-vm-golden-runtime-smoke
+VM_GOLDEN_RUNTIME_SMOKE_NTP_PORT ?= 10123
+VM_MACOS_PLATFORM_AGENT_BIN ?= $(VM_SWIFT_RELEASE_DIR)/vitalserver-platform-agent
 VM_AIRGAP_CLEANUP_WAIT_TIMEOUT ?= 30
 VM_AIRGAP_FORCE_STOP_TIMEOUT ?= 5
 
@@ -397,6 +399,9 @@ internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs/require
 	runtime_smoke_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
 	runtime_smoke_home="$(abspath $(VM_GOLDEN_RUNTIME_SMOKE_HOME))"; \
 	runtime_smoke_runtime_dir="$${runtime_smoke_home}/runtime"; \
+	runtime_smoke_platform_agent_bin="$(abspath $(VM_MACOS_PLATFORM_AGENT_BIN))"; \
+	runtime_smoke_platform_agent_log="$${runtime_smoke_home}/logs/platform-agent-smoke.log"; \
+	runtime_smoke_platform_agent_pid=""; \
 	printf "Running golden disk runtime boot smoke: runId=%s\n" "$${runtime_smoke_run_id}"; \
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
 		--vm-home "$${runtime_smoke_home}" \
@@ -406,7 +411,20 @@ internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs/require
 		--timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; \
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
 		--vm-home "$${runtime_smoke_home}"; \
-	trap '$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control --vm-home "'"$${runtime_smoke_home}"'" stop >/dev/null 2>&1 || true; $(VM_BUILD_RUNNER) macos-runtime-wait-stopped --vm-home "'"$${runtime_smoke_home}"'" --timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; $(VM_BUILD_RUNNER) macos-runtime-require-no-running --vm-home "'"$${runtime_smoke_home}"'" || true' EXIT; \
+	cleanup_runtime_smoke() { \
+		if [ -n "$${runtime_smoke_platform_agent_pid}" ]; then \
+			kill "$${runtime_smoke_platform_agent_pid}" >/dev/null 2>&1 || true; \
+			wait "$${runtime_smoke_platform_agent_pid}" >/dev/null 2>&1 || true; \
+		fi; \
+		$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
+			--vm-home "$${runtime_smoke_home}" stop >/dev/null 2>&1 || true; \
+		$(VM_BUILD_RUNNER) macos-runtime-wait-stopped \
+			--vm-home "$${runtime_smoke_home}" \
+			--timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; \
+		$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+			--vm-home "$${runtime_smoke_home}" || true; \
+	}; \
+	trap cleanup_runtime_smoke EXIT; \
 	$(MAKE) internal/vm/init \
 		VM_HOME="$${runtime_smoke_home}"; \
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-prepare-runtime-data-disk \
@@ -427,10 +445,32 @@ internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs/require
 		--run-id "$${runtime_smoke_run_id}"; \
 	$(MAKE) internal/vm/start/detached \
 		VM_HOME="$${runtime_smoke_home}"; \
+	test -x "$${runtime_smoke_platform_agent_bin}" || { \
+		printf "error: runtime smoke Platform Agent is missing: %s\n" \
+			"$${runtime_smoke_platform_agent_bin}" >&2; \
+		exit 1; \
+	}; \
+	mkdir -p "$$(dirname "$${runtime_smoke_platform_agent_log}")"; \
+	"$${runtime_smoke_platform_agent_bin}" \
+		--runtime-home "$${runtime_smoke_home}" \
+		--runtime-control-port 0 \
+		--automation-token runtime-smoke-token \
+		--ntp-port "$(VM_GOLDEN_RUNTIME_SMOKE_NTP_PORT)" \
+		>"$${runtime_smoke_platform_agent_log}" 2>&1 & \
+	runtime_smoke_platform_agent_pid="$$!"; \
 	$(MAKE) internal/vm/wait/runtime-boot-smoke \
 		VM_HOME="$${runtime_smoke_home}" \
 		VM_RUNTIME_BOOT_SMOKE_RUN_ID="$${runtime_smoke_run_id}"; \
+	if ! kill -0 "$${runtime_smoke_platform_agent_pid}" >/dev/null 2>&1; then \
+		printf "error: runtime smoke Platform Agent exited unexpectedly\n" >&2; \
+		printf "  log=%s\n" "$${runtime_smoke_platform_agent_log}" >&2; \
+		tail -n 200 "$${runtime_smoke_platform_agent_log}" >&2; \
+		exit 1; \
+	fi; \
 	printf "Cleaning up runtime smoke VM...\n"; \
+	kill "$${runtime_smoke_platform_agent_pid}"; \
+	wait "$${runtime_smoke_platform_agent_pid}" >/dev/null 2>&1 || true; \
+	runtime_smoke_platform_agent_pid=""; \
 	$(MAKE) internal/vm/stop \
 		VM_HOME="$${runtime_smoke_home}"; \
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
