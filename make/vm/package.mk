@@ -33,9 +33,6 @@ VM_NGINX_ARTIFACT_BIN := .artifacts/nginx/macos/bin/nginx
 VM_PKG_BUILD_DIR ?= $(call VM_TOML_VALUE,workspace.build_dir)
 VM_PKG_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_PKG_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/rootfs-base.contract
-VM_PKG_APT_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz
-VM_PKG_APT_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.contract
-VM_PKG_APT_ROOTFS_SHA256 ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz.sha256
 VM_PKG_APT_ROOTFS_CONTRACT_VERSION := 1
 VM_PKG_APT_ROOTFS_CONTRACT_INPUTS := \
 	$(VM_BUILD_CONFIG) \
@@ -46,6 +43,14 @@ VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT = $(shell { \
 	printf '%s\n' "rootfs-size=$(VM_ROOTFS_SIZE)"; \
 	cksum $(VM_PKG_APT_ROOTFS_CONTRACT_INPUTS); \
 } | cksum | awk '{print $$1 "-" $$2}')
+VM_PKG_APT_ROOTFS_CACHE_ROOT ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs
+VM_PKG_APT_ROOTFS_CACHE_ENTRY = $(VM_PKG_APT_ROOTFS_CACHE_ROOT)/$(VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT)
+VM_PKG_APT_ROOTFS_CACHE = $(VM_PKG_APT_ROOTFS_CACHE_ENTRY)/apt-prepared-rootfs.raw.gz
+VM_PKG_APT_ROOTFS_CONTRACT_STAMP = $(VM_PKG_APT_ROOTFS_CACHE_ENTRY)/apt-prepared-rootfs.contract
+VM_PKG_APT_ROOTFS_SHA256 = $(VM_PKG_APT_ROOTFS_CACHE_ENTRY)/apt-prepared-rootfs.raw.gz.sha256
+VM_PKG_APT_ROOTFS_LEGACY_CACHE ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz
+VM_PKG_APT_ROOTFS_LEGACY_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.contract
+VM_PKG_APT_ROOTFS_LEGACY_SHA256 ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz.sha256
 VM_PKG_ROOTFS_CONTRACT_VERSION := 6
 VM_PKG_ROOTFS_CONTRACT_INPUT_ROOTS := \
 	$(VM_BUILD_CONFIG) \
@@ -224,6 +229,30 @@ internal/vm/golden-rootfs: internal/vm/release-contract
 	else \
 		rootfs_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
 		apt_rootfs_contract_expected="$(VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT)"; \
+		legacy_apt_rootfs_contract=""; \
+		if [ -s "$(VM_PKG_APT_ROOTFS_LEGACY_CONTRACT_STAMP)" ]; then \
+			legacy_apt_rootfs_contract="$$(cat "$(VM_PKG_APT_ROOTFS_LEGACY_CONTRACT_STAMP)")"; \
+		fi; \
+		if [ -n "$${legacy_apt_rootfs_contract}" ] \
+			&& [ -s "$(VM_PKG_APT_ROOTFS_LEGACY_CACHE)" ] \
+			&& [ -s "$(VM_PKG_APT_ROOTFS_LEGACY_SHA256)" ] \
+			&& (cd "$(dir $(VM_PKG_APT_ROOTFS_LEGACY_CACHE))" && shasum -a 256 -c "$(notdir $(VM_PKG_APT_ROOTFS_LEGACY_SHA256))"); then \
+			case "$${legacy_apt_rootfs_contract}" in \
+				*[!0-9-]*|-*|*-|*--*|*-*-*) \
+					printf "Legacy APT-prepared rootfs cache contract is invalid; leaving it untouched: %s\n" "$${legacy_apt_rootfs_contract}" ;; \
+				*) \
+					legacy_apt_rootfs_entry="$(abspath $(VM_PKG_APT_ROOTFS_CACHE_ROOT))/$${legacy_apt_rootfs_contract}"; \
+					if [ ! -e "$${legacy_apt_rootfs_entry}" ]; then \
+						mkdir -p "$(abspath $(VM_PKG_APT_ROOTFS_CACHE_ROOT))"; \
+						legacy_apt_rootfs_tmp="$$(mktemp -d "$(abspath $(VM_PKG_APT_ROOTFS_CACHE_ROOT))/.legacy-$${legacy_apt_rootfs_contract}.XXXXXX")"; \
+						cp "$(VM_PKG_APT_ROOTFS_LEGACY_CACHE)" "$${legacy_apt_rootfs_tmp}/$(notdir $(VM_PKG_APT_ROOTFS_CACHE))"; \
+						cp "$(VM_PKG_APT_ROOTFS_LEGACY_SHA256)" "$${legacy_apt_rootfs_tmp}/$(notdir $(VM_PKG_APT_ROOTFS_SHA256))"; \
+						cp "$(VM_PKG_APT_ROOTFS_LEGACY_CONTRACT_STAMP)" "$${legacy_apt_rootfs_tmp}/$(notdir $(VM_PKG_APT_ROOTFS_CONTRACT_STAMP))"; \
+						mv "$${legacy_apt_rootfs_tmp}" "$${legacy_apt_rootfs_entry}"; \
+						printf "Imported verified legacy APT-prepared rootfs cache: %s\n" "$${legacy_apt_rootfs_entry}"; \
+					fi ;; \
+			esac; \
+		fi; \
 		apt_rootfs_contract_actual=""; \
 		apt_rootfs_seed=""; \
 		if [ -s "$(VM_PKG_APT_ROOTFS_CONTRACT_STAMP)" ]; then \
@@ -267,6 +296,7 @@ internal/vm/golden-rootfs: internal/vm/release-contract
 			--compression-threads "$(VM_COMPRESSION_THREADS)" \
 			--expected-run-id "$${rootfs_run_id}"; \
 		if [ -z "$${apt_rootfs_seed}" ]; then \
+			mkdir -p "$(VM_PKG_APT_ROOTFS_CACHE_ENTRY)"; \
 			apt_rootfs_cache_tmp="$(abspath $(VM_PKG_APT_ROOTFS_CACHE)).tmp"; \
 			cp "$(VM_PKG_ROOTFS_CACHE)" "$${apt_rootfs_cache_tmp}"; \
 			mv "$${apt_rootfs_cache_tmp}" "$(VM_PKG_APT_ROOTFS_CACHE)"; \
