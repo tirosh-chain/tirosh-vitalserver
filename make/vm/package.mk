@@ -46,9 +46,6 @@ VM_NGINX_ARTIFACT_BIN := .artifacts/nginx/macos/bin/nginx
 VM_PKG_BUILD_DIR ?= $(call VM_TOML_VALUE,workspace.build_dir)
 VM_PKG_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_PKG_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/rootfs-base.contract
-VM_PKG_APT_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz
-VM_PKG_APT_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.contract
-VM_PKG_APT_ROOTFS_SHA256 ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz.sha256
 VM_PKG_APT_ROOTFS_CONTRACT_VERSION := 1
 VM_PKG_APT_ROOTFS_CONTRACT_INPUTS := \
 	$(VM_BUILD_CONFIG) \
@@ -59,6 +56,14 @@ VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT = $(shell { \
 	printf '%s\n' "rootfs-size=$(VM_ROOTFS_SIZE)"; \
 	cksum $(VM_PKG_APT_ROOTFS_CONTRACT_INPUTS); \
 } | cksum | awk '{print $$1 "-" $$2}')
+VM_PKG_APT_ROOTFS_CACHE_ROOT ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs
+VM_PKG_APT_ROOTFS_CACHE_ENTRY = $(VM_PKG_APT_ROOTFS_CACHE_ROOT)/$(VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT)
+VM_PKG_APT_ROOTFS_CACHE = $(VM_PKG_APT_ROOTFS_CACHE_ENTRY)/apt-prepared-rootfs.raw.gz
+VM_PKG_APT_ROOTFS_CONTRACT_STAMP = $(VM_PKG_APT_ROOTFS_CACHE_ENTRY)/apt-prepared-rootfs.contract
+VM_PKG_APT_ROOTFS_SHA256 = $(VM_PKG_APT_ROOTFS_CACHE_ENTRY)/apt-prepared-rootfs.raw.gz.sha256
+VM_PKG_APT_ROOTFS_LEGACY_CACHE ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz
+VM_PKG_APT_ROOTFS_LEGACY_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.contract
+VM_PKG_APT_ROOTFS_LEGACY_SHA256 ?= $(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz.sha256
 VM_PKG_ROOTFS_CONTRACT_VERSION := 6
 VM_PKG_ROOTFS_CONTRACT_INPUT_ROOTS := \
 	$(VM_BUILD_CONFIG) \
@@ -103,6 +108,8 @@ VM_GOLDEN_RUNTIME_DIR := $(VM_GOLDEN_HOME)/runtime
 # Diagnostic/CI golden rootfs workspaces.
 VM_GOLDEN_NEGATIVE_HOME ?= .tmp/vitalserver-vm-golden-negative
 VM_GOLDEN_RUNTIME_SMOKE_HOME ?= .tmp/vitalserver-vm-golden-runtime-smoke
+VM_GOLDEN_RUNTIME_SMOKE_NTP_PORT ?= 10123
+VM_MACOS_PLATFORM_AGENT_BIN ?= $(VM_SWIFT_RELEASE_DIR)/vitalserver-platform-agent
 VM_AIRGAP_CLEANUP_WAIT_TIMEOUT ?= 30
 VM_AIRGAP_FORCE_STOP_TIMEOUT ?= 5
 VM_UPDATE_PROOF_TIMEOUT_SECONDS ?= 600
@@ -239,6 +246,30 @@ internal/vm/golden-rootfs: internal/vm/release-contract
 	else \
 		rootfs_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
 		apt_rootfs_contract_expected="$(VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT)"; \
+		legacy_apt_rootfs_contract=""; \
+		if [ -s "$(VM_PKG_APT_ROOTFS_LEGACY_CONTRACT_STAMP)" ]; then \
+			legacy_apt_rootfs_contract="$$(cat "$(VM_PKG_APT_ROOTFS_LEGACY_CONTRACT_STAMP)")"; \
+		fi; \
+		if [ -n "$${legacy_apt_rootfs_contract}" ] \
+			&& [ -s "$(VM_PKG_APT_ROOTFS_LEGACY_CACHE)" ] \
+			&& [ -s "$(VM_PKG_APT_ROOTFS_LEGACY_SHA256)" ] \
+			&& (cd "$(dir $(VM_PKG_APT_ROOTFS_LEGACY_CACHE))" && shasum -a 256 -c "$(notdir $(VM_PKG_APT_ROOTFS_LEGACY_SHA256))"); then \
+			case "$${legacy_apt_rootfs_contract}" in \
+				*[!0-9-]*|-*|*-|*--*|*-*-*) \
+					printf "Legacy APT-prepared rootfs cache contract is invalid; leaving it untouched: %s\n" "$${legacy_apt_rootfs_contract}" ;; \
+				*) \
+					legacy_apt_rootfs_entry="$(abspath $(VM_PKG_APT_ROOTFS_CACHE_ROOT))/$${legacy_apt_rootfs_contract}"; \
+					if [ ! -e "$${legacy_apt_rootfs_entry}" ]; then \
+						mkdir -p "$(abspath $(VM_PKG_APT_ROOTFS_CACHE_ROOT))"; \
+						legacy_apt_rootfs_tmp="$$(mktemp -d "$(abspath $(VM_PKG_APT_ROOTFS_CACHE_ROOT))/.legacy-$${legacy_apt_rootfs_contract}.XXXXXX")"; \
+						cp "$(VM_PKG_APT_ROOTFS_LEGACY_CACHE)" "$${legacy_apt_rootfs_tmp}/$(notdir $(VM_PKG_APT_ROOTFS_CACHE))"; \
+						cp "$(VM_PKG_APT_ROOTFS_LEGACY_SHA256)" "$${legacy_apt_rootfs_tmp}/$(notdir $(VM_PKG_APT_ROOTFS_SHA256))"; \
+						cp "$(VM_PKG_APT_ROOTFS_LEGACY_CONTRACT_STAMP)" "$${legacy_apt_rootfs_tmp}/$(notdir $(VM_PKG_APT_ROOTFS_CONTRACT_STAMP))"; \
+						mv "$${legacy_apt_rootfs_tmp}" "$${legacy_apt_rootfs_entry}"; \
+						printf "Imported verified legacy APT-prepared rootfs cache: %s\n" "$${legacy_apt_rootfs_entry}"; \
+					fi ;; \
+			esac; \
+		fi; \
 		apt_rootfs_contract_actual=""; \
 		apt_rootfs_seed=""; \
 		if [ -s "$(VM_PKG_APT_ROOTFS_CONTRACT_STAMP)" ]; then \
@@ -282,6 +313,7 @@ internal/vm/golden-rootfs: internal/vm/release-contract
 			--compression-threads "$(VM_COMPRESSION_THREADS)" \
 			--expected-run-id "$${rootfs_run_id}"; \
 		if [ -z "$${apt_rootfs_seed}" ]; then \
+			mkdir -p "$(VM_PKG_APT_ROOTFS_CACHE_ENTRY)"; \
 			apt_rootfs_cache_tmp="$(abspath $(VM_PKG_APT_ROOTFS_CACHE)).tmp"; \
 			cp "$(VM_PKG_ROOTFS_CACHE)" "$${apt_rootfs_cache_tmp}"; \
 			mv "$${apt_rootfs_cache_tmp}" "$(VM_PKG_APT_ROOTFS_CACHE)"; \
@@ -382,6 +414,9 @@ internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs/require
 	runtime_smoke_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
 	runtime_smoke_home="$(abspath $(VM_GOLDEN_RUNTIME_SMOKE_HOME))"; \
 	runtime_smoke_runtime_dir="$${runtime_smoke_home}/runtime"; \
+	runtime_smoke_platform_agent_bin="$(abspath $(VM_MACOS_PLATFORM_AGENT_BIN))"; \
+	runtime_smoke_platform_agent_log="$${runtime_smoke_home}/logs/platform-agent-smoke.log"; \
+	runtime_smoke_platform_agent_pid=""; \
 	printf "Running golden disk runtime boot smoke: runId=%s\n" "$${runtime_smoke_run_id}"; \
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
 		--vm-home "$${runtime_smoke_home}" \
@@ -391,7 +426,20 @@ internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs/require
 		--timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; \
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
 		--vm-home "$${runtime_smoke_home}"; \
-	trap '$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control --vm-home "'"$${runtime_smoke_home}"'" stop >/dev/null 2>&1 || true; $(VM_BUILD_RUNNER) macos-runtime-wait-stopped --vm-home "'"$${runtime_smoke_home}"'" --timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; $(VM_BUILD_RUNNER) macos-runtime-require-no-running --vm-home "'"$${runtime_smoke_home}"'" || true' EXIT; \
+	cleanup_runtime_smoke() { \
+		if [ -n "$${runtime_smoke_platform_agent_pid}" ]; then \
+			kill "$${runtime_smoke_platform_agent_pid}" >/dev/null 2>&1 || true; \
+			wait "$${runtime_smoke_platform_agent_pid}" >/dev/null 2>&1 || true; \
+		fi; \
+		$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
+			--vm-home "$${runtime_smoke_home}" stop >/dev/null 2>&1 || true; \
+		$(VM_BUILD_RUNNER) macos-runtime-wait-stopped \
+			--vm-home "$${runtime_smoke_home}" \
+			--timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; \
+		$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+			--vm-home "$${runtime_smoke_home}" || true; \
+	}; \
+	trap cleanup_runtime_smoke EXIT; \
 	$(MAKE) internal/vm/init \
 		VM_HOME="$${runtime_smoke_home}"; \
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-prepare-runtime-data-disk \
@@ -412,10 +460,32 @@ internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs/require
 		--run-id "$${runtime_smoke_run_id}"; \
 	$(MAKE) internal/vm/start/detached \
 		VM_HOME="$${runtime_smoke_home}"; \
+	test -x "$${runtime_smoke_platform_agent_bin}" || { \
+		printf "error: runtime smoke Platform Agent is missing: %s\n" \
+			"$${runtime_smoke_platform_agent_bin}" >&2; \
+		exit 1; \
+	}; \
+	mkdir -p "$$(dirname "$${runtime_smoke_platform_agent_log}")"; \
+	"$${runtime_smoke_platform_agent_bin}" \
+		--runtime-home "$${runtime_smoke_home}" \
+		--runtime-control-port 0 \
+		--automation-token runtime-smoke-token \
+		--ntp-port "$(VM_GOLDEN_RUNTIME_SMOKE_NTP_PORT)" \
+		>"$${runtime_smoke_platform_agent_log}" 2>&1 & \
+	runtime_smoke_platform_agent_pid="$$!"; \
 	$(MAKE) internal/vm/wait/runtime-boot-smoke \
 		VM_HOME="$${runtime_smoke_home}" \
 		VM_RUNTIME_BOOT_SMOKE_RUN_ID="$${runtime_smoke_run_id}"; \
+	if ! kill -0 "$${runtime_smoke_platform_agent_pid}" >/dev/null 2>&1; then \
+		printf "error: runtime smoke Platform Agent exited unexpectedly\n" >&2; \
+		printf "  log=%s\n" "$${runtime_smoke_platform_agent_log}" >&2; \
+		tail -n 200 "$${runtime_smoke_platform_agent_log}" >&2; \
+		exit 1; \
+	fi; \
 	printf "Cleaning up runtime smoke VM...\n"; \
+	kill "$${runtime_smoke_platform_agent_pid}"; \
+	wait "$${runtime_smoke_platform_agent_pid}" >/dev/null 2>&1 || true; \
+	runtime_smoke_platform_agent_pid=""; \
 	$(MAKE) internal/vm/stop \
 		VM_HOME="$${runtime_smoke_home}"; \
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \

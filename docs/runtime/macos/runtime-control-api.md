@@ -274,6 +274,18 @@ Provider `start|stop|restart` command는 Platform effect와 Provider state를 �
 
 `GET /runtime/vitaldb/recorders`는 `vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며, IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. Live v2 path는 Guest/Product API의 `GET /runtime/vitaldb/recorders`와 `GET /runtime/vitaldb/beds`를 우선 소비하며, Guest read가 unavailable/failed이면 Host SQLite observation snapshot을 recorder/bed product state로 읽거나 승격하지 않습니다. Guest endpoint는 `state`, `recorders`, `observedAt`, `ready`, `recorderOnlineThresholdSeconds`, `readError`를 보존하며, default Guest composition은 `PostgresVitalDBReadModelRepository`를 통해 최신 `vitaldb_observation_snapshots` JSONB read model의 `recorders` 배열과 observation metadata를 읽습니다. Empty `recorders`는 loaded empty collection이고, adapter 없음, empty table, dependency failure, malformed collection은 다른 read state로 보존해야 합니다. Host는 `ready`나 recorder stale threshold를 추정하지 않고 Guest가 제공한 값을 사용합니다. Guest VitalDB read model provider가 구성되지 않았거나 읽을 수 없으면 recorder history는 explicit read failure/unavailable state를 보존해야 하며, `/runtime/vitaldb/observations/latest`, guest `runtime-observation.json`, Host `runtime-status.json`, Host SQLite projection을 recorder/bed fallback으로 사용하지 않습니다. Recorder-ingress status는 explicit diagnostics/counter read로 보존할 수 있지만, ingress-only recorder를 product recorder로 생성하거나 Guest/Postgres가 제공한 recorder online/stale/lastSeen/IP state를 덮어쓰면 안 됩니다. `activityTimeline`은 snapshot history에서 vrcode별 `recorders[].activity`를 시간순으로 모은 recorder activity point list입니다. 각 point는 해당 시각의 message count, byte count, room count를 담아 활동 차트를 그리기 위한 값입니다. `activityHistory.source`는 `readModelProjection`, `unavailable`, `notProvided` 중 하나입니다. `readModelProjection`의 empty timeline은 Guest/Postgres read model projection을 읽었지만 해당 recorder activity가 없었다는 뜻이고, `notProvided`는 caller가 activity projection을 제공하지 않은 construction path입니다. `readError`가 있으면 Guest read 또는 activity projection read가 실패해 `recorders`, `beds`, `activityHistory`가 incomplete일 수 있습니다. 이 상태는 관측된 recorder가 없다는 의미와 구분해야 합니다.
 
+`GET /platform`의 optional `timeAuthority`는 Host가 소유한 NTP listener contract read입니다.
+`state`는 `loaded|missing|unavailable|failed`를 보존하고, loaded document는 profile,
+source ID, listener address/port, allowed Guest address, Host clock state, stratum,
+updatedAt, issue를 제공합니다. 이전 Platform Agent가 field를 제공하지 않은 경우와
+현재 Agent가 explicit `missing`을 보고한 경우는 다릅니다.
+
+`GET /runtime/stack`의 optional `clockQuality`는 Guest가 소유한 chrony 관측입니다.
+이전 Guest는 field를 생략할 수 있지만, 새 Guest가 `synchronized`를 보고하려면 source,
+stratum, offsetMs, uncertaintyMs, lastSyncAt 증거가 완전해야 합니다.
+`unsynchronized|stale|unsupported|failed|unavailable`에는 issue가 필요합니다. Host/PWA가 이 상태를 observation timestamp나
+Host NTP listener 상태에서 추론하지 않습니다.
+
 `GET /runtime/vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
 
 `GET /runtime/vitaldb/recorders/{vrcode}/activity`는 recorder activity chart용 lazy window read model입니다. Query는 `bucketSeconds=60|300`, `period=last15Minutes|lastHour|last6Hours|last12Hours|all`, `pageIndex=<non-negative integer>`를 지원합니다. `period=all`일 때 page 하나는 12시간이며, `pageIndex`가 없으면 최신 page를 반환합니다. Runtime v2 server는 Guest Control API의 `GET /runtime/vitaldb/recorders/{vrcode}/activity`를 소비하고, Guest/Postgres read model에서 해당 `vrcode`의 first/latest bucket boundary와 선택된 window의 `since/until` 범위만 조회합니다. Host SQLite projection은 Guest provider가 없는 transitional diagnostics path일 뿐 product state owner가 아닙니다. UI는 응답의 `page.count`, `page.index`, `page.windowStartedAt`, `page.windowEndedAt`, `buckets`만 표시하고 전체 history gap을 브라우저나 SwiftUI 메모리에서 materialize하면 안 됩니다.

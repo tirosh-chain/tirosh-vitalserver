@@ -6,6 +6,7 @@ import {
   runtimeCapabilitiesSchema,
   runtimeEventHistorySchema,
   runtimeGuestControlServiceOperationSchema,
+  runtimeGuestControlStackStatusSchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
   runtimeLabSessionListSchema,
@@ -26,6 +27,68 @@ import {
 } from "./runtimeControlSchemas";
 
 describe("runtime control contract schemas", () => {
+  it("accepts complete Guest clock quality and rejects incomplete synchronized evidence", () => {
+    const stack = {
+      state: "loaded",
+      observedAt: "2026-07-28T07:25:32Z",
+      services: [],
+      probeErrors: [],
+      clockQuality: {
+        state: "synchronized",
+        observedAt: "2026-07-28T07:25:32Z",
+        source: "192.168.64.1",
+        stratum: 11,
+        offsetMs: -0.25,
+        uncertaintyMs: 0.8,
+        rootDelayMs: 0.1,
+        rootDispersionMs: 0.8,
+        lastSyncAt: "Tue Jul 28 07:25:31 2026"
+      }
+    };
+    expect(runtimeGuestControlStackStatusSchema.parse(stack)).toEqual(stack);
+    expect(() =>
+      runtimeGuestControlStackStatusSchema.parse({
+        ...stack,
+        clockQuality: {
+          state: "synchronized",
+          observedAt: "2026-07-28T07:25:32Z"
+        }
+      })
+    ).toThrow(/requires source/);
+  });
+
+  it("preserves explicit Host time authority read states", () => {
+    const base = {
+      services: platformServices(),
+      runtimeInstallationState: "present"
+    };
+    expect(
+      platformStateSchema.parse({
+        ...base,
+        timeAuthority: {
+          state: "loaded",
+          document: {
+            schemaVersion: 1,
+            profile: "helper-ntp",
+            sourceId: "helper-host-clock",
+            serverAddress: "192.168.64.1",
+            serverPort: 123,
+            state: "host-clock-only",
+            stratum: 10,
+            allowedClientAddress: "192.168.64.3",
+            updatedAt: "2026-07-28T07:25:32Z"
+          }
+        }
+      }).timeAuthority?.state
+    ).toBe("loaded");
+    expect(() =>
+      platformStateSchema.parse({
+        ...base,
+        timeAuthority: { state: "loaded" }
+      })
+    ).toThrow(/requires a document/);
+  });
+
   it("preserves explicit Recorder observability read states and rejects raw aggregate fields", () => {
     const detail = fullRecorderObservabilityDetail();
     const withoutObserver = recorderWithoutObserverDetail();

@@ -61,4 +61,3 @@ final class UpdateBootstrapCompletionReportReaderTests: XCTestCase {
 private enum ReportReaderTestError: Error {
     case denied
 }
-

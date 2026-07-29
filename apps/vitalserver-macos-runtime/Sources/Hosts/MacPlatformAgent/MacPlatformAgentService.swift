@@ -10,13 +10,16 @@ import RuntimeControl
 public final class MacPlatformAgentService {
     private let server: RuntimeControlLocalHTTPServer
     private let endpointSynchronizationLoop: RuntimeEndpointSynchronizationLoop
+    private let hostNTPController: RuntimeHostNTPController
 
     private init(
         server: RuntimeControlLocalHTTPServer,
-        endpointSynchronizationLoop: RuntimeEndpointSynchronizationLoop
+        endpointSynchronizationLoop: RuntimeEndpointSynchronizationLoop,
+        hostNTPController: RuntimeHostNTPController
     ) {
         self.server = server
         self.endpointSynchronizationLoop = endpointSynchronizationLoop
+        self.hostNTPController = hostNTPController
     }
 
     public static func live(
@@ -24,7 +27,8 @@ public final class MacPlatformAgentService {
         servesDevConsole: Bool = GeneratedRelease.testEnabled,
         port: Int? = nil,
         automationToken: String? = nil,
-        endpointSynchronizationInterval: TimeInterval = 2
+        endpointSynchronizationInterval: TimeInterval = 2,
+        ntpServerPort: UInt16 = 123
     ) throws -> MacPlatformAgentService {
         let hostStateDatabase = SQLiteHostRuntimeStateDatabase(
             url: installedPaths.runtimeStateDatabase
@@ -55,6 +59,15 @@ public final class MacPlatformAgentService {
         let runtimeEndpointStore = SQLiteRuntimeGuestAddressResourceStore(
             databaseURL: installedPaths.runtimeStateDatabase,
             lifecycleTransitionDecider: RuntimeVMLifecycleTransitionUseCase()
+        )
+        let hostNTPController = RuntimeHostNTPController(
+            guestAddress: runtimeEndpointStore.readGuestAddress,
+            interfaces: SystemRuntimeIPv4InterfaceProvider().read,
+            writeContract: RuntimeTimeAuthorityContractWriter(
+                destination: installedPaths.timeAuthority
+            ).write,
+            interval: endpointSynchronizationInterval,
+            serverPort: ntpServerPort
         )
         let endpointSynchronizationLoop = RuntimeEndpointSynchronizationLoop(
             bootstrapReader: FileRuntimeGuestAddressBootstrapReader(
@@ -148,7 +161,23 @@ public final class MacPlatformAgentService {
         )
         return MacPlatformAgentService(
             server: server,
-            endpointSynchronizationLoop: endpointSynchronizationLoop
+            endpointSynchronizationLoop: endpointSynchronizationLoop,
+            hostNTPController: hostNTPController
+        )
+    }
+
+    public static func runtimeSmoke(
+        runtimeHome: URL,
+        runtimeControlPort: Int,
+        automationToken: String,
+        ntpServerPort: UInt16
+    ) throws -> MacPlatformAgentService {
+        try live(
+            installedPaths: InstalledRuntimePaths(runtimeHome: runtimeHome),
+            servesDevConsole: false,
+            port: runtimeControlPort,
+            automationToken: automationToken,
+            ntpServerPort: ntpServerPort
         )
     }
 
@@ -165,9 +194,11 @@ public final class MacPlatformAgentService {
     public func start() throws {
         try server.start()
         endpointSynchronizationLoop.start()
+        hostNTPController.start()
     }
 
     public func stop() {
+        hostNTPController.stop()
         endpointSynchronizationLoop.stop()
         server.stop()
     }

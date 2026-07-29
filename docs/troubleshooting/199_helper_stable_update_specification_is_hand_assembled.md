@@ -1,8 +1,8 @@
 # Helper stable update specification is hand-assembled
 
-> ID: TS-199  
-> Category: Update / Packaging  
-> Owner: Helper release composition  
+> ID: TS-199
+> Category: Update / Packaging
+> Owner: Helper release composition
 > Status: active
 
 ## Symptoms

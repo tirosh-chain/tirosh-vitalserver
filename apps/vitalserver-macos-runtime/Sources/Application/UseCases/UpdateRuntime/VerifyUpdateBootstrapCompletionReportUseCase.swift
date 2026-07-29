@@ -13,7 +13,6 @@ public enum VerifyUpdateBootstrapCompletionReportError:
     case reportPathMismatch(expected: String, actual: String)
     case reportDigestMismatch(expected: String, actual: String)
 }
-
 public struct VerifyUpdateBootstrapCompletionReportUseCase {
     public init() {}
 
@@ -60,4 +59,3 @@ public struct VerifyUpdateBootstrapCompletionReportUseCase {
         }
     }
 }
-

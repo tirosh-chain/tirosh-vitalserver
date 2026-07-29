@@ -186,7 +186,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-180 | PostgreSQL migration service 추가 후 distribution review의 Guest seccomp 선언 수 계약이 이전 값으로 남음 | Packaging / Guest containers | resolved | [Distribution review rejects the PostgreSQL migration service seccomp contract](180_distribution_review_compose_seccomp_count.md) |
 | TS-181 | 신규 관측은 202이지만 1 MiB 초과 Recorder 초기 backlog가 nginx HTML 413으로 거절됨 | Recorder observability / Host proxy / Guest edge | active | [Recorder observability backlog is rejected by nginx 413](181_recorder-observability-backlog-nginx-413.md) |
 | TS-182 | vNext C76 PostgreSQL backup/restore CLI가 설정 URL 대신 local socket과 OS role로 접속함 | Data store / Guest bootstrap | active | [vNext PostgreSQL backup or restore CLI connects to the local socket](182_vnext_postgresql_backup_cli_uses_local_socket.md) |
-| TS-183 | 제품 소스 변경마다 golden rootfs APT를 다시 실행함 | Packaging / Local development / Guest bootstrap | implemented | [Golden rootfs가 소스 변경마다 APT를 다시 실행함](183_golden-rootfs-repeats-apt-after-source-change.md) |
+| TS-183 | 소스·branch 변경 뒤 golden rootfs APT를 다시 실행함 | Packaging / Local development / Guest bootstrap | implemented | [Golden rootfs가 소스·branch 변경 뒤 APT를 다시 실행함](183_golden-rootfs-repeats-apt-after-source-change.md) |
 | TS-184 | Clean uninstall이 configured external Vital files directory 전체를 삭제할 수 있음 | Uninstall / Packaging | implemented; package verification pending | [Clean uninstall must preserve the configured external Vital files directory](184_clean-uninstall-external-vital-files-directory-deletion.md) |
 | TS-185 | 공식 VM Image Update가 updater bridge로 잘못 표시되어 normal apply에서 거부됨 | Update / Packaging | implemented; apply-smoke pending | [VM Image Update is incorrectly marked as requiring an Updater bridge](185_vm-image-update-inferred-two-phase-bridge.md) |
 | TS-186 | Recorder send_data가 durable admission 전에 억제되어 waveform/activity가 누락될 수 있음 | Recorder ingress / Data delivery | active | [Recorder send_data가 durable admission 전에 억제됨](186_recorder-send-data-suppressed-before-durable-admission.md) |
@@ -208,6 +208,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-210 | Helper update UI가 durable bootstrap journal 대신 로컬 실행 상태를 추론함 | Update / Platform Agent / Helper UI | resolved | [Helper update UI infers bootstrap state](210_helper_update_ui_infers_bootstrap_state.md) |
 | TS-214 | observer 미설치 Recorder의 명시적 `notReported` 문서가 필수 필드를 누락해 Details decode 실패 | Recorder observability / Runtime Control | implemented; package verification pending | [Recorder without observer reports a detail decode failure](214_recorder-without-observer-detail-decode-failure.md) |
 | TS-215 | Beds 탭이 Bed read failure를 숨기고 병상 중심 열을 잘라 표시함 | macOS Helper / VitalDB Beds / Presentation | implemented; package verification pending | [Beds tab hides Bed read state and clips bed-focused columns](215_beds-tab-hides-read-and-clips-bed-state.md) |
+| TS-216 | DMG runtime smoke가 Host Platform Agent 없이 실행되어 Guest NTP 실패를 통과시킴 | Packaging / Runtime health / Network | implemented; package verification passed | [NTP failure passes runtime boot smoke](216_ntp_failure_passes-runtime-boot-smoke.md) |
 
 ## Follow-up 규칙
 

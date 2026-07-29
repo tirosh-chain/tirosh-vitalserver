@@ -62,6 +62,7 @@ class RuntimeCommand(StrEnum):
     VITALSERVER_HEALTH = "tirosh-vitalserver-health"
     VITALSERVER_COMPOSE = "tirosh-vitalserver-compose"
     VITALSERVER_SYNC_HOST_TIME = "tirosh-vitalserver-sync-host-time"
+    VITALSERVER_APPLY_TIME_AUTHORITY = "tirosh-vitalserver-apply-time-authority"
     VITALSERVER_BOOTSTRAP = "tirosh-vitalserver-bootstrap"
     VITALSERVER_ROOTFS_SMOKE = "tirosh-vitalserver-rootfs-smoke"
     VITALSERVER_RUNTIME_BOOT_SMOKE = "tirosh-vitalserver-runtime-boot-smoke"

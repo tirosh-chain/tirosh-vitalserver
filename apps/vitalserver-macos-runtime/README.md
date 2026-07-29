@@ -137,12 +137,19 @@ endpoint를 probe하지 않습니다. Guest도 `apt-get update`와 `apt-get inst
 
 ```text
 .tmp/vitalserver-vm-pkg/
-  apt-prepared-rootfs.raw.gz
-  apt-prepared-rootfs.raw.gz.sha256
-  apt-prepared-rootfs.contract
+  apt-prepared-rootfs/
+    <contract-fingerprint>/
+      apt-prepared-rootfs.raw.gz
+      apt-prepared-rootfs.raw.gz.sha256
+      apt-prepared-rootfs.contract
   rootfs-base.raw.gz
   rootfs-base.contract
 ```
+
+APT-prepared cache는 contract fingerprint별로 보관하므로 서로 다른 branch나
+package 목록의 cache가 같은 파일을 덮어쓰지 않습니다. 과거 고정 경로의 cache는
+checksum과 contract stamp가 모두 유효할 때 해당 fingerprint 디렉터리로 복사되며,
+원본은 자동 삭제하지 않습니다.
 
 APT package 추가·삭제는
 `Support/Guest/rootfs-apt-packages.txt`에서 수행합니다. snapshot source,
@@ -282,7 +289,7 @@ apps/vitalserver-macos-runtime/release-dev.json
 
 기존 `schemaVersion: 3` update bundle publisher/engine은 전환 기간 동안 legacy 경로로만 남아 있습니다. 그 serializer가 요구하는 `minUpdaterVersion`은 제품 release source of truth가 아니며 현재 release/API/UI 계약으로 올리지 않습니다. `helperVersion`은 Apple/package-safe numeric version이고, `releaseLabel`은 `0.2.2-dev`처럼 artifact, staging, backup, installed version 표시에 쓰는 identity입니다.
 
-현재 `make dist/update/*` release composition은 real layer artifact/executor wiring이 완료될 때까지 legacy publisher를 사용합니다. Stable bootstrap verifier/apply command가 존재한다는 사실만으로 이 target의 산출물을 stable release candidate로 취급하지 않습니다. 완료 조건은 TS-199의 Helper-owned specification과 실제 Container, Guest Runtime, Host Platform payload closure가 같은 signed bundle로 조립되는 것입니다.
+현재 `make dist/update/*` release composition은 Helper-owned Product Update Specification과 실제 Container → Guest Runtime → Host Platform artifact/executor closure를 하나의 signed stable bootstrap bundle로 조립합니다. Release composition은 signing key, 공개 trust store, 각 layer의 apply/rollback artifact와 executor를 명시적 입력으로 요구하며, 누락된 입력을 legacy publisher나 기본값으로 대체하지 않습니다. 기존 schema-3 publisher는 `make dist/image-update/*`의 VM Image Update 경계에만 남아 있습니다.
 
 `components` map은 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경된 계층을 드러냅니다. Helper UI와 VM Driver는 platform-specific이고, Updater/Supervisor는 host platform에 붙어 있으며, Service Stack과 VM Image는 guest/service 쪽 책임으로 구분합니다.
 

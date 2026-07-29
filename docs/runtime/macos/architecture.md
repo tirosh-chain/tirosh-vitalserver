@@ -753,7 +753,7 @@ VM process start
 
 `host-time.json` writer는 service-control command가 아니라 실제 `vitalserver-vm start` entrypoint에 둡니다. launchd `RunAtLoad`/`KeepAlive`, watchdog, settings restart, installer, 수동 start 중 어느 경로도 이 entrypoint를 우회해 VM을 실행하지 않습니다. Guest의 one-shot sync는 missing/invalid/write failure를 실패로 유지하며, Guest 현재 시각이나 NTP를 boot contract fallback으로 사용하지 않습니다.
 
-지속 동기화에는 NTP가 적합합니다. 초기 제품 경계는 macOS system clock을 authoritative Host clock으로 유지하고, 별도 Host NTP daemon은 그 시각을 VM gateway address와 운영자가 명시한 LAN address에 UDP 123으로 제공합니다. Guest는 explicit Host gateway를 단일 local source로 사용합니다. 외부 Vital Recorder도 설정된 Host LAN address를 사용하므로 Host/Guest/Recorder timestamp 기준이 하나가 됩니다.
+지속 동기화에는 NTP가 적합합니다. 목표 제품 경계는 macOS system clock을 authoritative Host clock으로 유지하고, 별도 Host NTP service는 그 시각을 VM gateway address와 운영자가 명시한 LAN address에 UDP 123으로 제공합니다. Guest는 explicit Host gateway를 단일 local source로 사용합니다. 외부 Vital Recorder도 설정된 Host LAN address를 사용하므로 Host/Guest/Recorder timestamp 기준이 하나가 됩니다.
 
 NTP 구현은 다음 조건을 만족해야 합니다.
 
@@ -762,13 +762,30 @@ NTP 구현은 다음 조건을 만족해야 합니다.
 | clock steering owner | macOS system time owner와 bundled daemon이 동시에 Host clock을 조정하지 않음 |
 | listen address | `0.0.0.0` 추정값이 아니라 VM gateway와 운영자가 저장한 LAN address |
 | client access | VM CIDR와 운영자가 저장한 device CIDR allowlist만 허용 |
-| source state | `synchronized`, `unsynchronized`, `failed`, `unavailable`을 분리해 Runtime Control에 제공 |
+| source state | `synchronized`, `host-clock-only`, `unsynchronized`, `failed`, `unavailable`을 분리해 Runtime Control에 제공 |
 | Guest startup | boot contract 적용 후 NTP client 시작; 초기 큰 offset step은 Docker/Postgres 시작 전에만 허용 |
 | runtime correction | 정상 운영 중에는 slew를 기본으로 하고 임의 backward step을 허용하지 않음 |
 | external service | enable, listen address, allowed CIDR, source mode가 모두 explicit settings이며 missing config를 disabled로 해석하지 않음 |
 | diagnostics | source, stratum, offset, last update, listen endpoints, rejected/failed state를 JSONL history와 current JSON diagnostics로 기록 |
 
-Host daemon 후보는 macOS에서 server socket과 CIDR allowlist를 명시적으로 지원하는 구현을 package에 고정해야 합니다. 예를 들어 ntpd-rs는 macOS 수동 service 구성을 지원하고, interface별 UDP 123 listener와 allowlist를 제공합니다. Guest는 Ubuntu에서 chrony/chronyd를 client로 사용해 초기 제한된 `makestep`과 이후 slew 정책을 분리할 수 있습니다. 선택한 daemon/version/package digest와 설정 schema는 VM/rootfs compile input으로 고정하고, 설치 시 network 접근으로 보정하지 않습니다.
+Helper 0.2의 첫 구현 slice는 root LaunchDaemon인 Platform Agent 내부의 작은 RFC
+5905 UDP server를 사용합니다. Platform Agent는 SQLite Guest address owner가 제공한
+주소와 Host interface 목록을 순수 policy에 전달하고, 정확히 하나의 shared subnet
+interface가 선택됐을 때만 그 주소의 UDP 123을 엽니다. Client는 해당 Guest 주소
+하나로 제한하며, listener 상태는 shared bootstrap contract인
+`time-authority.json`으로 전달합니다. Host upstream 동기화는 아직 증명하지 않으므로
+stratum 10의 `host-clock-only`로 명시합니다.
+
+Guest rootfs에는 chrony/chronyd를 package input으로 고정합니다. Guest Tools timer는
+`time-authority.json`을 읽어 정확한 server address와 port만 chrony 설정에 쓰고,
+설정 변경 때만 service를 재시작합니다. `/runtime/stack.clockQuality`는
+`chronyc tracking -n`의 source, stratum, offset, root delay/dispersion, last sync를
+Guest-owned 증거로 제공합니다. 계약 missing/decode/command failure를 정상 상태로
+바꾸지 않습니다.
+
+Recorder LAN listener와 device CIDR/allowlist는 운영자가 저장한 설정이 추가된 후의
+후속 slice입니다. 현재 Guest endpoint를 Recorder LAN에 자동 재사용하거나 관측된
+Recorder IP에서 allowlist를 추측하지 않습니다.
 
 참고: [ntpd-rs server setup](https://docs.ntpd-rs.pendulum-project.org/guide/server-setup/), [ntpd-rs macOS installation](https://docs.ntpd-rs.pendulum-project.org/guide/installation/), [chrony FAQ](https://chrony-project.org/faq.html).
 

@@ -5869,11 +5869,200 @@
           "vitalFilesDisk": {
             "$ref": "#/components/schemas/ResourceUsage"
           },
+          "clockQuality": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeClockQuality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "probeErrors": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RuntimeGuestControlProbeError"
             }
+          }
+        }
+      },
+      "RuntimeClockQuality": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "state",
+          "observedAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "synchronizing",
+              "synchronized",
+              "unsynchronized",
+              "stale",
+              "unsupported",
+              "failed",
+              "unavailable"
+            ]
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stratum": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "offsetMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "uncertaintyMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rootDelayMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "rootDispersionMs": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lastSyncAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "issue": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeTimeAuthorityDocument": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "schemaVersion",
+          "profile",
+          "sourceId",
+          "state",
+          "updatedAt"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer"
+          },
+          "profile": {
+            "type": "string",
+            "enum": [
+              "helper-ntp",
+              "enterprise-ntp"
+            ]
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "serverAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serverPort": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "synchronizing",
+              "synchronized",
+              "host-clock-only",
+              "unsynchronized",
+              "stale",
+              "failed",
+              "unavailable"
+            ]
+          },
+          "stratum": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "allowedClientAddress": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "issue": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeTimeAuthorityResourceRead": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "loaded",
+              "missing",
+              "unavailable",
+              "failed"
+            ]
+          },
+          "document": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTimeAuthorityDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -7271,6 +7460,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "timeAuthority": {
+            "$ref": "#/components/schemas/RuntimeTimeAuthorityResourceRead"
           }
         },
         "not": {

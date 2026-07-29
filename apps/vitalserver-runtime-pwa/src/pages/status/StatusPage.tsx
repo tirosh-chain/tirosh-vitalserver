@@ -210,6 +210,44 @@ function StatusOverview({
         />
       </Panel>
 
+      <Panel title="Time synchronization">
+        <KeyValueRows
+          rows={[
+            {
+              label: "Host time authority",
+              value: formatHostTimeAuthority(status.timeAuthority),
+              detail: status.timeAuthority?.document
+                ? joinDetails(
+                    `Source ${status.timeAuthority.document.sourceId}`,
+                    `Stratum ${status.timeAuthority.document.stratum ?? NOT_REPORTED}`,
+                    `Updated ${formatLocalDateTime(status.timeAuthority.document.updatedAt)}`
+                  )
+                : status.timeAuthority?.readError ?? undefined
+            },
+            {
+              label: "Guest clock",
+              value: runtimeStackQuery.isError
+                ? "Read failed"
+                : runtimeStack?.clockQuality?.state ?? NOT_REPORTED,
+              detail: runtimeStack?.clockQuality
+                ? joinDetails(
+                    runtimeStack.clockQuality.source
+                      ? `Source ${runtimeStack.clockQuality.source}`
+                      : undefined,
+                    runtimeStack.clockQuality.offsetMs != null
+                      ? `Offset ${formatClockOffset(runtimeStack.clockQuality.offsetMs)}`
+                      : undefined,
+                    runtimeStack.clockQuality.uncertaintyMs != null
+                      ? `Uncertainty ${formatClockOffset(runtimeStack.clockQuality.uncertaintyMs)}`
+                      : undefined,
+                    runtimeStack.clockQuality.issue ?? undefined
+                  )
+                : undefined
+            }
+          ]}
+        />
+      </Panel>
+
       {recorderIngressDetailRows.length > 0 ? (
         <Panel title="Recorder ingress">
           <KeyValueRows rows={recorderIngressDetailRows} />
@@ -250,6 +288,23 @@ function StatusOverview({
       </Panel>
     </div>
   );
+}
+
+function formatHostTimeAuthority(
+  read: PlatformState["timeAuthority"]
+): string {
+  if (!read) {
+    return NOT_REPORTED;
+  }
+  if (read.state !== "loaded") {
+    return read.state;
+  }
+  return read.document?.state ?? "Invalid contract";
+}
+
+function formatClockOffset(offsetMs: number): string {
+  const sign = offsetMs > 0 ? "+" : "";
+  return `${sign}${offsetMs.toFixed(3)} ms`;
 }
 
 function dataDirectoryPresentation(

@@ -109,6 +109,7 @@ from tirosh_guest_tools.infrastructure.system_install import (
     install_guest_tools_config,
     install_guest_tools_runtime,
 )
+from tirosh_guest_tools.infrastructure.time_authority import apply_time_authority
 
 
 def vitalserver_update_owner_worker() -> int:
@@ -282,6 +283,15 @@ def vitalserver_sync_host_time() -> int:
     )
     parser.parse_args()
     sync_host_time()
+    return 0
+
+
+def vitalserver_apply_time_authority() -> int:
+    parser = argparse.ArgumentParser(
+        description="Apply the explicit Host time authority to Guest chrony."
+    )
+    parser.parse_args()
+    apply_time_authority()
     return 0
 
 

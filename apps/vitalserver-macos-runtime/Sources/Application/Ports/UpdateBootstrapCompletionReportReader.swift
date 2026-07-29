@@ -10,11 +10,9 @@ public enum UpdateBootstrapCompletionReportReadResult:
     case readFailed(path: String, reason: String)
     case unexpectedPathState(path: String, state: String)
 }
-
 public protocol UpdateBootstrapCompletionReportReading: Sendable {
     func readCompletionReport(
         relativePath: String,
         beneath stagedRoot: URL
     ) -> UpdateBootstrapCompletionReportReadResult
 }
-

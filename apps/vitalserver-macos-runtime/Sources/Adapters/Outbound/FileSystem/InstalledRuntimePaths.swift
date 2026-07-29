@@ -360,6 +360,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         deployDirectory.appendingPathComponent(RuntimeHostContractFileNames.hostTime)
     }
 
+    public var timeAuthority: URL {
+        deployDirectory.appendingPathComponent(RuntimeHostContractFileNames.timeAuthority)
+    }
+
     public var proxyNginxPID: URL {
         nginxLogsDirectory.appendingPathComponent("nginx.pid")
     }

@@ -537,11 +537,11 @@ VM Image Update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치
 
 `guest-deploy.tar.gz` 안에 Docker image bundle이 포함되어도, 그것은 “host shared directory에 새 image tar가 놓였다”는 뜻입니다. VM 안의 Docker daemon에 image가 실제로 load되고, 기존 container가 새 image로 recreate되는 것은 별도의 guest-side activation입니다.
 
-따라서 `apps/vitalserver-macos-runtime/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 0.2.1에서는 Helper Update 탭과 stable CLI apply가 차단되므로 실제 반영은 installed dev launcher의 명시적 개발 apply에만 허용됩니다.
+따라서 `apps/vitalserver-macos-runtime/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 0.2.2 stable Product Update에서는 Guest Runtime layer owner가 signed specification과 authenticated artifact를 적용합니다. 아래 legacy apply 설명은 0.2.1과 schema-3 진단을 위해서만 남깁니다.
 
-## Apply 과정
+## Historical: Legacy schema-3 Apply 과정
 
-아래 lifecycle은 publisher trust gate를 통과한 apply에만 실행됩니다. 0.2.1에서는 installed dev launcher가 명시적 개발 intent를 받은 경우뿐입니다. Helper Update 탭과 Runtime Control API는 이 lifecycle을 시작하지 않습니다.
+아래 lifecycle은 stable bootstrap 이전의 schema-3 apply 흐름입니다. 0.2.1에서는 installed dev launcher가 명시적 개발 intent를 받은 경우에만 실행됐고, Helper Update 탭과 Runtime Control API는 이 lifecycle을 시작하지 않았습니다. 0.2.2의 현재 Product Update 흐름은 앞의 `Installed field proof`와 signed three-layer specification을 기준으로 합니다.
 
 ```text
 1. check bundle integrity; publisher authenticity remains unverified

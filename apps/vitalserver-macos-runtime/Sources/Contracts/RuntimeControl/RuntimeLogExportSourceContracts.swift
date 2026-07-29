@@ -25,6 +25,7 @@ public enum RuntimeLogExportSupplementalSourceID: String, CaseIterable, Sendable
     case vmConfig
     case runtimeVersion
     case guestRuntimeConfig
+    case timeAuthority
     case proxyLaunchDaemon
     case proxyNginxConfig
     case proxyNginxPid
@@ -94,6 +95,7 @@ public enum RuntimeLogExportSourceContract {
             .init(sourceID: .vmConfig, relativeDestination: "diagnostics/runtime/vm-config.json"),
             .init(sourceID: .runtimeVersion, relativeDestination: "diagnostics/runtime/runtime-version.json"),
             .init(sourceID: .guestRuntimeConfig, relativeDestination: "diagnostics/guest/runtime-config.json"),
+            .init(sourceID: .timeAuthority, relativeDestination: "diagnostics/time/time-authority.json"),
             .init(sourceID: .proxyLaunchDaemon, relativeDestination: "diagnostics/host/ai.tirosh.vitalserver.helper.proxy.plist"),
             .init(sourceID: .proxyNginxConfig, relativeDestination: "diagnostics/host/vitalserver-nginx.conf"),
             .init(sourceID: .proxyNginxPid, relativeDestination: "diagnostics/host/nginx.pid"),

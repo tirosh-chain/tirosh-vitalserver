@@ -674,6 +674,7 @@ final class RuntimeControlContractsTests: XCTestCase {
 
     func testRuntimeLogExportSourceContractOwnsBundleRelativeDestinations() {
         let destinations = Set(RuntimeLogExportSourceContract.supplementalDestinations().map(\.relativeDestination))
+        XCTAssertTrue(destinations.contains("diagnostics/time/time-authority.json"))
         let rotated = RuntimeLogExportSourceContract.rotatedSupplementalDestinations()
 
         XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeDiagnosticsArtifactFileNames.runtimeStatus)"))

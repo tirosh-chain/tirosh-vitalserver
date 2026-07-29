@@ -10,7 +10,6 @@ public enum ValidateUpdateBootstrapRecoveryClosureError:
     case verificationDigestMismatch(expected: String, actual: String)
     case verifiedArtifactSetMismatch(expected: [String], actual: [String])
 }
-
 public struct ValidateUpdateBootstrapRecoveryClosureUseCase {
     public init() {}
 
@@ -51,4 +50,3 @@ public struct ValidateUpdateBootstrapRecoveryClosureUseCase {
         }
     }
 }
-
