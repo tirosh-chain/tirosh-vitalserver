@@ -74,6 +74,36 @@ def test_clean_rootfs_compile_reuses_only_verified_apt_prepared_seed() -> None:
     assert "shasum -a 256 -c" in recipe
     assert 'VM_ROOTFS_SEED="$${apt_rootfs_seed}"' in recipe
     assert "Published verified APT-prepared rootfs cache" in recipe
+    assert (
+        "VM_PKG_APT_ROOTFS_CACHE_ENTRY = "
+        "$(VM_PKG_APT_ROOTFS_CACHE_ROOT)/"
+        "$(VM_PKG_APT_ROOTFS_CONTRACT_FINGERPRINT)"
+    ) in makefile
+    assert (
+        "VM_PKG_APT_ROOTFS_CACHE = "
+        "$(VM_PKG_APT_ROOTFS_CACHE_ENTRY)/apt-prepared-rootfs.raw.gz"
+    ) in makefile
+
+
+def test_apt_prepared_cache_imports_verified_legacy_slot_without_overwriting_it() -> None:
+    makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    recipe = target_recipe(makefile, "internal/vm/golden-rootfs")
+
+    assert (
+        "VM_PKG_APT_ROOTFS_LEGACY_CACHE ?= "
+        "$(VM_PKG_BUILD_DIR)/apt-prepared-rootfs.raw.gz"
+    ) in makefile
+    assert_in_order(
+        recipe,
+        (
+            "shasum -a 256 -c",
+            'legacy_apt_rootfs_tmp="$$(mktemp -d',
+            'cp "$(VM_PKG_APT_ROOTFS_LEGACY_CACHE)"',
+            'mv "$${legacy_apt_rootfs_tmp}" "$${legacy_apt_rootfs_entry}"',
+            "Imported verified legacy APT-prepared rootfs cache",
+        ),
+    )
+    assert "rm -f \"$(VM_PKG_APT_ROOTFS_LEGACY_CACHE)\"" not in recipe
 
 
 def test_rootfs_seed_is_restored_after_fresh_ubuntu_disk_creation() -> None:
