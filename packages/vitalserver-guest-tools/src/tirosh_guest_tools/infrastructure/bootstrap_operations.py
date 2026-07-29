@@ -200,6 +200,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-runtime-observation",
         "tirosh-vitalserver-compose",
         "tirosh-vitalserver-sync-host-time",
+        "tirosh-vitalserver-apply-time-authority",
         "tirosh-vitalserver-health",
         "tirosh-vitalserver-runtime-boot-smoke",
         "tirosh-vitalserver-runtime-data-prepare",
@@ -217,6 +218,8 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-runtime-observation.service",
         "tirosh-vitalserver-compose.service",
         "tirosh-vitalserver-sync-host-time.service",
+        "tirosh-vitalserver-apply-time-authority.service",
+        "tirosh-vitalserver-apply-time-authority.timer",
         "tirosh-vitalserver-container-logs.service",
         "tirosh-vitalserver-guest-control-api.service",
     )
@@ -259,6 +262,11 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-guest-observability.service",
     ):
         systemctl("enable", service)
+    systemctl(
+        "enable",
+        "--now",
+        "tirosh-vitalserver-apply-time-authority.timer",
+    )
 
 
 def write_initial_runtime_observation() -> None:

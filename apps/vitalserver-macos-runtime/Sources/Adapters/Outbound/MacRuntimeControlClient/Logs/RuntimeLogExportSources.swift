@@ -71,6 +71,8 @@ struct RuntimeLogExportSupplementalSource {
             return installed.runtimeDirectory.appendingPathComponent(RuntimePackageArtifactFileNames.runtimeVersion)
         case .guestRuntimeConfig:
             return installed.guestRuntimeConfig
+        case .timeAuthority:
+            return installed.timeAuthority
         case .proxyLaunchDaemon:
             return installed.proxyLaunchDaemon
         case .proxyNginxConfig:

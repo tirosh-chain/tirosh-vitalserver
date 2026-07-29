@@ -1,6 +1,7 @@
 avahi-daemon
 busybox-static
 ca-certificates
+chrony
 cloud-guest-utils
 curl
 docker.io
