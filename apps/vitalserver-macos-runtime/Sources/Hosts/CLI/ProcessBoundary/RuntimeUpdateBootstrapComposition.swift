@@ -35,6 +35,32 @@ enum RuntimeUpdateBootstrapCompositionError: Error, Equatable {
     case platformOperationContractInvalid(reason: String)
 }
 
+enum InstalledRootVerifierIdentity {
+    static let uid: UInt32 = 0
+    static let euid: UInt32 = 0
+}
+
+struct InstalledRootVerificationReceiptProofInputs: Equatable {
+    let expectedResolvedRuntimeHome: String
+    let expectedTrustStorePath: String
+    let receiptURL: URL
+}
+
+enum InstalledRootVerificationReceiptProofOwner {
+    static func inputs(
+        updateId: String
+    ) -> InstalledRootVerificationReceiptProofInputs {
+        let installed = InstalledRuntimePaths.defaultInstalled
+        return InstalledRootVerificationReceiptProofInputs(
+            expectedResolvedRuntimeHome: installed.runtimeHome.path,
+            expectedTrustStorePath: installed.updateBootstrapTrustStore.path,
+            receiptURL: installed.updateBootstrapVerificationReceipt(
+                updateId: updateId
+            )
+        )
+    }
+}
+
 extension RuntimeLifecycle {
     func verifyUpdateBootstrap(_ bundleURL: URL) throws {
         let materialized = try materializeRuntimeUpdateBundle(bundleURL)
@@ -42,6 +68,7 @@ extension RuntimeLifecycle {
             let verified = try loadAndVerifyUpdateBootstrapClosure(
                 bundleRoot: materialized.bundleURL
             )
+            try persistUpdateBootstrapVerificationReceipt(verified)
             try cleanupMaterializedUpdateBootstrapBundle(materialized)
             print("update bootstrap verified")
             print("update: \(verified.envelope.id)")
@@ -560,6 +587,21 @@ extension RuntimeLifecycle {
             journal: platformJournal,
             report: report
         )
+        let verificationReceiptProof =
+            installedRootVerificationReceiptProofInputs(updateId: journal.id)
+        let verificationReceipt = try proof.proveVerificationReceipt(
+            updateId: journal.id,
+            canonicalPayloadSHA256: journal.bootstrapSignedSHA256,
+            expectedResolvedRuntimeHome:
+                verificationReceiptProof.expectedResolvedRuntimeHome,
+            expectedTrustStorePath:
+                verificationReceiptProof.expectedTrustStorePath,
+            expectedUid: InstalledRootVerifierIdentity.uid,
+            expectedEuid: InstalledRootVerifierIdentity.euid,
+            receiptRead: updateBootstrapVerificationReceiptReader().read(
+                at: verificationReceiptProof.receiptURL
+            )
+        )
         try proof.proveGuestControl(
             invocation: input.invocation,
             guestAddressRead: guestAddressProvider.readGuestAddress()
@@ -601,6 +643,11 @@ extension RuntimeLifecycle {
         print("journal: \(proven.id)")
         print("state: \(proven.state.rawValue)")
         print("expectation: \(command.expectation.rawValue)")
+        print("verifyCommand: \(verificationReceipt.command)")
+        print("verifyRuntimeHome: \(verificationReceipt.resolvedRuntimeHome)")
+        print("verifyTrustStore: \(verificationReceipt.trustStorePath)")
+        print("verifyUid: \(verificationReceipt.uid)")
+        print("verifyEuid: \(verificationReceipt.euid)")
         print("guestControlBaseURL: \(input.invocation.guestControlBaseURL)")
         print(
             "hostPlatformOperation: \(hostPlatformOperation.id)"
@@ -744,6 +791,58 @@ extension RuntimeLifecycle {
             Data(
                 "\(invocation.updateId)\u{0}\(invocation.operationId)".utf8
             )
+        )
+    }
+
+    func installedRootVerificationReceiptProofInputs(
+        updateId: String
+    ) -> InstalledRootVerificationReceiptProofInputs {
+        InstalledRootVerificationReceiptProofOwner.inputs(updateId: updateId)
+    }
+
+    private func persistUpdateBootstrapVerificationReceipt(
+        _ verified: (
+            envelope: UpdateBootstrapEnvelope,
+            verification: VerifiedUpdateBootstrapClosure
+        )
+    ) throws {
+        let identity = SystemProcessUserIdentityReader().read()
+        let receipt = UpdateBootstrapVerificationReceipt(
+            schemaVersion: UpdateBootstrapVerificationReceiptContract
+                .schemaVersion,
+            command: UpdateBootstrapVerificationReceiptContract.command,
+            updateId: verified.verification.updateId,
+            canonicalPayloadSHA256: verified.verification.canonicalPayloadSHA256,
+            resolvedRuntimeHome: installedPaths.runtimeHome.path,
+            trustStorePath: installedPaths.updateBootstrapTrustStore.path,
+            observedAt: UpdateBootstrapCanonicalTimestampSyntax.format(
+                clock.now
+            ),
+            uid: identity.uid,
+            euid: identity.euid
+        )
+        try UpdateBootstrapVerificationReceiptWriter(
+            operations: UpdateBootstrapVerificationReceiptWriteOperations(
+                pathState: fileStore.pathState,
+                createDirectory: fileStore.createDirectory,
+                writeData: { data, url, options in
+                    try fileStore.writeData(data, to: url, options: options)
+                },
+                validate: UpdateBootstrapVerificationReceiptPolicy.validate
+            )
+        ).write(
+            receipt,
+            to: installedPaths.updateBootstrapVerificationReceipt(
+                updateId: receipt.updateId
+            )
+        )
+    }
+
+    private func updateBootstrapVerificationReceiptReader(
+    ) -> UpdateBootstrapVerificationReceiptReader {
+        UpdateBootstrapVerificationReceiptReader(
+            pathState: fileStore.pathState,
+            readData: fileStore.readData
         )
     }
 

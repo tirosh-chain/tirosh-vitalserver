@@ -532,22 +532,53 @@ proof command는 명시된 timeout과 poll interval 동안 Host owner SQLite jou
 terminal state를 기다립니다. 이후 digest로 고정된 execution report와 signed
 specification을 검증하고, Runtime Control `/platform/operations`가 제공한
 stable update journal이 Host owner journal과 동일한지 확인합니다. 이어서
-staged `handoff/invocation.json`의 required `guestControlBaseURL`을 현재
-Host-owned Guest address observation과 상관합니다. Host endpoint 계약은
-HTTP와 port `18330`입니다. omitted/wrong port는 host mismatch와 다른
-오류입니다. signed Host Platform effect configuration이 가리키는 Host
-Platform SQLite journal에서 `<update-id>.host-platform.apply` operation과
-active installation identity를 읽습니다. `--expect succeeded`는 phase
-`completed`와 target release로의 settlement를 요구합니다.
-`--expect failed-rolled-back`은 `failed` 또는 `compensated`를 서로 다른
-terminal로 허용하고, active installation이 `previousRelease`와 원래
-installation revision에 남아 있으며 `activationOperationId`가 이
-operation이 아닌지로 복원을 증명합니다. missing, invalid,
-failed, stale, mismatch, compensated, completed는 서로 다른 오류입니다.
+`verify-update-bootstrap`이 성공 후에 남긴 verification receipt를 현재
+update identity와 상관합니다. proof는 `InstalledRuntimePaths.defaultInstalled`의 runtime home과 trust
+store, canonical `observedAt`, 그리고 root `uid=0`/`euid=0`을 요구합니다.
+receipt는 그 product-installed path에서 읽습니다. proof process의
+`VITALSERVER_VM_HOME`으로 기댓값을 바꾸지 않습니다. 이것은 그 bundle에
+대한 root `verify-update-bootstrap`가 product-installed VM home에서 실행된
+증거입니다. MacPlatformAgent caller 증거가 아니며, public CLI나 apply-smoke가
+같은 receipt를 만들 수 있습니다. receipt path는
+`/Library/Application Support/VitalServerHelper/update-bootstrap-verification/<update-id>.json`
+입니다. staging directory와 분리되어 있으므로 apply가 bundle을 교체해도
+receipt를 지우지 않습니다. digest는 같은 `updateId`로 payload가 바뀐
+bundle의 이전 receipt를 거부합니다. 같은 updateId와 digest의 이전 root
+verify는 현재 apply의 새 invocation을 증명하지 않습니다. missing,
+unreadable, permission failure, decode failure, identity/digest mismatch,
+wrong runtime home, uid/euid mismatch, invalid contract는 서로 다른
+오류입니다. 그 다음 staged `handoff/invocation.json`의 required
+`guestControlBaseURL`을 현재 Host-owned Guest address observation과
+상관합니다. Host endpoint 계약은 HTTP와 port `18330`입니다. omitted/wrong
+port는 host mismatch와 다른 오류입니다. signed Host Platform effect
+configuration이 가리키는 Host Platform SQLite journal에서
+`<update-id>.host-platform.apply` operation과 active installation identity를
+읽습니다. `--expect succeeded`는 phase `completed`와 target release로의
+settlement를 요구합니다. `--expect failed-rolled-back`은 `failed` 또는
+`compensated`를 서로 다른 terminal로 허용하고, active installation이
+`previousRelease`와 원래 installation revision에 남아 있으며
+`activationOperationId`가 이 operation이 아닌지로 복원을 증명합니다.
+missing, invalid, failed, stale, mismatch, compensated, completed는 서로
+다른 오류입니다.
 
-`VITALSERVER_VM_HOME`이 Platform Agent verify 경로에 전달됐는지는 아직
-field-provable하지 않습니다. verify invocation은 그 환경 값을 지속 계약으로
-남기지 않으므로, 성공한 trust-store 읽기나 process 부재로 추론하지 않습니다.
+`verify-update-bootstrap`은 성공한 검증 뒤에 verification receipt를
+원자적으로 기록합니다. 문서는 `schemaVersion`, `command=verify-update-bootstrap`,
+`updateId`, `canonicalPayloadSHA256`, `resolvedRuntimeHome`, `trustStorePath`,
+canonical UTC `observedAt`, `uid`, `euid`를 갖습니다. `uid`/`euid`는
+process identity adapter가 제공하며 Domain은 완전한 기댓값만 비교합니다.
+installed proof는 root identity `uid=0`/`euid=0`과 product-installed VM home
+`/Library/Application Support/VitalServerHelper/vm`을 요구합니다. verify는
+자신이 해석한 `InstalledRuntimePaths`에 receipt를 씁니다. 잘못된
+`VITALSERVER_VM_HOME`으로 실행된 verify는 canonical installed receipt 위치가
+아닌 곳에 쓰거나 다른 home을 기록하므로 installed proof를 통과할 수
+없습니다. apply-smoke의 `runtime verify-update-bootstrap`은 prove가 필수
+receipt를 갖도록 두는 root installed-CLI 단계이며,
+`VM_UPDATE_INSTALLED_RUNTIME_HOME`은 그 product-installed path와 같아야
+합니다. caller가 다른 home을 지정하면 field-proof preflight는 INVALID입니다.
+Platform Agent 증거가 아니며 성공을 추론하는 workaround도 아닙니다. MacPlatformAgent와 operator root CLI를
+구분하려면 별도의 caller-owned correlation contract가 필요합니다.
+성공한 trust-store 읽기, `/var/root/.tirosh` 부재, 현재 launchd 환경,
+또는 process 종료 후 environment로는 추론하지 않습니다.
 
 rollback smoke의 fault bundle은 일반 bundle에서 만들어내거나 암묵적으로
 변형하지 않습니다. Host Platform effect가 의도적으로 실패하도록 별도로

@@ -334,6 +334,178 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
         XCTAssertEqual(proven.phase, .compensated)
     }
 
+    func testProveVerificationReceiptAcceptsInstalledHomeForCurrentUpdate() throws {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let proven = try proveReceipt(
+            journal: journal,
+            receiptRead: .loaded(verificationReceipt(journal: journal))
+        )
+
+        XCTAssertEqual(proven.resolvedRuntimeHome, installedHome)
+        XCTAssertEqual(proven.uid, 0)
+        XCTAssertEqual(proven.euid, 0)
+    }
+
+    func testProveVerificationReceiptRejectsRootDerivedHome() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+
+        XCTAssertThrowsError(
+            try proveReceipt(
+                journal: journal,
+                receiptRead: .loaded(
+                    verificationReceipt(
+                        journal: journal,
+                        resolvedRuntimeHome: "/var/root/.tirosh/vitalserver-vm"
+                    )
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .verificationReceiptRuntimeHomeMismatch(
+                    expected: installedHome,
+                    actual: "/var/root/.tirosh/vitalserver-vm"
+                )
+            )
+        }
+    }
+
+    func testProveVerificationReceiptKeepsMissingDistinctFromDecodeFailure() {
+        XCTAssertThrowsError(
+            try proveReceipt(
+                receiptRead: .missing(path: receiptPath)
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .verificationReceiptMissing(path: receiptPath)
+            )
+        }
+    }
+
+    func testProveVerificationReceiptKeepsPermissionDeniedDistinct() {
+        XCTAssertThrowsError(
+            try proveReceipt(
+                receiptRead: .permissionDenied(
+                    path: receiptPath,
+                    reason: "EACCES"
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .verificationReceiptPermissionDenied(
+                    path: receiptPath,
+                    reason: "EACCES"
+                )
+            )
+        }
+    }
+
+    func testProveVerificationReceiptKeepsReadFailureDistinctFromDecodeFailure() {
+        XCTAssertThrowsError(
+            try proveReceipt(
+                receiptRead: .readFailed(
+                    path: receiptPath,
+                    reason: "I/O error"
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .verificationReceiptReadFailed(
+                    path: receiptPath,
+                    reason: "I/O error"
+                )
+            )
+        }
+    }
+
+    func testProveVerificationReceiptKeepsDecodeFailureDistinct() {
+        XCTAssertThrowsError(
+            try proveReceipt(
+                receiptRead: .decodeFailed(
+                    path: receiptPath,
+                    reason: "unsupported fields: legacyHome"
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .verificationReceiptDecodeFailed(
+                    path: receiptPath,
+                    reason: "unsupported fields: legacyHome"
+                )
+            )
+        }
+    }
+
+    func testProveVerificationReceiptRejectsUidMismatchWithoutComparingEuid() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+
+        XCTAssertThrowsError(
+            try proveReceipt(
+                journal: journal,
+                expectedUid: 0,
+                expectedEuid: 0,
+                receiptRead: .loaded(
+                    verificationReceipt(journal: journal, uid: 501, euid: 0)
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .verificationReceiptUidMismatch(expected: 0, actual: 501)
+            )
+        }
+    }
+
+    func testProveVerificationReceiptRejectsEuidMismatchWhenUidMatches() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+
+        XCTAssertThrowsError(
+            try proveReceipt(
+                journal: journal,
+                expectedUid: 0,
+                expectedEuid: 0,
+                receiptRead: .loaded(
+                    verificationReceipt(journal: journal, uid: 0, euid: 501)
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .verificationReceiptEuidMismatch(expected: 0, actual: 501)
+            )
+        }
+    }
+
+    func testProveVerificationReceiptRejectsStaleDigestWithoutGuessingHome() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let staleDigest = String(repeating: "f", count: 64)
+
+        XCTAssertThrowsError(
+            try proveReceipt(
+                journal: journal,
+                receiptRead: .loaded(
+                    verificationReceipt(
+                        journal: journal,
+                        canonicalPayloadSHA256: staleDigest
+                    )
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .verificationReceiptIdentityMismatch(
+                    field: "canonicalPayloadSHA256",
+                    expected: journal.bootstrapSignedSHA256,
+                    actual: staleDigest
+                )
+            )
+        }
+    }
+
     func testRequireHostPlatformLayerRejectsSpecificationWithoutHostLayer() {
         let specification = ProductUpdateSpecification(
             schemaVersion: "vitalserver.product-update-specification/v1",
@@ -666,5 +838,60 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
             sha256: String(repeating: "b", count: 64),
             slotRelativePath: "releases/host-0.2.2"
         )
+    }
+
+    private func proveReceipt(
+        journal: UpdateBootstrapJournal? = nil,
+        expectedUid: UInt32 = 0,
+        expectedEuid: UInt32 = 0,
+        receiptRead: UpdateBootstrapVerificationReceiptReadResult
+    ) throws -> UpdateBootstrapVerificationReceipt {
+        let updateId = journal?.id ?? "update-42"
+        let digest = journal?.bootstrapSignedSHA256
+            ?? String(repeating: "a", count: 64)
+        return try ProveUpdateBootstrapLifecycleUseCase()
+            .proveVerificationReceipt(
+                updateId: updateId,
+                canonicalPayloadSHA256: digest,
+                expectedResolvedRuntimeHome: installedHome,
+                expectedTrustStorePath: installedTrustStore,
+                expectedUid: expectedUid,
+                expectedEuid: expectedEuid,
+                receiptRead: receiptRead
+            )
+    }
+
+    private func verificationReceipt(
+        journal: UpdateBootstrapJournal,
+        resolvedRuntimeHome: String = "/Library/Application Support/VitalServerHelper/vm",
+        canonicalPayloadSHA256: String? = nil,
+        uid: UInt32 = 0,
+        euid: UInt32 = 0
+    ) -> UpdateBootstrapVerificationReceipt {
+        UpdateBootstrapVerificationReceipt(
+            schemaVersion: UpdateBootstrapVerificationReceiptContract
+                .schemaVersion,
+            command: UpdateBootstrapVerificationReceiptContract.command,
+            updateId: journal.id,
+            canonicalPayloadSHA256: canonicalPayloadSHA256
+                ?? journal.bootstrapSignedSHA256,
+            resolvedRuntimeHome: resolvedRuntimeHome,
+            trustStorePath: installedTrustStore,
+            observedAt: "2026-08-24T00:00:00Z",
+            uid: uid,
+            euid: euid
+        )
+    }
+
+    private var installedHome: String {
+        "/Library/Application Support/VitalServerHelper/vm"
+    }
+
+    private var installedTrustStore: String {
+        "/Library/Application Support/VitalServerHelper/config/update-bootstrap-trust-store.json"
+    }
+
+    private var receiptPath: String {
+        "/Library/Application Support/VitalServerHelper/update-bootstrap-verification/update-42.json"
     }
 }

@@ -71,6 +71,28 @@ public enum ProveUpdateBootstrapLifecycleError:
         expected: String,
         actual: String
     )
+    case verificationReceiptMissing(path: String)
+    case verificationReceiptInspectionFailed(path: String, reason: String)
+    case verificationReceiptPermissionDenied(path: String, reason: String)
+    case verificationReceiptReadFailed(path: String, reason: String)
+    case verificationReceiptDecodeFailed(path: String, reason: String)
+    case verificationReceiptUnexpectedPathState(path: String, state: String)
+    case verificationReceiptInvalid(reason: String)
+    case verificationReceiptIdentityMismatch(
+        field: String,
+        expected: String,
+        actual: String
+    )
+    case verificationReceiptRuntimeHomeMismatch(
+        expected: String,
+        actual: String
+    )
+    case verificationReceiptTrustStorePathMismatch(
+        expected: String,
+        actual: String
+    )
+    case verificationReceiptUidMismatch(expected: UInt32, actual: UInt32)
+    case verificationReceiptEuidMismatch(expected: UInt32, actual: UInt32)
 }
 
 public struct ProveUpdateBootstrapLifecycleUseCase {
@@ -222,6 +244,68 @@ public struct ProveUpdateBootstrapLifecycleUseCase {
         return operation
     }
 
+    public func proveVerificationReceipt(
+        updateId: String,
+        canonicalPayloadSHA256: String,
+        expectedResolvedRuntimeHome: String,
+        expectedTrustStorePath: String,
+        expectedUid: UInt32,
+        expectedEuid: UInt32,
+        receiptRead: UpdateBootstrapVerificationReceiptReadResult
+    ) throws -> UpdateBootstrapVerificationReceipt {
+        let receipt: UpdateBootstrapVerificationReceipt
+        switch receiptRead {
+        case .missing(let path):
+            throw ProveUpdateBootstrapLifecycleError
+                .verificationReceiptMissing(path: path)
+        case .inspectionFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .verificationReceiptInspectionFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .permissionDenied(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .verificationReceiptPermissionDenied(
+                    path: path,
+                    reason: reason
+                )
+        case .readFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .verificationReceiptReadFailed(path: path, reason: reason)
+        case .decodeFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .verificationReceiptDecodeFailed(path: path, reason: reason)
+        case .unexpectedPathState(let path, let state):
+            throw ProveUpdateBootstrapLifecycleError
+                .verificationReceiptUnexpectedPathState(
+                    path: path,
+                    state: state
+                )
+        case .loaded(let loaded):
+            receipt = loaded
+        }
+
+        do {
+            try UpdateBootstrapVerificationReceiptProofPolicy.prove(
+                receipt: receipt,
+                expectedUpdateId: updateId,
+                expectedCanonicalPayloadSHA256: canonicalPayloadSHA256,
+                expectedResolvedRuntimeHome: expectedResolvedRuntimeHome,
+                expectedTrustStorePath: expectedTrustStorePath,
+                expectedUid: expectedUid,
+                expectedEuid: expectedEuid
+            )
+        } catch let error as UpdateBootstrapVerificationReceiptValidationError {
+            throw ProveUpdateBootstrapLifecycleError.verificationReceiptInvalid(
+                reason: String(describing: error)
+            )
+        } catch let error as UpdateBootstrapVerificationReceiptProofPolicyError {
+            throw mapVerificationReceipt(error)
+        }
+        return receipt
+    }
+
     public func requireHostPlatformLayer(
         specification: ProductUpdateSpecification
     ) throws -> ProductUpdateLayerPlan {
@@ -355,6 +439,39 @@ public struct ProveUpdateBootstrapLifecycleUseCase {
         case .installationIdentityMismatch(let field, let expected, let actual):
             return .hostPlatformInstallationIdentityMismatch(
                 field: field,
+                expected: expected,
+                actual: actual
+            )
+        }
+    }
+
+    private func mapVerificationReceipt(
+        _ error: UpdateBootstrapVerificationReceiptProofPolicyError
+    ) -> ProveUpdateBootstrapLifecycleError {
+        switch error {
+        case .identityMismatch(let field, let expected, let actual):
+            return .verificationReceiptIdentityMismatch(
+                field: field,
+                expected: expected,
+                actual: actual
+            )
+        case .runtimeHomeMismatch(let expected, let actual):
+            return .verificationReceiptRuntimeHomeMismatch(
+                expected: expected,
+                actual: actual
+            )
+        case .trustStorePathMismatch(let expected, let actual):
+            return .verificationReceiptTrustStorePathMismatch(
+                expected: expected,
+                actual: actual
+            )
+        case .uidMismatch(let expected, let actual):
+            return .verificationReceiptUidMismatch(
+                expected: expected,
+                actual: actual
+            )
+        case .euidMismatch(let expected, let actual):
+            return .verificationReceiptEuidMismatch(
                 expected: expected,
                 actual: actual
             )

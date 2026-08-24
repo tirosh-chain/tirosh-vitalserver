@@ -37,6 +37,9 @@ VM_UPDATE_HOST_PLATFORM_ROLLBACK_ARTIFACT ?=
 VM_UPDATE_HOST_PLATFORM_EFFECT_CONFIGURATION ?= .tmp/stable-update-artifacts/$(VM_UPDATE_ID)-host-platform-effect-configuration.json
 VM_UPDATE_OUTPUT ?= dist/update-bundles/$(VM_UPDATE_ID).tar.gz
 VM_UPDATE_INSTALLED_CLI ?= /usr/local/bin/vitalserver-vm
+# Must match InstalledRuntimePaths.defaultInstalled.runtimeHome. Field-proof
+# preflight treats any other value as INVALID.
+VM_UPDATE_INSTALLED_RUNTIME_HOME ?= /Library/Application Support/VitalServerHelper/vm
 VM_UPDATE_APPLY_REQUEST_ID ?=
 VM_UPDATE_ROLLBACK_PROOF_BUNDLE ?=
 VM_UPDATE_ROLLBACK_PROOF_ID ?=

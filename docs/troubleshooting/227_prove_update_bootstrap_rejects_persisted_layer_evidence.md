@@ -95,3 +95,4 @@ from source defaults, logs, or symlink targets.
 - [TS-220: Platform Agent update verifier uses root home](220_platform-agent-update-verifier-uses-root-home.md)
 - [TS-221: Signed update bundle owns a Host loopback Guest endpoint](221_signed-update-bundle-owns-host-loopback-guest-endpoint.md)
 - [TS-226: Host Platform reconciliation is now a durable, resumable lifecycle](226_host_platform_durable_reconciliation.md)
+- [TS-228: prove-update-bootstrap rejects verify-update-bootstrap receipt](228_prove_update_bootstrap_rejects_verification_receipt.md)

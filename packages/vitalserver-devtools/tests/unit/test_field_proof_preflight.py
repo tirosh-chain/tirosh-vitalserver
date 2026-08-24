@@ -11,15 +11,21 @@ from tirosh_vitalserver.devtools.application.usecases.field_proof_preflight impo
 )
 from tirosh_vitalserver.devtools.core.field_proof_preflight import (
     COMPOSE_INPUT_NAMES,
+    INSTALLED_RUNTIME_HOME_INPUT,
     MUTATING_CONFIRM_INPUT,
     SOURCE_PACKAGE_MAKEFILE,
     FieldProofCommandSurface,
     FieldProofNamedInput,
     FieldProofTextSource,
     FieldProofTrustStoreInput,
+    FieldProofInstalledRuntimeHome,
     FieldProofVersionRelationship,
     evaluate_field_proof_preflight,
+    field_proof_automation_inventory_text,
+    field_proof_sequence_text,
     makefile_target_recipe,
+    makefile_variable_default,
+    product_installed_runtime_home,
 )
 from tirosh_vitalserver.devtools.core.helper_effect_configuration import (
     GUEST_OWNER_EFFECT_CONFIGURATION_KEYS,
@@ -36,6 +42,8 @@ def valid_surface(**overrides: object) -> FieldProofCommandSurface:
             "verify-update-bootstrap-bundle --publisher-trust-store store.json"
         ),
         "apply_smoke_recipe": (
+            'VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)"\n'
+            "runtime verify-update-bootstrap\n"
             "runtime apply-update-bootstrap\n"
             "runtime prove-update-bootstrap\n"
             "--expect succeeded"
@@ -78,6 +86,19 @@ def valid_surface(**overrides: object) -> FieldProofCommandSurface:
             "]\n"
             "func proveGuestControl(\n"
             "func proveHostPlatform(\n"
+            "func proveVerificationReceipt(\n"
+        ),
+        "prove_composition_source": (
+            "InstalledRuntimePaths.defaultInstalled\n"
+            "installedRootVerificationReceiptProofInputs\n"
+        ),
+        "installed_paths_source": (
+            'defaultProductRoot = URL(fileURLWithPath: '
+            '"/Library/Application Support/VitalServerHelper")\n'
+        ),
+        "vm_config_makefile": (
+            "VM_UPDATE_INSTALLED_RUNTIME_HOME ?= "
+            "/Library/Application Support/VitalServerHelper/vm\n"
         ),
         "handoff_policy_source": (
             "public static func makeInvocation(\n"
@@ -362,6 +383,7 @@ def test_evaluate_requires_guest_url_and_host_platform_proof_methods() -> None:
     names = {check.name for check in report.blockers}
     assert "prove-guest-control" in names
     assert "prove-host-platform" in names
+    assert "prove-verification-receipt" in names
 
 
 def test_evaluate_skips_recipe_guesses_when_makefile_read_failed() -> None:
@@ -505,10 +527,97 @@ def test_makefile_target_recipe_skips_override_and_export_lines() -> None:
     )
 
 
+def valid_installed_runtime_home(
+    **overrides: object,
+) -> FieldProofInstalledRuntimeHome:
+    values: dict[str, object] = {
+        "product_home": "/Library/Application Support/VitalServerHelper/vm",
+        "makefile_default": "/Library/Application Support/VitalServerHelper/vm",
+        "env_value": None,
+    }
+    values.update(overrides)
+    return FieldProofInstalledRuntimeHome(**values)  # type: ignore[arg-type]
+
+
+def test_product_installed_runtime_home_comes_from_default_product_root() -> None:
+    source = (
+        'public static let defaultProductRoot = URL(fileURLWithPath: '
+        '"/Library/Application Support/VitalServerHelper")\n'
+        "public static let defaultInstalled = InstalledRuntimePaths("
+        "productRoot: defaultProductRoot)\n"
+    )
+    assert product_installed_runtime_home(source) == (
+        "/Library/Application Support/VitalServerHelper/vm"
+    )
+
+
+def test_evaluate_rejects_non_product_installed_runtime_home_override() -> None:
+    report = evaluate_field_proof_preflight(
+        valid_surface(),
+        present_inputs(),
+        valid_trust_store(),
+        installed_runtime_home=valid_installed_runtime_home(
+            env_value="/var/root/.tirosh/vitalserver-vm"
+        ),
+    )
+
+    assert not report.passed
+    blocker = next(
+        check
+        for check in report.blockers
+        if check.name == "VM_UPDATE_INSTALLED_RUNTIME_HOME"
+    )
+    assert blocker.status == PreflightStatus.INVALID
+    assert "product installed runtime home" in blocker.message
+    assert "/var/root/.tirosh" not in blocker.message
+
+
+def test_evaluate_accepts_unset_installed_runtime_home_when_makefile_matches() -> None:
+    report = evaluate_field_proof_preflight(
+        valid_surface(),
+        present_inputs(),
+        valid_trust_store(),
+        installed_runtime_home=valid_installed_runtime_home(),
+    )
+
+    assert report.passed
+    home = next(
+        check
+        for check in report.checks
+        if check.name == "VM_UPDATE_INSTALLED_RUNTIME_HOME"
+    )
+    assert home.status == PreflightStatus.PASSED
+
+
+def test_makefile_variable_default_reads_question_assign() -> None:
+    makefile = (
+        "VM_UPDATE_INSTALLED_RUNTIME_HOME ?= "
+        "/Library/Application Support/VitalServerHelper/vm\n"
+    )
+    assert makefile_variable_default(
+        makefile, "VM_UPDATE_INSTALLED_RUNTIME_HOME"
+    ) == "/Library/Application Support/VitalServerHelper/vm"
+
+
+def test_inventory_keeps_platform_agent_verify_field_run_unproven() -> None:
+    inventory = field_proof_automation_inventory_text()
+    sequence = field_proof_sequence_text()
+
+    assert "[unproven] Platform Agent verify field run (TS-220)" in inventory
+    assert "caller-owned correlation is required" in inventory
+    assert "MacPlatformAgent evidence" in sequence
+    assert "is not MacPlatformAgent evidence" in sequence
+    assert "[available] Platform Agent verify" not in inventory
+
+
 def test_current_repo_command_surface_understands_v2(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    for name in (*COMPOSE_INPUT_NAMES, MUTATING_CONFIRM_INPUT):
+    for name in (
+        *COMPOSE_INPUT_NAMES,
+        MUTATING_CONFIRM_INPUT,
+        INSTALLED_RUNTIME_HOME_INPUT,
+    ):
         monkeypatch.delenv(name, raising=False)
 
     report = field_proof_preflight_report(

@@ -2,6 +2,7 @@ import Application
 import Bootstrap
 import Contracts
 import CryptoKit
+import Darwin
 import Domain
 import Foundation
 import InboundAdapters
@@ -10,6 +11,151 @@ import OutboundAdapters
 import XCTest
 
 final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
+    func testVerifyPersistsReceiptBoundToInstalledHomeAndProcessIdentity() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(
+            productRoot: root.appendingPathComponent("product")
+        )
+        let bundle = root.appendingPathComponent("incoming-update")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(
+            at: installed.updateBootstrapTrustStore.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let privateKey = Curve25519.Signing.PrivateKey()
+        try writeTrustStore(
+            privateKey.publicKey.rawRepresentation,
+            to: installed.updateBootstrapTrustStore
+        )
+        try writeSignedBundle(bundle, privateKey: privateKey)
+
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installed.runtimeHome,
+                installed: installed,
+                config: installed.vmConfig,
+                pidFile: installed.pidFile
+            ),
+            clock: UpdateBootstrapFixedClock()
+        )
+        try lifecycle.verifyUpdateBootstrap(bundle)
+
+        let receiptURL = installed.updateBootstrapVerificationReceipt(
+            updateId: "update-0.2.2"
+        )
+        let receipt = try JSONDecoder().decode(
+            UpdateBootstrapVerificationReceipt.self,
+            from: Data(contentsOf: receiptURL)
+        )
+        XCTAssertEqual(
+            receipt.command,
+            UpdateBootstrapVerificationReceiptContract.command
+        )
+        XCTAssertEqual(receipt.updateId, "update-0.2.2")
+        XCTAssertEqual(receipt.resolvedRuntimeHome, installed.runtimeHome.path)
+        XCTAssertEqual(
+            receipt.trustStorePath,
+            installed.updateBootstrapTrustStore.path
+        )
+        XCTAssertEqual(receipt.uid, getuid())
+        XCTAssertEqual(receipt.euid, geteuid())
+        XCTAssertEqual(receipt.observedAt, "2026-07-27T00:00:00Z")
+        XCTAssertTrue(
+            UpdateBootstrapCanonicalTimestampSyntax.isCanonical(
+                receipt.observedAt
+            )
+        )
+        XCTAssertNotEqual(receipt.resolvedRuntimeHome, "/var/root/.tirosh/vitalserver-vm")
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: installed.updateBootstrapStagingDirectory
+                    .appendingPathComponent("update-0.2.2").path
+            )
+        )
+    }
+
+    func testProofReceiptOwnerStaysProductInstalledWhenLifecycleHomeIsNotInstalled() {
+        let noninstalled = InstalledRuntimePaths(
+            runtimeHome: URL(fileURLWithPath: "/var/root/.tirosh/vitalserver-vm")
+        )
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: noninstalled.runtimeHome,
+                installed: noninstalled,
+                config: noninstalled.vmConfig,
+                pidFile: noninstalled.pidFile
+            )
+        )
+        let inputs = lifecycle.installedRootVerificationReceiptProofInputs(
+            updateId: "update-42"
+        )
+        let product = InstalledRuntimePaths.defaultInstalled
+
+        XCTAssertEqual(
+            inputs.expectedResolvedRuntimeHome,
+            product.runtimeHome.path
+        )
+        XCTAssertEqual(
+            inputs.expectedTrustStorePath,
+            product.updateBootstrapTrustStore.path
+        )
+        XCTAssertEqual(
+            inputs.receiptURL,
+            product.updateBootstrapVerificationReceipt(updateId: "update-42")
+        )
+        XCTAssertNotEqual(
+            inputs.expectedResolvedRuntimeHome,
+            noninstalled.runtimeHome.path
+        )
+        XCTAssertNotEqual(
+            inputs.receiptURL,
+            noninstalled.updateBootstrapVerificationReceipt(updateId: "update-42")
+        )
+        XCTAssertEqual(
+            lifecycle.installedPaths.runtimeHome.path,
+            noninstalled.runtimeHome.path
+        )
+    }
+
+    func testFailedVerifyDoesNotPersistAReceipt() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(
+            productRoot: root.appendingPathComponent("product")
+        )
+        let bundle = root.appendingPathComponent("incoming-update")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(
+            at: bundle,
+            withIntermediateDirectories: true
+        )
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installed.runtimeHome,
+                installed: installed,
+                config: installed.vmConfig,
+                pidFile: installed.pidFile
+            ),
+            clock: UpdateBootstrapFixedClock()
+        )
+
+        XCTAssertThrowsError(try lifecycle.verifyUpdateBootstrap(bundle))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: installed.updateBootstrapVerificationReceipt(
+                    updateId: "update-0.2.2"
+                ).path
+            )
+        )
+    }
+
     func testVerifiedBundleHandsOffAndAtomicallySettlesInstalledRelease() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

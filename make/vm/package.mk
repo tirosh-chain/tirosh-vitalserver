@@ -930,10 +930,15 @@ internal/vm/update/apply-smoke:
 	$(MAKE) internal/vm/update/verify \
 		VM_UPDATE_OUTPUT="$(VM_UPDATE_OUTPUT)" \
 		VM_UPDATE_BOOTSTRAP_TRUST_STORE="$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
-	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime apply-update-bootstrap \
+	sudo env VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)" \
+		"$(VM_UPDATE_INSTALLED_CLI)" runtime verify-update-bootstrap \
+		"$(abspath $(VM_UPDATE_OUTPUT))"
+	sudo env VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)" \
+		"$(VM_UPDATE_INSTALLED_CLI)" runtime apply-update-bootstrap \
 		"$(abspath $(VM_UPDATE_OUTPUT))" \
 		--request-id "$(VM_UPDATE_APPLY_REQUEST_ID)"
-	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime prove-update-bootstrap \
+	sudo env VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)" \
+		"$(VM_UPDATE_INSTALLED_CLI)" runtime prove-update-bootstrap \
 		"$(VM_UPDATE_ID)" \
 		--expect succeeded \
 		--timeout-seconds "$(VM_UPDATE_PROOF_TIMEOUT_SECONDS)" \
@@ -967,10 +972,15 @@ internal/vm/update/rollback-smoke/dev:
 		--bundle "$(VM_UPDATE_ROLLBACK_PROOF_BUNDLE)" \
 		--publisher-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)"
 	@set -e; \
-	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime apply-update-bootstrap \
+	sudo env VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)" \
+		"$(VM_UPDATE_INSTALLED_CLI)" runtime verify-update-bootstrap \
+		"$(abspath $(VM_UPDATE_ROLLBACK_PROOF_BUNDLE))"
+	sudo env VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)" \
+		"$(VM_UPDATE_INSTALLED_CLI)" runtime apply-update-bootstrap \
 		"$(abspath $(VM_UPDATE_ROLLBACK_PROOF_BUNDLE))" \
 		--request-id "$(VM_UPDATE_ROLLBACK_PROOF_REQUEST_ID)"
-	sudo "$(VM_UPDATE_INSTALLED_CLI)" runtime prove-update-bootstrap \
+	sudo env VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)" \
+		"$(VM_UPDATE_INSTALLED_CLI)" runtime prove-update-bootstrap \
 		"$(VM_UPDATE_ROLLBACK_PROOF_ID)" \
 		--expect failed-rolled-back \
 		--timeout-seconds "$(VM_UPDATE_PROOF_TIMEOUT_SECONDS)" \

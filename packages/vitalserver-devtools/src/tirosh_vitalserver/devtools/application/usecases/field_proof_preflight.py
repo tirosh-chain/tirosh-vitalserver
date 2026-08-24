@@ -24,11 +24,15 @@ from tirosh_vitalserver.devtools.core.field_proof_preflight import (
     SOURCE_HANDOFF_POLICY,
     SOURCE_HOST_PLATFORM_CONTRACTS,
     SOURCE_PACKAGE_MAKEFILE,
+    SOURCE_INSTALLED_PATHS,
+    SOURCE_PROVE_COMPOSITION,
     SOURCE_PROVE_USECASE,
     SOURCE_RELEASE_DEV,
     SOURCE_ROOT_MAKEFILE,
     SOURCE_RUNTIME_LIFECYCLE,
+    SOURCE_VM_CONFIG_MAKEFILE,
     FieldProofCommandSurface,
+    FieldProofInstalledRuntimeHome,
     FieldProofNamedInput,
     FieldProofTextSource,
     FieldProofTrustStoreInput,
@@ -37,6 +41,8 @@ from tirosh_vitalserver.devtools.core.field_proof_preflight import (
     field_proof_automation_inventory_text,
     field_proof_sequence_text,
     makefile_target_recipe,
+    makefile_variable_default,
+    product_installed_runtime_home,
 )
 from tirosh_vitalserver.devtools.core.helper_effect_configuration import (
     GUEST_OWNER_EFFECT_CONFIGURATION_KEYS,
@@ -76,6 +82,9 @@ def field_proof_preflight_report(
             SOURCE_RUNTIME_LIFECYCLE,
             SOURCE_HOST_PLATFORM_CONTRACTS,
             SOURCE_PROVE_USECASE,
+            SOURCE_PROVE_COMPOSITION,
+            SOURCE_INSTALLED_PATHS,
+            SOURCE_VM_CONFIG_MAKEFILE,
             SOURCE_RELEASE_DEV,
         )
     }
@@ -87,6 +96,9 @@ def field_proof_preflight_report(
     runtime_lifecycle = sources[SOURCE_RUNTIME_LIFECYCLE]
     host_platform = sources[SOURCE_HOST_PLATFORM_CONTRACTS]
     prove_usecase = sources[SOURCE_PROVE_USECASE]
+    prove_composition = sources[SOURCE_PROVE_COMPOSITION]
+    installed_paths = sources[SOURCE_INSTALLED_PATHS]
+    vm_config_makefile = sources[SOURCE_VM_CONFIG_MAKEFILE]
     release_dev = sources[SOURCE_RELEASE_DEV]
     named_inputs = tuple(
         _named_input(name, input.update_bootstrap_trust_store)
@@ -122,8 +134,11 @@ def field_proof_preflight_report(
             runtime_lifecycle_usage=_loaded_text(runtime_lifecycle),
             host_platform_phase_source=_loaded_text(host_platform),
             prove_usecase_source=_loaded_text(prove_usecase),
+            prove_composition_source=_loaded_text(prove_composition),
             handoff_policy_source=_loaded_text(handoff_policy),
             handoff_contract_source=_loaded_text(handoff_contract),
+            installed_paths_source=_loaded_text(installed_paths),
+            vm_config_makefile=_loaded_text(vm_config_makefile),
         ),
         named_inputs,
         _trust_store_input(input.update_bootstrap_trust_store),
@@ -131,6 +146,10 @@ def field_proof_preflight_report(
         version_relationship=_version_relationship(
             release_dev,
             compose_product_version,
+        ),
+        installed_runtime_home=_installed_runtime_home(
+            installed_paths,
+            vm_config_makefile,
         ),
     )
 
@@ -241,6 +260,26 @@ def _path_state(path: Path) -> str:
     if stat.S_ISREG(mode):
         return "file"
     return "missing"
+
+
+def _installed_runtime_home(
+    installed_paths: FieldProofTextSource,
+    vm_config_makefile: FieldProofTextSource,
+) -> FieldProofInstalledRuntimeHome:
+    product_home = product_installed_runtime_home(_loaded_text(installed_paths))
+    makefile_default = makefile_variable_default(
+        _loaded_text(vm_config_makefile),
+        "VM_UPDATE_INSTALLED_RUNTIME_HOME",
+    )
+    raw = os.environ.get("VM_UPDATE_INSTALLED_RUNTIME_HOME")
+    env_value = raw.strip() if raw is not None and raw.strip() else None
+    if raw is not None and env_value is None:
+        env_value = ""
+    return FieldProofInstalledRuntimeHome(
+        product_home=product_home,
+        makefile_default=makefile_default,
+        env_value=env_value,
+    )
 
 
 def _version_relationship(

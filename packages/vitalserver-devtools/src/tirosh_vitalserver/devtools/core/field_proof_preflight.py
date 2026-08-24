@@ -93,7 +93,18 @@ SOURCE_PROVE_USECASE = (
     "apps/vitalserver-macos-runtime/Sources/Application/UseCases/"
     "UpdateRuntime/ProveUpdateBootstrapLifecycleUseCase.swift"
 )
+SOURCE_PROVE_COMPOSITION = (
+    "apps/vitalserver-macos-runtime/Sources/Hosts/CLI/ProcessBoundary/"
+    "RuntimeUpdateBootstrapComposition.swift"
+)
+SOURCE_INSTALLED_PATHS = (
+    "apps/vitalserver-macos-runtime/Sources/Adapters/Outbound/FileSystem/"
+    "InstalledRuntimePaths.swift"
+)
+SOURCE_VM_CONFIG_MAKEFILE = "make/vm/config.mk"
 SOURCE_RELEASE_DEV = "apps/vitalserver-macos-runtime/release-dev.json"
+INSTALLED_RUNTIME_HOME_INPUT = "VM_UPDATE_INSTALLED_RUNTIME_HOME"
+DEFAULT_PRODUCT_ROOT_MARKER = 'defaultProductRoot = URL(fileURLWithPath: "'
 
 HANDOFF_POLICY_GUEST_ENDPOINT_EVIDENCE = (
     "guestControlBaseURL: String",
@@ -127,8 +138,11 @@ class FieldProofCommandSurface:
     runtime_lifecycle_usage: str
     host_platform_phase_source: str
     prove_usecase_source: str
+    prove_composition_source: str
     handoff_policy_source: str
     handoff_contract_source: str
+    installed_paths_source: str
+    vm_config_makefile: str
 
 
 @dataclass(frozen=True)
@@ -153,6 +167,13 @@ class FieldProofVersionRelationship:
     baseline_status: PreflightStatus
     baseline_detail: str | None
     compose_product_version: str | None
+
+
+@dataclass(frozen=True)
+class FieldProofInstalledRuntimeHome:
+    product_home: str | None
+    makefile_default: str | None
+    env_value: str | None
 
 
 def makefile_target_recipe(makefile: str, target: str) -> str:
@@ -180,6 +201,7 @@ def evaluate_field_proof_preflight(
     trust_store: FieldProofTrustStoreInput,
     source_reads: tuple[FieldProofTextSource, ...] = (),
     version_relationship: FieldProofVersionRelationship | None = None,
+    installed_runtime_home: FieldProofInstalledRuntimeHome | None = None,
 ) -> PreflightReport:
     checks = [
         *[_source_read_check(source) for source in source_reads],
@@ -190,7 +212,29 @@ def evaluate_field_proof_preflight(
     ]
     if version_relationship is not None:
         checks.append(_version_relationship_check(version_relationship))
+    if installed_runtime_home is not None:
+        checks.extend(_installed_runtime_home_checks(installed_runtime_home))
     return PreflightReport(name="field-proof", checks=tuple(checks))
+
+
+def product_installed_runtime_home(installed_paths_source: str) -> str | None:
+    if DEFAULT_PRODUCT_ROOT_MARKER not in installed_paths_source:
+        return None
+    product_root = installed_paths_source.split(
+        DEFAULT_PRODUCT_ROOT_MARKER, maxsplit=1
+    )[1].split('"', maxsplit=1)[0]
+    if not product_root.startswith("/") or product_root.endswith("/"):
+        return None
+    return f"{product_root}/vm"
+
+
+def makefile_variable_default(makefile: str, name: str) -> str | None:
+    prefix = f"{name} ?="
+    for line in makefile.splitlines():
+        if line.startswith(prefix):
+            value = line[len(prefix) :].strip()
+            return value or None
+    return None
 
 
 def field_proof_sequence_text() -> str:
@@ -216,10 +260,19 @@ def field_proof_sequence_text() -> str:
          VM_UPDATE_APPLY_REQUEST_ID=<unique-request-id>
        pass: prove-update-bootstrap --expect succeeded
        evidence: Host journal, execution report, Runtime Control
-                 /platform/operations journal equality, persisted handoff
+                 /platform/operations journal equality, root
+                 verify-update-bootstrap receipt vs the product
+                 installed VM home and uid/euid=0, persisted handoff
                  guestControlBaseURL vs current Guest address, Host
                  Platform SQLite apply phase journal
-       not proven: later-than helperVersion, VITALSERVER_VM_HOME (TS-220)
+       apply-smoke runtime verify-update-bootstrap is required root
+                 installed-CLI evidence so prove has its mandatory
+                 receipt at InstalledRuntimePaths.defaultInstalled;
+                 VM_UPDATE_INSTALLED_RUNTIME_HOME must be that exact
+                 product path, not a caller-named home
+                 it is not MacPlatformAgent evidence
+       not proven: later-than helperVersion, Platform Agent verify
+                 field run (TS-220), caller/fresh-run correlation
     7. interruption/restart: TS-192 resume/settle/fail plus TS-226
        Host Platform phase resume (no make target)
     8. make dist/update/dev/rollback-smoke
@@ -245,7 +298,8 @@ def field_proof_automation_inventory_text() -> str:
   [available] installed apply proof: make dist/update/dev/apply-smoke
   [available] Host-failure rollback proof: make dist/update/dev/rollback-smoke
   [unproven] 0.2.2 -> later product version: no later-than comparison exists
-  [unproven] Platform Agent verify VITALSERVER_VM_HOME (TS-220)
+  [available] prove-update-bootstrap root verify-update-bootstrap receipt vs product-installed VM home
+  [unproven] Platform Agent verify field run (TS-220); caller-owned correlation is required to distinguish MacPlatformAgent from root CLI
   [available] prove-update-bootstrap Guest URL vs current Guest address (TS-221)
   [available] prove-update-bootstrap Host Platform SQLite phases (TS-226)
   [runbook] durable handoff interrupt: resume/settle/fail (TS-192)
@@ -291,6 +345,18 @@ def _command_surface_checks(
                     surface.product_update_verify_recipe,
                     "--publisher-public-key",
                     "product update verify does not use the retired public-key flag",
+                ),
+                _contains(
+                    "apply-smoke-verify",
+                    surface.apply_smoke_recipe,
+                    "runtime verify-update-bootstrap",
+                    "apply-smoke runs root installed-CLI verify-update-bootstrap so prove has a mandatory receipt",
+                ),
+                _contains(
+                    "apply-smoke-installed-vm-home",
+                    surface.apply_smoke_recipe,
+                    'VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)"',
+                    "apply-smoke passes the product installed runtime home variable",
                 ),
                 _contains(
                     "apply-smoke-bootstrap",
@@ -391,6 +457,31 @@ def _command_surface_checks(
                 surface.prove_usecase_source,
                 "proveHostPlatform",
                 "prove-update-bootstrap correlates Host Platform SQLite journal",
+            )
+        )
+        checks.append(
+            _contains(
+                "prove-verification-receipt",
+                surface.prove_usecase_source,
+                "proveVerificationReceipt",
+                "prove-update-bootstrap correlates verify-update-bootstrap receipt",
+            )
+        )
+    if _source_usable(source_reads, SOURCE_PROVE_COMPOSITION):
+        checks.append(
+            _contains(
+                "prove-product-installed-receipt-owner",
+                surface.prove_composition_source,
+                "InstalledRuntimePaths.defaultInstalled",
+                "prove-update-bootstrap reads the product-installed verification receipt owner",
+            )
+        )
+        checks.append(
+            _contains(
+                "prove-product-installed-receipt-inputs",
+                surface.prove_composition_source,
+                "installedRootVerificationReceiptProofInputs",
+                "prove-update-bootstrap injects product-installed receipt expectations",
             )
         )
     return checks
@@ -640,6 +731,101 @@ def _guest_endpoint_ownership(
             "absent from signed Guest-owned effect configuration"
         ),
     )
+
+
+def _installed_runtime_home_checks(
+    installed_runtime_home: FieldProofInstalledRuntimeHome,
+) -> list[PreflightCheck]:
+    product_home = installed_runtime_home.product_home
+    if product_home is None:
+        return [
+            PreflightCheck(
+                name="installed-runtime-home-contract",
+                status=PreflightStatus.MISSING,
+                message=(
+                    "product installed runtime home is absent from "
+                    "InstalledRuntimePaths"
+                ),
+            )
+        ]
+    checks = [
+        PreflightCheck(
+            name="installed-runtime-home-contract",
+            status=PreflightStatus.PASSED,
+            message="product installed runtime home is InstalledRuntimePaths.defaultInstalled",
+            detail=product_home,
+        )
+    ]
+    makefile_default = installed_runtime_home.makefile_default
+    if makefile_default is None:
+        checks.append(
+            PreflightCheck(
+                name="installed-runtime-home-makefile",
+                status=PreflightStatus.MISSING,
+                message=(
+                    "VM_UPDATE_INSTALLED_RUNTIME_HOME makefile default is unset"
+                ),
+            )
+        )
+    elif makefile_default != product_home:
+        checks.append(
+            PreflightCheck(
+                name="installed-runtime-home-makefile",
+                status=PreflightStatus.INVALID,
+                message=(
+                    "VM_UPDATE_INSTALLED_RUNTIME_HOME makefile default is not "
+                    "the product installed runtime home"
+                ),
+                detail=f"expected={product_home}",
+            )
+        )
+    else:
+        checks.append(
+            PreflightCheck(
+                name="installed-runtime-home-makefile",
+                status=PreflightStatus.PASSED,
+                message=(
+                    "VM_UPDATE_INSTALLED_RUNTIME_HOME makefile default is the "
+                    "product installed runtime home"
+                ),
+            )
+        )
+    env_value = installed_runtime_home.env_value
+    if env_value is None:
+        checks.append(
+            PreflightCheck(
+                name=INSTALLED_RUNTIME_HOME_INPUT,
+                status=PreflightStatus.PASSED,
+                message=(
+                    "VM_UPDATE_INSTALLED_RUNTIME_HOME is unset and the product "
+                    "installed runtime home is used"
+                ),
+            )
+        )
+    elif env_value != product_home:
+        checks.append(
+            PreflightCheck(
+                name=INSTALLED_RUNTIME_HOME_INPUT,
+                status=PreflightStatus.INVALID,
+                message=(
+                    "VM_UPDATE_INSTALLED_RUNTIME_HOME is not the product "
+                    "installed runtime home"
+                ),
+                detail=f"expected={product_home}",
+            )
+        )
+    else:
+        checks.append(
+            PreflightCheck(
+                name=INSTALLED_RUNTIME_HOME_INPUT,
+                status=PreflightStatus.PASSED,
+                message=(
+                    "VM_UPDATE_INSTALLED_RUNTIME_HOME is the product installed "
+                    "runtime home"
+                ),
+            )
+        )
+    return checks
 
 
 def _recovery_command_checks(usage: str) -> list[PreflightCheck]:

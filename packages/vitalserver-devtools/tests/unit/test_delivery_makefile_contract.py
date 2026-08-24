@@ -356,6 +356,8 @@ def test_stable_update_field_smokes_require_owner_proof() -> None:
     assert "VM_UPDATE_APPLY_REQUEST_ID" in apply_smoke
     assert "verify-update-bootstrap-bundle" not in apply_smoke
     assert "internal/vm/update/verify" in apply_smoke
+    assert "runtime verify-update-bootstrap" in apply_smoke
+    assert 'VITALSERVER_VM_HOME="$(VM_UPDATE_INSTALLED_RUNTIME_HOME)"' in apply_smoke
     assert "runtime apply-update-bootstrap" in apply_smoke
     assert "runtime prove-update-bootstrap" in apply_smoke
     assert "--expect succeeded" in apply_smoke

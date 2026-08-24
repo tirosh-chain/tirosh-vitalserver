@@ -65,33 +65,57 @@ VITALSERVER_VM_HOME="/Library/Application Support/VitalServerHelper/vm" \
 ```
 
 That is operator intent, not proof that the root Platform Agent worker used
-the same value. `prove-update-bootstrap` and apply-smoke do not have a
-persisted/observable owner for the verify process environment. Success against
-the installed trust store, absence of `/var/root/.tirosh`, logs, or the
-current Platform Agent launchd environment must not be treated as that proof.
+the same value. The verify command now persists a verification receipt after
+successful `InstalledRuntimePaths` resolution. `prove-update-bootstrap`
+reads that receipt from `InstalledRuntimePaths.defaultInstalled`, not from
+the proof process environment. It correlates the document to the current
+update identity, the product-installed VM home
+`/Library/Application Support/VitalServerHelper/vm`, the product-installed
+trust store, and root `uid=0`/`euid=0`. That proves a root
+`verify-update-bootstrap` execution over that bundle at the product-installed
+path. It does not prove the caller was MacPlatformAgent. Two processes that
+share a non-product `VITALSERVER_VM_HOME` cannot redefine the expected owner. Public CLI and apply-smoke can write the same
+receipt. Success against the installed trust store, absence of
+`/var/root/.tirosh`, logs, or the current Platform Agent launchd environment
+must not be treated as that proof.
+
+The receipt lives at:
+
+```text
+/Library/Application Support/VitalServerHelper/update-bootstrap-verification/<update-id>.json
+```
+
+It is owned by the verifier/runtime boundary, not by immutable staging. Apply
+must not replace this path. `canonicalPayloadSHA256` rejects a later bundle
+that reuses the same `updateId` with a different payload. It does not prove a
+fresh verify for the current apply; a prior root verify of the same digest
+still satisfies proof. `uid`/`euid` come from the process identity adapter.
+Proof compares them to explicit expected values; validation does not hardcode
+root.
+
+apply-smoke's installed CLI verify exists so prove has its mandatory receipt.
+That is root installed-CLI evidence, not Platform Agent evidence.
 
 ## Follow-up
 
-Field proof of TS-220 is blocked until verify persists an explicit document
-that records the resolved installed runtime home used to open the trust store.
-The smallest producer-side contract is a verify admission/receipt written by
-`verify-update-bootstrap` after `InstalledRuntimePaths` resolution, containing
-at least:
+A real MacPlatformAgent verify field run remains unproven. Distinguishing
+MacPlatformAgent from operator-run root CLI requires a future caller-owned
+correlation contract. Do not treat CLI apply-smoke as that run.
 
-- `schemaVersion`
-- `command` = `verify-update-bootstrap`
-- `resolvedRuntimeHome` = the exact `VITALSERVER_VM_HOME` used
-- `trustStorePath` = the path actually opened
-- `updateId` / bundle identity
-- `observedAt`
-- process owner identity (`uid`/`euid`)
+Inspect the receipt directly:
 
-Missing, unreadable, and decode-failed receipts must stay distinct from a
-successful verify. Do not reconstruct the home from source defaults or from
-the current Platform Agent environment.
+```sh
+python3 -c 'import json,sys; print(json.load(open(sys.argv[1])))' \
+  "/Library/Application Support/VitalServerHelper/update-bootstrap-verification/<update-id>.json"
+```
+
+Missing, unreadable, permission-denied, and decode-failed receipts stay
+distinct from a successful verify. Do not reconstruct the home from source
+defaults or from the current Platform Agent environment.
 
 ## Related Cases
 
 - [TS-196: Helper UI uses the legacy update bundle engine](196_helper_ui_uses_legacy_update_bundle_engine.md)
 - [TS-219: Swift bootstrap verifier rejects specification payload](219_swift-bootstrap-verifier-rejects-declared-payload.md)
 - [TS-227: prove-update-bootstrap rejects persisted layer evidence](227_prove_update_bootstrap_rejects_persisted_layer_evidence.md)
+- [TS-228: prove-update-bootstrap rejects verify-update-bootstrap receipt](228_prove_update_bootstrap_rejects_verification_receipt.md)

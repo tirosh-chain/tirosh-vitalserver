@@ -1,5 +1,4 @@
 import Contracts
-import Foundation
 
 public enum UpdateBootstrapEnvelopeValidationError: Error, Equatable, Sendable {
     case unsupportedSchemaVersion(String)
@@ -71,7 +70,9 @@ public enum UpdateBootstrapEnvelopePolicy {
         guard !envelope.signature.value.isEmpty else {
             throw UpdateBootstrapEnvelopeValidationError.emptySignature
         }
-        guard isCanonicalTimestamp(envelope.issuedAt) else {
+        guard UpdateBootstrapCanonicalTimestampSyntax.isCanonical(
+            envelope.issuedAt
+        ) else {
             throw UpdateBootstrapEnvelopeValidationError.invalidIssuedAt(
                 envelope.issuedAt
             )
@@ -209,25 +210,4 @@ public enum UpdateBootstrapEnvelopePolicy {
         }
     }
 
-    private static func isCanonicalTimestamp(_ value: String) -> Bool {
-        guard value.count == 20,
-              value[value.index(value.startIndex, offsetBy: 4)] == "-",
-              value[value.index(value.startIndex, offsetBy: 7)] == "-",
-              value[value.index(value.startIndex, offsetBy: 10)] == "T",
-              value[value.index(value.startIndex, offsetBy: 13)] == ":",
-              value[value.index(value.startIndex, offsetBy: 16)] == ":",
-              value.hasSuffix("Z") else {
-            return false
-        }
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
-        formatter.isLenient = false
-        guard let date = formatter.date(from: value) else {
-            return false
-        }
-        return formatter.string(from: date) == value
-    }
 }
