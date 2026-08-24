@@ -164,7 +164,7 @@ let package = Package(
         ),
         .target(
             name: "UpdateLayerEffectExecutor",
-            dependencies: ["Contracts"],
+            dependencies: ["Contracts", "Domain"],
             path: "Sources/Hosts/UpdateLayerEffectExecutor"
         ),
         .executableTarget(

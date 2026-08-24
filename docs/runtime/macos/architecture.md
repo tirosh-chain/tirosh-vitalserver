@@ -736,6 +736,12 @@ UI 상태, capability guard, usecase orchestration, 화면 메시지 변환
 
 이 구조에서 파일 기반 계약은 모든 계층에 쓰는 범용 통신 방식이 아닙니다. Swift module 사이에서는 `public` API와 protocol을 import해서 호출하고, Host와 Guest 사이의 product/service/update/repair operation은 Guest Control API를 사용합니다. shared directory 파일은 bootstrap 초기에 HTTP service가 아직 없을 때 필요한 설정, 발견, 배포 bundle, 진단 증거로 제한합니다.
 
+Stable update에서도 Guest Control endpoint의 owner는 Host runtime입니다.
+Portable signed effect configuration은 VM IP나 Host loopback 주소를 포함하지
+않습니다. Platform Agent는 typed Guest address provider가 제공한 loaded
+주소만 handoff invocation에 기록하고, next updater는 그 명시적 값을
+layer-effect invocation으로 전달합니다.
+
 Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 
 | Owner | 책임 | 포함하는 작업 | 포함하지 않는 작업 |

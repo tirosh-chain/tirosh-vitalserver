@@ -213,6 +213,9 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-218 | PKG 설치 성공 후 `/Applications` Helper symlink가 application으로 등록되지 않음 | Packaging / Update | implemented; package verification passed | [Applications Helper symlink is not registered](218_applications-helper-symlink-not-registered.md) |
 | TS-219 | Swift bootstrap verifier가 인증된 specification의 layer payload를 unknown file로 거부함 | Update / Bundle closure | resolved | [Swift bootstrap verifier rejects declared payload](219_swift-bootstrap-verifier-rejects-declared-payload.md) |
 | TS-220 | Platform Agent update verifier가 installed runtime home 대신 `/var/root/.tirosh`를 읽음 | Update / Runtime Control | resolved | [Platform Agent update verifier uses root home](220_platform-agent-update-verifier-uses-root-home.md) |
+| TS-221 | signed update bundle이 Host loopback Guest endpoint를 소유해 첫 Guest layer 적용이 실패함 | Update / Bootstrap handoff / Guest Control | active | [Signed update bundle owns a Host loopback Guest endpoint](221_signed-update-bundle-owns-host-loopback-guest-endpoint.md) |
+| TS-222 | 기존 Guest artifact의 idempotent import가 request body를 읽지 않아 Host upload 연결이 끊김 | Update / Guest Control / Artifact ownership | active | [Guest update artifact owner closes an idempotent upload](222_guest_update_artifact_owner_closes_idempotent_upload.md) |
+| TS-225 | Effect configuration이 v2 schema 검증 없이 서명되고 executor id가 configuration과 불일치함 | Update / Release composition | active | [Effect configuration signed without v2 schema validation](225_effect_configuration_signed_without_v2_validation.md) |
 
 ## Follow-up 규칙
 

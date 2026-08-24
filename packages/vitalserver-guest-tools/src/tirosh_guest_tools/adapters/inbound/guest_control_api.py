@@ -52,6 +52,7 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control import SQLiteControlRep
 from tirosh_guest_tools.adapters.outbound.update_artifacts import (
     ImmutableUpdateArtifactStore,
     SystemdUpdateOwnerWorkerDispatcher,
+    UpdateStoredArtifactCorrupt,
 )
 from tirosh_guest_tools.adapters.outbound.vital_files import (
     VitalServerVitalFileLibrary,
@@ -276,6 +277,12 @@ def make_handler(
                             stream=self.rfile,
                             size_bytes=content_length,
                         )
+                    except UpdateStoredArtifactCorrupt as error:
+                        raise GuestControlAPIError(
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            detail=str(error),
+                            code="updateStoredArtifactCorrupt",
+                        ) from error
                     except UpdateArtifactUnavailable as error:
                         raise GuestControlAPIError(
                             HTTPStatus.BAD_REQUEST,
@@ -556,6 +563,12 @@ def route_request(
                 digest=parts[3],
                 content=body,
             )
+        except UpdateStoredArtifactCorrupt as error:
+            raise GuestControlAPIError(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=str(error),
+                code="updateStoredArtifactCorrupt",
+            ) from error
         except UpdateArtifactUnavailable as error:
             raise GuestControlAPIError(
                 HTTPStatus.BAD_REQUEST,

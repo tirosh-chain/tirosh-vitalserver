@@ -195,6 +195,9 @@ extension RuntimeLifecycle {
         let invocationWriter = updateBootstrapInvocationWriter()
         let launcher = durableUpdateBootstrapHandoffLauncher()
         let receiptReader = updateBootstrapReceiptReader()
+        let guestControlBaseURL = try resolvedGuestControlBaseURL(
+            RuntimeGuestServiceControlCommand.defaultGuestControlBaseURL
+        )
 
         return try UpdateBootstrapHandoffWorkflow().run(
             input: UpdateBootstrapHandoffWorkflowInput(
@@ -218,8 +221,12 @@ extension RuntimeLifecycle {
                     UpdateBootstrapStagedProofPolicy.requireMatch,
                 verifiedAndStaged: advance.verifiedAndStaged,
                 handoffStarted: advance.handoffStarted,
-                makeInvocation:
-                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
+                makeInvocation: { runningJournal in
+                    try MakeUpdateBootstrapHandoffInvocationUseCase().execute(
+                        journal: runningJournal,
+                        guestControlBaseURL: guestControlBaseURL
+                    )
+                },
                 writeInvocation: invocationWriter.write,
                 launch: { invocation, invocationURL, stagedBundleRoot in
                     try heartbeatRuntimeOperationLease(lease)
@@ -284,6 +291,9 @@ extension RuntimeLifecycle {
         )
 
         let advance = AdvanceUpdateBootstrapJournalUseCase()
+        let guestControlBaseURL = try resolvedGuestControlBaseURL(
+            RuntimeGuestServiceControlCommand.defaultGuestControlBaseURL
+        )
         let output = try ResumeUpdateBootstrapHandoffWorkflow().run(
             input: ResumeUpdateBootstrapHandoffWorkflowInput(
                 pendingJournal: pending,
@@ -297,8 +307,12 @@ extension RuntimeLifecycle {
                     )
                 },
                 handoffStarted: advance.handoffStarted,
-                makeInvocation:
-                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
+                makeInvocation: { runningJournal in
+                    try MakeUpdateBootstrapHandoffInvocationUseCase().execute(
+                        journal: runningJournal,
+                        guestControlBaseURL: guestControlBaseURL
+                    )
+                },
                 writeInvocation: updateBootstrapInvocationWriter().write,
                 launch: { invocation, invocationURL, stagedBundleRoot in
                     try durableUpdateBootstrapHandoffLauncher().launch(

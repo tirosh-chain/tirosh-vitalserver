@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import stat
@@ -14,6 +15,10 @@ from tirosh_vitalserver.devtools.application.inputs import (
     MaterializedHelperUpdatePayload,
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
+from tirosh_vitalserver.devtools.core.helper_effect_configuration import (
+    validate_guest_owner_effect_configuration,
+    validate_host_platform_effect_configuration,
+)
 from tirosh_vitalserver.devtools.core.helper_stable_update_release import (
     EFFECT_CONFIGURATION_MEDIA_TYPE,
     EFFECT_EXECUTOR_MEDIA_TYPE,
@@ -46,6 +51,14 @@ def materialized_helper_update_payload(
         dependencies: list[HelperStableUpdateLayer] = []
         for source in sources:
             layer = source.layer
+            effect_executor_id, effect_configuration = (
+                _materialize_effect_configuration(
+                    source.effect_configuration,
+                    root / f"payload/layers/{layer.value}/effect-configuration.json",
+                    payload_root=root,
+                    layer=layer,
+                )
+            )
             artifact = _copy_and_observe(
                 source.artifact,
                 root / f"payload/layers/{layer.value}/artifact",
@@ -58,18 +71,10 @@ def materialized_helper_update_payload(
                 source.effect_executor,
                 root / f"payload/layers/{layer.value}/effect-executor",
                 payload_root=root,
-                artifact_id=f"helper-{layer.value}-effect-executor",
+                artifact_id=effect_executor_id,
                 media_type=EFFECT_EXECUTOR_MEDIA_TYPE,
                 owner=f"{layer.value} effect executor",
                 executable=True,
-            )
-            effect_configuration = _copy_and_observe(
-                source.effect_configuration,
-                root / f"payload/layers/{layer.value}/effect-configuration.json",
-                payload_root=root,
-                artifact_id=f"helper-{layer.value}-effect-configuration",
-                media_type=EFFECT_CONFIGURATION_MEDIA_TYPE,
-                owner=f"{layer.value} effect configuration",
             )
             rollback = _copy_and_observe(
                 source.rollback_artifact,
@@ -93,6 +98,75 @@ def materialized_helper_update_payload(
             )
             dependencies.append(layer)
         yield MaterializedHelperUpdatePayload(root=root, layers=tuple(releases))
+
+
+def _materialize_effect_configuration(
+    source: Path,
+    destination: Path,
+    *,
+    payload_root: Path,
+    layer: HelperStableUpdateLayer,
+) -> tuple[str, HelperStableUpdateArtifactDeclaration]:
+    """Read, validate, and materialize the effect configuration from one read.
+
+    The validated bytes are exactly the bytes written to the payload and the
+    bytes whose digest and size are recorded, so a source change between
+    validation and materialization cannot desynchronize the signed closure.
+    """
+    owner = f"{layer.value} effect configuration"
+    raw = _read_effect_configuration_bytes(source, owner)
+    effect_executor_id = _effect_executor_id_from_bytes(raw, layer, owner)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        destination.write_bytes(raw)
+    except OSError as error:
+        raise DomainError(
+            f"{owner} materialization failed path={destination}: {error}"
+        ) from error
+    return effect_executor_id, HelperStableUpdateArtifactDeclaration(
+        artifact_id=f"helper-{layer.value}-effect-configuration",
+        relative_path=destination.relative_to(payload_root).as_posix(),
+        sha256=hashlib.sha256(raw).hexdigest(),
+        size_bytes=len(raw),
+        media_type=EFFECT_CONFIGURATION_MEDIA_TYPE,
+    )
+
+
+def _read_effect_configuration_bytes(path: Path, owner: str) -> bytes:
+    _require_regular_file(path, owner)
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        raise DomainError(f"{owner} read failed path={path}: {error}") from error
+
+
+def _effect_executor_id_from_bytes(
+    raw: bytes,
+    layer: HelperStableUpdateLayer,
+    owner: str,
+) -> str:
+    value = _decode_effect_configuration(raw, owner)
+    if layer is HelperStableUpdateLayer.HOST_PLATFORM:
+        return validate_host_platform_effect_configuration(value, owner=owner)
+    return validate_guest_owner_effect_configuration(
+        value,
+        expected_layer=layer.value,
+        owner=owner,
+    ).effect_executor_id
+
+
+def _decode_effect_configuration(raw: bytes, owner: str) -> dict[str, object]:
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise DomainError(f"{owner} decode failed: {error}") from error
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise DomainError(f"{owner} JSON parse failed: {error}") from error
+    if not isinstance(value, dict):
+        raise DomainError(f"{owner} must be a JSON object")
+    return value
 
 
 def _copy_and_observe(

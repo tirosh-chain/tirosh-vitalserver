@@ -135,9 +135,12 @@ projection during the transition, but is not a fallback for authoritative
 product release state. Bootstrap staging now copies into an attempt-specific temporary
 directory and atomically publishes an immutable update-ID workspace; an
 existing final workspace is an explicit conflict and is never deleted or
-replaced. The fixed v1 handoff invocation is created only from a persisted
-`running` journal and carries correlation identities, digests, and relative
-artifact paths rather than arbitrary commands. Invocation document
+replaced. The fixed v2 handoff invocation is created only from a persisted
+`running` journal and an explicit Host-owned Guest Control endpoint. It carries
+correlation identities, digests, relative artifact paths, the authenticated
+envelope `payloadArtifacts` closure, and `guestControlBaseURL` rather than
+arbitrary commands or a signed Host-loopback URL. A missing, invalid, or
+loopback Guest endpoint is an admission failure; there is no v1 fallback. Invocation document
 persistence is exclusive, and the process adapter can execute only the staged
 updater with the fixed `execute --invocation` argument shape. A strict receipt
 reader preserves missing, inspection, read, and decode failures, while the
@@ -195,16 +198,24 @@ terminate any non-terminal journal with
 update ID is not silently reusable. These commands require an exact journal
 ID and never select the latest journal as fallback.
 
-The fixed handoff invocation now also carries the exact `layerOrder` from the
-authenticated bootstrap envelope. The bundle-owned next updater parses the
+The fixed handoff invocation now also carries the exact `layerOrder` and
+`payloadArtifacts` from the authenticated bootstrap envelope, plus the
+Host-supplied Guest Control endpoint. The bundle-owned next updater parses the
 strict `ProductUpdateSpecification` contract and pure planning policy requires
 its layer plan to cover that order exactly, preserves the declared order
 without sorting, requires every dependency to refer to an earlier layer, and
-requires `host-platform` to be final. Layer artifacts, rollback artifacts,
-effect executors, and executor configuration are distinct immutable payload
-members with explicit paths, sizes, media types, and SHA-256 digests. This
-planning boundary does not execute effects; process execution and typed layer
-effect receipt aggregation are separate adapter responsibilities.
+requires `host-platform` to be final. Before execution it cross-checks the
+specification-declared apply, executor, configuration, and rollback artifacts
+against `invocation.payloadArtifacts`. Missing, extra, and identity-mismatched
+artifacts remain distinct planning failures. Layer artifacts, rollback
+artifacts, effect executors, and executor configuration are distinct immutable
+payload members with explicit paths, sizes, media types, and SHA-256 digests.
+Signed Guest-owned effect configuration is schema
+`vitalserver.guest-owner-layer-effect-configuration/v2` and does not own a
+Guest Control URL; Product Update layer-effect invocation v2 carries the Host
+endpoint into the executor. This planning boundary does not execute effects;
+process execution and typed layer effect receipt aggregation are separate
+adapter responsibilities.
 
 The bundle-owned execution workflow now consumes only the pure execution plan
 and explicit layer-effect execution results. It issues `apply` requests in the

@@ -7,14 +7,19 @@ final class UpdateBootstrapHandoffPolicyTests: XCTestCase {
         let journal = try runningJournal()
 
         let invocation = try UpdateBootstrapHandoffPolicy.makeInvocation(
-            journal: journal
+            journal: journal,
+            guestControlBaseURL: "http://192.168.64.3:18330/"
         )
 
         XCTAssertEqual(
             invocation.schemaVersion,
-            "vitalserver.update-bootstrap-handoff/v1"
+            "vitalserver.update-bootstrap-handoff/v2"
         )
         XCTAssertEqual(invocation.updateId, journal.id)
+        XCTAssertEqual(
+            invocation.guestControlBaseURL,
+            "http://192.168.64.3:18330/"
+        )
         XCTAssertEqual(invocation.operationId, journal.operationId)
         XCTAssertEqual(invocation.requestId, journal.requestId)
         XCTAssertEqual(invocation.bootstrapEnvelopeId, journal.envelope.id)
@@ -42,12 +47,55 @@ final class UpdateBootstrapHandoffPolicyTests: XCTestCase {
         )
 
         XCTAssertThrowsError(
-            try UpdateBootstrapHandoffPolicy.makeInvocation(journal: pending)
+            try UpdateBootstrapHandoffPolicy.makeInvocation(
+                journal: pending,
+                guestControlBaseURL: "http://192.168.64.3:18330/"
+            )
         ) { error in
             XCTAssertEqual(
                 error as? UpdateBootstrapHandoffPolicyError,
                 .journalIsNotRunning(.handoffPending)
             )
+        }
+    }
+
+    func testRejectsHostLoopbackGuestControlEndpoint() throws {
+        XCTAssertThrowsError(
+            try UpdateBootstrapHandoffPolicy.makeInvocation(
+                journal: runningJournal(),
+                guestControlBaseURL: "http://127.0.0.1:18330/"
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapHandoffPolicyError,
+                .invalidGuestControlBaseURL("http://127.0.0.1:18330/")
+            )
+        }
+    }
+
+    func testRejectsHostLoopbackGuestControlEndpointVariants() throws {
+        let journal = try runningJournal()
+        let loopbackHosts = [
+            "http://127.0.0.2:18330/",
+            "http://127.1:18330/",
+            "http://[::1]:18330/",
+            "http://LOCALHOST:18330/",
+            "http://localhost.:18330/",
+            "http://sub.localhost:18330/",
+        ]
+        for url in loopbackHosts {
+            XCTAssertThrowsError(
+                try UpdateBootstrapHandoffPolicy.makeInvocation(
+                    journal: journal,
+                    guestControlBaseURL: url
+                ),
+                "expected \(url) to be rejected as loopback"
+            ) { error in
+                XCTAssertEqual(
+                    error as? UpdateBootstrapHandoffPolicyError,
+                    .invalidGuestControlBaseURL(url)
+                )
+            }
         }
     }
 
@@ -106,7 +154,12 @@ final class UpdateBootstrapHandoffPolicyTests: XCTestCase {
                 id: "update-specification",
                 path: "spec/update.json"
             ),
-            payloadArtifacts: [],
+            payloadArtifacts: [
+                artifact(
+                    id: "host-artifact",
+                    path: "payload/layers/host-platform/apply.bin"
+                ),
+            ],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "release-key-1",

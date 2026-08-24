@@ -254,7 +254,10 @@ private final class HandoffWorkflowHarness {
                 try advance.handoffStarted(journal: $0, observedAt: $1)
             },
             makeInvocation: {
-                try makeInvocation.execute(journal: $0)
+                try makeInvocation.execute(
+                    journal: $0,
+                    guestControlBaseURL: "http://192.168.64.3:18330/"
+                )
             },
             writeInvocation: { [self] _, _ in
                 events.append("write-invocation")

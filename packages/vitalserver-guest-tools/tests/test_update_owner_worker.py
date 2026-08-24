@@ -10,7 +10,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from tirosh_guest_tools.adapters.inbound.guest_control_api import route_request
+from tirosh_guest_tools.adapters.inbound.guest_control_api import (
+    GuestControlAPIError,
+    route_request,
+)
 from tirosh_guest_tools.adapters.outbound.sqlite_control import (
     SQLiteControlRepository,
 )
@@ -19,6 +22,8 @@ from tirosh_guest_tools.adapters.outbound.update_artifacts import (
     AtomicGuestRuntimeReleaseEffect,
     GuestRuntimeServiceReconciler,
     ImmutableUpdateArtifactStore,
+    UpdateArtifactImportFailed,
+    UpdateStoredArtifactCorrupt,
 )
 from tirosh_guest_tools.application.guest_control.container_image_set import (
     ContainerImageSetUseCases,
@@ -550,6 +555,173 @@ def test_import_reverifies_existing_content_addressed_archive(tmp_path) -> None:
 
     with pytest.raises(Exception, match="digest mismatch"):
         store.resolve(kind="container-image-set", digest=expected)
+
+
+def test_stream_import_consumes_and_verifies_body_when_archive_already_exists(
+    tmp_path,
+) -> None:
+    store = ImmutableUpdateArtifactStore(tmp_path / "artifacts")
+    content = b"archive"
+    expected = digest(content)
+    store.import_bytes(
+        kind="container-image-set",
+        digest=expected,
+        content=content,
+    )
+    stream = io.BytesIO(content)
+
+    reference = store.import_stream(
+        kind="container-image-set",
+        digest=expected,
+        stream=stream,
+        size_bytes=len(content),
+    )
+
+    assert (
+        reference == f"container-image-set/{expected.removeprefix('sha256:')}.archive"
+    )
+    assert stream.tell() == len(content)
+
+
+def test_stream_import_rejects_mismatched_body_when_archive_already_exists(
+    tmp_path,
+) -> None:
+    store = ImmutableUpdateArtifactStore(tmp_path / "artifacts")
+    content = b"archive"
+    expected = digest(content)
+    store.import_bytes(
+        kind="container-image-set",
+        digest=expected,
+        content=content,
+    )
+    stream = io.BytesIO(b"tampered")
+
+    with pytest.raises(Exception, match="digest mismatch"):
+        store.import_stream(
+            kind="container-image-set",
+            digest=expected,
+            stream=stream,
+            size_bytes=len(b"tampered"),
+        )
+
+    assert stream.tell() == len(b"tampered")
+
+
+def test_stream_import_consumes_body_then_reports_corrupt_existing_archive(
+    tmp_path,
+) -> None:
+    store = ImmutableUpdateArtifactStore(tmp_path / "artifacts")
+    content = b"archive"
+    expected = digest(content)
+    store.import_bytes(
+        kind="container-image-set",
+        digest=expected,
+        content=content,
+    )
+    destination = (
+        tmp_path
+        / "artifacts"
+        / "container-image-set"
+        / f"{expected.removeprefix('sha256:')}.archive"
+    )
+    destination.write_bytes(b"corrupt")
+    stream = io.BytesIO(content)
+
+    with pytest.raises(UpdateStoredArtifactCorrupt, match="stored but corrupt"):
+        store.import_stream(
+            kind="container-image-set",
+            digest=expected,
+            stream=stream,
+            size_bytes=len(content),
+        )
+
+    assert stream.tell() == len(content)
+    assert destination.read_bytes() == b"corrupt"
+
+
+def test_stream_import_preserves_short_body_and_stored_corruption_reasons(
+    tmp_path,
+) -> None:
+    store = ImmutableUpdateArtifactStore(tmp_path / "artifacts")
+    content = b"archive"
+    expected = digest(content)
+    store.import_bytes(
+        kind="container-image-set",
+        digest=expected,
+        content=content,
+    )
+    destination = (
+        tmp_path
+        / "artifacts"
+        / "container-image-set"
+        / f"{expected.removeprefix('sha256:')}.archive"
+    )
+    destination.write_bytes(b"corrupt")
+
+    with pytest.raises(UpdateArtifactImportFailed) as excinfo:
+        store.import_stream(
+            kind="container-image-set",
+            digest=expected,
+            stream=io.BytesIO(content),
+            size_bytes=len(content) + 1,
+        )
+
+    message = str(excinfo.value)
+    assert "Content-Length" in message
+    assert "stored but corrupt" in message
+
+
+def test_stream_import_preserves_mismatch_and_stored_corruption_reasons(
+    tmp_path,
+) -> None:
+    store = ImmutableUpdateArtifactStore(tmp_path / "artifacts")
+    content = b"archive"
+    expected = digest(content)
+    store.import_bytes(
+        kind="container-image-set",
+        digest=expected,
+        content=content,
+    )
+    destination = (
+        tmp_path
+        / "artifacts"
+        / "container-image-set"
+        / f"{expected.removeprefix('sha256:')}.archive"
+    )
+    destination.write_bytes(b"corrupt")
+
+    with pytest.raises(UpdateArtifactImportFailed) as excinfo:
+        store.import_stream(
+            kind="container-image-set",
+            digest=expected,
+            stream=io.BytesIO(b"tampered"),
+            size_bytes=len(b"tampered"),
+        )
+
+    message = str(excinfo.value)
+    assert "digest mismatch" in message
+    assert "stored but corrupt" in message
+
+
+def test_guest_api_reports_stored_corruption_as_explicit_http_failure() -> None:
+    class UseCases:
+        def import_update_artifact(self, *, kind, digest, content):
+            raise UpdateStoredArtifactCorrupt(
+                digest=digest.removeprefix("sha256:"),
+                reason="read failed.",
+            )
+
+    with pytest.raises(GuestControlAPIError) as excinfo:
+        route_request(
+            method="PUT",
+            path=f"/runtime/update-artifacts/container-image-set/{'b' * 64}",
+            body=b"archive",
+            usecases=UseCases(),  # type: ignore[arg-type]
+        )
+
+    assert excinfo.value.status == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert excinfo.value.code == "updateStoredArtifactCorrupt"
+    assert "stored but corrupt" in excinfo.value.detail
 
 
 def test_stream_import_rejects_short_body_without_leaving_staging_file(

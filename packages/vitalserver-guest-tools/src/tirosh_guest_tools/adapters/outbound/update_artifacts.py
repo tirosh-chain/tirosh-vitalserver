@@ -25,6 +25,27 @@ from tirosh_guest_tools.domain.guest_runtime_release import (
 UPDATE_ARTIFACT_KINDS = frozenset({"container-image-set", "guest-runtime-release"})
 
 
+class UpdateStoredArtifactCorrupt(UpdateArtifactUnavailable):
+    """A content-addressed destination exists but is corrupt or unreadable."""
+
+    def __init__(self, *, digest: str, reason: str) -> None:
+        self.digest = digest
+        self.reason = reason
+        super().__init__(
+            f"Guest-owned update archive is stored but corrupt: "
+            f"digest={digest} reason={reason}."
+        )
+
+
+class UpdateArtifactImportFailed(UpdateArtifactUnavailable):
+    """Independent import checks failed together; keep every typed reason."""
+
+    def __init__(self, reasons: list[UpdateArtifactUnavailable]) -> None:
+        self.reasons = reasons
+        rendered = "; ".join(str(reason) for reason in reasons)
+        super().__init__(f"Update archive import failed: {rendered}.")
+
+
 class ImmutableUpdateArtifactStore:
     """Guest-owned, content-addressed archive import and verification boundary."""
 
@@ -54,8 +75,13 @@ class ImmutableUpdateArtifactStore:
         directory.mkdir(parents=True, exist_ok=True)
         destination = directory / f"{digest_hex}.archive"
         if destination.exists():
-            self._verify(destination, digest_hex)
-            return f"{kind}/{destination.name}"
+            return self._import_existing_destination(
+                kind=kind,
+                destination=destination,
+                digest_hex=digest_hex,
+                stream=stream,
+                size_bytes=size_bytes,
+            )
         temporary: Path | None = None
         try:
             with NamedTemporaryFile(
@@ -99,6 +125,34 @@ class ImmutableUpdateArtifactStore:
         self._verify(archive, digest_hex)
         return archive
 
+    def _import_existing_destination(
+        self,
+        *,
+        kind: str,
+        destination: Path,
+        digest_hex: str,
+        stream: BinaryIO,
+        size_bytes: int,
+    ) -> str:
+        actual, incoming_error = _consume_declared_body(stream, size_bytes)
+        if incoming_error is None and actual != digest_hex:
+            incoming_error = UpdateArtifactUnavailable(
+                f"Update archive digest mismatch expected={digest_hex} actual={actual}."
+            )
+        try:
+            self._verify(destination, digest_hex)
+        except UpdateStoredArtifactCorrupt as error:
+            stored_error: UpdateStoredArtifactCorrupt | None = error
+        else:
+            stored_error = None
+        if incoming_error is not None and stored_error is not None:
+            raise UpdateArtifactImportFailed([incoming_error, stored_error])
+        if incoming_error is not None:
+            raise incoming_error
+        if stored_error is not None:
+            raise stored_error
+        return f"{kind}/{destination.name}"
+
     def _directory(self, kind: str) -> Path:
         if kind not in UPDATE_ARTIFACT_KINDS:
             raise UpdateArtifactUnavailable(
@@ -114,15 +168,39 @@ class ImmutableUpdateArtifactStore:
                 for chunk in iter(lambda: file.read(1024 * 1024), b""):
                     digest.update(chunk)
         except OSError as error:
-            raise UpdateArtifactUnavailable(
-                f"Update archive read failed: path={path} reason={error}."
+            raise UpdateStoredArtifactCorrupt(
+                digest=expected,
+                reason=f"read failed path={path} error={error}.",
             ) from error
         actual = digest.hexdigest()
         if actual != expected:
-            raise UpdateArtifactUnavailable(
-                f"Guest-owned update archive digest mismatch "
-                f"expected={expected} actual={actual}."
+            raise UpdateStoredArtifactCorrupt(
+                digest=expected,
+                reason=f"digest mismatch expected={expected} actual={actual}.",
             )
+
+
+def _consume_declared_body(
+    stream: BinaryIO,
+    size_bytes: int,
+) -> tuple[str, UpdateArtifactUnavailable | None]:
+    """Consume the declared body; returns (observed_digest, error)."""
+    observed = hashlib.sha256()
+    remaining = size_bytes
+    try:
+        while remaining:
+            chunk = stream.read(min(1024 * 1024, remaining))
+            if not chunk:
+                return observed.hexdigest(), UpdateArtifactUnavailable(
+                    "Update archive ended before its declared Content-Length."
+                )
+            observed.update(chunk)
+            remaining -= len(chunk)
+    except OSError as error:
+        return observed.hexdigest(), UpdateArtifactUnavailable(
+            f"Update archive read failed: {error}."
+        )
+    return observed.hexdigest(), None
 
 
 class DockerComposeContainerImageSetEffect:
@@ -245,8 +323,7 @@ class AtomicGuestRuntimeReleaseEffect:
             return
         if not self._active_link.is_dir():
             raise UpdateEffectFailed(
-                "Initial Guest Runtime directory is unavailable: "
-                f"{self._active_link}."
+                f"Initial Guest Runtime directory is unavailable: {self._active_link}."
             )
         staging = self._releases_root / f".{release.identity}.initial.staging"
         previous = self._releases_root / f".{release.identity}.bootstrap.previous"

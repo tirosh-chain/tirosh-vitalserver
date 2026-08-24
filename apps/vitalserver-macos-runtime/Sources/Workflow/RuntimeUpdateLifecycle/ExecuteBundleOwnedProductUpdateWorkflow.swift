@@ -1,5 +1,6 @@
 import Application
 import Contracts
+import Domain
 
 public enum ExecuteBundleOwnedProductUpdateWorkflowError:
     Error, Equatable, Sendable
@@ -185,7 +186,9 @@ public struct ExecuteBundleOwnedProductUpdateWorkflow {
             )
         }
         var receipts: [ProductUpdateLayerEffectReceipt] = []
-        for layerPlan in applied.reversed() {
+        for layerPlan in
+            BundleOwnedProductUpdateExecutionPolicy.rollbackPlans(applied)
+        {
             guard layerPlan.rollback.state == .available,
                   let artifact = layerPlan.rollback.artifact else {
                 return (

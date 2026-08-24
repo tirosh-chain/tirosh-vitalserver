@@ -5,8 +5,12 @@ public struct MakeUpdateBootstrapHandoffInvocationUseCase {
     public init() {}
 
     public func execute(
-        journal: UpdateBootstrapJournal
+        journal: UpdateBootstrapJournal,
+        guestControlBaseURL: String
     ) throws -> UpdateBootstrapHandoffInvocation {
-        try UpdateBootstrapHandoffPolicy.makeInvocation(journal: journal)
+        try UpdateBootstrapHandoffPolicy.makeInvocation(
+            journal: journal,
+            guestControlBaseURL: guestControlBaseURL
+        )
     }
 }

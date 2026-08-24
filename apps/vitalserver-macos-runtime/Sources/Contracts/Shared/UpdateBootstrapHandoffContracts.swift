@@ -8,7 +8,9 @@ public struct UpdateBootstrapHandoffInvocation: Codable, Equatable, Sendable {
     public let bootstrapEnvelopeId: String
     public let bootstrapSignedSHA256: String
     public let updateSpecificationSHA256: String
+    public let guestControlBaseURL: String
     public let layerOrder: [UpdateLayer]
+    public let payloadArtifacts: [UpdateBootstrapArtifact]
     public let expectedJournalRevision: Int
     public let updaterRelativePath: String
     public let specificationRelativePath: String
@@ -22,7 +24,9 @@ public struct UpdateBootstrapHandoffInvocation: Codable, Equatable, Sendable {
         case bootstrapEnvelopeId
         case bootstrapSignedSHA256
         case updateSpecificationSHA256
+        case guestControlBaseURL
         case layerOrder
+        case payloadArtifacts
         case expectedJournalRevision
         case updaterRelativePath
         case specificationRelativePath
@@ -37,7 +41,9 @@ public struct UpdateBootstrapHandoffInvocation: Codable, Equatable, Sendable {
         bootstrapEnvelopeId: String,
         bootstrapSignedSHA256: String,
         updateSpecificationSHA256: String,
+        guestControlBaseURL: String,
         layerOrder: [UpdateLayer],
+        payloadArtifacts: [UpdateBootstrapArtifact],
         expectedJournalRevision: Int,
         updaterRelativePath: String,
         specificationRelativePath: String,
@@ -50,7 +56,9 @@ public struct UpdateBootstrapHandoffInvocation: Codable, Equatable, Sendable {
         self.bootstrapEnvelopeId = bootstrapEnvelopeId
         self.bootstrapSignedSHA256 = bootstrapSignedSHA256
         self.updateSpecificationSHA256 = updateSpecificationSHA256
+        self.guestControlBaseURL = guestControlBaseURL
         self.layerOrder = layerOrder
+        self.payloadArtifacts = payloadArtifacts
         self.expectedJournalRevision = expectedJournalRevision
         self.updaterRelativePath = updaterRelativePath
         self.specificationRelativePath = specificationRelativePath
@@ -81,9 +89,17 @@ public struct UpdateBootstrapHandoffInvocation: Codable, Equatable, Sendable {
                 String.self,
                 forKey: .updateSpecificationSHA256
             ),
+            guestControlBaseURL: try container.decode(
+                String.self,
+                forKey: .guestControlBaseURL
+            ),
             layerOrder: try container.decode(
                 [UpdateLayer].self,
                 forKey: .layerOrder
+            ),
+            payloadArtifacts: try container.decode(
+                [UpdateBootstrapArtifact].self,
+                forKey: .payloadArtifacts
             ),
             expectedJournalRevision: try container.decode(
                 Int.self,

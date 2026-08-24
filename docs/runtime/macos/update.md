@@ -168,6 +168,11 @@ exact file closure(추가 파일 없음)를 검증합니다. 이 과정에서 sp
 decode하지 않습니다. staging 후에도 같은 envelope-owned closure를 다시
 검증합니다.
 
+검증된 next updater만 specification을 decode하고, specification이 선언한
+apply/executor/configuration/rollback artifact가 signed `payloadArtifacts`
+closure와 정확히 일치하는지 교차 검증합니다. 선언 누락, 추가 artifact, digest
+또는 size 불일치는 next updater가 admission을 거부합니다.
+
 필드나 specification이 바뀌어도 기존 Host가 새 specification을 추측하거나
 fallback으로 해석하지 않습니다. 기존 Host는 고정 bootstrap 계약만 검증하고,
 bundle이 제공한 next updater에 인증된 입력을 그대로 handoff합니다.
@@ -176,9 +181,10 @@ bundle이 제공한 next updater에 인증된 입력을 그대로 handoff합니�
 UTC 순간이어야 합니다. publisher(builder/verifier)와 설치 Host의 Swift verifier
 가 동일한 canonical UTC 순간을 검증하므로, 존재하지 않는 날짜(예: 2월 30일,
 13월, 24시)는 publisher와 verifier 양쪽에서 거부됩니다.
-식별자(`id`, `productId`, `signature.keyId`, artifact id)는 ASCII
-`[A-Za-z0-9._-]{1,128}` 계약을 공유합니다. leading `._-`은 허용되고 `:`와
-비-ASCII 문자는 거부됩니다.
+식별자(`id`, `productId`, `signature.keyId`, artifact id, effect executor id)는
+ASCII `[A-Za-z0-9._-]{1,128}` 계약을 공유합니다. publisher, bootstrap envelope,
+effect configuration, Product Update Specification planner가 동일한 계약을
+적용하므로 leading `._-`은 허용되고 `:`와 비-ASCII 문자는 거부됩니다.
 
 ### Legacy schema-3 Manifest Compatibility
 
@@ -450,12 +456,28 @@ executor와 effect configuration을 가집니다. Helper Host Platform archive�
 Helper app과 교체 가능한 Host service를 포함하지만 다음 stable owner는
 포함하거나 교체할 수 없습니다.
 
+Guest Control endpoint는 signed effect configuration의 일부가 아닙니다.
+Platform Agent가 Host-owned Guest address provider에서 현재 주소를 읽고,
+`update-bootstrap-handoff/v2`와
+`product-update-layer-effect-invocation/v2`를 통해 next updater와
+Guest-owned layer executor에 명시적으로 전달합니다. 주소가 missing,
+invalid, stale, 또는 read-failed이면 apply를 진행하지 않으며 loopback이나
+이전 관측값으로 보정하지 않습니다.
+
 - `/usr/local/bin/vitalserver-host-installation-manager`
 - `/usr/local/bin/vitalserver-update-handoff-supervisor`
 
-Host Platform 적용이 실패하면 이미 적용된 Guest Runtime과 Container를 정확히
-역순으로 rollback합니다. execution report는 전체 ordered apply/rollback
-receipt를 보존하며, 누락되거나 순서가 다른 receipt는 성공 증거가 아닙니다.
+Host Platform 적용이 실패하면 Host-owned effect를 먼저 되돌리고, Guest
+Control API가 여전히 새 owner code를 실행하는 동안 Container를 rollback한
+뒤 Guest Runtime을 rollback합니다. 따라서 product layer rollback 순서는
+`Host Platform -> Container -> Guest Runtime`입니다. execution report는
+전체 ordered apply/rollback receipt를 보존하며, 누락되거나 순서가 다른
+receipt는 성공 증거가 아닙니다.
+
+Guest content-addressed artifact store는 같은 digest가 이미 존재해도 incoming
+request body를 declared Content-Length까지 소비하고 SHA-256을 검증합니다.
+기존 artifact 존재를 이유로 body를 읽지 않고 성공 응답을 반환하면 Host upload
+task에는 connection-lost로 관측되므로 idempotent import가 아닙니다.
 
 `rootfs-base.raw.gz`는 stable Product Update에 포함하지 않습니다. VM
 Image/rootfs를 바꾸는 경우에만 `make dist/image-update/release`의 별도 legacy
@@ -489,7 +511,7 @@ rollback smoke의 fault bundle은 일반 bundle에서 만들어내거나 암묵�
 변형하지 않습니다. Host Platform effect가 의도적으로 실패하도록 별도로
 구성하고 동일 publisher로 서명한 bundle이어야 하며, proof는
 Container/Guest Runtime 적용 성공, Host Platform 적용 실패,
-Guest Runtime/Container 역순 rollback 성공 receipt를 모두 요구합니다.
+Container/Guest Runtime owner-safe rollback 성공 receipt를 모두 요구합니다.
 
 ```text
 rootfs-base.raw.gz = immutable base artifact

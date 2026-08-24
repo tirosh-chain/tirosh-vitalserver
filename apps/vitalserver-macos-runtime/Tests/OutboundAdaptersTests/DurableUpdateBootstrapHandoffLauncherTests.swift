@@ -129,14 +129,16 @@ final class DurableUpdateBootstrapHandoffLauncherTests: XCTestCase {
 
     private func makeInvocation() -> UpdateBootstrapHandoffInvocation {
         UpdateBootstrapHandoffInvocation(
-            schemaVersion: "vitalserver.update-bootstrap-handoff/v1",
+            schemaVersion: "vitalserver.update-bootstrap-handoff/v2",
             updateId: "update-42",
             operationId: "operation-42",
             requestId: "request-42",
             bootstrapEnvelopeId: "envelope-42",
             bootstrapSignedSHA256: String(repeating: "a", count: 64),
             updateSpecificationSHA256: String(repeating: "b", count: 64),
+            guestControlBaseURL: "http://192.168.64.3:18330/",
             layerOrder: [.container, .guestRuntime, .hostPlatform],
+            payloadArtifacts: [],
             expectedJournalRevision: 3,
             updaterRelativePath: "updater/next-updater",
             specificationRelativePath: "spec/update.json",

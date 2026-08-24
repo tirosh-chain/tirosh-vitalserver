@@ -58,7 +58,8 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             serviceManager: UpdateHandoffTestServiceManager(
                 jobsRoot: installed.updateHandoffJobsDirectory,
                 runner: runner
-            )
+            ),
+            guestAddressProvider: UpdateBootstrapGuestAddressProvider()
         )
 
         try lifecycle.applyUpdateBootstrap(
@@ -357,7 +358,8 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             serviceManager: UpdateHandoffTestServiceManager(
                 jobsRoot: installed.updateHandoffJobsDirectory,
                 runner: runner
-            )
+            ),
+            guestAddressProvider: UpdateBootstrapGuestAddressProvider()
         )
     }
 
@@ -442,8 +444,80 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         privateKey: Curve25519.Signing.PrivateKey
     ) throws {
         let updaterData = Data("#!/bin/sh\nexit 0\n".utf8)
-        let specificationData = Data("{\"update\":\"0.2.2\"}\n".utf8)
-        let payloadData = Data("host-platform-apply\n".utf8)
+        var payloads: [(artifact: UpdateBootstrapArtifact, data: Data, executable: Bool)] = []
+        func declaredArtifact(
+            id: String,
+            relativePath: String,
+            mediaType: String = "application/octet-stream",
+            executable: Bool = false
+        ) -> UpdateBootstrapArtifact {
+            let data = Data("\(id)\n".utf8)
+            let artifact = UpdateBootstrapArtifact(
+                id: id,
+                relativePath: relativePath,
+                sha256: sha256(data),
+                sizeBytes: data.count,
+                mediaType: mediaType
+            )
+            payloads.append((artifact, data, executable))
+            return artifact
+        }
+        let layers: [UpdateLayer] = [
+            .container,
+            .guestRuntime,
+            .hostPlatform,
+        ]
+        let layerPlan = layers.enumerated().map { index, layer in
+            let base = "payload/layers/\(layer.rawValue)"
+            let executor = declaredArtifact(
+                id: "\(layer.rawValue)-executor",
+                relativePath: "\(base)/effect-executor",
+                mediaType: BundleOwnedProductUpdatePlanner
+                    .effectExecutorMediaType,
+                executable: true
+            )
+            return ProductUpdateLayerPlan(
+                layer: layer,
+                dependsOn: index == 0 ? [] : [layers[index - 1]],
+                artifact: declaredArtifact(
+                    id: "\(layer.rawValue)-apply",
+                    relativePath: "\(base)/artifact"
+                ),
+                effectExecutor: ProductUpdateLayerEffectExecutor(
+                    id: executor.id,
+                    relativePath: executor.relativePath,
+                    sha256: executor.sha256,
+                    sizeBytes: executor.sizeBytes,
+                    mediaType: executor.mediaType,
+                    configurationArtifact: declaredArtifact(
+                        id: "\(layer.rawValue)-configuration",
+                        relativePath: "\(base)/effect-configuration.json",
+                        mediaType: BundleOwnedProductUpdatePlanner
+                            .effectConfigurationMediaType
+                    )
+                ),
+                rollback: ProductUpdateLayerRollbackPlan(
+                    state: .available,
+                    artifact: declaredArtifact(
+                        id: "\(layer.rawValue)-rollback",
+                        relativePath: "\(base)/rollback-artifact"
+                    ),
+                    reason: nil
+                )
+            )
+        }
+        let productSpecification = ProductUpdateSpecification(
+            schemaVersion: BundleOwnedProductUpdatePlanner
+                .specificationSchemaVersion,
+            id: "update-specification",
+            bootstrapEnvelopeId: "update-0.2.2",
+            layerPlan: layerPlan
+        )
+        let specificationEncoder = JSONEncoder()
+        specificationEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let specificationData = try specificationEncoder.encode(
+            productSpecification
+        )
         let updater = UpdateBootstrapArtifact(
             id: "next-updater",
             relativePath: "payload/bin/vitalserver-update",
@@ -458,17 +532,10 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             sizeBytes: specificationData.count,
             mediaType: "application/json"
         )
-        let payloadArtifact = UpdateBootstrapArtifact(
-            id: "host-platform-apply",
-            relativePath: "payload/layers/host-platform/apply.bin",
-            sha256: sha256(payloadData),
-            sizeBytes: payloadData.count,
-            mediaType: "application/octet-stream"
-        )
         let unsigned = envelope(
             updater: updater,
             specification: specification,
-            payloadArtifacts: [payloadArtifact],
+            payloadArtifacts: payloads.map(\.artifact),
             signedSHA256: String(repeating: "0", count: 64),
             signature: "unsigned"
         )
@@ -479,7 +546,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         let signed = envelope(
             updater: updater,
             specification: specification,
-            payloadArtifacts: [payloadArtifact],
+            payloadArtifacts: payloads.map(\.artifact),
             signedSHA256: signedSHA256,
             signature: signature
         )
@@ -505,14 +572,22 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             FileManager.default.isExecutableFile(atPath: updaterURL.path)
         )
         try specificationData.write(to: specificationURL)
-        let payloadURL = root.appendingPathComponent(
-            payloadArtifact.relativePath
-        )
-        try FileManager.default.createDirectory(
-            at: payloadURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try payloadData.write(to: payloadURL)
+        for payload in payloads {
+            let url = root.appendingPathComponent(
+                payload.artifact.relativePath
+            )
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try payload.data.write(to: url)
+            if payload.executable {
+                try FileManager.default.setAttributes(
+                    [.posixPermissions: 0o755],
+                    ofItemAtPath: url.path
+                )
+            }
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(signed).write(
@@ -560,6 +635,17 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         SHA256.hash(data: data)
             .map { String(format: "%02x", $0) }
             .joined()
+    }
+}
+
+private struct UpdateBootstrapGuestAddressProvider:
+    RuntimeGuestAddressProvider
+{
+    func readGuestAddress() -> RuntimeGuestAddressReadResult {
+        .loaded(
+            address: "192.168.64.3",
+            source: .platformAgent
+        )
     }
 }
 

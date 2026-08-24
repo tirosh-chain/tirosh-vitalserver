@@ -151,7 +151,7 @@ public enum BundleOwnedProductUpdateExecutionPolicy {
         ).compactMap { item in
             item.1.state == .succeeded ? item.0 : nil
         }
-        let expectedRollbackPlans = Array(appliedPlans.reversed())
+        let expectedRollbackPlans = rollbackPlans(appliedPlans)
         guard report.rollbackReceipts.count <= expectedRollbackPlans.count
         else {
             throw BundleOwnedProductUpdateExecutionPolicyError
@@ -204,6 +204,20 @@ public enum BundleOwnedProductUpdateExecutionPolicy {
                 throw BundleOwnedProductUpdateExecutionPolicyError
                     .invalidReportOutcome
             }
+        }
+    }
+
+    public static func rollbackPlans(
+        _ appliedPlans: [ProductUpdateLayerPlan]
+    ) -> [ProductUpdateLayerPlan] {
+        let priority: [UpdateLayer: Int] = [
+            .hostPlatform: 0,
+            .container: 1,
+            .guestRuntime: 2,
+        ]
+        return appliedPlans.sorted {
+            priority[$0.layer, default: Int.max]
+                < priority[$1.layer, default: Int.max]
         }
     }
 

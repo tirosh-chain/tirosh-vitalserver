@@ -4,9 +4,6 @@ import XCTest
 
 final class BundleOwnedProductUpdatePlannerTests: XCTestCase {
     func testPlansExactlyTheBootstrapDeclaredLayerOrder() throws {
-        let invocation = invocation(
-            layerOrder: [.container, .guestRuntime, .hostPlatform]
-        )
         let specification = specification(
             plans: [
                 layer(.container),
@@ -16,6 +13,13 @@ final class BundleOwnedProductUpdatePlannerTests: XCTestCase {
                     dependsOn: [.container, .guestRuntime]
                 ),
             ]
+        )
+        let invocation = invocation(
+            layerOrder: [.container, .guestRuntime, .hostPlatform],
+            payloadArtifacts:
+                UpdateBootstrapBundleClosurePolicy.declaredArtifacts(
+                    specification
+                )
         )
 
         let plan = try BundleOwnedProductUpdatePlanner.plan(
@@ -29,6 +33,93 @@ final class BundleOwnedProductUpdatePlannerTests: XCTestCase {
             plan.layerPlan.map(\.layer),
             [.container, .guestRuntime, .hostPlatform]
         )
+    }
+
+    func testRejectsPayloadClosureThatOmitsDeclaredArtifact() {
+        let specification = specification(plans: [layer(.container)])
+        let declared = UpdateBootstrapBundleClosurePolicy.declaredArtifacts(
+            specification
+        )
+
+        XCTAssertThrowsError(
+            try BundleOwnedProductUpdatePlanner.plan(
+                invocation: invocation(
+                    layerOrder: [.container],
+                    payloadArtifacts: Array(declared.dropFirst())
+                ),
+                specification: specification
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BundleOwnedProductUpdatePlanningError,
+                .payloadClosureMismatch(
+                    missing: [declared[0].id],
+                    unknown: []
+                )
+            )
+        }
+    }
+
+    func testRejectsPayloadClosureWithUndeclaredArtifact() {
+        let specification = specification(plans: [layer(.container)])
+        let declared = UpdateBootstrapBundleClosurePolicy.declaredArtifacts(
+            specification
+        )
+
+        XCTAssertThrowsError(
+            try BundleOwnedProductUpdatePlanner.plan(
+                invocation: invocation(
+                    layerOrder: [.container],
+                    payloadArtifacts: declared + [
+                        artifact(
+                            id: "undeclared-artifact",
+                            path: "payload/undeclared.bin",
+                            digestCharacter: "z"
+                        )
+                    ]
+                ),
+                specification: specification
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BundleOwnedProductUpdatePlanningError,
+                .payloadClosureMismatch(
+                    missing: [],
+                    unknown: ["undeclared-artifact"]
+                )
+            )
+        }
+    }
+
+    func testRejectsPayloadClosureWhoseDeclaredArtifactIdentityDiffers() {
+        let specification = specification(plans: [layer(.container)])
+        var mismatched = UpdateBootstrapBundleClosurePolicy.declaredArtifacts(
+            specification
+        )
+        let original = mismatched[0]
+        mismatched[0] = artifact(
+            id: original.id,
+            path: original.relativePath,
+            digestCharacter: "z"
+        )
+
+        XCTAssertThrowsError(
+            try BundleOwnedProductUpdatePlanner.plan(
+                invocation: invocation(
+                    layerOrder: [.container],
+                    payloadArtifacts: mismatched
+                ),
+                specification: specification
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BundleOwnedProductUpdatePlanningError,
+                .payloadClosureMismatch(
+                    missing: [],
+                    unknown: [original.id]
+                )
+            )
+        }
     }
 
     func testRejectsSpecificationThatReordersBootstrapLayers() {
@@ -67,6 +158,76 @@ final class BundleOwnedProductUpdatePlannerTests: XCTestCase {
             XCTAssertEqual(
                 error as? BundleOwnedProductUpdatePlanningError,
                 .hostPlatformIsNotFinal
+            )
+        }
+    }
+
+    func testAcceptsLeadingPunctuationIdentifiers() throws {
+        let spec = specification(
+            plans: [layer(.container, executorId: "-container-executor")],
+            id: "_specification-42"
+        )
+
+        let plan = try BundleOwnedProductUpdatePlanner.plan(
+            invocation: invocation(
+                layerOrder: [.container],
+                payloadArtifacts:
+                    UpdateBootstrapBundleClosurePolicy.declaredArtifacts(spec),
+                updateId: ".update-42"
+            ),
+            specification: spec
+        )
+
+        XCTAssertEqual(plan.updateId, ".update-42")
+        XCTAssertEqual(plan.specificationId, "_specification-42")
+    }
+
+    func testRejectsColonInUpdateIdentifier() {
+        XCTAssertThrowsError(
+            try BundleOwnedProductUpdatePlanner.plan(
+                invocation: invocation(
+                    layerOrder: [.container],
+                    updateId: "update:42"
+                ),
+                specification: specification(plans: [layer(.container)])
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BundleOwnedProductUpdatePlanningError,
+                .invalidInvocationIdentity
+            )
+        }
+    }
+
+    func testRejectsColonInSpecificationIdentifier() {
+        XCTAssertThrowsError(
+            try BundleOwnedProductUpdatePlanner.plan(
+                invocation: invocation(layerOrder: [.container]),
+                specification: specification(
+                    plans: [layer(.container)],
+                    id: "specification:42"
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BundleOwnedProductUpdatePlanningError,
+                .invalidInvocationIdentity
+            )
+        }
+    }
+
+    func testRejectsColonInExecutorIdentifier() {
+        XCTAssertThrowsError(
+            try BundleOwnedProductUpdatePlanner.plan(
+                invocation: invocation(layerOrder: [.container]),
+                specification: specification(
+                    plans: [layer(.container, executorId: "container:executor")]
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? BundleOwnedProductUpdatePlanningError,
+                .invalidEffectExecutor(layer: .container)
             )
         }
     }
@@ -189,17 +350,21 @@ final class BundleOwnedProductUpdatePlannerTests: XCTestCase {
     }
 
     private func invocation(
-        layerOrder: [UpdateLayer]
+        layerOrder: [UpdateLayer],
+        payloadArtifacts: [UpdateBootstrapArtifact] = [],
+        updateId: String = "update-42"
     ) -> UpdateBootstrapHandoffInvocation {
         UpdateBootstrapHandoffInvocation(
             schemaVersion: UpdateBootstrapHandoffPolicy.schemaVersion,
-            updateId: "update-42",
+            updateId: updateId,
             operationId: "operation-42",
             requestId: "request-42",
             bootstrapEnvelopeId: "envelope-42",
             bootstrapSignedSHA256: digest("e"),
             updateSpecificationSHA256: digest("f"),
+            guestControlBaseURL: "http://192.168.64.3:18330/",
             layerOrder: layerOrder,
+            payloadArtifacts: payloadArtifacts,
             expectedJournalRevision: 3,
             updaterRelativePath: "payload/bin/next-updater",
             specificationRelativePath: "payload/specification.json",
@@ -209,12 +374,13 @@ final class BundleOwnedProductUpdatePlannerTests: XCTestCase {
     }
 
     private func specification(
-        plans: [ProductUpdateLayerPlan]
+        plans: [ProductUpdateLayerPlan],
+        id: String = "specification-42"
     ) -> ProductUpdateSpecification {
         ProductUpdateSpecification(
             schemaVersion: BundleOwnedProductUpdatePlanner
                 .specificationSchemaVersion,
-            id: "specification-42",
+            id: id,
             bootstrapEnvelopeId: "envelope-42",
             layerPlan: plans
         )
@@ -222,7 +388,8 @@ final class BundleOwnedProductUpdatePlannerTests: XCTestCase {
 
     private func layer(
         _ layer: UpdateLayer,
-        dependsOn: [UpdateLayer] = []
+        dependsOn: [UpdateLayer] = [],
+        executorId: String? = nil
     ) -> ProductUpdateLayerPlan {
         ProductUpdateLayerPlan(
             layer: layer,
@@ -233,7 +400,7 @@ final class BundleOwnedProductUpdatePlannerTests: XCTestCase {
                 digestCharacter: character(for: layer, offset: 0)
             ),
             effectExecutor: ProductUpdateLayerEffectExecutor(
-                id: "\(layer.rawValue)-executor",
+                id: executorId ?? "\(layer.rawValue)-executor",
                 relativePath: "payload/\(layer.rawValue)-executor",
                 sha256: digest(character(for: layer, offset: 1)),
                 sizeBytes: 10,

@@ -16,6 +16,7 @@ public enum BundleOwnedProductUpdatePlanningError: Error, Equatable, Sendable {
     case invalidEffectExecutor(layer: UpdateLayer)
     case conflictingArtifactIdentity(layer: UpdateLayer)
     case invalidRollback(layer: UpdateLayer)
+    case payloadClosureMismatch(missing: [String], unknown: [String])
 }
 
 public enum BundleOwnedProductUpdatePlanner {
@@ -104,11 +105,44 @@ public enum BundleOwnedProductUpdatePlanner {
             }
         }
 
+        try requirePayloadClosureMatch(
+            specification: specification,
+            invocation: invocation
+        )
+
         return ProductUpdateExecutionPlan(
             updateId: invocation.updateId,
             specificationId: specification.id,
             layerPlan: specification.layerPlan
         )
+    }
+
+    private static func requirePayloadClosureMatch(
+        specification: ProductUpdateSpecification,
+        invocation: UpdateBootstrapHandoffInvocation
+    ) throws {
+        let declared = UpdateBootstrapBundleClosurePolicy
+            .declaredArtifacts(specification)
+        let declaredByIdentifier = Dictionary(
+            uniqueKeysWithValues: declared.map { ($0.id, $0) }
+        )
+        let closureByIdentifier = Dictionary(
+            uniqueKeysWithValues: invocation.payloadArtifacts.map { ($0.id, $0) }
+        )
+        let declaredIds = Set(declaredByIdentifier.keys)
+        let closureIds = Set(closureByIdentifier.keys)
+        let missing = declaredIds.subtracting(closureIds).sorted()
+        let unknown = closureIds.subtracting(declaredIds).sorted()
+        guard missing.isEmpty, unknown.isEmpty else {
+            throw BundleOwnedProductUpdatePlanningError
+                .payloadClosureMismatch(missing: missing, unknown: unknown)
+        }
+        for id in declaredIds.sorted() {
+            guard declaredByIdentifier[id] == closureByIdentifier[id] else {
+                throw BundleOwnedProductUpdatePlanningError
+                    .payloadClosureMismatch(missing: [], unknown: [id])
+            }
+        }
     }
 
     private static func validate(
@@ -199,13 +233,6 @@ public enum BundleOwnedProductUpdatePlanner {
     }
 
     private static func isIdentifier(_ value: String) -> Bool {
-        guard !value.isEmpty, value.count <= 128,
-              let first = value.first,
-              first.isLetter || first.isNumber else {
-            return false
-        }
-        return value.allSatisfy {
-            $0.isLetter || $0.isNumber || "._:-".contains($0)
-        }
+        UpdateBootstrapIdentifierSyntax.isIdentifier(value)
     }
 }

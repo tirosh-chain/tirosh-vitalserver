@@ -53,6 +53,7 @@ final class HostPlatformLayerEffectPolicyTests: XCTestCase {
       layer: .hostPlatform,
       effectExecutorId: "helper-host-effect",
       operation: .apply,
+      guestControlBaseURL: "http://192.168.64.3:18330/",
       artifactRelativePath: "payload/helper-host.tar.gz",
       artifactPath: "/updates/helper-host.tar.gz",
       artifactSHA256: String(repeating: "a", count: 64),

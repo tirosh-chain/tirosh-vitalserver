@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import tarfile
+from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -82,6 +85,211 @@ def test_composes_signed_bundle_from_explicit_three_layer_files(
         "container",
         "guest-runtime",
     ]
+    for layer_entry in specification["layerPlan"]:
+        assert layer_entry["effectExecutor"]["id"] == (
+            f"vitalserver-{layer_entry['layer']}-layer-effect-executor-0.2.2"
+        )
+
+
+def test_rejects_effect_configuration_that_is_not_a_v2_document(
+    tmp_path: Path,
+) -> None:
+    input, _ = release_input(tmp_path)
+    container = input.layers[0]
+    broken = write_file(
+        tmp_path / "broken-container-configuration.json",
+        json.dumps({"layer": "container"}) + "\n",
+    )
+    invalid = ComposeHelperStableUpdateReleaseInput(
+        **{
+            **input.__dict__,
+            "layers": (
+                replace(container, effect_configuration=broken),
+                *input.layers[1:],
+            ),
+        }
+    )
+
+    with pytest.raises(
+        DomainError,
+        match="container effect configuration fields differ",
+    ):
+        helper_stable_update_release.compose(invalid, operations())
+
+
+def test_rejects_effect_configuration_whose_executor_id_is_empty(
+    tmp_path: Path,
+) -> None:
+    input, _ = release_input(tmp_path)
+    container = input.layers[0]
+    empty_id = write_file(
+        tmp_path / "empty-executor-id-configuration.json",
+        json.dumps(
+            {
+                "schemaVersion": (
+                    "vitalserver.guest-owner-layer-effect-configuration/v2"
+                ),
+                "layer": "container",
+                "effectExecutorId": "",
+                "requestTimeoutSeconds": 60,
+                "operationTimeoutSeconds": 900,
+                "pollIntervalMilliseconds": 500,
+                "apply": {
+                    "expectedIdentity": "container-0.2.1",
+                    "targetIdentity": "container-0.2.2",
+                },
+                "rollback": {
+                    "expectedIdentity": "container-0.2.2",
+                    "targetIdentity": "container-0.2.1",
+                },
+            }
+        )
+        + "\n",
+    )
+    invalid = ComposeHelperStableUpdateReleaseInput(
+        **{
+            **input.__dict__,
+            "layers": (
+                replace(container, effect_configuration=empty_id),
+                *input.layers[1:],
+            ),
+        }
+    )
+
+    with pytest.raises(
+        DomainError,
+        match="effectExecutorId must be a non-empty",
+    ):
+        helper_stable_update_release.compose(invalid, operations())
+
+
+def test_rejects_missing_effect_configuration(tmp_path: Path) -> None:
+    input, _ = release_input(tmp_path)
+    container = input.layers[0]
+    missing = tmp_path / "missing-configuration.json"
+    invalid = ComposeHelperStableUpdateReleaseInput(
+        **{
+            **input.__dict__,
+            "layers": (
+                replace(container, effect_configuration=missing),
+                *input.layers[1:],
+            ),
+        }
+    )
+
+    with pytest.raises(DomainError, match="inspection failed"):
+        helper_stable_update_release.compose(invalid, operations())
+
+
+def test_rejects_undecodable_effect_configuration(tmp_path: Path) -> None:
+    input, _ = release_input(tmp_path)
+    container = input.layers[0]
+    undecodable = tmp_path / "undecodable-configuration.json"
+    undecodable.write_bytes(b"\xff\xfe\x00invalid-utf8")
+    invalid = ComposeHelperStableUpdateReleaseInput(
+        **{
+            **input.__dict__,
+            "layers": (
+                replace(container, effect_configuration=undecodable),
+                *input.layers[1:],
+            ),
+        }
+    )
+
+    with pytest.raises(DomainError, match="decode failed"):
+        helper_stable_update_release.compose(invalid, operations())
+
+
+def test_rejects_effect_configuration_with_invalid_executor_identifier(
+    tmp_path: Path,
+) -> None:
+    input, _ = release_input(tmp_path)
+    container = input.layers[0]
+    invalid_id = write_file(
+        tmp_path / "invalid-executor-id-configuration.json",
+        json.dumps(
+            {
+                "schemaVersion": (
+                    "vitalserver.guest-owner-layer-effect-configuration/v2"
+                ),
+                "layer": "container",
+                "effectExecutorId": "not a valid identifier!",
+                "requestTimeoutSeconds": 60,
+                "operationTimeoutSeconds": 900,
+                "pollIntervalMilliseconds": 500,
+                "apply": {
+                    "expectedIdentity": "container-0.2.1",
+                    "targetIdentity": "container-0.2.2",
+                },
+                "rollback": {
+                    "expectedIdentity": "container-0.2.2",
+                    "targetIdentity": "container-0.2.1",
+                },
+            }
+        )
+        + "\n",
+    )
+    invalid = ComposeHelperStableUpdateReleaseInput(
+        **{
+            **input.__dict__,
+            "layers": (
+                replace(container, effect_configuration=invalid_id),
+                *input.layers[1:],
+            ),
+        }
+    )
+
+    with pytest.raises(DomainError, match="not a stable ASCII identifier"):
+        helper_stable_update_release.compose(invalid, operations())
+
+
+def test_effect_configuration_is_read_once_and_materializes_validated_bytes(
+    tmp_path: Path,
+) -> None:
+    input, _ = release_input(tmp_path)
+    source = input.layers[0].effect_configuration
+    validated = source.read_bytes()
+    tampered = b'{"layer": "container"}\n'
+
+    real_read_bytes = Path.read_bytes
+    reads: list[Path] = []
+
+    def read_once(self: Path) -> bytes:
+        if self == source:
+            reads.append(self)
+            return validated if len(reads) == 1 else tampered
+        return real_read_bytes(self)
+
+    with patch.object(Path, "read_bytes", read_once):
+        result = helper_stable_update_release.compose(input, operations())
+
+    assert result == 0
+    assert reads == [source]
+    with tarfile.open(input.output, "r:gz") as archive:
+        root = f"update-bootstrap-{input.update_id}"
+        config_file = archive.extractfile(
+            f"{root}/payload/layers/container/effect-configuration.json"
+        )
+        specification_file = archive.extractfile(
+            f"{root}/payload/update-specification.json"
+        )
+        assert specification_file is not None
+        specification = json.load(specification_file)
+        assert config_file is not None
+        materialized = config_file.read()
+    assert materialized == validated
+    container_entry = next(
+        entry for entry in specification["layerPlan"] if entry["layer"] == "container"
+    )
+    assert container_entry["effectExecutor"]["configurationArtifact"] == {
+        "id": "helper-container-effect-configuration",
+        "relativePath": "payload/layers/container/effect-configuration.json",
+        "sha256": hashlib.sha256(validated).hexdigest(),
+        "sizeBytes": len(validated),
+        "mediaType": (
+            "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json"
+        ),
+    }
 
 
 def test_same_explicit_inputs_produce_identical_specification(
@@ -172,7 +380,7 @@ def release_input(
         executor.chmod(0o755)
         configuration = write_file(
             layer_root / "configuration.json",
-            json.dumps({"layer": layer.value}) + "\n",
+            effect_configuration(layer),
         )
         rollback = write_file(
             layer_root / "rollback.tar",
@@ -207,9 +415,7 @@ def release_input(
                     {
                         "id": "helper-release-key-2026",
                         "algorithm": "ed25519",
-                        "publicKey": base64.b64encode(raw_public_key).decode(
-                            "ascii"
-                        ),
+                        "publicKey": base64.b64encode(raw_public_key).decode("ascii"),
                         "state": "active",
                     }
                 ],
@@ -252,6 +458,45 @@ def write_file(path: Path, contents: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(contents, encoding="utf-8")
     return path
+
+
+def effect_configuration(layer: HelperStableUpdateLayer) -> str:
+    executor_id = f"vitalserver-{layer.value}-layer-effect-executor-0.2.2"
+    if layer is HelperStableUpdateLayer.HOST_PLATFORM:
+        return (
+            json.dumps(
+                {
+                    "schemaVersion": (
+                        "vitalserver.host-platform-layer-effect-configuration/v1"
+                    ),
+                    "effectExecutorId": executor_id,
+                }
+            )
+            + "\n"
+        )
+    return (
+        json.dumps(
+            {
+                "schemaVersion": (
+                    "vitalserver.guest-owner-layer-effect-configuration/v2"
+                ),
+                "layer": layer.value,
+                "effectExecutorId": executor_id,
+                "requestTimeoutSeconds": 60,
+                "operationTimeoutSeconds": 900,
+                "pollIntervalMilliseconds": 500,
+                "apply": {
+                    "expectedIdentity": f"{layer.value}-release-0.2.1",
+                    "targetIdentity": f"{layer.value}-release-0.2.2",
+                },
+                "rollback": {
+                    "expectedIdentity": f"{layer.value}-release-0.2.2",
+                    "targetIdentity": f"{layer.value}-release-0.2.1",
+                },
+            }
+        )
+        + "\n"
+    )
 
 
 def signing_keys(root: Path) -> tuple[Path, Path]:

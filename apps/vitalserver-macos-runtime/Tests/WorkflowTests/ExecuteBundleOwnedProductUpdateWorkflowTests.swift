@@ -26,7 +26,7 @@ final class ExecuteBundleOwnedProductUpdateWorkflowTests: XCTestCase {
         XCTAssertEqual(report.rollback.state, .notRequired)
     }
 
-    func testFailedLayerRollsBackAppliedLayersInReverseOrder() throws {
+    func testFailedHostLayerRollsBackContainerBeforeGuestRuntimeOwner() throws {
         let fixture = Fixture()
 
         let report = try fixture.run(
@@ -58,8 +58,8 @@ final class ExecuteBundleOwnedProductUpdateWorkflowTests: XCTestCase {
                 "\($0.operation.rawValue):\($0.layer.rawValue):\($0.state.rawValue)"
             },
             [
-                "rollback:guest-runtime:succeeded",
                 "rollback:container:succeeded",
+                "rollback:guest-runtime:succeeded",
             ]
         )
         XCTAssertEqual(
@@ -68,8 +68,8 @@ final class ExecuteBundleOwnedProductUpdateWorkflowTests: XCTestCase {
                 "apply:container",
                 "apply:guest-runtime",
                 "apply:host-platform",
-                "rollback:guest-runtime",
                 "rollback:container",
+                "rollback:guest-runtime",
             ]
         )
     }
@@ -103,13 +103,17 @@ private final class Fixture {
             ProductUpdateLayerEffectRequest
         ) -> ProductUpdateLayerEffectExecutionResult
     ) throws -> ProductUpdateExecutionReport {
-        let invocation = invocation(layerOrder: plans.map(\.layer))
         let specification = ProductUpdateSpecification(
             schemaVersion:
                 BundleOwnedProductUpdatePlanner.specificationSchemaVersion,
             id: "specification-42",
-            bootstrapEnvelopeId: invocation.bootstrapEnvelopeId,
+            bootstrapEnvelopeId: "envelope-42",
             layerPlan: plans
+        )
+        let invocation = invocation(
+            layerOrder: plans.map(\.layer),
+            payloadArtifacts: UpdateBootstrapBundleClosurePolicy
+                .declaredArtifacts(specification)
         )
         let planner = PlanBundleOwnedProductUpdateUseCase()
         let requestMaker = MakeProductUpdateLayerEffectRequestUseCase()
@@ -212,7 +216,8 @@ private final class Fixture {
     }
 
     private func invocation(
-        layerOrder: [UpdateLayer]
+        layerOrder: [UpdateLayer],
+        payloadArtifacts: [UpdateBootstrapArtifact] = []
     ) -> UpdateBootstrapHandoffInvocation {
         UpdateBootstrapHandoffInvocation(
             schemaVersion: UpdateBootstrapHandoffPolicy.schemaVersion,
@@ -222,7 +227,9 @@ private final class Fixture {
             bootstrapEnvelopeId: "envelope-42",
             bootstrapSignedSHA256: digest("d"),
             updateSpecificationSHA256: digest("e"),
+            guestControlBaseURL: "http://192.168.64.3:18330/",
             layerOrder: layerOrder,
+            payloadArtifacts: payloadArtifacts,
             expectedJournalRevision: 3,
             updaterRelativePath: "payload/updater",
             specificationRelativePath: "payload/specification.json",

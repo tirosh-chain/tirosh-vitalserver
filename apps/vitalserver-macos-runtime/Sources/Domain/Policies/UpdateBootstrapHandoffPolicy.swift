@@ -6,15 +6,17 @@ public enum UpdateBootstrapHandoffPolicyError: Error, Equatable, Sendable {
     case missingStagedSpecificationPath
     case stagedUpdaterPathMismatch(expected: String, actual: String)
     case stagedSpecificationPathMismatch(expected: String, actual: String)
+    case invalidGuestControlBaseURL(String)
 }
 
 public enum UpdateBootstrapHandoffPolicy {
-    public static let schemaVersion = "vitalserver.update-bootstrap-handoff/v1"
+    public static let schemaVersion = "vitalserver.update-bootstrap-handoff/v2"
     public static let completionReceiptRelativePath =
         "handoff/completion-receipt.json"
 
     public static func makeInvocation(
-        journal: UpdateBootstrapJournal
+        journal: UpdateBootstrapJournal,
+        guestControlBaseURL: String
     ) throws -> UpdateBootstrapHandoffInvocation {
         try UpdateBootstrapJournalPolicy.validate(journal)
         guard journal.state == .running else {
@@ -41,6 +43,12 @@ public enum UpdateBootstrapHandoffPolicy {
                     actual: specificationPath
                 )
         }
+        guard RuntimeGuestControlEndpointPolicy
+                .isAcceptableGuestControlBaseURL(guestControlBaseURL) else {
+            throw UpdateBootstrapHandoffPolicyError.invalidGuestControlBaseURL(
+                guestControlBaseURL
+            )
+        }
         return UpdateBootstrapHandoffInvocation(
             schemaVersion: schemaVersion,
             updateId: journal.id,
@@ -49,7 +57,9 @@ public enum UpdateBootstrapHandoffPolicy {
             bootstrapEnvelopeId: journal.envelope.id,
             bootstrapSignedSHA256: journal.bootstrapSignedSHA256,
             updateSpecificationSHA256: journal.envelope.specification.sha256,
+            guestControlBaseURL: guestControlBaseURL,
             layerOrder: journal.envelope.layerOrder,
+            payloadArtifacts: journal.envelope.payloadArtifacts,
             expectedJournalRevision: journal.journalRevision,
             updaterRelativePath: updaterPath,
             specificationRelativePath: specificationPath,

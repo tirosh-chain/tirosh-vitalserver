@@ -24,8 +24,12 @@ final class UpdateBootstrapRecoveryWorkflowTests: XCTestCase {
                     events.append("save-\(journal.state.rawValue)")
                 },
                 handoffStarted: advance.handoffStarted,
-                makeInvocation:
-                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
+                makeInvocation: {
+                    try MakeUpdateBootstrapHandoffInvocationUseCase().execute(
+                        journal: $0,
+                        guestControlBaseURL: "http://192.168.64.3:18330/"
+                    )
+                },
                 writeInvocation: { _, _ in
                     events.append("write-invocation")
                     return WrittenUpdateBootstrapHandoffInvocation(
@@ -135,6 +139,63 @@ final class UpdateBootstrapRecoveryWorkflowTests: XCTestCase {
         XCTAssertEqual(output.state, .failed)
         XCTAssertEqual(saved.map(\.0), [.failed])
         XCTAssertEqual(saved.map(\.1), [3])
+    }
+
+    func testSettleSucceedsWithLoadedTerminalReceiptWithoutGuestAddress() throws {
+        let running = recoveryRunningJournal()
+        let settle = SettleUpdateBootstrapHandoffUseCase()
+        let makeRelease = MakeInstalledProductReleaseUseCase()
+        var saved: [(UpdateBootstrapJournalState, Int)] = []
+
+        let output = try SettleRunningUpdateBootstrapWorkflow().run(
+            input: SettleRunningUpdateBootstrapWorkflowInput(
+                runningJournal: running,
+                stagedRoot: URL(fileURLWithPath: "/updates/update-42")
+            ),
+            operations: SettleRunningUpdateBootstrapWorkflowOperations(
+                readReceipt: { _ in
+                    .loaded(
+                        recoveryReceipt(
+                            revision: 3,
+                            outcome: .succeeded
+                        )
+                    )
+                },
+                settle: settle.execute,
+                readReport: { path, _ in
+                    .loaded(
+                        path: path,
+                        sha256: String(repeating: "c", count: 64)
+                    )
+                },
+                verifyReport:
+                    VerifyUpdateBootstrapCompletionReportUseCase().verify,
+                saveJournal: { journal, expectedRevision in
+                    saved.append((journal.state, expectedRevision))
+                },
+                makeInstalledRelease: { settledJournal in
+                    try makeRelease.makeUpdate(
+                        from: settledJournal,
+                        currentRelease: .loaded(
+                            try InstalledProductReleasePolicy.makePackageInstall(
+                                installationId: "installation-1",
+                                productId: "com.tirosh.vitalserver-helper",
+                                productVersion: "0.2.1",
+                                runtimeVersion: "0.2.1",
+                                installOperationId: "install-1",
+                                settledAt: "2026-07-27T00:00:00Z"
+                            )
+                        )
+                    )
+                },
+                settleSucceeded: { _, _, _, _ in
+                    saved.append((.succeeded, 4))
+                }
+            )
+        )
+
+        XCTAssertEqual(output.state, .succeeded)
+        XCTAssertEqual(saved.map(\.0), [.succeeded])
     }
 
     func testMissingReceiptLeavesRunningJournalUnchanged() {

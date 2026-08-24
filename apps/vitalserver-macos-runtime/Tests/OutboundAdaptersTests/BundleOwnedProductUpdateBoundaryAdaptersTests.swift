@@ -119,6 +119,7 @@ final class BundleOwnedProductUpdateBoundaryAdaptersTests: XCTestCase {
         )
         let executor = BundleOwnedProductUpdateLayerEffectExecutor(
             stagedBundleRoot: URL(fileURLWithPath: "/updates/update-42"),
+            guestControlBaseURL: "http://192.168.64.3:18330/",
             operations: effectOperations(
                 documents: documents,
                 run: { executable, arguments in
@@ -155,6 +156,10 @@ final class BundleOwnedProductUpdateBoundaryAdaptersTests: XCTestCase {
         XCTAssertEqual(invocation.artifactSizeBytes, request.artifact.sizeBytes)
         XCTAssertEqual(invocation.artifactMediaType, request.artifact.mediaType)
         XCTAssertEqual(
+            invocation.guestControlBaseURL,
+            "http://192.168.64.3:18330/"
+        )
+        XCTAssertEqual(
             invocation.artifactPath,
             "/updates/update-42/payload/host.pkg"
         )
@@ -168,6 +173,7 @@ final class BundleOwnedProductUpdateBoundaryAdaptersTests: XCTestCase {
         let documents = TestDocumentStore()
         let executor = BundleOwnedProductUpdateLayerEffectExecutor(
             stagedBundleRoot: URL(fileURLWithPath: "/updates/update-42"),
+            guestControlBaseURL: "http://192.168.64.3:18330/",
             operations: effectOperations(
                 documents: documents,
                 run: { _, _ in
@@ -306,14 +312,16 @@ final class BundleOwnedProductUpdateBoundaryAdaptersTests: XCTestCase {
         specificationSHA256: String = String(repeating: "b", count: 64)
     ) -> UpdateBootstrapHandoffInvocation {
         UpdateBootstrapHandoffInvocation(
-            schemaVersion: "vitalserver.update-bootstrap-handoff/v1",
+            schemaVersion: "vitalserver.update-bootstrap-handoff/v2",
             updateId: "update-42",
             operationId: "operation-42",
             requestId: "request-42",
             bootstrapEnvelopeId: "envelope-42",
             bootstrapSignedSHA256: String(repeating: "a", count: 64),
             updateSpecificationSHA256: specificationSHA256,
+            guestControlBaseURL: "http://192.168.64.3:18330/",
             layerOrder: [.hostPlatform],
+            payloadArtifacts: [],
             expectedJournalRevision: 3,
             updaterRelativePath: "updater/next-updater",
             specificationRelativePath: "spec/update.json",

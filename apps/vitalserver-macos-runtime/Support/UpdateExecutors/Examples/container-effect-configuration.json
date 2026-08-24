@@ -1,8 +1,7 @@
 {
-  "schemaVersion": "vitalserver.guest-owner-layer-effect-configuration/v1",
+  "schemaVersion": "vitalserver.guest-owner-layer-effect-configuration/v2",
   "layer": "container",
   "effectExecutorId": "vitalserver-container-layer-effect-executor-0.2.2",
-  "guestControlBaseURL": "http://127.0.0.1:18330/",
   "requestTimeoutSeconds": 60,
   "operationTimeoutSeconds": 900,
   "pollIntervalMilliseconds": 500,

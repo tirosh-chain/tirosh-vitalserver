@@ -110,7 +110,7 @@ final class BundleOwnedProductUpdateExecutionPolicyTests: XCTestCase {
         }
     }
 
-    func testRejectsRollbackReceiptsOutsideReverseApplyOrder() {
+    func testRejectsRollbackReceiptsOutsideOwnerSafeOrder() {
         let invocation = invocation()
         let container = rollbackLayerPlan(.container)
         let guest = rollbackLayerPlan(.guestRuntime)
@@ -133,7 +133,7 @@ final class BundleOwnedProductUpdateExecutionPolicyTests: XCTestCase {
                     : .succeeded
             )
         }
-        let rollbackReceipts = [container, guest].map { layerPlan in
+        let rollbackReceipts = [guest, container].map { layerPlan in
             receipt(
                 for: BundleOwnedProductUpdateExecutionPolicy.makeRequest(
                     updateId: invocation.updateId,
@@ -225,7 +225,9 @@ final class BundleOwnedProductUpdateExecutionPolicyTests: XCTestCase {
             bootstrapEnvelopeId: "envelope-42",
             bootstrapSignedSHA256: digest("d"),
             updateSpecificationSHA256: digest("e"),
+            guestControlBaseURL: "http://192.168.64.3:18330/",
             layerOrder: [.container, .guestRuntime],
+            payloadArtifacts: [],
             expectedJournalRevision: 3,
             updaterRelativePath: "payload/updater",
             specificationRelativePath: "payload/specification.json",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://tirosh.internal/schemas/vitalserver/container-layer-effect-configuration-v1.json",
+  "$id": "https://tirosh.internal/schemas/vitalserver/container-layer-effect-configuration-v2.json",
   "title": "VitalServer Container Image-Set Layer Effect Configuration",
   "type": "object",
   "additionalProperties": false,
@@ -8,7 +8,6 @@
     "schemaVersion",
     "layer",
     "effectExecutorId",
-    "guestControlBaseURL",
     "requestTimeoutSeconds",
     "operationTimeoutSeconds",
     "pollIntervalMilliseconds",
@@ -17,7 +16,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": "vitalserver.guest-owner-layer-effect-configuration/v1"
+      "const": "vitalserver.guest-owner-layer-effect-configuration/v2"
     },
     "layer": {
       "const": "container"
@@ -25,10 +24,6 @@
     "effectExecutorId": {
       "type": "string",
       "minLength": 1
-    },
-    "guestControlBaseURL": {
-      "type": "string",
-      "pattern": "^http://127\\.0\\.0\\.1(?::[0-9]{1,5})?/?$"
     },
     "requestTimeoutSeconds": {
       "type": "number",

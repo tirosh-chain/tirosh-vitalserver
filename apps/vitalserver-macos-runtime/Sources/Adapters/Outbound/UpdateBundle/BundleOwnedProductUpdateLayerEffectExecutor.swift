@@ -42,13 +42,16 @@ public struct BundleOwnedProductUpdateLayerEffectExecutorOperations {
 public struct BundleOwnedProductUpdateLayerEffectExecutor {
     public static let maximumReceiptBytes: UInt64 = 1_048_576
     public let stagedBundleRoot: URL
+    public let guestControlBaseURL: String
     public let operations: BundleOwnedProductUpdateLayerEffectExecutorOperations
 
     public init(
         stagedBundleRoot: URL,
+        guestControlBaseURL: String,
         operations: BundleOwnedProductUpdateLayerEffectExecutorOperations
     ) {
         self.stagedBundleRoot = stagedBundleRoot.standardizedFileURL
+        self.guestControlBaseURL = guestControlBaseURL
         self.operations = operations
     }
 
@@ -108,6 +111,7 @@ public struct BundleOwnedProductUpdateLayerEffectExecutor {
             let data = try encoder.encode(
                 ProductUpdateLayerEffectInvocation(
                     request: request,
+                    guestControlBaseURL: guestControlBaseURL,
                     artifactPath: artifactURL.path,
                     configurationPath: configurationURL.path
                 )

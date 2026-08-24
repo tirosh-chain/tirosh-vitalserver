@@ -55,6 +55,7 @@ func containerExecutorImportsCommandsPollsAndReceiptsCorrelatedSuccess() async t
     #expect(receipt.evidence.kind == "guest-container-image-set-operation")
     let requests = await transport.requests
     #expect(requests.count == 4)
+    #expect(requests.allSatisfy { $0.host == "192.168.64.3" })
     #expect(requests[0].method == "PUT")
     #expect(requests[0].uploadPath == fixture.artifact.path)
     #expect(requests[1].method == "POST")
@@ -167,6 +168,7 @@ func digestMismatchFailsWithoutCallingGuest() async throws {
         layer: fixture.invocation.layer,
         effectExecutorId: fixture.invocation.effectExecutorId,
         operation: fixture.invocation.operation,
+        guestControlBaseURL: fixture.invocation.guestControlBaseURL,
         artifactRelativePath: fixture.invocation.artifactRelativePath,
         artifactPath: fixture.invocation.artifactPath,
         artifactSHA256: String(repeating: "0", count: 64),
@@ -258,6 +260,72 @@ func configurationForAnotherLayerIsRejectedBeforeCallingGuest() async throws {
 
     #expect(receipt.state == .failed)
     #expect(receipt.issue?.code == "layer-effect-configuration-invalid")
+    #expect(await transport.requests.isEmpty)
+}
+
+@Test
+func signedConfigurationCannotOwnTheGuestControlEndpoint() throws {
+    let data = try JSONSerialization.data(
+        withJSONObject: [
+            "schemaVersion":
+                "vitalserver.guest-owner-layer-effect-configuration/v1",
+            "layer": "container",
+            "effectExecutorId": "container-effect-022",
+            "guestControlBaseURL": "http://127.0.0.1:18330/",
+            "requestTimeoutSeconds": 10,
+            "operationTimeoutSeconds": 10,
+            "pollIntervalMilliseconds": 50,
+            "apply": [
+                "expectedIdentity": "current-021",
+                "targetIdentity": "target-022",
+            ],
+            "rollback": [
+                "expectedIdentity": "target-022",
+                "targetIdentity": "current-021",
+            ],
+        ]
+    )
+
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(
+            LayerEffectConfiguration.self,
+            from: data
+        )
+    }
+}
+
+@Test
+func hostLoopbackGuestControlEndpointIsRejectedBeforeCallingGuest() async throws {
+    let fixture = try EffectFixture(layer: .container)
+    let loopback = ProductUpdateLayerEffectInvocation(
+        schemaVersion: fixture.invocation.schemaVersion,
+        updateId: fixture.invocation.updateId,
+        layer: fixture.invocation.layer,
+        effectExecutorId: fixture.invocation.effectExecutorId,
+        operation: fixture.invocation.operation,
+        guestControlBaseURL: "http://127.0.0.2:18330/",
+        artifactRelativePath: fixture.invocation.artifactRelativePath,
+        artifactPath: fixture.invocation.artifactPath,
+        artifactSHA256: fixture.invocation.artifactSHA256,
+        artifactSizeBytes: fixture.invocation.artifactSizeBytes,
+        artifactMediaType: fixture.invocation.artifactMediaType,
+        configurationRelativePath:
+            fixture.invocation.configurationRelativePath,
+        configurationPath: fixture.invocation.configurationPath,
+        configurationSHA256: fixture.invocation.configurationSHA256
+    )
+    let transport = FakeTransport(responses: [])
+
+    let receipt = await GuestOwnerLayerEffectExecutor(
+        transport: transport
+    ).execute(
+        layer: .container,
+        invocation: loopback,
+        configuration: fixture.configuration
+    )
+
+    #expect(receipt.state == .failed)
+    #expect(receipt.issue?.code == "guest-owner-endpoint-invalid")
     #expect(await transport.requests.isEmpty)
 }
 
@@ -506,14 +574,13 @@ private struct EffectFixture {
         let configurationData = try JSONSerialization.data(
             withJSONObject: [
                 "schemaVersion":
-                    "vitalserver.guest-owner-layer-effect-configuration/v1",
+                    "vitalserver.guest-owner-layer-effect-configuration/v2",
                 "layer": declaredLayer ?? (
                     layer == .container
                         ? "container"
                         : "guest-runtime"
                 ),
                 "effectExecutorId": executorId,
-                "guestControlBaseURL": "http://127.0.0.1:18330/",
                 "requestTimeoutSeconds": 10,
                 "operationTimeoutSeconds": operationTimeoutSeconds,
                 "pollIntervalMilliseconds": 50,
@@ -541,6 +608,7 @@ private struct EffectFixture {
             layer: layer == .container ? .container : .guestRuntime,
             effectExecutorId: executorId,
             operation: .apply,
+            guestControlBaseURL: "http://192.168.64.3:18330/",
             artifactRelativePath: "payload/layer/artifact",
             artifactPath: artifact.path,
             artifactSHA256: digest.replacingOccurrences(
@@ -568,6 +636,7 @@ private func invocation(
         layer: fixture.invocation.layer,
         effectExecutorId: fixture.invocation.effectExecutorId,
         operation: operation ?? fixture.invocation.operation,
+        guestControlBaseURL: fixture.invocation.guestControlBaseURL,
         artifactRelativePath: fixture.invocation.artifactRelativePath,
         artifactPath: fixture.invocation.artifactPath,
         artifactSHA256: fixture.invocation.artifactSHA256,
@@ -599,6 +668,7 @@ private func importedArtifactResponse(
 private actor FakeTransport: LayerEffectHTTPTransport {
     struct Request: Sendable {
         let method: String
+        let host: String?
         let path: String
         let uploadPath: String?
         let body: Data?
@@ -620,6 +690,7 @@ private actor FakeTransport: LayerEffectHTTPTransport {
         requests.append(
             Request(
                 method: request.httpMethod ?? "",
+                host: request.url?.host,
                 path: request.url?.path ?? "",
                 uploadPath: uploadFile?.path,
                 body: request.httpBody

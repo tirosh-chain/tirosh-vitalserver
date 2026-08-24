@@ -24,7 +24,8 @@ struct BundleOwnedProductUpdateRunner {
         let invocationURL = URL(fileURLWithPath: arguments[2])
         let input = try inputReader().read(invocationURL: invocationURL)
         let effectExecutor = makeEffectExecutor(
-            stagedBundleRoot: input.stagedBundleRoot
+            stagedBundleRoot: input.stagedBundleRoot,
+            guestControlBaseURL: input.invocation.guestControlBaseURL
         )
         let report = try ExecuteBundleOwnedProductUpdateWorkflow().run(
             invocation: input.invocation,
@@ -56,13 +57,15 @@ struct BundleOwnedProductUpdateRunner {
     }
 
     private func makeEffectExecutor(
-        stagedBundleRoot: URL
+        stagedBundleRoot: URL,
+        guestControlBaseURL: String
     ) -> BundleOwnedProductUpdateLayerEffectExecutor {
         let observer = UpdateBootstrapArtifactFileObserver(
             bundleDirectory: stagedBundleRoot
         )
         return BundleOwnedProductUpdateLayerEffectExecutor(
             stagedBundleRoot: stagedBundleRoot,
+            guestControlBaseURL: guestControlBaseURL,
             operations:
                 BundleOwnedProductUpdateLayerEffectExecutorOperations(
                     observe: observer.observe,

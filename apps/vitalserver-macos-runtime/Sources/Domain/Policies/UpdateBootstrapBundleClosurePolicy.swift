@@ -72,6 +72,28 @@ public enum UpdateBootstrapBundleClosurePolicy {
         }
     }
 
+    public static func declaredArtifacts(
+        _ specification: ProductUpdateSpecification
+    ) -> [UpdateBootstrapArtifact] {
+        specification.layerPlan.flatMap { layer in
+            var artifacts = [
+                layer.artifact,
+                UpdateBootstrapArtifact(
+                    id: layer.effectExecutor.id,
+                    relativePath: layer.effectExecutor.relativePath,
+                    sha256: layer.effectExecutor.sha256,
+                    sizeBytes: layer.effectExecutor.sizeBytes,
+                    mediaType: layer.effectExecutor.mediaType
+                ),
+                layer.effectExecutor.configurationArtifact,
+            ]
+            if let rollback = layer.rollback.artifact {
+                artifacts.append(rollback)
+            }
+            return artifacts
+        }
+    }
+
     private static func inspect(
         _ entries: [UpdateBootstrapBundleEntry]
     ) throws -> Set<String> {

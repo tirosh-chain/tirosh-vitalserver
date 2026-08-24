@@ -46,6 +46,65 @@ final class UpdateBootstrapBundleClosurePolicyTests: XCTestCase {
         )
     }
 
+    func testDeclaredArtifactsAreTheSpecificationOwnedLayerClosure() {
+        let specification = ProductUpdateSpecification(
+            schemaVersion: "vitalserver.product-update-specification/v1",
+            id: "helper-update-specification",
+            bootstrapEnvelopeId: "helper-update-0.2.2",
+            layerPlan: [
+                ProductUpdateLayerPlan(
+                    layer: .container,
+                    dependsOn: [],
+                    artifact: UpdateBootstrapArtifact(
+                        id: "container-artifact",
+                        relativePath: "payload/layers/container/artifact",
+                        sha256: String(repeating: "a", count: 64),
+                        sizeBytes: 10,
+                        mediaType: "application/octet-stream"
+                    ),
+                    effectExecutor: ProductUpdateLayerEffectExecutor(
+                        id: "container-executor",
+                        relativePath: "payload/layers/container/effect-executor",
+                        sha256: String(repeating: "b", count: 64),
+                        sizeBytes: 10,
+                        mediaType:
+                            "application/vnd.tirosh.vitalserver.update-layer-effect-executor",
+                        configurationArtifact: UpdateBootstrapArtifact(
+                            id: "container-configuration",
+                            relativePath:
+                                "payload/layers/container/effect-configuration.json",
+                            sha256: String(repeating: "c", count: 64),
+                            sizeBytes: 10,
+                            mediaType:
+                                "application/vnd.tirosh.vitalserver.update-layer-effect-configuration+json"
+                        )
+                    ),
+                    rollback: ProductUpdateLayerRollbackPlan(
+                        state: .available,
+                        artifact: UpdateBootstrapArtifact(
+                            id: "container-rollback",
+                            relativePath: "payload/layers/container/rollback-artifact",
+                            sha256: String(repeating: "d", count: 64),
+                            sizeBytes: 10,
+                            mediaType: "application/octet-stream"
+                        ),
+                        reason: nil
+                    )
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            UpdateBootstrapBundleClosurePolicy.declaredArtifacts(specification).map(\.id),
+            [
+                "container-artifact",
+                "container-executor",
+                "container-configuration",
+                "container-rollback",
+            ]
+        )
+    }
+
     func testExactClosureRejectsUnknownPayloadFile() {
         var entries = bundleEntries()
         entries.append(

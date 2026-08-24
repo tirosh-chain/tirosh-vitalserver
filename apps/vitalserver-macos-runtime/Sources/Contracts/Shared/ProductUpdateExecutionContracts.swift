@@ -4,7 +4,7 @@ public enum ProductUpdateExecutionContract {
     public static let schemaVersion =
         "vitalserver.product-update-execution/v1"
     public static let layerEffectInvocationSchemaVersion =
-        "vitalserver.product-update-layer-effect-invocation/v1"
+        "vitalserver.product-update-layer-effect-invocation/v2"
 }
 
 public struct ProductUpdateIssue: Codable, Equatable, Sendable {
@@ -118,6 +118,7 @@ public struct ProductUpdateLayerEffectInvocation:
     public let layer: UpdateLayer
     public let effectExecutorId: String
     public let operation: ProductUpdateLayerEffectOperation
+    public let guestControlBaseURL: String
     public let artifactRelativePath: String
     public let artifactPath: String
     public let artifactSHA256: String
@@ -133,6 +134,7 @@ public struct ProductUpdateLayerEffectInvocation:
         case layer
         case effectExecutorId
         case operation
+        case guestControlBaseURL
         case artifactRelativePath
         case artifactPath
         case artifactSHA256 = "artifactSha256"
@@ -145,6 +147,7 @@ public struct ProductUpdateLayerEffectInvocation:
 
     public init(
         request: ProductUpdateLayerEffectRequest,
+        guestControlBaseURL: String,
         artifactPath: String,
         configurationPath: String
     ) {
@@ -154,6 +157,7 @@ public struct ProductUpdateLayerEffectInvocation:
         layer = request.layer
         effectExecutorId = request.effectExecutor.id
         operation = request.operation
+        self.guestControlBaseURL = guestControlBaseURL
         artifactRelativePath = request.artifact.relativePath
         self.artifactPath = artifactPath
         artifactSHA256 = request.artifact.sha256
@@ -172,6 +176,7 @@ public struct ProductUpdateLayerEffectInvocation:
         layer: UpdateLayer,
         effectExecutorId: String,
         operation: ProductUpdateLayerEffectOperation,
+        guestControlBaseURL: String,
         artifactRelativePath: String,
         artifactPath: String,
         artifactSHA256: String,
@@ -186,6 +191,7 @@ public struct ProductUpdateLayerEffectInvocation:
         self.layer = layer
         self.effectExecutorId = effectExecutorId
         self.operation = operation
+        self.guestControlBaseURL = guestControlBaseURL
         self.artifactRelativePath = artifactRelativePath
         self.artifactPath = artifactPath
         self.artifactSHA256 = artifactSHA256
@@ -217,6 +223,10 @@ public struct ProductUpdateLayerEffectInvocation:
             operation: try container.decode(
                 ProductUpdateLayerEffectOperation.self,
                 forKey: .operation
+            ),
+            guestControlBaseURL: try container.decode(
+                String.self,
+                forKey: .guestControlBaseURL
             ),
             artifactRelativePath: try container.decode(
                 String.self,

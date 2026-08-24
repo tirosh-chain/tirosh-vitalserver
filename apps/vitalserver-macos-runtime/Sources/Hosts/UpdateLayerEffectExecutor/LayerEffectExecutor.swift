@@ -1,5 +1,6 @@
 import Contracts
 import CryptoKit
+import Domain
 import Foundation
 
 public enum GuestOwnedLayer: Sendable {
@@ -188,6 +189,14 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
                 dependency: "bundle-owned-update-runner"
             )
         }
+        guard RuntimeGuestControlEndpointPolicy
+                .isAcceptableGuestControlBaseURL(invocation.guestControlBaseURL) else {
+            throw GuestOwnerEffectFailure.failed(
+                code: "guest-owner-endpoint-invalid",
+                message: "Guest owner endpoint is invalid.",
+                dependency: "host-runtime-state"
+            )
+        }
         try configuration.validate(for: layer)
     }
 
@@ -198,7 +207,7 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
     ) async throws -> ImportedArtifact {
         let digest = "sha256:\(invocation.artifactSHA256)"
         let url = try endpoint(
-            configuration,
+            invocation,
             path: "runtime/update-artifacts/\(layer.artifactKind)/\(digest)"
         )
         var request = URLRequest(url: url)
@@ -265,7 +274,7 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
     ) async throws -> GuestOwnerOperation {
         let intent = try configuration.intent(for: invocation.operation)
         let url = try endpoint(
-            configuration,
+            invocation,
             path: "\(layer.ownerPath)/\(invocation.operation.rawValue)"
         )
         var request = URLRequest(url: url)
@@ -318,7 +327,7 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
         var lastUnavailable: GuestOwnerEffectFailure?
         while Date() < deadline {
             let url = try endpoint(
-                configuration,
+                invocation,
                 path: "\(layer.ownerPath)/operations/\(accepted.operationId)"
             )
             var request = URLRequest(url: url)
@@ -490,12 +499,11 @@ public struct GuestOwnerLayerEffectExecutor: Sendable {
 
 public struct LayerEffectConfiguration: Decodable, Sendable {
     public static let schemaVersion =
-        "vitalserver.guest-owner-layer-effect-configuration/v1"
+        "vitalserver.guest-owner-layer-effect-configuration/v2"
 
     public let schemaVersion: String
     public let layer: UpdateLayer
     public let effectExecutorId: String
-    public let guestControlBaseURL: String
     public let requestTimeoutSeconds: Double
     public let operationTimeoutSeconds: Double
     public let pollIntervalMilliseconds: Int64
@@ -506,7 +514,6 @@ public struct LayerEffectConfiguration: Decodable, Sendable {
         case schemaVersion
         case layer
         case effectExecutorId
-        case guestControlBaseURL
         case requestTimeoutSeconds
         case operationTimeoutSeconds
         case pollIntervalMilliseconds
@@ -526,10 +533,6 @@ public struct LayerEffectConfiguration: Decodable, Sendable {
         effectExecutorId = try values.decode(
             String.self,
             forKey: .effectExecutorId
-        )
-        guestControlBaseURL = try values.decode(
-            String.self,
-            forKey: .guestControlBaseURL
         )
         requestTimeoutSeconds = try values.decode(
             Double.self,
@@ -551,14 +554,6 @@ public struct LayerEffectConfiguration: Decodable, Sendable {
         guard schemaVersion == Self.schemaVersion,
               self.layer == layer.updateLayer,
               !effectExecutorId.isEmpty,
-              let baseURL = URL(string: guestControlBaseURL),
-              baseURL.scheme == "http",
-              baseURL.host == "127.0.0.1",
-              baseURL.user == nil,
-              baseURL.password == nil,
-              baseURL.query == nil,
-              baseURL.fragment == nil,
-              baseURL.path.isEmpty || baseURL.path == "/",
               requestTimeoutSeconds > 0,
               requestTimeoutSeconds <= 900,
               operationTimeoutSeconds > 0,
@@ -811,15 +806,15 @@ private struct GuestOwnerEffectFailure: Error {
 }
 
 private func endpoint(
-    _ configuration: LayerEffectConfiguration,
+    _ invocation: ProductUpdateLayerEffectInvocation,
     path: String
 ) throws -> URL {
-    guard let baseURL = URL(string: configuration.guestControlBaseURL),
+    guard let baseURL = URL(string: invocation.guestControlBaseURL),
           let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
         throw GuestOwnerEffectFailure.failed(
             code: "guest-owner-endpoint-invalid",
             message: "Guest owner endpoint could not be constructed.",
-            dependency: "effect-configuration"
+            dependency: "host-runtime-state"
         )
     }
     return url
