@@ -15,6 +15,10 @@ public enum UpdateBootstrapEnvelopeValidationError: Error, Equatable, Sendable {
     case invalidArtifactSHA256(artifactId: String, sha256: String)
     case invalidArtifactSize(artifactId: String, sizeBytes: Int)
     case invalidArtifactMediaType(artifactId: String)
+    case emptyPayloadArtifacts
+    case duplicatePayloadArtifactPath(String)
+    case duplicatePayloadArtifactId(String)
+    case payloadArtifactConflictsWithBootstrap(relativePath: String)
     case invalidSignatureKeyId(String)
     case invalidSignatureSHA256(String)
     case emptySignature
@@ -27,7 +31,7 @@ public enum UpdateBootstrapEnvelopePolicy {
         expectedProductId: String,
         expectedTarget: UpdateBootstrapTarget
     ) throws {
-        guard envelope.schemaVersion == "v1" else {
+        guard envelope.schemaVersion == "v2" else {
             throw UpdateBootstrapEnvelopeValidationError.unsupportedSchemaVersion(
                 envelope.schemaVersion
             )
@@ -57,6 +61,7 @@ public enum UpdateBootstrapEnvelopePolicy {
         try validateLayerOrder(envelope.layerOrder)
         try validateArtifact(envelope.nextUpdaterArtifact)
         try validateArtifact(envelope.specification)
+        try validatePayloadArtifacts(envelope)
         try requireIdentifier(envelope.signature.keyId, field: "signature.keyId")
         guard isSHA256(envelope.signature.signedSha256) else {
             throw UpdateBootstrapEnvelopeValidationError.invalidSignatureSHA256(
@@ -70,6 +75,35 @@ public enum UpdateBootstrapEnvelopePolicy {
             throw UpdateBootstrapEnvelopeValidationError.invalidIssuedAt(
                 envelope.issuedAt
             )
+        }
+    }
+
+    private static func validatePayloadArtifacts(
+        _ envelope: UpdateBootstrapEnvelope
+    ) throws {
+        guard !envelope.payloadArtifacts.isEmpty else {
+            throw UpdateBootstrapEnvelopeValidationError.emptyPayloadArtifacts
+        }
+        var observedPaths = Set<String>()
+        var observedIds = Set<String>()
+        for artifact in envelope.payloadArtifacts {
+            try validateArtifact(artifact)
+            guard observedPaths.insert(artifact.relativePath).inserted else {
+                throw UpdateBootstrapEnvelopeValidationError
+                    .duplicatePayloadArtifactPath(artifact.relativePath)
+            }
+            guard observedIds.insert(artifact.id).inserted else {
+                throw UpdateBootstrapEnvelopeValidationError
+                    .duplicatePayloadArtifactId(artifact.id)
+            }
+        }
+        let bootstrapPaths = Set([
+            envelope.nextUpdaterArtifact.relativePath,
+            envelope.specification.relativePath,
+        ])
+        for path in observedPaths where bootstrapPaths.contains(path) {
+            throw UpdateBootstrapEnvelopeValidationError
+                .payloadArtifactConflictsWithBootstrap(relativePath: path)
         }
     }
 
@@ -136,9 +170,7 @@ public enum UpdateBootstrapEnvelopePolicy {
     }
 
     private static func requireIdentifier(_ value: String, field: String) throws {
-        guard !value.isEmpty,
-              value.count <= 128,
-              isAllowedASCII(value, allowedPunctuation: "-._") else {
+        guard UpdateBootstrapIdentifierSyntax.isIdentifier(value) else {
             throw UpdateBootstrapEnvelopeValidationError.invalidIdentifier(
                 field: field,
                 value: value
@@ -147,9 +179,7 @@ public enum UpdateBootstrapEnvelopePolicy {
     }
 
     private static func requireVersion(_ value: String, field: String) throws {
-        guard !value.isEmpty,
-              value.count <= 128,
-              isAllowedASCII(value, allowedPunctuation: ".+-_") else {
+        guard UpdateBootstrapIdentifierSyntax.isVersion(value) else {
             throw UpdateBootstrapEnvelopeValidationError.invalidReleaseVersion(
                 field: field,
                 value: value
@@ -189,8 +219,15 @@ public enum UpdateBootstrapEnvelopePolicy {
               value.hasSuffix("Z") else {
             return false
         }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value) != nil
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        formatter.isLenient = false
+        guard let date = formatter.date(from: value) else {
+            return false
+        }
+        return formatter.string(from: date) == value
     }
 }

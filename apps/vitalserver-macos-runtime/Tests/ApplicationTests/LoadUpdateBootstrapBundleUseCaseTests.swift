@@ -6,13 +6,20 @@ import XCTest
 final class LoadUpdateBootstrapBundleUseCaseTests: XCTestCase {
     func testReturnsEnvelopeAfterExactBundleClosureIsValidated() throws {
         let envelope = applicationEnvelope()
+        let entries = exactEntries(for: envelope)
 
         let loaded = try LoadUpdateBootstrapBundleUseCase().load(
             envelopeRead: .loaded(envelope),
-            entriesRead: .loaded(exactEntries(for: envelope))
+            entriesRead: .loaded(entries)
         )
 
-        XCTAssertEqual(loaded, envelope)
+        XCTAssertEqual(
+            loaded,
+            LoadedUpdateBootstrapBundle(
+                envelope: envelope,
+                entries: entries
+            )
+        )
     }
 
     func testPreservesEnvelopeAndDirectoryReadFailures() {
@@ -96,12 +103,14 @@ private func exactEntries(
             relativePath: envelope.specification.relativePath,
             kind: .regularFile
         ),
-    ]
+    ] + envelope.payloadArtifacts.map {
+        .init(relativePath: $0.relativePath, kind: .regularFile)
+    }
 }
 
 private func applicationEnvelope() -> UpdateBootstrapEnvelope {
     UpdateBootstrapEnvelope(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
         id: "helper-update-0.2.2",
         productId: "ai.tirosh.vitalserver.helper",
         target: .init(platform: .macos, architecture: .arm64),
@@ -124,6 +133,7 @@ private func applicationEnvelope() -> UpdateBootstrapEnvelope {
             sizeBytes: 200,
             mediaType: "application/json"
         ),
+        payloadArtifacts: [],
         signature: .init(
             algorithm: .ed25519,
             keyId: "helper-release-key-2026",

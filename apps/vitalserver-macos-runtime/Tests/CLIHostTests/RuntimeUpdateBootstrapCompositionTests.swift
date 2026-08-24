@@ -443,6 +443,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
     ) throws {
         let updaterData = Data("#!/bin/sh\nexit 0\n".utf8)
         let specificationData = Data("{\"update\":\"0.2.2\"}\n".utf8)
+        let payloadData = Data("host-platform-apply\n".utf8)
         let updater = UpdateBootstrapArtifact(
             id: "next-updater",
             relativePath: "payload/bin/vitalserver-update",
@@ -457,9 +458,17 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             sizeBytes: specificationData.count,
             mediaType: "application/json"
         )
+        let payloadArtifact = UpdateBootstrapArtifact(
+            id: "host-platform-apply",
+            relativePath: "payload/layers/host-platform/apply.bin",
+            sha256: sha256(payloadData),
+            sizeBytes: payloadData.count,
+            mediaType: "application/octet-stream"
+        )
         let unsigned = envelope(
             updater: updater,
             specification: specification,
+            payloadArtifacts: [payloadArtifact],
             signedSHA256: String(repeating: "0", count: 64),
             signature: "unsigned"
         )
@@ -470,6 +479,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         let signed = envelope(
             updater: updater,
             specification: specification,
+            payloadArtifacts: [payloadArtifact],
             signedSHA256: signedSHA256,
             signature: signature
         )
@@ -495,6 +505,14 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             FileManager.default.isExecutableFile(atPath: updaterURL.path)
         )
         try specificationData.write(to: specificationURL)
+        let payloadURL = root.appendingPathComponent(
+            payloadArtifact.relativePath
+        )
+        try FileManager.default.createDirectory(
+            at: payloadURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try payloadData.write(to: payloadURL)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(signed).write(
@@ -508,11 +526,12 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
     private func envelope(
         updater: UpdateBootstrapArtifact,
         specification: UpdateBootstrapArtifact,
+        payloadArtifacts: [UpdateBootstrapArtifact],
         signedSHA256: String,
         signature: String
     ) -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "update-0.2.2",
             productId: Constants.Product.identifier,
             target: UpdateBootstrapTarget(
@@ -526,6 +545,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             layerOrder: [.container, .guestRuntime, .hostPlatform],
             nextUpdaterArtifact: updater,
             specification: specification,
+            payloadArtifacts: payloadArtifacts,
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "release-key-1",

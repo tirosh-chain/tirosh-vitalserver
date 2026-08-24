@@ -9,6 +9,7 @@ public enum ValidateUpdateBootstrapRecoveryClosureError:
     case verificationUpdateMismatch(expected: String, actual: String)
     case verificationDigestMismatch(expected: String, actual: String)
     case verifiedArtifactSetMismatch(expected: [String], actual: [String])
+    case verifiedPayloadArtifactSetMismatch(expected: [String], actual: [String])
 }
 public struct ValidateUpdateBootstrapRecoveryClosureUseCase {
     public init() {}
@@ -40,12 +41,24 @@ public struct ValidateUpdateBootstrapRecoveryClosureUseCase {
             journal.envelope.nextUpdaterArtifact.id,
             journal.envelope.specification.id,
         ].sorted()
-        let actualArtifacts = verification.verifiedArtifactIds.sorted()
+        let actualArtifacts =
+            verification.verifiedBootstrapArtifactIds.sorted()
         guard actualArtifacts == expectedArtifacts else {
             throw ValidateUpdateBootstrapRecoveryClosureError
                 .verifiedArtifactSetMismatch(
                     expected: expectedArtifacts,
                     actual: actualArtifacts
+                )
+        }
+        let expectedPayloadArtifacts =
+            journal.envelope.payloadArtifacts.map(\.id).sorted()
+        let actualPayloadArtifacts =
+            verification.verifiedPayloadArtifactIds.sorted()
+        guard actualPayloadArtifacts == expectedPayloadArtifacts else {
+            throw ValidateUpdateBootstrapRecoveryClosureError
+                .verifiedPayloadArtifactSetMismatch(
+                    expected: expectedPayloadArtifacts,
+                    actual: actualPayloadArtifacts
                 )
         }
     }

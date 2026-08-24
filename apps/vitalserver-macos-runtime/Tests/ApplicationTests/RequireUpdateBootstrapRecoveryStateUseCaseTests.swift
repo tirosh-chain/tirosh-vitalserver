@@ -173,7 +173,7 @@ func recoveryJournal(
 
 private func recoveryEnvelope() -> UpdateBootstrapEnvelope {
     UpdateBootstrapEnvelope(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
         id: "update-42",
         productId: "com.tirosh.vitalserver-helper",
         target: UpdateBootstrapTarget(
@@ -199,6 +199,15 @@ private func recoveryEnvelope() -> UpdateBootstrapEnvelope {
             sizeBytes: 20,
             mediaType: "application/json"
         ),
+        payloadArtifacts: [
+            UpdateBootstrapArtifact(
+                id: "host-artifact",
+                relativePath: "payload/layers/host-platform/apply.bin",
+                sha256: String(repeating: "d", count: 64),
+                sizeBytes: 30,
+                mediaType: "application/octet-stream"
+            ),
+        ],
         signature: UpdateBootstrapSignature(
             algorithm: .ed25519,
             keyId: "key-1",

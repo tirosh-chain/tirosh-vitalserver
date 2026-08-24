@@ -11,10 +11,14 @@ final class VerifyUpdateBootstrapEnvelopeUseCaseTests: XCTestCase {
         XCTAssertEqual(closure.updateId, "helper-update-0.2.2")
         XCTAssertEqual(closure.canonicalPayloadSHA256, harness.envelope.signature.signedSha256)
         XCTAssertEqual(
-            closure.verifiedArtifactIds,
+            closure.verifiedBootstrapArtifactIds,
             ["helper-next-updater", "helper-update-specification"]
         )
-        XCTAssertEqual(harness.observedArtifactIds, closure.verifiedArtifactIds)
+        XCTAssertEqual(
+            harness.observedArtifactIds,
+            closure.verifiedBootstrapArtifactIds
+        )
+        XCTAssertEqual(closure.verifiedPayloadArtifactIds, [])
         XCTAssertEqual(harness.publisherVerificationCount, 1)
     }
 
@@ -100,7 +104,7 @@ final class VerifyUpdateBootstrapEnvelopeUseCaseTests: XCTestCase {
 
 private final class VerificationHarness {
     let envelope = UpdateBootstrapEnvelope(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
         id: "helper-update-0.2.2",
         productId: "ai.tirosh.vitalserver.helper",
         target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
@@ -123,6 +127,15 @@ private final class VerificationHarness {
             sizeBytes: 200,
             mediaType: "application/json"
         ),
+        payloadArtifacts: [
+            UpdateBootstrapArtifact(
+                id: "host-platform-apply",
+                relativePath: "payload/layers/host-platform/apply.bin",
+                sha256: String(repeating: "e", count: 64),
+                sizeBytes: 300,
+                mediaType: "application/octet-stream"
+            ),
+        ],
         signature: UpdateBootstrapSignature(
             algorithm: .ed25519,
             keyId: "helper-release-key-2026",

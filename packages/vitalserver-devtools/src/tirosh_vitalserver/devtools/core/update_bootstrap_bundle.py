@@ -3,19 +3,20 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from tirosh_vitalserver.devtools.core.errors import DomainError
 
-SCHEMA_VERSION = "v1"
+SCHEMA_VERSION = "v2"
 PRODUCT_ID = "ai.tirosh.vitalserver.helper"
 SUPPORTED_PLATFORMS = {"macos", "windows", "linux"}
 SUPPORTED_ARCHITECTURES = {"arm64", "amd64"}
 SUPPORTED_LAYERS = {"container", "guest-runtime", "host-platform"}
 IDENTIFIER = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 VERSION = re.compile(r"^[A-Za-z0-9.+_-]{1,128}$")
-CANONICAL_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+CANONICAL_UTC = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -49,6 +50,7 @@ def unsigned_envelope(
     layer_order: list[str],
     next_updater_artifact: dict[str, object],
     specification_artifact: dict[str, object],
+    payload_artifacts: list[dict[str, object]],
     issued_at: str,
 ) -> dict[str, object]:
     envelope: dict[str, object] = {
@@ -66,6 +68,7 @@ def unsigned_envelope(
         "layerOrder": layer_order,
         "nextUpdaterArtifact": next_updater_artifact,
         "specification": specification_artifact,
+        "payloadArtifacts": payload_artifacts,
         "issuedAt": issued_at,
     }
     validate_unsigned_envelope(envelope)
@@ -91,6 +94,9 @@ def canonical_payload(envelope: dict[str, object]) -> bytes:
             _object(envelope["nextUpdaterArtifact"])
         ),
         "specification": _ordered_artifact(_object(envelope["specification"])),
+        "payloadArtifacts": [
+            _ordered_artifact(_object(entry)) for entry in envelope["payloadArtifacts"]
+        ],
         "issuedAt": envelope["issuedAt"],
     }
     return json.dumps(
@@ -133,6 +139,7 @@ def validate_envelope(envelope: dict[str, Any]) -> None:
             "layerOrder",
             "nextUpdaterArtifact",
             "specification",
+            "payloadArtifacts",
             "signature",
             "issuedAt",
         },
@@ -174,6 +181,7 @@ def validate_unsigned_envelope(envelope: dict[str, Any]) -> None:
             "layerOrder",
             "nextUpdaterArtifact",
             "specification",
+            "payloadArtifacts",
             "issuedAt",
         },
         "unsigned bootstrap envelope",
@@ -218,9 +226,35 @@ def validate_unsigned_envelope(envelope: dict[str, Any]) -> None:
         raise DomainError("bootstrap artifact ids must be distinct")
     if next_updater["relativePath"] == specification["relativePath"]:
         raise DomainError("bootstrap artifact paths must be distinct")
-    issued_at = envelope["issuedAt"]
-    if not isinstance(issued_at, str) or not CANONICAL_UTC.fullmatch(issued_at):
-        raise DomainError("issuedAt must be canonical UTC YYYY-MM-DDTHH:MM:SSZ")
+    payload_artifacts = envelope["payloadArtifacts"]
+    if not isinstance(payload_artifacts, list) or not payload_artifacts:
+        raise DomainError("payloadArtifacts must be a non-empty list")
+    bootstrap_paths = {
+        next_updater["relativePath"],
+        specification["relativePath"],
+    }
+    seen_paths: set[str] = set()
+    seen_ids: set[str] = set()
+    for entry in payload_artifacts:
+        validate_artifact(_object(entry))
+        artifact_entry = _object(entry)
+        if artifact_entry["relativePath"] in seen_paths:
+            raise DomainError(
+                f"payloadArtifacts contains a duplicate path: "
+                f"{artifact_entry['relativePath']}"
+            )
+        if artifact_entry["id"] in seen_ids:
+            raise DomainError(
+                f"payloadArtifacts contains a duplicate id: {artifact_entry['id']}"
+            )
+        if artifact_entry["relativePath"] in bootstrap_paths:
+            raise DomainError(
+                "payloadArtifacts conflicts with a bootstrap-owned path: "
+                f"{artifact_entry['relativePath']}"
+            )
+        seen_paths.add(artifact_entry["relativePath"])
+        seen_ids.add(artifact_entry["id"])
+    require_canonical_utc(envelope["issuedAt"], "issuedAt")
 
 
 def validate_artifact(entry: dict[str, Any]) -> None:
@@ -271,6 +305,15 @@ def require_identifier(value: object, field: str) -> None:
 def require_version(value: object, field: str) -> None:
     if not isinstance(value, str) or not VERSION.fullmatch(value):
         raise DomainError(f"{field} is not a stable ASCII version: {value}")
+
+
+def require_canonical_utc(value: object, field: str) -> None:
+    if not isinstance(value, str) or not CANONICAL_UTC.fullmatch(value):
+        raise DomainError(f"{field} must be canonical UTC YYYY-MM-DDTHH:MM:SSZ")
+    try:
+        datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise DomainError(f"{field} is not a real UTC timestamp: {value}") from exc
 
 
 def require_safe_relative_path(value: object, field: str) -> None:

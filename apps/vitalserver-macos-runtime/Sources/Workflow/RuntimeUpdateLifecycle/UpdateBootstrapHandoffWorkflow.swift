@@ -49,6 +49,13 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
     public let stage: (
         UpdateBootstrapStagingInput
     ) throws -> StagedUpdateBootstrapBundle
+    public let verifyStagedClosure: (
+        URL
+    ) throws -> VerifiedUpdateBootstrapClosure
+    public let requireStagedProofMatch: (
+        VerifiedUpdateBootstrapClosure,
+        VerifiedUpdateBootstrapClosure
+    ) throws -> Void
     public let verifiedAndStaged: (
         UpdateBootstrapJournal,
         VerifiedUpdateBootstrapClosure,
@@ -109,6 +116,13 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
         stage: @escaping (
             UpdateBootstrapStagingInput
         ) throws -> StagedUpdateBootstrapBundle,
+        verifyStagedClosure: @escaping (
+            URL
+        ) throws -> VerifiedUpdateBootstrapClosure,
+        requireStagedProofMatch: @escaping (
+            VerifiedUpdateBootstrapClosure,
+            VerifiedUpdateBootstrapClosure
+        ) throws -> Void,
         verifiedAndStaged: @escaping (
             UpdateBootstrapJournal,
             VerifiedUpdateBootstrapClosure,
@@ -166,6 +180,8 @@ public struct UpdateBootstrapHandoffWorkflowOperations {
     ) {
         self.saveJournal = saveJournal
         self.stage = stage
+        self.verifyStagedClosure = verifyStagedClosure
+        self.requireStagedProofMatch = requireStagedProofMatch
         self.verifiedAndStaged = verifiedAndStaged
         self.handoffStarted = handoffStarted
         self.makeInvocation = makeInvocation
@@ -207,11 +223,26 @@ public struct UpdateBootstrapHandoffWorkflow {
             )
         }
 
+        let stagedVerification: VerifiedUpdateBootstrapClosure
+        do {
+            stagedVerification = try operations.verifyStagedClosure(staged.root)
+            try operations.requireStagedProofMatch(
+                input.verification,
+                stagedVerification
+            )
+        } catch {
+            throw failureAfterPersistedState(
+                journal: input.admittedJournal,
+                operationError: error,
+                operations: operations
+            )
+        }
+
         let pending: UpdateBootstrapJournal
         do {
             pending = try operations.verifiedAndStaged(
                 input.admittedJournal,
-                input.verification,
+                stagedVerification,
                 input.admittedJournal.envelope.nextUpdaterArtifact.relativePath,
                 input.admittedJournal.envelope.specification.relativePath,
                 operations.now()

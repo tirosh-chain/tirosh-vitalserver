@@ -5,6 +5,7 @@ public enum AdvanceUpdateBootstrapJournalError: Error, Equatable, Sendable {
     case verificationUpdateMismatch(expected: String, actual: String)
     case verificationDigestMismatch(expected: String, actual: String)
     case verifiedArtifactSetMismatch(expected: [String], actual: [String])
+    case verifiedPayloadArtifactSetMismatch(expected: [String], actual: [String])
 }
 
 public struct AdvanceUpdateBootstrapJournalUseCase {
@@ -34,12 +35,24 @@ public struct AdvanceUpdateBootstrapJournalUseCase {
             journal.envelope.nextUpdaterArtifact.id,
             journal.envelope.specification.id,
         ].sorted()
-        let actualArtifacts = verification.verifiedArtifactIds.sorted()
+        let actualArtifacts =
+            verification.verifiedBootstrapArtifactIds.sorted()
         guard actualArtifacts == expectedArtifacts else {
             throw AdvanceUpdateBootstrapJournalError
                 .verifiedArtifactSetMismatch(
                     expected: expectedArtifacts,
                     actual: actualArtifacts
+                )
+        }
+        let expectedPayloadArtifacts =
+            journal.envelope.payloadArtifacts.map(\.id).sorted()
+        let actualPayloadArtifacts =
+            verification.verifiedPayloadArtifactIds.sorted()
+        guard actualPayloadArtifacts == expectedPayloadArtifacts else {
+            throw AdvanceUpdateBootstrapJournalError
+                .verifiedPayloadArtifactSetMismatch(
+                    expected: expectedPayloadArtifacts,
+                    actual: actualPayloadArtifacts
                 )
         }
         return try UpdateBootstrapJournalStateMachine.transition(

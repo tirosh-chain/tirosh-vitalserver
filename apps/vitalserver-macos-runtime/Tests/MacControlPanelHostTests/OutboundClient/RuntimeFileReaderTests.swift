@@ -13,7 +13,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         try """
         {
-          "schemaVersion": "vitalserver.update-bootstrap-envelope/v1",
+          "schemaVersion": "v2",
           "id": "update-1",
           "productId": "ai.tirosh.vitalserver.helper",
           "target": {"platform": "macos", "architecture": "arm64"},
@@ -29,6 +29,15 @@ final class RuntimeFileReaderTests: XCTestCase {
             "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "sizeBytes": 1, "mediaType": "application/json"
           },
+          "payloadArtifacts": [
+            {
+              "id": "host-platform-apply",
+              "relativePath": "payload/layers/host-platform/apply.bin",
+              "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "sizeBytes": 1,
+              "mediaType": "application/octet-stream"
+            }
+          ],
           "signature": {
             "algorithm": "ed25519", "keyId": "release-key",
             "signedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",

@@ -1,5 +1,6 @@
 import Application
 import Contracts
+import Domain
 import Foundation
 
 public enum UpdateBootstrapCompletionEvidenceWorkflowError:
@@ -27,9 +28,6 @@ public struct SettleRunningUpdateBootstrapWorkflowInput:
 }
 
 public struct SettleRunningUpdateBootstrapWorkflowOperations {
-    public let makeInvocation: (
-        UpdateBootstrapJournal
-    ) throws -> UpdateBootstrapHandoffInvocation
     public let readReceipt: (
         URL
     ) -> UpdateBootstrapCompletionReceiptReadResult
@@ -57,9 +55,6 @@ public struct SettleRunningUpdateBootstrapWorkflowOperations {
     ) throws -> Void
 
     public init(
-        makeInvocation: @escaping (
-            UpdateBootstrapJournal
-        ) throws -> UpdateBootstrapHandoffInvocation,
         readReceipt: @escaping (
             URL
         ) -> UpdateBootstrapCompletionReceiptReadResult,
@@ -89,7 +84,6 @@ public struct SettleRunningUpdateBootstrapWorkflowOperations {
             Int
         ) throws -> Void
     ) {
-        self.makeInvocation = makeInvocation
         self.readReceipt = readReceipt
         self.settle = settle
         self.readReport = readReport
@@ -107,11 +101,8 @@ public struct SettleRunningUpdateBootstrapWorkflow {
         input: SettleRunningUpdateBootstrapWorkflowInput,
         operations: SettleRunningUpdateBootstrapWorkflowOperations
     ) throws -> UpdateBootstrapJournal {
-        let invocation = try operations.makeInvocation(
-            input.runningJournal
-        )
         let receiptURL = input.stagedRoot.appendingPathComponent(
-            invocation.completionReceiptRelativePath
+            UpdateBootstrapHandoffPolicy.completionReceiptRelativePath
         )
         let settled = try operations.settle(
             input.runningJournal,

@@ -78,7 +78,7 @@ final class SettleUpdateBootstrapHandoffUseCaseTests: XCTestCase {
 
     private func envelope() -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "envelope-42",
             productId: "com.tirosh.vitalserver-helper",
             target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
@@ -95,6 +95,7 @@ final class SettleUpdateBootstrapHandoffUseCaseTests: XCTestCase {
                 id: "update-specification",
                 path: "spec/update.json"
             ),
+            payloadArtifacts: [],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "release-key-1",

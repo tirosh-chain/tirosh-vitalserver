@@ -95,15 +95,138 @@ final class UpdateBootstrapEnvelopePolicyTests: XCTestCase {
         }
     }
 
+    func testRejectsIssuedAtThatIsNotARealUTCInstant() {
+        XCTAssertThrowsError(try UpdateBootstrapEnvelopePolicy.validate(
+            envelope(issuedAt: "2026-02-30T00:00:00Z"),
+            expectedProductId: "ai.tirosh.vitalserver.helper",
+            expectedTarget: UpdateBootstrapTarget(platform: .macos, architecture: .arm64)
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapEnvelopeValidationError,
+                .invalidIssuedAt("2026-02-30T00:00:00Z")
+            )
+        }
+    }
+
+    func testRejectsV1SchemaVersion() {
+        XCTAssertThrowsError(try UpdateBootstrapEnvelopePolicy.validate(
+            envelope(schemaVersion: "v1"),
+            expectedProductId: "ai.tirosh.vitalserver.helper",
+            expectedTarget: UpdateBootstrapTarget(platform: .macos, architecture: .arm64)
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapEnvelopeValidationError,
+                .unsupportedSchemaVersion("v1")
+            )
+        }
+    }
+
+    func testRejectsEmptyPayloadArtifacts() {
+        XCTAssertThrowsError(try UpdateBootstrapEnvelopePolicy.validate(
+            envelope(payloadArtifacts: []),
+            expectedProductId: "ai.tirosh.vitalserver.helper",
+            expectedTarget: UpdateBootstrapTarget(platform: .macos, architecture: .arm64)
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapEnvelopeValidationError,
+                .emptyPayloadArtifacts
+            )
+        }
+    }
+
+    func testRejectsDuplicatePayloadArtifactPath() {
+        let duplicate = UpdateBootstrapArtifact(
+            id: "host-platform-apply-2",
+            relativePath: "payload/layers/host-platform/apply.bin",
+            sha256: String(repeating: "f", count: 64),
+            sizeBytes: 31,
+            mediaType: "application/octet-stream"
+        )
+        XCTAssertThrowsError(try UpdateBootstrapEnvelopePolicy.validate(
+            envelope(payloadArtifacts: [
+                UpdateBootstrapArtifact(
+                    id: "host-platform-apply",
+                    relativePath: "payload/layers/host-platform/apply.bin",
+                    sha256: String(repeating: "d", count: 64),
+                    sizeBytes: 30,
+                    mediaType: "application/octet-stream"
+                ),
+                duplicate,
+            ]),
+            expectedProductId: "ai.tirosh.vitalserver.helper",
+            expectedTarget: UpdateBootstrapTarget(platform: .macos, architecture: .arm64)
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapEnvelopeValidationError,
+                .duplicatePayloadArtifactPath(
+                    "payload/layers/host-platform/apply.bin"
+                )
+            )
+        }
+    }
+
+    func testRejectsDuplicatePayloadArtifactId() {
+        XCTAssertThrowsError(try UpdateBootstrapEnvelopePolicy.validate(
+            envelope(payloadArtifacts: [
+                UpdateBootstrapArtifact(
+                    id: "host-platform-apply",
+                    relativePath: "payload/layers/host-platform/apply.bin",
+                    sha256: String(repeating: "d", count: 64),
+                    sizeBytes: 30,
+                    mediaType: "application/octet-stream"
+                ),
+                UpdateBootstrapArtifact(
+                    id: "host-platform-apply",
+                    relativePath: "payload/layers/host-platform/rollback.bin",
+                    sha256: String(repeating: "e", count: 64),
+                    sizeBytes: 31,
+                    mediaType: "application/octet-stream"
+                ),
+            ]),
+            expectedProductId: "ai.tirosh.vitalserver.helper",
+            expectedTarget: UpdateBootstrapTarget(platform: .macos, architecture: .arm64)
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapEnvelopeValidationError,
+                .duplicatePayloadArtifactId("host-platform-apply")
+            )
+        }
+    }
+
+    func testRejectsPayloadArtifactConflictsWithBootstrap() {
+        XCTAssertThrowsError(try UpdateBootstrapEnvelopePolicy.validate(
+            envelope(payloadArtifacts: [
+                UpdateBootstrapArtifact(
+                    id: "host-platform-apply",
+                    relativePath: "payload/product-update.json",
+                    sha256: String(repeating: "d", count: 64),
+                    sizeBytes: 30,
+                    mediaType: "application/json"
+                ),
+            ]),
+            expectedProductId: "ai.tirosh.vitalserver.helper",
+            expectedTarget: UpdateBootstrapTarget(platform: .macos, architecture: .arm64)
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapEnvelopeValidationError,
+                .payloadArtifactConflictsWithBootstrap(
+                    relativePath: "payload/product-update.json"
+                )
+            )
+        }
+    }
+
     private func envelope(
+        schemaVersion: String = "v2",
         id: String = "helper-release-bootstrap-022",
         productId: String = "ai.tirosh.vitalserver.helper",
         layerOrder: [UpdateLayer] = [.guestRuntime, .container, .hostPlatform],
         nextUpdaterArtifact: UpdateBootstrapArtifact? = nil,
+        payloadArtifacts: [UpdateBootstrapArtifact]? = nil,
         issuedAt: String = "2026-07-27T00:00:00Z"
     ) -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: schemaVersion,
             id: id,
             productId: productId,
             target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
@@ -120,6 +243,15 @@ final class UpdateBootstrapEnvelopePolicyTests: XCTestCase {
                 sizeBytes: 91,
                 mediaType: "application/json"
             ),
+            payloadArtifacts: payloadArtifacts ?? [
+                UpdateBootstrapArtifact(
+                    id: "host-platform-apply",
+                    relativePath: "payload/layers/host-platform/apply.bin",
+                    sha256: String(repeating: "d", count: 64),
+                    sizeBytes: 30,
+                    mediaType: "application/octet-stream"
+                ),
+            ],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "release-key",

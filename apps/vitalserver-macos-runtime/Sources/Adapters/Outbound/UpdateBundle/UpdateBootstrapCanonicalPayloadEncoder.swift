@@ -20,6 +20,10 @@ public struct UpdateBootstrapCanonicalPayloadEncoder {
                 try artifact(envelope.nextUpdaterArtifact)
             ),
             field("specification", try artifact(envelope.specification)),
+            field(
+                "payloadArtifacts",
+                array(try envelope.payloadArtifacts.map { try artifact($0) })
+            ),
             field("issuedAt", try string(envelope.issuedAt)),
         ]
         return Data("{\(fields.joined(separator: ","))}".utf8)

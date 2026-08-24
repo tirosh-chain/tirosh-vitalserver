@@ -3,49 +3,73 @@ import Domain
 import XCTest
 
 final class UpdateBootstrapBundleClosurePolicyTests: XCTestCase {
-    func testAcceptsOnlyEnvelopeAndDeclaredArtifactsAsRegularFiles() throws {
-        try UpdateBootstrapBundleClosurePolicy.validate(
+    func testStructureAcceptsEnvelopeOwnedPayloadFiles() throws {
+        try UpdateBootstrapBundleClosurePolicy.validateStructure(
             envelope: envelope(),
-            entries: [
-                .init(relativePath: "payload", kind: .directory),
-                .init(relativePath: "payload/bin", kind: .directory),
-                .init(
-                    relativePath: UpdateBootstrapBundleLayout.envelopeRelativePath,
-                    kind: .regularFile
-                ),
-                .init(
-                    relativePath: "payload/bin/vitalserver-update",
-                    kind: .regularFile
-                ),
-                .init(
-                    relativePath: "payload/update-specification.json",
-                    kind: .regularFile
-                ),
-            ]
+            entries: bundleEntries()
         )
     }
 
-    func testRejectsMissingAndUnknownRegularFilesAsExactClosureMismatch() {
-        assertClosureError(
+    func testStructureAllowsUnknownRegularFilesUntilExactClosure() throws {
+        var entries = bundleEntries()
+        entries.append(
+            .init(relativePath: "payload/layers/unknown", kind: .regularFile)
+        )
+        try UpdateBootstrapBundleClosurePolicy.validateStructure(
+            envelope: envelope(),
+            entries: entries
+        )
+    }
+
+    func testStructureRejectsMissingEnvelopeOwnedFiles() {
+        assertStructureError(
             entries: [
                 .init(
                     relativePath: UpdateBootstrapBundleLayout.envelopeRelativePath,
                     kind: .regularFile
                 ),
-                .init(relativePath: "payload/unknown", kind: .regularFile),
             ],
             expected: .fileClosureMismatch(
-                missing: [
+                missing: ([
                     "payload/bin/vitalserver-update",
                     "payload/update-specification.json",
-                ],
-                unknown: ["payload/unknown"]
+                ] + envelope().payloadArtifacts.map(\.relativePath)).sorted(),
+                unknown: []
             )
         )
     }
 
+    func testExactClosureAcceptsEnvelopeOwnedPayload() throws {
+        try UpdateBootstrapBundleClosurePolicy.validateExact(
+            envelope: envelope(),
+            entries: bundleEntries()
+        )
+    }
+
+    func testExactClosureRejectsUnknownPayloadFile() {
+        var entries = bundleEntries()
+        entries.append(
+            .init(relativePath: "payload/layers/unknown", kind: .regularFile)
+        )
+
+        XCTAssertThrowsError(
+            try UpdateBootstrapBundleClosurePolicy.validateExact(
+                envelope: envelope(),
+                entries: entries
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapBundleClosureError,
+                .fileClosureMismatch(
+                    missing: [],
+                    unknown: ["payload/layers/unknown"]
+                )
+            )
+        }
+    }
+
     func testRejectsUnsupportedEntryKind() {
-        assertClosureError(
+        assertStructureError(
             entries: [
                 .init(relativePath: "payload/link", kind: .other("symbolic-link")),
             ],
@@ -57,11 +81,11 @@ final class UpdateBootstrapBundleClosurePolicyTests: XCTestCase {
     }
 
     func testRejectsUnsafeAndDuplicateEntryPaths() {
-        assertClosureError(
+        assertStructureError(
             entries: [.init(relativePath: "../escape", kind: .regularFile)],
             expected: .invalidEntryPath("../escape")
         )
-        assertClosureError(
+        assertStructureError(
             entries: [
                 .init(relativePath: "payload", kind: .directory),
                 .init(relativePath: "payload", kind: .directory),
@@ -87,12 +111,13 @@ final class UpdateBootstrapBundleClosurePolicyTests: XCTestCase {
                 sizeBytes: value.specification.sizeBytes,
                 mediaType: value.specification.mediaType
             ),
+            payloadArtifacts: value.payloadArtifacts,
             signature: value.signature,
             issuedAt: value.issuedAt
         )
 
         XCTAssertThrowsError(
-            try UpdateBootstrapBundleClosurePolicy.validate(
+            try UpdateBootstrapBundleClosurePolicy.validateStructure(
                 envelope: value,
                 entries: []
             )
@@ -104,12 +129,12 @@ final class UpdateBootstrapBundleClosurePolicyTests: XCTestCase {
         }
     }
 
-    private func assertClosureError(
+    private func assertStructureError(
         entries: [UpdateBootstrapBundleEntry],
         expected: UpdateBootstrapBundleClosureError
     ) {
         XCTAssertThrowsError(
-            try UpdateBootstrapBundleClosurePolicy.validate(
+            try UpdateBootstrapBundleClosurePolicy.validateStructure(
                 envelope: envelope(),
                 entries: entries
             )
@@ -119,9 +144,30 @@ final class UpdateBootstrapBundleClosurePolicyTests: XCTestCase {
     }
 }
 
+private func bundleEntries() -> [UpdateBootstrapBundleEntry] {
+    [
+        .init(relativePath: "payload", kind: .directory),
+        .init(relativePath: "payload/bin", kind: .directory),
+        .init(
+            relativePath: UpdateBootstrapBundleLayout.envelopeRelativePath,
+            kind: .regularFile
+        ),
+        .init(
+            relativePath: "payload/bin/vitalserver-update",
+            kind: .regularFile
+        ),
+        .init(
+            relativePath: "payload/update-specification.json",
+            kind: .regularFile
+        ),
+    ] + envelope().payloadArtifacts.map {
+        .init(relativePath: $0.relativePath, kind: .regularFile)
+    }
+}
+
 private func envelope() -> UpdateBootstrapEnvelope {
     UpdateBootstrapEnvelope(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
         id: "helper-update-0.2.2",
         productId: "ai.tirosh.vitalserver.helper",
         target: .init(platform: .macos, architecture: .arm64),
@@ -144,6 +190,15 @@ private func envelope() -> UpdateBootstrapEnvelope {
             sizeBytes: 200,
             mediaType: "application/json"
         ),
+        payloadArtifacts: [
+            UpdateBootstrapArtifact(
+                id: "host-platform-apply",
+                relativePath: "payload/layers/host-platform/apply.bin",
+                sha256: String(repeating: "d", count: 64),
+                sizeBytes: 30,
+                mediaType: "application/octet-stream"
+            ),
+        ],
         signature: .init(
             algorithm: .ed25519,
             keyId: "helper-release-key-2026",

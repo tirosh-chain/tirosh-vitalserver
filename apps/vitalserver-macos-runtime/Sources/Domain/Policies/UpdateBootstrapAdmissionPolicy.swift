@@ -4,6 +4,7 @@ public enum UpdateBootstrapAdmissionError: Error, Equatable, Sendable {
     case verificationUpdateMismatch(expected: String, actual: String)
     case verificationDigestMismatch(expected: String, actual: String)
     case verifiedArtifactSetMismatch(expected: [String], actual: [String])
+    case verifiedPayloadArtifactSetMismatch(expected: [String], actual: [String])
 }
 
 public enum UpdateBootstrapAdmissionPolicy {
@@ -32,12 +33,24 @@ public enum UpdateBootstrapAdmissionPolicy {
             envelope.nextUpdaterArtifact.id,
             envelope.specification.id,
         ].sorted()
-        let actualArtifacts = verification.verifiedArtifactIds.sorted()
+        let actualArtifacts =
+            verification.verifiedBootstrapArtifactIds.sorted()
         guard actualArtifacts == expectedArtifacts else {
             throw UpdateBootstrapAdmissionError.verifiedArtifactSetMismatch(
                 expected: expectedArtifacts,
                 actual: actualArtifacts
             )
+        }
+        let expectedPayloadArtifacts =
+            envelope.payloadArtifacts.map(\.id).sorted()
+        let actualPayloadArtifacts =
+            verification.verifiedPayloadArtifactIds.sorted()
+        guard actualPayloadArtifacts == expectedPayloadArtifacts else {
+            throw UpdateBootstrapAdmissionError
+                .verifiedPayloadArtifactSetMismatch(
+                    expected: expectedPayloadArtifacts,
+                    actual: actualPayloadArtifacts
+                )
         }
 
         let journal = UpdateBootstrapJournal(

@@ -19,10 +19,11 @@ make a valid future release unreachable. `minUpdaterVersion` and
 
 VitalServer Helper 0.2.2 is the clean-install baseline that changes this
 boundary. The installed Host must understand only a small, stable bootstrap
-envelope. The release bundle carries both the next updater and the detailed
-product update specification. The installed Host authenticates and stages those
-two artifacts, then hands execution to the staged updater. It does not interpret
-the detailed specification.
+envelope. The release bundle carries the next updater, the detailed product
+update specification, and every payload artifact declared by that envelope. The
+installed Host authenticates and stages that envelope-owned closure, then hands
+execution to the staged updater. It does not interpret the detailed
+specification.
 
 ## 결정
 
@@ -36,6 +37,7 @@ It contains only:
 - declared layer order;
 - the next-updater artifact identity, path, size, and digest;
 - the product-update specification artifact identity, path, size, and digest;
+- the exact `payloadArtifacts` regular-file closure owned by the envelope;
 - publisher signature metadata and issue time.
 
 The envelope deliberately has no `minUpdaterVersion`,
@@ -72,7 +74,8 @@ caller selects bundle
   -> installed Host reads strict envelope
   -> Host validates product and target
   -> Host verifies publisher signature
-  -> Host verifies next-updater/specification size and digest
+  -> Host verifies next-updater/specification/payloadArtifacts size and digest
+  -> Host verifies the exact envelope-owned regular-file closure
   -> Host creates durable operation admission and staged workspace
   -> Host invokes the staged next updater through a fixed handoff contract
   -> next updater owns detailed layer orchestration and rollback
@@ -105,11 +108,13 @@ authority.
 
 ## 구현 상태
 
-The Swift `Contracts` and `Domain` modules define the strict v1 envelope and
-pure target/layer/artifact policy. The verified closure is an explicit contract,
-and pure admission policy creates revision-one `admitted` journal state only
-when its update identity, signed payload digest, and complete artifact set match
-the envelope. The Application verification use case keeps
+The Swift `Contracts` and `Domain` modules define the strict v2 envelope and
+pure target/layer/artifact policy. The verified closure is an explicit contract:
+bootstrap artifact IDs and envelope-owned payload artifact IDs stay separate.
+Pure admission policy creates revision-one `admitted` journal state only
+when its update identity, signed payload digest, bootstrap artifact set, and
+payload artifact set match the envelope. A v1 envelope is an unsupported
+schema; there is no fallback that accepts both v1 and v2. The Application verification use case keeps
 unavailable, failed, invalid, and mismatched results distinct. Outbound adapters
 produce the cross-platform canonical payload, verify real Ed25519 signatures,
 stream artifact digests, and reject non-regular files. The installed publisher
@@ -143,8 +148,8 @@ correlated terminal revision. Operation failure, failure-transition failure,
 and failure-persistence failure remain distinct. A settlement failure
 transitions the last persisted running journal to an explicit failed revision
 rather than leaving an uncommitted success visible. Release tooling now composes
-the envelope, staged next updater, and opaque specification into one exact
-three-file archive closure. It signs the Swift-compatible canonical payload
+the envelope, staged next updater, opaque specification, and envelope-owned
+`payloadArtifacts` into one exact archive closure. It signs the Swift-compatible canonical payload
 with Ed25519, refuses symlink or non-regular inputs, refuses to replace an
 existing release artifact, and provides a separate verification command that
 checks the publisher signature, closure, sizes, and digests. The signing
@@ -154,10 +159,12 @@ Windows, and Linux installations. The installed-product-release contracts,
 pure policy, application ports, SQLite repositories, package-install
 composition, handoff workflow, admission policy, and Helper presentation read
 path are implemented and tested. The installed Host now also has strict
-bootstrap-directory readers and a pure exact-closure policy: the envelope and
-its two declared artifacts must be the only regular files, duplicate or unsafe
-paths and symbolic links are rejected, and missing, inspection, listing, read,
-and decode failures remain distinct. The installed CLI now exposes
+bootstrap-directory readers and a pure exact-closure policy: the envelope, next
+updater, specification, and declared `payloadArtifacts` must be the only
+regular files, duplicate or unsafe paths and symbolic links are rejected, and
+missing, inspection, listing, read, and decode failures remain distinct. The
+Host still treats specification bytes as opaque. Implementation and field
+proof of the v2 envelope remain in progress. The installed CLI now exposes
 `runtime apply-update-bootstrap <bundle> --request-id <id>`. Its Host
 composition materializes an archive or explicit bundle directory, requires the
 installed product release and an absent journal for the envelope ID, loads the
@@ -271,7 +278,8 @@ materialization remain responsibilities of the release environment.
 - Missing, invalid, mismatched, unverified, staged, handed-off, and settled are
   separate states.
 - Release tooling must always produce and verify the envelope, next updater,
-  and specification as one authenticated closure.
+  specification, and envelope-owned payload artifacts as one authenticated
+  closure.
 
 ## 관련 결정
 

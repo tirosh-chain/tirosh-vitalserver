@@ -63,14 +63,8 @@ def test_builds_signed_closure_matching_swift_canonical_contract(
         envelope_file = archive.extractfile(f"{root}/bootstrap-envelope.json")
         assert envelope_file is not None
         envelope = json.loads(envelope_file.read())
-    assert (
-        f"{root}/payload/layers/host-platform/executor"
-        in names
-    )
-    assert (
-        f"{root}/payload/layers/guest-runtime/configuration.json"
-        in names
-    )
+    assert f"{root}/payload/layers/host-platform/executor" in names
+    assert f"{root}/payload/layers/guest-runtime/configuration.json" in names
     assert f"{root}/payload/layers/container/rollback.bin" in names
     unsigned = dict(envelope)
     unsigned.pop("signature")
@@ -78,13 +72,28 @@ def test_builds_signed_closure_matching_swift_canonical_contract(
         canonical_payload(unsigned)
         .decode("utf-8")
         .startswith(
-            '{"schemaVersion":"v1","id":"helper-update-0.2.2",'
+            '{"schemaVersion":"v2","id":"helper-update-0.2.2",'
             '"productId":"ai.tirosh.vitalserver.helper",'
             '"target":{"platform":"macos","architecture":"arm64"},'
         )
     )
     assert "minUpdaterVersion" not in envelope
     assert "requiresTwoPhaseUpdate" not in envelope
+    payload_paths = {entry["relativePath"] for entry in envelope["payloadArtifacts"]}
+    assert payload_paths == {
+        "payload/layers/host-platform/apply.bin",
+        "payload/layers/host-platform/executor",
+        "payload/layers/host-platform/configuration.json",
+        "payload/layers/host-platform/rollback.bin",
+        "payload/layers/guest-runtime/apply.bin",
+        "payload/layers/guest-runtime/executor",
+        "payload/layers/guest-runtime/configuration.json",
+        "payload/layers/guest-runtime/rollback.bin",
+        "payload/layers/container/apply.bin",
+        "payload/layers/container/executor",
+        "payload/layers/container/configuration.json",
+        "payload/layers/container/rollback.bin",
+    }
 
 
 def test_verifier_rejects_artifact_modified_after_signing(tmp_path: Path) -> None:
@@ -208,6 +217,122 @@ def test_verifier_rejects_missing_specification_artifact(tmp_path: Path) -> None
         bootstrap_bundle_service.verify_bootstrap_bundle_directory(root, public_key)
 
 
+def test_verifier_rejects_extra_regular_file_outside_signed_closure(
+    tmp_path: Path,
+) -> None:
+    private_key, public_key = signing_keys(tmp_path)
+    root = build_and_extract(tmp_path, private_key)
+    (root / "payload/layers/host-platform/extra.bin").write_bytes(b"extra")
+
+    with pytest.raises(DomainError, match="file closure differs"):
+        bootstrap_bundle_service.verify_bootstrap_bundle_directory(root, public_key)
+
+
+def test_envelope_rejects_duplicate_payload_artifact(tmp_path: Path) -> None:
+    with pytest.raises(DomainError, match="duplicate path"):
+        unsigned_envelope(
+            update_id="update-42",
+            product_version="0.2.2",
+            runtime_version="0.2.2",
+            target_platform="macos",
+            target_architecture="arm64",
+            layer_order=["host-platform"],
+            next_updater_artifact={
+                "id": "next-updater",
+                "relativePath": "payload/bin/vitalserver-update",
+                "sha256": "a" * 64,
+                "sizeBytes": 7,
+                "mediaType": "application/octet-stream",
+            },
+            specification_artifact={
+                "id": "specification",
+                "relativePath": "payload/update-specification.json",
+                "sha256": "b" * 64,
+                "sizeBytes": 8,
+                "mediaType": "application/json",
+            },
+            payload_artifacts=[
+                {
+                    "id": "host-apply",
+                    "relativePath": "payload/layers/host-platform/apply.bin",
+                    "sha256": "c" * 64,
+                    "sizeBytes": 9,
+                    "mediaType": "application/octet-stream",
+                },
+                {
+                    "id": "host-apply-2",
+                    "relativePath": "payload/layers/host-platform/apply.bin",
+                    "sha256": "d" * 64,
+                    "sizeBytes": 10,
+                    "mediaType": "application/octet-stream",
+                },
+            ],
+            issued_at="2026-07-27T00:00:00Z",
+        )
+
+
+def test_envelope_accepts_real_utc_leap_day_instant() -> None:
+    envelope = _minimal_unsigned_envelope(issued_at="2024-02-29T23:59:59Z")
+    assert envelope["issuedAt"] == "2024-02-29T23:59:59Z"
+
+
+@pytest.mark.parametrize(
+    "issued_at",
+    [
+        "2026-02-30T00:00:00Z",
+        "2026-13-01T00:00:00Z",
+        "2026-00-01T00:00:00Z",
+        "2026-01-00T00:00:00Z",
+        "2026-01-32T00:00:00Z",
+        "2026-01-01T24:00:00Z",
+        "2026-01-01T23:60:00Z",
+        "2026-01-01T23:59:60Z",
+        "2025-02-29T00:00:00Z",
+        "2026-04-31T00:00:00Z",
+    ],
+)
+def test_envelope_rejects_issued_at_that_is_not_a_real_utc_instant(
+    issued_at: str,
+) -> None:
+    with pytest.raises(DomainError, match="issuedAt"):
+        _minimal_unsigned_envelope(issued_at=issued_at)
+
+
+def _minimal_unsigned_envelope(issued_at: str) -> dict[str, object]:
+    return unsigned_envelope(
+        update_id="update-42",
+        product_version="0.2.2",
+        runtime_version="0.2.2",
+        target_platform="macos",
+        target_architecture="arm64",
+        layer_order=["host-platform"],
+        next_updater_artifact={
+            "id": "next-updater",
+            "relativePath": "payload/bin/vitalserver-update",
+            "sha256": "a" * 64,
+            "sizeBytes": 7,
+            "mediaType": "application/octet-stream",
+        },
+        specification_artifact={
+            "id": "specification",
+            "relativePath": "payload/update-specification.json",
+            "sha256": "b" * 64,
+            "sizeBytes": 8,
+            "mediaType": "application/json",
+        },
+        payload_artifacts=[
+            {
+                "id": "host-apply",
+                "relativePath": "payload/layers/host-platform/apply.bin",
+                "sha256": "c" * 64,
+                "sizeBytes": 9,
+                "mediaType": "application/octet-stream",
+            },
+        ],
+        issued_at=issued_at,
+    )
+
+
 def test_verifier_reports_invalid_archive_as_domain_failure(tmp_path: Path) -> None:
     _, public_key = signing_keys(tmp_path)
     bundle = tmp_path / "invalid.tar.gz"
@@ -296,11 +421,20 @@ def test_canonical_payload_matches_swift_consumer_contract() -> None:
             "sizeBytes": 8,
             "mediaType": "application/json",
         },
+        payload_artifacts=[
+            {
+                "id": "host-platform-apply",
+                "relativePath": "payload/layers/host-platform/apply.bin",
+                "sha256": "c" * 64,
+                "sizeBytes": 9,
+                "mediaType": "application/octet-stream",
+            },
+        ],
         issued_at="2026-07-27T00:00:00Z",
     )
 
     assert canonical_payload(unsigned).decode("utf-8") == (
-        '{"schemaVersion":"v1","id":"helper-update-0.2.2",'
+        '{"schemaVersion":"v2","id":"helper-update-0.2.2",'
         '"productId":"ai.tirosh.vitalserver.helper",'
         '"target":{"platform":"macos","architecture":"arm64"},'
         '"targetRelease":{"productVersion":"0.2.2","runtimeVersion":"0.2.2"},'
@@ -313,6 +447,10 @@ def test_canonical_payload_matches_swift_consumer_contract() -> None:
         '"relativePath":"payload/update-specification.json",'
         f'"sha256":"{"b" * 64}","sizeBytes":8,'
         '"mediaType":"application/json"},'
+        '"payloadArtifacts":[{"id":"host-platform-apply",'
+        '"relativePath":"payload/layers/host-platform/apply.bin",'
+        f'"sha256":"{"c" * 64}","sizeBytes":9,'
+        '"mediaType":"application/octet-stream"}],'
         '"issuedAt":"2026-07-27T00:00:00Z"}'
     )
 

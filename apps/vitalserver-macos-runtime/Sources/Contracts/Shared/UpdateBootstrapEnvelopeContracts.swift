@@ -9,6 +9,7 @@ public struct UpdateBootstrapEnvelope: Codable, Equatable, Sendable {
     public let layerOrder: [UpdateLayer]
     public let nextUpdaterArtifact: UpdateBootstrapArtifact
     public let specification: UpdateBootstrapArtifact
+    public let payloadArtifacts: [UpdateBootstrapArtifact]
     public let signature: UpdateBootstrapSignature
     public let issuedAt: String
 
@@ -21,6 +22,7 @@ public struct UpdateBootstrapEnvelope: Codable, Equatable, Sendable {
         case layerOrder
         case nextUpdaterArtifact
         case specification
+        case payloadArtifacts
         case signature
         case issuedAt
     }
@@ -34,6 +36,7 @@ public struct UpdateBootstrapEnvelope: Codable, Equatable, Sendable {
         layerOrder: [UpdateLayer],
         nextUpdaterArtifact: UpdateBootstrapArtifact,
         specification: UpdateBootstrapArtifact,
+        payloadArtifacts: [UpdateBootstrapArtifact],
         signature: UpdateBootstrapSignature,
         issuedAt: String
     ) {
@@ -45,6 +48,7 @@ public struct UpdateBootstrapEnvelope: Codable, Equatable, Sendable {
         self.layerOrder = layerOrder
         self.nextUpdaterArtifact = nextUpdaterArtifact
         self.specification = specification
+        self.payloadArtifacts = payloadArtifacts
         self.signature = signature
         self.issuedAt = issuedAt
     }
@@ -65,6 +69,7 @@ public struct UpdateBootstrapEnvelope: Codable, Equatable, Sendable {
             layerOrder: try container.decode([UpdateLayer].self, forKey: .layerOrder),
             nextUpdaterArtifact: try container.decode(UpdateBootstrapArtifact.self, forKey: .nextUpdaterArtifact),
             specification: try container.decode(UpdateBootstrapArtifact.self, forKey: .specification),
+            payloadArtifacts: try container.decode([UpdateBootstrapArtifact].self, forKey: .payloadArtifacts),
             signature: try container.decode(UpdateBootstrapSignature.self, forKey: .signature),
             issuedAt: try container.decode(String.self, forKey: .issuedAt)
         )

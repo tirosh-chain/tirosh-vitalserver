@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "v1",
+  "schemaVersion": "v2",
   "id": "helper-release-bootstrap-022",
   "productId": "ai.tirosh.vitalserver.helper",
   "target": {
@@ -29,6 +29,15 @@
     "sizeBytes": 91,
     "mediaType": "application/json"
   },
+  "payloadArtifacts": [
+    {
+      "id": "host-platform-apply",
+      "relativePath": "payload/layers/host-platform/apply.bin",
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sizeBytes": 7,
+      "mediaType": "application/octet-stream"
+    }
+  ],
   "signature": {
     "algorithm": "ed25519",
     "keyId": "helper-release-key-2026",

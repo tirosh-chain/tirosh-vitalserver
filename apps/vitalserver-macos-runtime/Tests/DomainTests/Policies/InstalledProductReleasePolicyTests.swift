@@ -178,7 +178,7 @@ final class InstalledProductReleasePolicyTests: XCTestCase {
 
     private func envelope() -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "envelope-42",
             productId: "ai.tirosh.vitalserver.helper",
             target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
@@ -189,6 +189,7 @@ final class InstalledProductReleasePolicyTests: XCTestCase {
             layerOrder: [.container, .guestRuntime, .hostPlatform],
             nextUpdaterArtifact: artifact("next-updater", "payload/next-updater"),
             specification: artifact("specification", "payload/specification.json"),
+            payloadArtifacts: [],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "release-key",

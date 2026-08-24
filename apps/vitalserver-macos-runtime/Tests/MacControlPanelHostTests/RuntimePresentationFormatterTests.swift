@@ -306,7 +306,7 @@ private func stableUpdateJournal(
         mediaType: "application/octet-stream"
     )
     let envelope = UpdateBootstrapEnvelope(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
         id: "envelope-1",
         productId: "com.tirosh.vitalserver-helper",
         target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
@@ -317,6 +317,7 @@ private func stableUpdateJournal(
         layerOrder: [.container, .guestRuntime, .hostPlatform],
         nextUpdaterArtifact: artifact,
         specification: artifact,
+        payloadArtifacts: [],
         signature: UpdateBootstrapSignature(
             algorithm: .ed25519,
             keyId: "release-key",

@@ -48,13 +48,7 @@ public enum UpdateBootstrapTrustStorePolicy {
     }
 
     private static func isIdentifier(_ value: String) -> Bool {
-        !value.isEmpty && value.count <= 128 && value.unicodeScalars.allSatisfy {
-            let code = $0.value
-            return (65...90).contains(code)
-                || (97...122).contains(code)
-                || (48...57).contains(code)
-                || "-._".unicodeScalars.contains($0)
-        }
+        UpdateBootstrapIdentifierSyntax.isIdentifier(value)
     }
 
     private static func isBase64Character(_ character: Character) -> Bool {

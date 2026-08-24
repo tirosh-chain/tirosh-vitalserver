@@ -106,6 +106,10 @@ def build_bootstrap_bundle(
                 source=specification,
                 media_type="application/json",
             ),
+            payload_artifacts=[
+                declared_artifacts[relative_path]
+                for relative_path in sorted(declared_artifacts)
+            ],
             issued_at=spec.issued_at,
         )
         signature = sign_ed25519(
@@ -270,16 +274,16 @@ def verify_bootstrap_bundle_directory_with_public_key(
     )
     verify_bound_artifact(root, envelope["nextUpdaterArtifact"])
     verify_bound_artifact(root, envelope["specification"])
-    _, declared_artifacts = load_product_update_specification(
-        root / SPECIFICATION_RELATIVE_PATH,
-        update_id=str(envelope["id"]),
-        layer_order=list(envelope["layerOrder"]),
-    )
+    payload_artifacts = [
+        entry if isinstance(entry, dict) else {}
+        for entry in envelope["payloadArtifacts"]
+    ]
+    payload_paths = {str(entry["relativePath"]) for entry in payload_artifacts}
     expected_files = {
         ENVELOPE_NAME,
         UPDATER_RELATIVE_PATH,
         SPECIFICATION_RELATIVE_PATH,
-        *declared_artifacts,
+        *payload_paths,
     }
     if actual_files != expected_files:
         raise DomainError(
@@ -290,7 +294,7 @@ def verify_bootstrap_bundle_directory_with_public_key(
     for relative_path in expected_files:
         require_regular_file(root / relative_path, relative_path)
 
-    for declaration in declared_artifacts.values():
+    for declaration in payload_artifacts:
         verify_bound_artifact(root, declaration)
 
 

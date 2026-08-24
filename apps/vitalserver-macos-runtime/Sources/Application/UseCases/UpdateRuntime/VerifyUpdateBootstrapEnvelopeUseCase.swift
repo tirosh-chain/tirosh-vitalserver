@@ -153,7 +153,8 @@ public struct VerifyUpdateBootstrapEnvelopeUseCase {
         return VerifiedUpdateBootstrapClosure(
             updateId: input.envelope.id,
             canonicalPayloadSHA256: canonicalPayloadSHA256,
-            verifiedArtifactIds: verifiedArtifactIds
+            verifiedBootstrapArtifactIds: verifiedArtifactIds,
+            verifiedPayloadArtifactIds: []
         )
     }
 

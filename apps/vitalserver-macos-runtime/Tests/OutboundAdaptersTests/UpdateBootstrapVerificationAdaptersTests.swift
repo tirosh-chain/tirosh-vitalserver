@@ -12,7 +12,7 @@ final class UpdateBootstrapVerificationAdaptersTests: XCTestCase {
         XCTAssertEqual(
             String(decoding: payload, as: UTF8.self),
             """
-            {"schemaVersion":"v1","id":"helper-update-0.2.2","productId":"ai.tirosh.vitalserver.helper","target":{"platform":"macos","architecture":"arm64"},"targetRelease":{"productVersion":"0.2.2","runtimeVersion":"0.2.2"},"layerOrder":["container","guest-runtime","host-platform"],"nextUpdaterArtifact":{"id":"helper-next-updater","relativePath":"payload/bin/vitalserver-update","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sizeBytes":7,"mediaType":"application/octet-stream"},"specification":{"id":"helper-update-specification","relativePath":"payload/update-specification.json","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sizeBytes":8,"mediaType":"application/json"},"issuedAt":"2026-07-27T00:00:00Z"}
+            {"schemaVersion":"v2","id":"helper-update-0.2.2","productId":"ai.tirosh.vitalserver.helper","target":{"platform":"macos","architecture":"arm64"},"targetRelease":{"productVersion":"0.2.2","runtimeVersion":"0.2.2"},"layerOrder":["container","guest-runtime","host-platform"],"nextUpdaterArtifact":{"id":"helper-next-updater","relativePath":"payload/bin/vitalserver-update","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sizeBytes":7,"mediaType":"application/octet-stream"},"specification":{"id":"helper-update-specification","relativePath":"payload/update-specification.json","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sizeBytes":8,"mediaType":"application/json"},"payloadArtifacts":[],"issuedAt":"2026-07-27T00:00:00Z"}
             """
         )
     }
@@ -131,7 +131,7 @@ final class UpdateBootstrapVerificationAdaptersTests: XCTestCase {
 
     private func envelope() -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "helper-update-0.2.2",
             productId: "ai.tirosh.vitalserver.helper",
             target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
@@ -151,6 +151,7 @@ final class UpdateBootstrapVerificationAdaptersTests: XCTestCase {
                 sizeBytes: 8,
                 mediaType: "application/json"
             ),
+            payloadArtifacts: [],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "helper-release-key-2026",

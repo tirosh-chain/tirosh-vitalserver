@@ -104,7 +104,7 @@ private func admissionJournal() -> UpdateBootstrapJournal {
         expectedInstallationRevision: 1,
         requestId: "request-1",
         envelope: UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "update-1",
             productId: "ai.tirosh.vitalserver.helper",
             target: .init(platform: .macos, architecture: .arm64),
@@ -127,6 +127,7 @@ private func admissionJournal() -> UpdateBootstrapJournal {
                 sizeBytes: 1,
                 mediaType: "application/json"
             ),
+            payloadArtifacts: [],
             signature: .init(
                 algorithm: .ed25519,
                 keyId: "release-key",

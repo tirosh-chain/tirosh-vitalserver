@@ -226,7 +226,7 @@ private struct UpdateBootstrapReaderTestError: Error, LocalizedError {
 
 private func outboundEnvelope() -> UpdateBootstrapEnvelope {
     UpdateBootstrapEnvelope(
-        schemaVersion: "v1",
+        schemaVersion: "v2",
         id: "helper-update-0.2.2",
         productId: "ai.tirosh.vitalserver.helper",
         target: .init(platform: .macos, architecture: .arm64),
@@ -249,6 +249,7 @@ private func outboundEnvelope() -> UpdateBootstrapEnvelope {
             sizeBytes: 200,
             mediaType: "application/json"
         ),
+        payloadArtifacts: [],
         signature: .init(
             algorithm: .ed25519,
             keyId: "helper-release-key-2026",

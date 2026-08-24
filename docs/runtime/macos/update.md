@@ -144,15 +144,41 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 ### Stable Bootstrap Compatibility
 
 현재 stable update에는 minimum updater version이나 updater bridge gate가 없습니다.
-설치된 bundle-owned bootstrap updater는 고정된 signed envelope에서 publisher,
-target, next updater artifact, opaque specification digest, payload closure를
-검증합니다. 검증된 next updater만 변경되는 Product Update Specification을
-해석합니다. 따라서 `release.json`, `release-dev.json`, Runtime Control release
-read model은 minimum updater version을 소유하거나 노출하지 않습니다.
+설치된 Host는 고정된 signed envelope에서 publisher, target, next updater
+artifact, specification artifact, 그리고 envelope가 직접 소유하는 exact
+`payloadArtifacts` closure를 검증합니다. 검증된 next updater만 변경되는
+Product Update Specification을 decode합니다. 따라서 `release.json`,
+`release-dev.json`, Runtime Control release read model은 minimum updater
+version을 소유하거나 노출하지 않습니다.
+
+Bootstrap envelope은 schema `v2`이며 `payloadArtifacts` exact closure를
+직접 소유합니다. 설치 Host는 이 고정 계약만으로 모든 파일의 digest/size와
+no-extra file closure를 검증하고, specification은 opaque bytes로만 취급해
+next updater에 handoff합니다. 설치 Host는 인증된 specification을 decode하지
+않으므로, 미래 specification schema에 새 필드가 추가되어도 기존 Host의
+bootstrap admission이 막히지 않습니다. v1 envelope는 unsupported schema로
+거부되며, v1 Host는 v2 envelope를 수락하지 않습니다. 두 schema를 모두
+수락하는 fallback은 없습니다.
+
+검증 순서는 소유 계약 순서를 지킵니다. 먼저 archive path, entry kind,
+duplicate와 envelope/next updater/specification/payloadArtifacts 존재 여부만
+구조적으로 검사합니다. 이어 publisher signature를 검증하고, envelope이 선언한
+next updater/specification/payloadArtifacts 각각의 digest와 size를 확인한 뒤
+exact file closure(추가 파일 없음)를 검증합니다. 이 과정에서 specification을
+decode하지 않습니다. staging 후에도 같은 envelope-owned closure를 다시
+검증합니다.
 
 필드나 specification이 바뀌어도 기존 Host가 새 specification을 추측하거나
 fallback으로 해석하지 않습니다. 기존 Host는 고정 bootstrap 계약만 검증하고,
 bundle이 제공한 next updater에 인증된 입력을 그대로 handoff합니다.
+
+`issuedAt`은 단순 `YYYY-MM-DDTHH:MM:SSZ` 문자열 패턴이 아니라 실제로 존재하는
+UTC 순간이어야 합니다. publisher(builder/verifier)와 설치 Host의 Swift verifier
+가 동일한 canonical UTC 순간을 검증하므로, 존재하지 않는 날짜(예: 2월 30일,
+13월, 24시)는 publisher와 verifier 양쪽에서 거부됩니다.
+식별자(`id`, `productId`, `signature.keyId`, artifact id)는 ASCII
+`[A-Za-z0-9._-]{1,128}` 계약을 공유합니다. leading `._-`은 허용되고 `:`와
+비-ASCII 문자는 거부됩니다.
 
 ### Legacy schema-3 Manifest Compatibility
 

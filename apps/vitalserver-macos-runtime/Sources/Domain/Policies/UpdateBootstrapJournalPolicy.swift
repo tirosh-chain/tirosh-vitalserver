@@ -124,15 +124,7 @@ public enum UpdateBootstrapJournalPolicy {
         _ value: String,
         field: String
     ) throws {
-        guard !value.isEmpty,
-              value.count <= 128,
-              value.unicodeScalars.allSatisfy({
-                  let code = $0.value
-                  return (65...90).contains(code)
-                      || (97...122).contains(code)
-                      || (48...57).contains(code)
-                      || "-._".unicodeScalars.contains($0)
-              }) else {
+        guard UpdateBootstrapIdentifierSyntax.isIdentifier(value) else {
             throw UpdateBootstrapJournalValidationError.invalidIdentity(
                 field: field,
                 value: value

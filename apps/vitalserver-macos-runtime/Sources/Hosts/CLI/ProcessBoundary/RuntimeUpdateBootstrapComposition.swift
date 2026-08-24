@@ -209,6 +209,13 @@ extension RuntimeLifecycle {
             operations: UpdateBootstrapHandoffWorkflowOperations(
                 saveJournal: repository.saveUpdateBootstrapJournal,
                 stage: immutableUpdateBootstrapStager().stage,
+                verifyStagedClosure: { stagedRoot in
+                    try loadAndVerifyUpdateBootstrapClosure(
+                        bundleRoot: stagedRoot
+                    ).verification
+                },
+                requireStagedProofMatch:
+                    UpdateBootstrapStagedProofPolicy.requireMatch,
                 verifiedAndStaged: advance.verifiedAndStaged,
                 handoffStarted: advance.handoffStarted,
                 makeInvocation:
@@ -354,8 +361,6 @@ extension RuntimeLifecycle {
                 stagedRoot: stagedRoot
             ),
             operations: SettleRunningUpdateBootstrapWorkflowOperations(
-                makeInvocation:
-                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
                 readReceipt:
                     updateBootstrapReceiptReader().readCompletionReceipt,
                 settle: SettleUpdateBootstrapHandoffUseCase().execute,
@@ -562,10 +567,11 @@ extension RuntimeLifecycle {
             bundleRoot: bundleRoot,
             fileStore: fileStore
         ).readEntries()
-        let envelope = try LoadUpdateBootstrapBundleUseCase().load(
+        let loaded = try LoadUpdateBootstrapBundleUseCase().load(
             envelopeRead: envelopeRead,
             entriesRead: entriesRead
         )
+        let envelope = loaded.envelope
 
         let publisherKeys = try UpdateBootstrapTrustStoreReader(
             validate: UpdateBootstrapTrustStorePolicy.validate
@@ -577,7 +583,8 @@ extension RuntimeLifecycle {
         let artifactObserver = UpdateBootstrapArtifactFileObserver(
             bundleDirectory: bundleRoot
         )
-        let verification = try VerifyUpdateBootstrapEnvelopeUseCase().verify(
+        let envelopeVerification =
+            try VerifyUpdateBootstrapEnvelopeUseCase().verify(
             input: VerifyUpdateBootstrapEnvelopeInput(
                 envelope: envelope,
                 expectedProductId: Constants.Product.identifier,
@@ -593,6 +600,13 @@ extension RuntimeLifecycle {
                 observeArtifact: artifactObserver.observe
             )
         )
+        let verification =
+            try VerifyUpdateBootstrapPayloadClosureUseCase().verify(
+                envelope: envelope,
+                envelopeVerification: envelopeVerification,
+                entries: loaded.entries,
+                observeArtifact: artifactObserver.observe
+            )
 
         return (envelope, verification)
     }

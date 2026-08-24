@@ -14,24 +14,40 @@ public enum LoadUpdateBootstrapBundleError: Error, Equatable, Sendable {
     case closureInvalid(UpdateBootstrapBundleClosureError)
 }
 
+public struct LoadedUpdateBootstrapBundle: Equatable, Sendable {
+    public let envelope: UpdateBootstrapEnvelope
+    public let entries: [UpdateBootstrapBundleEntry]
+
+    public init(
+        envelope: UpdateBootstrapEnvelope,
+        entries: [UpdateBootstrapBundleEntry]
+    ) {
+        self.envelope = envelope
+        self.entries = entries
+    }
+}
+
 public struct LoadUpdateBootstrapBundleUseCase {
     public init() {}
 
     public func load(
         envelopeRead: UpdateBootstrapEnvelopeReadResult,
         entriesRead: UpdateBootstrapBundleEntriesReadResult
-    ) throws -> UpdateBootstrapEnvelope {
+    ) throws -> LoadedUpdateBootstrapBundle {
         let envelope = try requireEnvelope(envelopeRead)
         let entries = try requireEntries(entriesRead)
         do {
-            try UpdateBootstrapBundleClosurePolicy.validate(
+            try UpdateBootstrapBundleClosurePolicy.validateStructure(
                 envelope: envelope,
                 entries: entries
             )
         } catch let error as UpdateBootstrapBundleClosureError {
             throw LoadUpdateBootstrapBundleError.closureInvalid(error)
         }
-        return envelope
+        return LoadedUpdateBootstrapBundle(
+            envelope: envelope,
+            entries: entries
+        )
     }
 
     private func requireEnvelope(

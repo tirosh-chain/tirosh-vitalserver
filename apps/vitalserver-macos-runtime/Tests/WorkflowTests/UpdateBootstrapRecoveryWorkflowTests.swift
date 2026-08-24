@@ -98,8 +98,6 @@ final class UpdateBootstrapRecoveryWorkflowTests: XCTestCase {
                 stagedRoot: URL(fileURLWithPath: "/updates/update-42")
             ),
             operations: SettleRunningUpdateBootstrapWorkflowOperations(
-                makeInvocation:
-                    MakeUpdateBootstrapHandoffInvocationUseCase().execute,
                 readReceipt: { url in
                     XCTAssertEqual(
                         url.path,
@@ -150,8 +148,6 @@ final class UpdateBootstrapRecoveryWorkflowTests: XCTestCase {
                     stagedRoot: URL(fileURLWithPath: "/updates/update-42")
                 ),
                 operations: SettleRunningUpdateBootstrapWorkflowOperations(
-                    makeInvocation:
-                        MakeUpdateBootstrapHandoffInvocationUseCase().execute,
                     readReceipt: { _ in
                         .missing(
                             path:
@@ -215,7 +211,7 @@ private func recoveryWorkflowJournal(
         expectedInstallationRevision: 1,
         requestId: "request-42",
         envelope: UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "envelope-42",
             productId: "com.tirosh.vitalserver-helper",
             target: UpdateBootstrapTarget(
@@ -235,6 +231,12 @@ private func recoveryWorkflowJournal(
                 id: "update-specification",
                 path: "payload/update-specification.json"
             ),
+            payloadArtifacts: [
+                recoveryArtifact(
+                    id: "host-artifact",
+                    path: "payload/layers/host-platform/apply.bin"
+                ),
+            ],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "release-key-1",

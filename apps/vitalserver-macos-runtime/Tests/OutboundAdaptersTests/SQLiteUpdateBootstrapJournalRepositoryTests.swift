@@ -455,7 +455,7 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
 
     private func envelope() -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "helper-update-0.2.2",
             productId: "ai.tirosh.vitalserver.helper",
             target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
@@ -474,6 +474,7 @@ final class SQLiteUpdateBootstrapJournalRepositoryTests: XCTestCase {
                 path: "payload/update-specification.json",
                 sha256: String(repeating: "b", count: 64)
             ),
+            payloadArtifacts: [],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "release-key",

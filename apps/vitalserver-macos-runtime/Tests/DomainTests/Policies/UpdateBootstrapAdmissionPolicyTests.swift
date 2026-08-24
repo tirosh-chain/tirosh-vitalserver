@@ -37,10 +37,11 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
             verification: VerifiedUpdateBootstrapClosure(
                 updateId: "different-update",
                 canonicalPayloadSHA256: envelope.signature.signedSha256,
-                verifiedArtifactIds: [
+                verifiedBootstrapArtifactIds: [
                     envelope.nextUpdaterArtifact.id,
                     envelope.specification.id,
-                ]
+                ],
+                verifiedPayloadArtifactIds: []
             ),
             operationId: "operation-42",
             installedRelease: installedRelease(),
@@ -65,7 +66,10 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
             verification: VerifiedUpdateBootstrapClosure(
                 updateId: envelope.id,
                 canonicalPayloadSHA256: envelope.signature.signedSha256,
-                verifiedArtifactIds: [envelope.nextUpdaterArtifact.id]
+                verifiedBootstrapArtifactIds: [
+                    envelope.nextUpdaterArtifact.id
+                ],
+                verifiedPayloadArtifactIds: envelope.payloadArtifacts.map(\.id)
             ),
             operationId: "operation-42",
             installedRelease: installedRelease(),
@@ -85,16 +89,78 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
         }
     }
 
+    func testRejectsMissingPayloadProof() {
+        let envelope = makeEnvelope()
+
+        XCTAssertThrowsError(try UpdateBootstrapAdmissionPolicy.admit(
+            envelope: envelope,
+            verification: VerifiedUpdateBootstrapClosure(
+                updateId: envelope.id,
+                canonicalPayloadSHA256: envelope.signature.signedSha256,
+                verifiedBootstrapArtifactIds: [
+                    envelope.nextUpdaterArtifact.id,
+                    envelope.specification.id,
+                ],
+                verifiedPayloadArtifactIds: []
+            ),
+            operationId: "operation-42",
+            installedRelease: installedRelease(),
+            requestId: "request-42",
+            admittedAt: "2026-07-27T08:00:00Z"
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapAdmissionError,
+                .verifiedPayloadArtifactSetMismatch(
+                    expected: envelope.payloadArtifacts.map(\.id).sorted(),
+                    actual: []
+                )
+            )
+        }
+    }
+
+    func testRejectsExtraPayloadProof() {
+        let envelope = makeEnvelope()
+
+        XCTAssertThrowsError(try UpdateBootstrapAdmissionPolicy.admit(
+            envelope: envelope,
+            verification: VerifiedUpdateBootstrapClosure(
+                updateId: envelope.id,
+                canonicalPayloadSHA256: envelope.signature.signedSha256,
+                verifiedBootstrapArtifactIds: [
+                    envelope.nextUpdaterArtifact.id,
+                    envelope.specification.id,
+                ],
+                verifiedPayloadArtifactIds:
+                    envelope.payloadArtifacts.map(\.id) + ["extra-artifact"]
+            ),
+            operationId: "operation-42",
+            installedRelease: installedRelease(),
+            requestId: "request-42",
+            admittedAt: "2026-07-27T08:00:00Z"
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapAdmissionError,
+                .verifiedPayloadArtifactSetMismatch(
+                    expected: envelope.payloadArtifacts.map(\.id).sorted(),
+                    actual:
+                        (envelope.payloadArtifacts.map(\.id) + ["extra-artifact"])
+                        .sorted()
+                )
+            )
+        }
+    }
+
     private func verification(
         for envelope: UpdateBootstrapEnvelope
     ) -> VerifiedUpdateBootstrapClosure {
         VerifiedUpdateBootstrapClosure(
             updateId: envelope.id,
             canonicalPayloadSHA256: envelope.signature.signedSha256,
-            verifiedArtifactIds: [
+            verifiedBootstrapArtifactIds: [
                 envelope.nextUpdaterArtifact.id,
                 envelope.specification.id,
-            ]
+            ],
+            verifiedPayloadArtifactIds: envelope.payloadArtifacts.map(\.id)
         )
     }
 
@@ -120,7 +186,7 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
 
     private func makeEnvelope() -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "update-42",
             productId: "ai.tirosh.vitalserver.helper",
             target: UpdateBootstrapTarget(
@@ -146,6 +212,15 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
                 sizeBytes: 200,
                 mediaType: "application/json"
             ),
+            payloadArtifacts: [
+                UpdateBootstrapArtifact(
+                    id: "host-artifact",
+                    relativePath: "payload/layers/host-platform/apply.bin",
+                    sha256: String(repeating: "e", count: 64),
+                    sizeBytes: 300,
+                    mediaType: "application/octet-stream"
+                ),
+            ],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "publisher-1",

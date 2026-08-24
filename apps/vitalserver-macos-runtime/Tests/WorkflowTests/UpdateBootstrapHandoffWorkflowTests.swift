@@ -25,12 +25,47 @@ final class UpdateBootstrapHandoffWorkflowTests: XCTestCase {
         XCTAssertEqual(harness.settledExpectedRevision, 3)
         XCTAssertEqual(harness.events, [
             "stage",
+            "verify-staged",
             "write-invocation",
             "launch",
             "read-receipt:/updates/update-42/handoff/completion-receipt.json",
             "read-report:handoff/report.json",
             "settle-installed-release",
         ])
+    }
+
+    func testStagedClosureMismatchBlocksLaunchAndFailsJournal() {
+        let harness = HandoffWorkflowHarness(
+            stagedVerificationOverride: VerifiedUpdateBootstrapClosure(
+                updateId: "envelope-42",
+                canonicalPayloadSHA256: String(repeating: "a", count: 64),
+                verifiedBootstrapArtifactIds: [
+                    "next-updater",
+                    "update-specification",
+                ],
+                verifiedPayloadArtifactIds: ["tampered-artifact"]
+            )
+        )
+
+        XCTAssertThrowsError(try UpdateBootstrapHandoffWorkflow().run(
+            input: harness.input,
+            operations: harness.operations()
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapHandoffWorkflowError,
+                .operationFailed(
+                    reason: String(describing:
+                        UpdateBootstrapStagedProofError
+                            .payloadArtifactSetMismatch(
+                                expected: ["host-artifact"],
+                                actual: ["tampered-artifact"]
+                            )
+                    )
+                )
+            )
+        }
+        XCTAssertFalse(harness.events.contains("launch"))
+        XCTAssertEqual(harness.saved.last?.state, .failed)
     }
 
     func testLaunchFailurePersistsExplicitFailedJournal() {
@@ -133,6 +168,7 @@ private final class HandoffWorkflowHarness {
     var events: [String] = []
     var settledRelease: InstalledProductRelease?
     var settledExpectedRevision: Int?
+    var stagedVerificationOverride: VerifiedUpdateBootstrapClosure?
 
     private let launchError: Error?
     private let settlementError: Error?
@@ -143,12 +179,14 @@ private final class HandoffWorkflowHarness {
         launchError: Error? = nil,
         settlementError: Error? = nil,
         failPersistence: Bool = false,
-        failTransitionError: Error? = nil
+        failTransitionError: Error? = nil,
+        stagedVerificationOverride: VerifiedUpdateBootstrapClosure? = nil
     ) {
         self.launchError = launchError
         self.settlementError = settlementError
         self.failPersistence = failPersistence
         self.failTransitionError = failTransitionError
+        self.stagedVerificationOverride = stagedVerificationOverride
     }
 
     var input: UpdateBootstrapHandoffWorkflowInput {
@@ -157,7 +195,11 @@ private final class HandoffWorkflowHarness {
             verification: VerifiedUpdateBootstrapClosure(
                 updateId: "envelope-42",
                 canonicalPayloadSHA256: String(repeating: "a", count: 64),
-                verifiedArtifactIds: ["next-updater", "update-specification"]
+                verifiedBootstrapArtifactIds: [
+                    "next-updater",
+                    "update-specification",
+                ],
+                verifiedPayloadArtifactIds: ["host-artifact"]
             ),
             staging: UpdateBootstrapStagingInput(
                 updateId: "update-42",
@@ -187,6 +229,16 @@ private final class HandoffWorkflowHarness {
                 events.append("stage")
                 return StagedUpdateBootstrapBundle(
                     root: URL(fileURLWithPath: "/updates/update-42")
+                )
+            },
+            verifyStagedClosure: { [self] _ in
+                events.append("verify-staged")
+                return stagedVerificationOverride ?? self.input.verification
+            },
+            requireStagedProofMatch: {
+                try UpdateBootstrapStagedProofPolicy.requireMatch(
+                    source: $0,
+                    staged: $1
                 )
             },
             verifiedAndStaged: {
@@ -318,7 +370,7 @@ private final class HandoffWorkflowHarness {
 
     private func envelope() -> UpdateBootstrapEnvelope {
         UpdateBootstrapEnvelope(
-            schemaVersion: "v1",
+            schemaVersion: "v2",
             id: "envelope-42",
             productId: "com.tirosh.vitalserver-helper",
             target: UpdateBootstrapTarget(platform: .macos, architecture: .arm64),
@@ -335,6 +387,12 @@ private final class HandoffWorkflowHarness {
                 id: "update-specification",
                 path: "spec/update.json"
             ),
+            payloadArtifacts: [
+                artifact(
+                    id: "host-artifact",
+                    path: "payload/layers/host-platform/apply.bin"
+                ),
+            ],
             signature: UpdateBootstrapSignature(
                 algorithm: .ed25519,
                 keyId: "release-key-1",

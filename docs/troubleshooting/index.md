@@ -211,6 +211,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-216 | DMG runtime smoke가 Host Platform Agent 없이 실행되어 Guest NTP 실패를 통과시킴 | Packaging / Runtime health / Network | implemented; package verification passed | [NTP failure passes runtime boot smoke](216_ntp_failure_passes-runtime-boot-smoke.md) |
 | TS-217 | Helper 0.2.2 PKG postinstall이 legacy nginx executable 경로를 chmod하다 실패함 | Packaging / Host proxy | implemented; package rebuild passed | [PKG postinstall uses legacy nginx executable path](217_pkg-postinstall-uses-legacy-nginx-executable-path.md) |
 | TS-218 | PKG 설치 성공 후 `/Applications` Helper symlink가 application으로 등록되지 않음 | Packaging / Update | implemented; package verification passed | [Applications Helper symlink is not registered](218_applications-helper-symlink-not-registered.md) |
+| TS-219 | Swift bootstrap verifier가 인증된 specification의 layer payload를 unknown file로 거부함 | Update / Bundle closure | resolved | [Swift bootstrap verifier rejects declared payload](219_swift-bootstrap-verifier-rejects-declared-payload.md) |
 | TS-220 | Platform Agent update verifier가 installed runtime home 대신 `/var/root/.tirosh`를 읽음 | Update / Runtime Control | resolved | [Platform Agent update verifier uses root home](220_platform-agent-update-verifier-uses-root-home.md) |
 
 ## Follow-up 규칙

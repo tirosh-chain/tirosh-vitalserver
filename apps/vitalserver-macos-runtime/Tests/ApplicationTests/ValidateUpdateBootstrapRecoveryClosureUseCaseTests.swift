@@ -31,6 +31,7 @@ final class ValidateUpdateBootstrapRecoveryClosureUseCaseTests:
             layerOrder: journal.envelope.layerOrder,
             nextUpdaterArtifact: journal.envelope.nextUpdaterArtifact,
             specification: journal.envelope.specification,
+            payloadArtifacts: journal.envelope.payloadArtifacts,
             signature: journal.envelope.signature,
             issuedAt: journal.envelope.issuedAt
         )
@@ -59,10 +60,12 @@ final class ValidateUpdateBootstrapRecoveryClosureUseCaseTests:
                 verification: VerifiedUpdateBootstrapClosure(
                     updateId: journal.envelope.id,
                     canonicalPayloadSHA256: String(repeating: "d", count: 64),
-                    verifiedArtifactIds: [
+                    verifiedBootstrapArtifactIds: [
                         journal.envelope.nextUpdaterArtifact.id,
                         journal.envelope.specification.id,
-                    ]
+                    ],
+                    verifiedPayloadArtifactIds:
+                        journal.envelope.payloadArtifacts.map(\.id)
                 )
             )
         ) { error in
@@ -76,16 +79,81 @@ final class ValidateUpdateBootstrapRecoveryClosureUseCaseTests:
         }
     }
 
+    func testRejectsMissingPayloadProof() {
+        let journal = recoveryJournal(state: .handoffPending)
+
+        XCTAssertThrowsError(
+            try ValidateUpdateBootstrapRecoveryClosureUseCase().validate(
+                journal: journal,
+                stagedEnvelope: journal.envelope,
+                verification: VerifiedUpdateBootstrapClosure(
+                    updateId: journal.envelope.id,
+                    canonicalPayloadSHA256: journal.bootstrapSignedSHA256,
+                    verifiedBootstrapArtifactIds: [
+                        journal.envelope.nextUpdaterArtifact.id,
+                        journal.envelope.specification.id,
+                    ],
+                    verifiedPayloadArtifactIds: []
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ValidateUpdateBootstrapRecoveryClosureError,
+                .verifiedPayloadArtifactSetMismatch(
+                    expected:
+                        journal.envelope.payloadArtifacts.map(\.id).sorted(),
+                    actual: []
+                )
+            )
+        }
+    }
+
+    func testRejectsExtraPayloadProof() {
+        let journal = recoveryJournal(state: .handoffPending)
+
+        XCTAssertThrowsError(
+            try ValidateUpdateBootstrapRecoveryClosureUseCase().validate(
+                journal: journal,
+                stagedEnvelope: journal.envelope,
+                verification: VerifiedUpdateBootstrapClosure(
+                    updateId: journal.envelope.id,
+                    canonicalPayloadSHA256: journal.bootstrapSignedSHA256,
+                    verifiedBootstrapArtifactIds: [
+                        journal.envelope.nextUpdaterArtifact.id,
+                        journal.envelope.specification.id,
+                    ],
+                    verifiedPayloadArtifactIds:
+                        journal.envelope.payloadArtifacts.map(\.id)
+                        + ["extra-artifact"]
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ValidateUpdateBootstrapRecoveryClosureError,
+                .verifiedPayloadArtifactSetMismatch(
+                    expected:
+                        journal.envelope.payloadArtifacts.map(\.id).sorted(),
+                    actual: (
+                        journal.envelope.payloadArtifacts.map(\.id)
+                        + ["extra-artifact"]
+                    ).sorted()
+                )
+            )
+        }
+    }
+
     private func verification(
         for journal: UpdateBootstrapJournal
     ) -> VerifiedUpdateBootstrapClosure {
         VerifiedUpdateBootstrapClosure(
             updateId: journal.envelope.id,
             canonicalPayloadSHA256: journal.bootstrapSignedSHA256,
-            verifiedArtifactIds: [
+            verifiedBootstrapArtifactIds: [
                 journal.envelope.nextUpdaterArtifact.id,
                 journal.envelope.specification.id,
-            ]
+            ],
+            verifiedPayloadArtifactIds:
+                journal.envelope.payloadArtifacts.map(\.id)
         )
     }
 }

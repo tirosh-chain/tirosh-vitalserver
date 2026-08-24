@@ -9,23 +9,72 @@ public enum UpdateBootstrapBundleClosureError: Error, Equatable, Sendable {
 }
 
 public enum UpdateBootstrapBundleClosurePolicy {
-    public static func validate(
+    public static func validateStructure(
         envelope: UpdateBootstrapEnvelope,
         entries: [UpdateBootstrapBundleEntry]
     ) throws {
+        let bootstrapArtifactPaths = [
+            envelope.nextUpdaterArtifact.relativePath,
+            envelope.specification.relativePath,
+        ] + envelope.payloadArtifacts.map(\.relativePath)
+        guard Set(bootstrapArtifactPaths).count
+                == bootstrapArtifactPaths.count else {
+            throw UpdateBootstrapBundleClosureError.duplicateArtifactPath(
+                bootstrapArtifactPaths[0]
+            )
+        }
+        let requiredFiles = Set(
+            [UpdateBootstrapBundleLayout.envelopeRelativePath]
+                + bootstrapArtifactPaths
+        )
+        for path in requiredFiles {
+            try requireSafeRelativePath(path)
+        }
+        let observedFiles = try inspect(entries)
+        let missing = requiredFiles.subtracting(observedFiles).sorted()
+        guard missing.isEmpty else {
+            throw UpdateBootstrapBundleClosureError.fileClosureMismatch(
+                missing: missing,
+                unknown: []
+            )
+        }
+    }
+
+    public static func validateExact(
+        envelope: UpdateBootstrapEnvelope,
+        entries: [UpdateBootstrapBundleEntry]
+    ) throws {
+        try validateStructure(envelope: envelope, entries: entries)
         let artifactPaths = [
             envelope.nextUpdaterArtifact.relativePath,
             envelope.specification.relativePath,
-        ]
-        guard Set(artifactPaths).count == artifactPaths.count else {
-            throw UpdateBootstrapBundleClosureError.duplicateArtifactPath(
-                artifactPaths[0]
-            )
+        ] + envelope.payloadArtifacts.map(\.relativePath)
+        var uniqueArtifactPaths = Set<String>()
+        for path in artifactPaths {
+            try requireSafeRelativePath(path)
+            guard uniqueArtifactPaths.insert(path).inserted else {
+                throw UpdateBootstrapBundleClosureError
+                    .duplicateArtifactPath(path)
+            }
         }
         let expectedFiles = Set(
-            [UpdateBootstrapBundleLayout.envelopeRelativePath] + artifactPaths
+            [UpdateBootstrapBundleLayout.envelopeRelativePath]
+                + artifactPaths
         )
+        let observedFiles = try inspect(entries)
+        let missing = expectedFiles.subtracting(observedFiles).sorted()
+        let unknown = observedFiles.subtracting(expectedFiles).sorted()
+        guard missing.isEmpty, unknown.isEmpty else {
+            throw UpdateBootstrapBundleClosureError.fileClosureMismatch(
+                missing: missing,
+                unknown: unknown
+            )
+        }
+    }
 
+    private static func inspect(
+        _ entries: [UpdateBootstrapBundleEntry]
+    ) throws -> Set<String> {
         var observedFiles = Set<String>()
         var observedEntries = Set<String>()
         for entry in entries {
@@ -47,15 +96,7 @@ public enum UpdateBootstrapBundleClosurePolicy {
                 )
             }
         }
-
-        let missing = expectedFiles.subtracting(observedFiles).sorted()
-        let unknown = observedFiles.subtracting(expectedFiles).sorted()
-        guard missing.isEmpty, unknown.isEmpty else {
-            throw UpdateBootstrapBundleClosureError.fileClosureMismatch(
-                missing: missing,
-                unknown: unknown
-            )
-        }
+        return observedFiles
     }
 
     private static func requireSafeRelativePath(_ value: String) throws {
