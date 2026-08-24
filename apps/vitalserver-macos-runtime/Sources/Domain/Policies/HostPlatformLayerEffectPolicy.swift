@@ -8,7 +8,7 @@ public enum HostPlatformLayerEffectPolicyError: Error, Equatable, Sendable {
     case operationMismatch
     case artifactDigestMismatch
     case ownerOperationMismatch
-    case ownerOperationNotSucceeded(HostPlatformInstallationOperationState)
+    case ownerOperationNotSucceeded(HostPlatformInstallationPhase)
 }
 
 public enum HostPlatformLayerEffectPolicy {
@@ -61,9 +61,9 @@ public enum HostPlatformLayerEffectPolicy {
         else {
             throw HostPlatformLayerEffectPolicyError.ownerOperationMismatch
         }
-        guard operation.state == .succeeded else {
+        guard operation.phase == .completed else {
             throw HostPlatformLayerEffectPolicyError
-                .ownerOperationNotSucceeded(operation.state)
+                .ownerOperationNotSucceeded(operation.phase)
         }
         return ProductUpdateLayerEffectReceipt(
             schemaVersion: ProductUpdateExecutionContract.schemaVersion,

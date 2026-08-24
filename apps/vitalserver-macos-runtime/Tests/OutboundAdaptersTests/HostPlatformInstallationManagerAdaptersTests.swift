@@ -28,24 +28,56 @@ final class HostPlatformInstallationManagerAdaptersTests: XCTestCase {
       staged,
       expectedOperationRevision: requested.operationRevision
     )
-    let reconciled =
-      try HostPlatformInstallationPolicy
-      .recordServiceReconciliation(
+    let quiesced =
+      try HostPlatformInstallationPolicy.recordQuiescePrevious(
         operation: staged,
-        receipt: serviceReceipt()
+        observations: [],
+        updatedAt: "2026-07-29T01:00:02Z"
       )
     try repository.saveOperation(
-      reconciled,
+      quiesced,
       expectedOperationRevision: staged.operationRevision
+    )
+    let published =
+      try HostPlatformInstallationPolicy.recordPublishInterfaces(
+        operation: quiesced,
+        updatedAt: "2026-07-29T01:00:03Z"
+      )
+    try repository.saveOperation(
+      published,
+      expectedOperationRevision: quiesced.operationRevision
+    )
+    let activated =
+      try HostPlatformInstallationPolicy.recordActivateTarget(
+        operation: published,
+        resolvedTarget: "/install/releases/host-0.2.2/release",
+        updatedAt: "2026-07-29T01:00:04Z"
+      )
+    try repository.saveOperation(
+      activated,
+      expectedOperationRevision: published.operationRevision
+    )
+    let loaded =
+      try HostPlatformInstallationPolicy.recordLoadTargetServices(
+        operation: activated,
+        observations: [],
+        updatedAt: "2026-07-29T01:00:05Z"
+      )
+    try repository.saveOperation(
+      loaded,
+      expectedOperationRevision: activated.operationRevision
     )
     let settlement =
       try HostPlatformInstallationPolicy
-      .makeSucceededSettlement(operation: reconciled)
+      .makeCompletedSettlement(
+        operation: loaded,
+        settledAt: "2026-07-29T01:00:06Z"
+      )
 
     try repository.settleSucceededOperation(
       settlement.operation,
       activeManifest: settlement.manifest,
-      expectedOperationRevision: reconciled.operationRevision,
+      expectedOperationRevision: loaded.operationRevision,
       expectedInstallationRevision: 1
     )
 
@@ -303,6 +335,11 @@ final class HostPlatformInstallationManagerAdaptersTests: XCTestCase {
       return XCTFail("archive staging must succeed result=\(result)")
     }
     XCTAssertEqual(candidate.release.id, "host-0.2.2")
+    XCTAssertEqual(
+      candidate.stagingReceiptId,
+      "host-platform-candidate.\(sha256(archiveData))"
+    )
+    XCTAssertLessThanOrEqual(candidate.stagingReceiptId.count, 128)
     XCTAssertTrue(
       FileManager.default.fileExists(
         atPath:
@@ -391,22 +428,6 @@ extension HostPlatformInstallationManagerAdaptersTests {
       ),
       stagingReceiptId: "update-1.candidate",
       stagedAt: "2026-07-29T01:00:01Z"
-    )
-  }
-
-  fileprivate func serviceReceipt() -> HostPlatformServiceReconciliationReceipt {
-    HostPlatformServiceReconciliationReceipt(
-      schemaVersion:
-        HostPlatformInstallationPolicy.serviceReceiptSchemaVersion,
-      reconciliationId: "update-1.services",
-      operationId: "update-1",
-      installationId: "installation-1",
-      expectedInstallationRevision: 1,
-      targetReleaseId: "host-0.2.2",
-      targetReleaseSHA256: String(repeating: "b", count: 64),
-      outcome: .succeeded,
-      observedAt: "2026-07-29T01:00:02Z",
-      failureReason: nil
     )
   }
 

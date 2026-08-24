@@ -182,13 +182,13 @@ private enum HostInstallationManagerCommands {
             candidateStager: HostPlatformReleaseArchiveCandidateStager(
                 installationRoot: installationRoot
             ),
-            serviceReconciler: MacOSHostPlatformReleaseServiceReconciler(
+            reconciler: MacOSHostPlatformReleaseServiceReconciler(
                 installationRoot: installationRoot,
                 launchctlURL: URL(
                     fileURLWithPath: try arguments.required("--launchctl")
                 )
             ),
-            failureObservedAt: currentTimestamp
+            observedAt: currentTimestamp
         )
         do {
             let operation = try workflow.execute(command: command)
@@ -198,14 +198,14 @@ private enum HostInstallationManagerCommands {
             )
         } catch {
             switch repository.loadOperation(id: command.operationId) {
-            case .loaded(let operation) where operation.state == .failed:
+            case .loaded(let operation) where operation.phase == .failed:
                 try HostInstallationManagerDocuments.write(
                     operation,
                     path: arguments.required("--operation")
                 )
             case .loaded(let operation):
                 throw HostInstallationManagerCLIError.operationUnavailable(
-                    "state=\(operation.state.rawValue) reason=\(error)"
+                    "state=\(operation.phase.rawValue) reason=\(error)"
                 )
             case .missing:
                 throw HostInstallationManagerCLIError.operationUnavailable(

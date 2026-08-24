@@ -17,7 +17,17 @@ public enum HostPlatformReleaseArchiveCandidateStagingError:
   case unexpectedArchiveEntry(String)
   case missingArchiveEntry(String)
   case entryDigestMismatch(path: String, expected: String, actual: String)
-  case destinationAlreadyExists(String)
+  case stagedSlotNotDirectory(path: String)
+  case stagedSlotManifestMissing(path: String)
+  case stagedSlotMismatch(reason: String)
+  case stagedSlotReadFailed(path: String, reason: String)
+  case temporaryOrphanRemovalFailed(path: String, reason: String)
+  case temporaryCleanupFailed(path: String, reason: String)
+  case temporaryCleanupAfterFailureFailed(
+    path: String,
+    operationReason: String,
+    cleanupReason: String
+  )
   case persistenceFailed(String)
 }
 
@@ -30,17 +40,21 @@ public struct HostPlatformReleaseArchiveCandidateStager:
   public let installationRoot: URL
   private let observedAt: @Sendable () -> String
   private let processFactory: () -> Process
+  private let processCollector: RuntimeProcessOutputCollector
 
   public init(
     installationRoot: URL,
     observedAt: @escaping @Sendable () -> String = {
       ISO8601DateFormatter().string(from: Date())
     },
-    processFactory: @escaping () -> Process = Process.init
+    processFactory: @escaping () -> Process = Process.init,
+    processCollector: RuntimeProcessOutputCollector =
+      RuntimeProcessOutputCollector()
   ) {
     self.installationRoot = installationRoot.standardizedFileURL
     self.observedAt = observedAt
     self.processFactory = processFactory
+    self.processCollector = processCollector
   }
 
   public func stageCandidate(
@@ -66,8 +80,46 @@ public struct HostPlatformReleaseArchiveCandidateStager:
         mediaType: command.sourceArtifactMediaType
       )
       try requireContained(destination)
-      try requireMissing(destination)
-      try requireMissing(temporary)
+      // Explicit policy for a temporary directory left behind by a crashed
+      // attempt: it is a partial extraction and is unsafe to resume, so it is
+      // removed before staging or slot verification.
+      switch presence(of: temporary) {
+      case .present:
+        do {
+          try fileManager.removeItem(at: temporary)
+        } catch {
+          throw HostPlatformReleaseArchiveCandidateStagingError
+            .temporaryOrphanRemovalFailed(
+              path: temporary.path,
+              reason: String(describing: error)
+            )
+        }
+      case .failed(let reason):
+        throw HostPlatformReleaseArchiveCandidateStagingError
+          .temporaryOrphanRemovalFailed(
+            path: temporary.path,
+            reason: reason
+          )
+      case .absent:
+        break
+      }
+      switch presence(of: destination) {
+      case .present:
+        // Idempotent resume: an existing staged slot is only accepted when its
+        // exact closure matches the verified source archive. Mere existence is
+        // never treated as staging success.
+        return try resumeStagedCandidate(
+          source: source,
+          at: destination,
+          temporary: temporary,
+          command: command
+        )
+      case .failed(let reason):
+        throw HostPlatformReleaseArchiveCandidateStagingError
+          .stagedSlotReadFailed(path: destination.path, reason: reason)
+      case .absent:
+        break
+      }
       let entries = try listArchive(source)
       try validateArchiveEntryNames(entries)
       try fileManager.createDirectory(
@@ -97,20 +149,261 @@ public struct HostPlatformReleaseArchiveCandidateStager:
         )
         try fileManager.moveItem(at: temporary, to: destination)
       } catch {
-        try? fileManager.removeItem(at: temporary)
-        throw error
+        try throwAfterCleaningTemporary(temporary, operationError: error)
       }
       return .staged(
         HostPlatformStagedCandidate(
           release: command.targetRelease,
           stagingReceiptId:
-            "\(command.operationId).archive.\(command.targetRelease.sha256)",
+            "host-platform-candidate.\(command.targetRelease.sha256)",
           stagedAt: observedAt()
         )
       )
     } catch {
       return .failed(reason: String(describing: error))
     }
+  }
+
+  private enum PathPresence {
+    case present
+    case absent
+    case failed(String)
+  }
+
+  private func presence(of url: URL) -> PathPresence {
+    do {
+      _ = try url.resourceValues(forKeys: [.fileResourceTypeKey])
+      return .present
+    } catch let error as NSError
+      where error.domain == NSCocoaErrorDomain
+      && error.code == NSFileReadNoSuchFileError {
+      return .absent
+    } catch {
+      return .failed(String(describing: error))
+    }
+  }
+
+  private func resumeStagedCandidate(
+    source: URL,
+    at destination: URL,
+    temporary: URL,
+    command: HostPlatformInstallationCommand
+  ) throws -> HostPlatformCandidateStagingResult {
+    try requireMaterializedDirectory(destination)
+    let manifestURL = destination.appendingPathComponent(
+      "release/installation-manifest.json"
+    )
+    guard FileManager.default.fileExists(atPath: manifestURL.path) else {
+      throw HostPlatformReleaseArchiveCandidateStagingError
+        .stagedSlotManifestMissing(path: manifestURL.path)
+    }
+
+    // Re-extract the verified source archive and prove its exact closure, then
+    // prove the existing slot's exact closure. The slot is only reused when the
+    // two closures are completely identical, so a same-id/version slot with a
+    // different payload is never accepted just because it exists.
+    let entries = try listArchive(source)
+    try validateArchiveEntryNames(entries)
+    try FileManager.default.createDirectory(
+      at: temporary,
+      withIntermediateDirectories: false
+    )
+    let result: HostPlatformCandidateStagingResult
+    do {
+      try extractArchive(source, to: temporary)
+
+      let (sourceManifest, sourceClosure) = try verifyExtractedClosure(
+        at: temporary,
+        destination: destination,
+        command: command
+      )
+      guard sourceManifest.release.id == command.targetRelease.id,
+        sourceManifest.release.version == command.targetRelease.version
+      else {
+        throw HostPlatformReleaseArchiveCandidateStagingError
+          .manifestInvalid("release identity does not match command")
+      }
+
+      let (destinationManifest, destinationClosure) = try verifyExtractedClosure(
+        at: destination,
+        destination: destination,
+        command: command
+      )
+      guard destinationManifest.release.id == command.targetRelease.id,
+        destinationManifest.release.version == command.targetRelease.version
+      else {
+        throw HostPlatformReleaseArchiveCandidateStagingError
+          .stagedSlotMismatch(
+            reason:
+              "existing slot release identity expected=\(command.targetRelease.id)/\(command.targetRelease.version) actual=\(destinationManifest.release.id)/\(destinationManifest.release.version)"
+          )
+      }
+
+      guard sourceClosure == destinationClosure else {
+        throw HostPlatformReleaseArchiveCandidateStagingError
+          .stagedSlotMismatch(
+            reason: describeClosureDifference(
+              source: sourceClosure,
+              destination: destinationClosure
+            )
+          )
+      }
+      result = .staged(
+        HostPlatformStagedCandidate(
+          release: command.targetRelease,
+          stagingReceiptId:
+            "host-platform-candidate.\(command.targetRelease.sha256)",
+          stagedAt: observedAt()
+        )
+      )
+    } catch {
+      try throwAfterCleaningTemporary(temporary, operationError: error)
+    }
+    try cleanTemporary(temporary)
+    return result
+  }
+
+  private func cleanTemporary(_ temporary: URL) throws {
+    do {
+      try FileManager.default.removeItem(at: temporary)
+    } catch {
+      throw HostPlatformReleaseArchiveCandidateStagingError
+        .temporaryCleanupFailed(
+          path: temporary.path,
+          reason: String(describing: error)
+        )
+    }
+  }
+
+  private func throwAfterCleaningTemporary(
+    _ temporary: URL,
+    operationError: Error
+  ) throws -> Never {
+    do {
+      try FileManager.default.removeItem(at: temporary)
+    } catch {
+      throw HostPlatformReleaseArchiveCandidateStagingError
+        .temporaryCleanupAfterFailureFailed(
+          path: temporary.path,
+          operationReason: String(describing: operationError),
+          cleanupReason: String(describing: error)
+        )
+    }
+    throw operationError
+  }
+
+  private struct StagedClosureEntry: Equatable {
+    let digest: String
+    let executable: Bool
+  }
+
+  private func requireMaterializedDirectory(_ url: URL) throws {
+    let values: URLResourceValues
+    do {
+      values = try url.resourceValues(
+        forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+      )
+    } catch {
+      throw HostPlatformReleaseArchiveCandidateStagingError
+        .stagedSlotReadFailed(
+          path: url.path,
+          reason: String(describing: error)
+        )
+    }
+    guard values.isDirectory == true, values.isSymbolicLink != true else {
+      throw HostPlatformReleaseArchiveCandidateStagingError
+        .stagedSlotNotDirectory(path: url.path)
+    }
+  }
+
+  private func verifyExtractedClosure(
+    at root: URL,
+    destination: URL,
+    command: HostPlatformInstallationCommand
+  ) throws -> (
+    manifest: HostPlatformReleaseArchiveManifest,
+    closure: [String: StagedClosureEntry]
+  ) {
+    do {
+      let manifest = try validateExtractedArchive(
+        at: root,
+        command: command,
+        destination: destination
+      )
+      return (manifest, try closureProof(at: root))
+    } catch let error as HostPlatformReleaseArchiveCandidateStagingError {
+      throw error
+    } catch {
+      throw HostPlatformReleaseArchiveCandidateStagingError
+        .stagedSlotReadFailed(
+          path: root.path,
+          reason: String(describing: error)
+        )
+    }
+  }
+
+  private func closureProof(
+    at root: URL
+  ) throws -> [String: StagedClosureEntry] {
+    let resolvedRoot = root.resolvingSymlinksInPath().standardizedFileURL
+    guard let enumerator = FileManager.default.enumerator(
+      at: root,
+      includingPropertiesForKeys: [
+        .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey,
+      ],
+      options: []
+    ) else {
+      throw HostPlatformReleaseArchiveCandidateStagingError
+        .archiveExtractionFailed("cannot enumerate staged slot")
+    }
+    var entries: [String: StagedClosureEntry] = [:]
+    for case let url as URL in enumerator {
+      let resolvedURL = url.resolvingSymlinksInPath().standardizedFileURL
+      let values = try url.resourceValues(
+        forKeys: [
+          .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey,
+        ]
+      )
+      guard values.isSymbolicLink != true,
+        values.isDirectory == true || values.isRegularFile == true
+      else {
+        throw HostPlatformReleaseArchiveCandidateStagingError
+          .unsafeArchiveEntry(url.path)
+      }
+      if values.isRegularFile == true {
+        let prefix =
+          resolvedRoot.path.hasSuffix("/")
+          ? resolvedRoot.path : resolvedRoot.path + "/"
+        guard resolvedURL.path.hasPrefix(prefix) else {
+          throw HostPlatformReleaseArchiveCandidateStagingError
+            .unsafeArchiveEntry(url.path)
+        }
+        let relative = String(resolvedURL.path.dropFirst(prefix.count))
+        entries[relative] = StagedClosureEntry(
+          digest: try sha256(url),
+          executable: FileManager.default.isExecutableFile(atPath: url.path)
+        )
+      }
+    }
+    return entries
+  }
+
+  private func describeClosureDifference(
+    source: [String: StagedClosureEntry],
+    destination: [String: StagedClosureEntry]
+  ) -> String {
+    let sourcePaths = Set(source.keys)
+    let destinationPaths = Set(destination.keys)
+    let extra = destinationPaths.subtracting(sourcePaths)
+    let missing = sourcePaths.subtracting(destinationPaths)
+    var changed: [String] = []
+    for path in sourcePaths.intersection(destinationPaths) {
+      if source[path] != destination[path] {
+        changed.append(path)
+      }
+    }
+    return
+      "staged slot closure differs from source archive extra=\(extra.sorted()) missing=\(missing.sorted()) changed=\(changed.sorted())"
   }
 
   private func validateSource(
@@ -153,36 +446,24 @@ public struct HostPlatformReleaseArchiveCandidateStager:
   }
 
   private func listArchive(_ source: URL) throws -> [String] {
-    let process = processFactory()
-    let output = Pipe()
-    let errors = Pipe()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-    process.environment =
-      ProcessInfo.processInfo.environment.merging(
-        ["COPYFILE_DISABLE": "1"]
-      ) { _, explicit in explicit }
-    process.arguments = ["-tzf", source.path]
-    process.standardOutput = output
-    process.standardError = errors
-    try process.run()
-    process.waitUntilExit()
-    guard process.terminationReason == .exit,
-      process.terminationStatus == 0
-    else {
-      let reason = String(
-        data: errors.fileHandleForReading.readDataToEndOfFile(),
-        encoding: .utf8
-      ) ?? "tar listing failed without stderr"
+    let outcome = processCollector.run(
+      executableURL: URL(fileURLWithPath: "/usr/bin/tar"),
+      arguments: ["-tzf", source.path],
+      environment: ["COPYFILE_DISABLE": "1"],
+      processFactory: processFactory
+    )
+    guard outcome.exitedNormally, outcome.exitCode == 0 else {
+      let reason = outcome.stderr.trimmingCharacters(
+        in: .whitespacesAndNewlines
+      ).isEmpty
+        ? "tar listing failed without stderr" : outcome.stderr
       throw HostPlatformReleaseArchiveCandidateStagingError
         .archiveListingFailed(reason)
     }
-    let text = String(
-      data: output.fileHandleForReading.readDataToEndOfFile(),
-      encoding: .utf8
-    ) ?? ""
-    return text.split(separator: "\n", omittingEmptySubsequences: true).map(
-      String.init
-    )
+    return outcome.stdout.split(
+      separator: "\n",
+      omittingEmptySubsequences: true
+    ).map(String.init)
   }
 
   private func validateArchiveEntryNames(_ entries: [String]) throws {
@@ -209,29 +490,22 @@ public struct HostPlatformReleaseArchiveCandidateStager:
   }
 
   private func extractArchive(_ source: URL, to destination: URL) throws {
-    let process = processFactory()
-    let errors = Pipe()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-    process.environment =
-      ProcessInfo.processInfo.environment.merging(
-        ["COPYFILE_DISABLE": "1"]
-      ) { _, explicit in explicit }
-    process.arguments = [
-      "-xzf", source.path,
-      "-C", destination.path,
-      "--no-same-owner",
-      "--no-same-permissions",
-    ]
-    process.standardError = errors
-    try process.run()
-    process.waitUntilExit()
-    guard process.terminationReason == .exit,
-      process.terminationStatus == 0
-    else {
-      let reason = String(
-        data: errors.fileHandleForReading.readDataToEndOfFile(),
-        encoding: .utf8
-      ) ?? "tar extraction failed without stderr"
+    let outcome = processCollector.run(
+      executableURL: URL(fileURLWithPath: "/usr/bin/tar"),
+      arguments: [
+        "-xzf", source.path,
+        "-C", destination.path,
+        "--no-same-owner",
+        "--no-same-permissions",
+      ],
+      environment: ["COPYFILE_DISABLE": "1"],
+      processFactory: processFactory
+    )
+    guard outcome.exitedNormally, outcome.exitCode == 0 else {
+      let reason = outcome.stderr.trimmingCharacters(
+        in: .whitespacesAndNewlines
+      ).isEmpty
+        ? "tar extraction failed without stderr" : outcome.stderr
       throw HostPlatformReleaseArchiveCandidateStagingError
         .archiveExtractionFailed(reason)
     }
@@ -577,13 +851,6 @@ public struct HostPlatformReleaseArchiveCandidateStager:
     guard url.path.hasPrefix(prefix) else {
       throw HostPlatformReleaseArchiveCandidateStagingError
         .persistenceFailed("destination escapes installation root")
-    }
-  }
-
-  private func requireMissing(_ url: URL) throws {
-    guard !FileManager.default.fileExists(atPath: url.path) else {
-      throw HostPlatformReleaseArchiveCandidateStagingError
-        .destinationAlreadyExists(url.path)
     }
   }
 

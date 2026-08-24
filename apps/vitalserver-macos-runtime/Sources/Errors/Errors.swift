@@ -1,3 +1,14 @@
+import Contracts
+
+public enum HostPlatformReconciliationFailureDescription {
+    public static func describe(_ error: Error) -> String {
+        if let failure = error as? any HostPlatformReconciliationFailure {
+            return failure.reconciliationReason
+        }
+        return String(describing: error)
+    }
+}
+
 public struct BoundaryFailure: Error, Equatable, Sendable {
     public let kind: FailureKind
     public let context: ErrorContext

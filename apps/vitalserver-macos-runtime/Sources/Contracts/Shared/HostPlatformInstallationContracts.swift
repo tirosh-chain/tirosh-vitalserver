@@ -10,10 +10,12 @@ public enum HostPlatformInstallationContract {
     "vitalserver.host-platform-installation/v1"
   public static let operationSchemaVersion =
     "vitalserver.host-platform-installation-operation/v1"
-  public static let serviceRequestSchemaVersion =
-    "vitalserver.host-platform-service-reconciliation/v1"
-  public static let serviceReceiptSchemaVersion =
-    "vitalserver.host-platform-service-reconciliation-receipt/v1"
+}
+
+/// A reconciliation error that carries an explicit, structured failure reason
+/// for the durable journal instead of requiring callers to stringify it.
+public protocol HostPlatformReconciliationFailure: Error {
+  var reconciliationReason: String { get }
 }
 
 public struct HostPlatformRelease: Codable, Equatable, Sendable {
@@ -63,12 +65,45 @@ public enum HostPlatformInstallationOperationKind: String, Codable, Equatable, S
   case rollback
 }
 
-public enum HostPlatformInstallationOperationState: String, Codable, Equatable, Sendable {
+/// Durable lifecycle phase of a Host Platform installation operation.
+///
+/// Each completed effect is persisted as the next phase in the operation
+/// document (via CAS on `operationRevision`) before the workflow begins another
+/// effect. On restart, the workflow resumes from the durable phase and
+/// reconciles it against Host-owned typed observations.
+public enum HostPlatformInstallationPhase: String, Codable, Equatable, Sendable {
+  /// Operation was admitted but no irreversible effect has run yet.
   case requested
-  case candidateStaged = "candidate-staged"
-  case servicesReconciled = "services-reconciled"
-  case succeeded
+  /// Candidate archive has been staged and its exact closure verified.
+  case prepared
+  /// Previous release replaceable services were quiesced (confirmed not loaded).
+  case previousQuiesced = "previous-quiesced"
+  /// Service definitions, operator bootstrap, and operator app were published.
+  case interfacesPublished = "interfaces-published"
+  /// `current` symlink was switched to the target release root.
+  case targetActivated = "target-activated"
+  /// Target release replaceable services were loaded with an explicit loaded proof.
+  case targetServicesLoaded = "target-services-loaded"
+  /// Compensation is in progress (target effects are being undone).
+  case compensating
+  /// Compensation completed; the previous release was restored.
+  case compensated
+  /// Operation settled successfully (receipt + manifest advanced).
+  case completed
+  /// Operation failed terminally.
   case failed
+}
+
+/// One irreversible Host Platform effect, recorded in the durable journal.
+public enum HostPlatformReconciliationEffect: String, Codable, Equatable, Sendable {
+  case stageCandidate = "stage-candidate"
+  case quiescePrevious = "quiesce-previous"
+  case publishInterfaces = "publish-interfaces"
+  case activateTarget = "activate-target"
+  case loadTargetServices = "load-target-services"
+  case compensate = "compensate"
+  case settle = "settle"
+  case fail = "fail"
 }
 
 public struct HostPlatformStagedCandidate: Codable, Equatable, Sendable {
@@ -87,45 +122,122 @@ public struct HostPlatformStagedCandidate: Codable, Equatable, Sendable {
   }
 }
 
-public enum HostPlatformServiceReconciliationOutcome: String, Codable, Equatable, Sendable {
-  case succeeded
+/// A launchd command issued during reconciliation.
+public enum HostPlatformLaunchdAction: String, Codable, Equatable, Sendable {
+  case bootout
+  case bootstrap
+  case print
+}
+
+/// Typed, exit-code-only launchd outcome. Never derived from stderr text, so the
+/// classification is stable across locales.
+public enum HostPlatformLaunchdOutcome: String, Codable, Equatable, Sendable {
+  /// `bootout`/`bootstrap` accepted (exit 0). `bootstrap` acceptance is not a
+  /// running/healthy proof; it only means launchd accepted the load request.
+  case accepted
+  /// `print` returned exit 0: the service is loaded.
+  case loaded
+  /// `print` reported the service is not loaded.
+  case notLoaded = "not-loaded"
+  /// `bootout` reported the service was already not loaded (idempotent desired
+  /// outcome; not an error).
+  case alreadyNotLoaded = "already-not-loaded"
+  case permissionDenied = "permission-denied"
   case failed
 }
 
-public struct HostPlatformServiceReconciliationReceipt: Codable, Equatable, Sendable {
-  public let schemaVersion: String
-  public let reconciliationId: String
-  public let operationId: String
-  public let installationId: String
-  public let expectedInstallationRevision: Int
-  public let targetReleaseId: String
-  public let targetReleaseSHA256: String
-  public let outcome: HostPlatformServiceReconciliationOutcome
-  public let observedAt: String
-  public let failureReason: String?
+public struct HostPlatformLaunchdServiceObservation: Codable, Equatable, Sendable {
+  public let role: String
+  public let serviceName: String
+  public let action: HostPlatformLaunchdAction
+  public let exitCode: Int32
+  public let outcome: HostPlatformLaunchdOutcome
 
   public init(
-    schemaVersion: String,
-    reconciliationId: String,
-    operationId: String,
-    installationId: String,
-    expectedInstallationRevision: Int,
-    targetReleaseId: String,
-    targetReleaseSHA256: String,
-    outcome: HostPlatformServiceReconciliationOutcome,
-    observedAt: String,
-    failureReason: String?
+    role: String,
+    serviceName: String,
+    action: HostPlatformLaunchdAction,
+    exitCode: Int32,
+    outcome: HostPlatformLaunchdOutcome
   ) {
-    self.schemaVersion = schemaVersion
-    self.reconciliationId = reconciliationId
-    self.operationId = operationId
-    self.installationId = installationId
-    self.expectedInstallationRevision = expectedInstallationRevision
-    self.targetReleaseId = targetReleaseId
-    self.targetReleaseSHA256 = targetReleaseSHA256
+    self.role = role
+    self.serviceName = serviceName
+    self.action = action
+    self.exitCode = exitCode
     self.outcome = outcome
+  }
+}
+
+/// Host-owned read of the `current` release symlink target.
+public enum HostPlatformCurrentReleaseTargetRead: Codable, Equatable, Sendable {
+  case resolved(String)
+  case notSymlink
+  case missing
+  case readFailed(String)
+
+  public init(rawValue: String) {
+    switch rawValue {
+    case "not-symlink":
+      self = .notSymlink
+    case "missing":
+      self = .missing
+    default:
+      if rawValue.hasPrefix("resolved: ") {
+        self = .resolved(String(rawValue.dropFirst("resolved: ".count)))
+      } else if rawValue.hasPrefix("read-failed: ") {
+        self = .readFailed(String(rawValue.dropFirst("read-failed: ".count)))
+      } else {
+        self = .readFailed(rawValue)
+      }
+    }
+  }
+
+  public var rawValue: String {
+    switch self {
+    case .resolved(let path):
+      "resolved: \(path)"
+    case .notSymlink:
+      "not-symlink"
+    case .missing:
+      "missing"
+    case .readFailed(let reason):
+      "read-failed: \(reason)"
+    }
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    self.init(rawValue: try container.decode(String.self))
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
+}
+
+/// One durable journal record, written before/after an irreversible effect.
+public struct HostPlatformReconciliationJournalEntry: Codable, Equatable, Sendable {
+  public let effect: HostPlatformReconciliationEffect
+  public let phase: HostPlatformInstallationPhase
+  /// Resolved `current` symlink target after activation, when applicable.
+  public let currentReleaseTarget: String?
+  /// Launchd observations recorded by this effect.
+  public let services: [HostPlatformLaunchdServiceObservation]
+  public let observedAt: String
+
+  public init(
+    effect: HostPlatformReconciliationEffect,
+    phase: HostPlatformInstallationPhase,
+    currentReleaseTarget: String?,
+    services: [HostPlatformLaunchdServiceObservation],
+    observedAt: String
+  ) {
+    self.effect = effect
+    self.phase = phase
+    self.currentReleaseTarget = currentReleaseTarget
+    self.services = services
     self.observedAt = observedAt
-    self.failureReason = failureReason
   }
 }
 
@@ -134,13 +246,13 @@ public struct HostPlatformInstallationOperation: Codable, Equatable, Sendable {
   public let id: String
   public let operationRevision: Int
   public let kind: HostPlatformInstallationOperationKind
-  public let state: HostPlatformInstallationOperationState
+  public let phase: HostPlatformInstallationPhase
   public let installationId: String
   public let expectedInstallationRevision: Int
   public let targetRelease: HostPlatformRelease
   public let previousRelease: HostPlatformRelease
   public let candidate: HostPlatformStagedCandidate?
-  public let serviceReceipt: HostPlatformServiceReconciliationReceipt?
+  public let journal: [HostPlatformReconciliationJournalEntry]
   public let failureReason: String?
   public let requestedAt: String
   public let updatedAt: String
@@ -150,13 +262,13 @@ public struct HostPlatformInstallationOperation: Codable, Equatable, Sendable {
     id: String,
     operationRevision: Int,
     kind: HostPlatformInstallationOperationKind,
-    state: HostPlatformInstallationOperationState,
+    phase: HostPlatformInstallationPhase,
     installationId: String,
     expectedInstallationRevision: Int,
     targetRelease: HostPlatformRelease,
     previousRelease: HostPlatformRelease,
     candidate: HostPlatformStagedCandidate?,
-    serviceReceipt: HostPlatformServiceReconciliationReceipt?,
+    journal: [HostPlatformReconciliationJournalEntry],
     failureReason: String?,
     requestedAt: String,
     updatedAt: String
@@ -165,13 +277,13 @@ public struct HostPlatformInstallationOperation: Codable, Equatable, Sendable {
     self.id = id
     self.operationRevision = operationRevision
     self.kind = kind
-    self.state = state
+    self.phase = phase
     self.installationId = installationId
     self.expectedInstallationRevision = expectedInstallationRevision
     self.targetRelease = targetRelease
     self.previousRelease = previousRelease
     self.candidate = candidate
-    self.serviceReceipt = serviceReceipt
+    self.journal = journal
     self.failureReason = failureReason
     self.requestedAt = requestedAt
     self.updatedAt = updatedAt
@@ -215,34 +327,6 @@ public struct HostPlatformInstallationCommand: Codable, Equatable, Sendable {
   }
 }
 
-public struct HostPlatformServiceReconciliationRequest: Codable, Equatable, Sendable {
-  public let schemaVersion: String
-  public let reconciliationId: String
-  public let operationId: String
-  public let installationId: String
-  public let expectedInstallationRevision: Int
-  public let targetRelease: HostPlatformRelease
-  public let previousRelease: HostPlatformRelease
-
-  public init(
-    schemaVersion: String,
-    reconciliationId: String,
-    operationId: String,
-    installationId: String,
-    expectedInstallationRevision: Int,
-    targetRelease: HostPlatformRelease,
-    previousRelease: HostPlatformRelease
-  ) {
-    self.schemaVersion = schemaVersion
-    self.reconciliationId = reconciliationId
-    self.operationId = operationId
-    self.installationId = installationId
-    self.expectedInstallationRevision = expectedInstallationRevision
-    self.targetRelease = targetRelease
-    self.previousRelease = previousRelease
-  }
-}
-
 public struct HostPlatformReleaseArchiveManifest:
   Codable,
   Equatable,
@@ -259,11 +343,42 @@ public struct HostPlatformReleaseArchiveManifest:
   public let replaceableServices: [HostPlatformRequiredService]
   public let stableComponents: [HostPlatformStableComponent]
   public let mutableStores: [HostPlatformMutableStore]
+
+  public init(
+    schemaVersion: String,
+    installationId: String,
+    release: HostPlatformReleaseIdentity,
+    releaseCatalogPath: String,
+    releaseRootPath: String,
+    currentReleaseLinkPath: String,
+    files: [HostPlatformImmutablePayloadEntry],
+    operatorInterface: HostPlatformOperatorInterface,
+    replaceableServices: [HostPlatformRequiredService],
+    stableComponents: [HostPlatformStableComponent],
+    mutableStores: [HostPlatformMutableStore]
+  ) {
+    self.schemaVersion = schemaVersion
+    self.installationId = installationId
+    self.release = release
+    self.releaseCatalogPath = releaseCatalogPath
+    self.releaseRootPath = releaseRootPath
+    self.currentReleaseLinkPath = currentReleaseLinkPath
+    self.files = files
+    self.operatorInterface = operatorInterface
+    self.replaceableServices = replaceableServices
+    self.stableComponents = stableComponents
+    self.mutableStores = mutableStores
+  }
 }
 
 public struct HostPlatformReleaseIdentity: Codable, Equatable, Sendable {
   public let id: String
   public let version: String
+
+  public init(id: String, version: String) {
+    self.id = id
+    self.version = version
+  }
 }
 
 public struct HostPlatformImmutablePayloadEntry:
@@ -274,6 +389,12 @@ public struct HostPlatformImmutablePayloadEntry:
   public let relativePath: String
   public let sha256: String
   public let executable: Bool
+
+  public init(relativePath: String, sha256: String, executable: Bool) {
+    self.relativePath = relativePath
+    self.sha256 = sha256
+    self.executable = executable
+  }
 }
 
 public struct HostPlatformOperatorInterface: Codable, Equatable, Sendable {
@@ -283,6 +404,23 @@ public struct HostPlatformOperatorInterface: Codable, Equatable, Sendable {
   public let applicationBundleRelativePath: String
   public let applicationBundleTreeSha256: String
   public let applicationBundleEntrypointRelativePath: String
+
+  public init(
+    bootstrapConfigurationPath: String,
+    bootstrapConfigurationSha256: String,
+    applicationBundlePath: String,
+    applicationBundleRelativePath: String,
+    applicationBundleTreeSha256: String,
+    applicationBundleEntrypointRelativePath: String
+  ) {
+    self.bootstrapConfigurationPath = bootstrapConfigurationPath
+    self.bootstrapConfigurationSha256 = bootstrapConfigurationSha256
+    self.applicationBundlePath = applicationBundlePath
+    self.applicationBundleRelativePath = applicationBundleRelativePath
+    self.applicationBundleTreeSha256 = applicationBundleTreeSha256
+    self.applicationBundleEntrypointRelativePath =
+      applicationBundleEntrypointRelativePath
+  }
 }
 
 public struct HostPlatformRequiredService: Codable, Equatable, Sendable {
@@ -291,12 +429,32 @@ public struct HostPlatformRequiredService: Codable, Equatable, Sendable {
   public let name: String
   public let definitionPath: String
   public let definitionSha256: String
+
+  public init(
+    role: String,
+    manager: String,
+    name: String,
+    definitionPath: String,
+    definitionSha256: String
+  ) {
+    self.role = role
+    self.manager = manager
+    self.name = name
+    self.definitionPath = definitionPath
+    self.definitionSha256 = definitionSha256
+  }
 }
 
 public struct HostPlatformStableComponent: Codable, Equatable, Sendable {
   public let role: String
   public let executablePath: String
   public let serviceName: String?
+
+  public init(role: String, executablePath: String, serviceName: String?) {
+    self.role = role
+    self.executablePath = executablePath
+    self.serviceName = serviceName
+  }
 }
 
 public struct HostPlatformMutableStore: Codable, Equatable, Sendable {
@@ -305,4 +463,12 @@ public struct HostPlatformMutableStore: Codable, Equatable, Sendable {
   public let kind: String
   public let owner: String
   public let retention: String
+
+  public init(id: String, path: String, kind: String, owner: String, retention: String) {
+    self.id = id
+    self.path = path
+    self.kind = kind
+    self.owner = owner
+    self.retention = retention
+  }
 }

@@ -215,6 +215,9 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-220 | Platform Agent update verifier가 installed runtime home 대신 `/var/root/.tirosh`를 읽음 | Update / Runtime Control | resolved | [Platform Agent update verifier uses root home](220_platform-agent-update-verifier-uses-root-home.md) |
 | TS-221 | signed update bundle이 Host loopback Guest endpoint를 소유해 첫 Guest layer 적용이 실패함 | Update / Bootstrap handoff / Guest Control | active | [Signed update bundle owns a Host loopback Guest endpoint](221_signed-update-bundle-owns-host-loopback-guest-endpoint.md) |
 | TS-222 | 기존 Guest artifact의 idempotent import가 request body를 읽지 않아 Host upload 연결이 끊김 | Update / Guest Control / Artifact ownership | active | [Guest update artifact owner closes an idempotent upload](222_guest_update_artifact_owner_closes_idempotent_upload.md) |
+| TS-223 | Host candidate receipt ID가 128자 계약을 초과해 staging 후 manager operation이 requested에 남음 | Update / Host installation manager | active | [Host candidate receipt exceeds the identifier contract](223_host_candidate_receipt_exceeds_identifier_contract.md) |
+| TS-224 | Host release가 VM 종료 완료 전에 같은 launchd label을 시작하고 부분 시작 보상도 중단됨 | Update / Host platform reconciliation | active | [Host release restarts launchd before the VM stops](224_host_release_restarts_launchd_before_vm_stops.md) |
+| TS-226 | Host Platform reconcile이 durable, resumable lifecycle로 재구성되고 exit-code 계약으로 분류됨 | Update / Host platform reconciliation | active | [Host Platform reconciliation is now a durable, resumable lifecycle](226_host_platform_durable_reconciliation.md) |
 | TS-225 | Effect configuration이 v2 schema 검증 없이 서명되고 executor id가 configuration과 불일치함 | Update / Release composition | active | [Effect configuration signed without v2 schema validation](225_effect_configuration_signed_without_v2_validation.md) |
 
 ## Follow-up 규칙

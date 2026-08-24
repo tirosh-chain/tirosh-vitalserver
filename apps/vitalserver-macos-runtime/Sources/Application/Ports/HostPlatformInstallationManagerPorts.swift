@@ -57,14 +57,44 @@ public protocol HostPlatformCandidateStaging: Sendable {
   ) -> HostPlatformCandidateStagingResult
 }
 
-public enum HostPlatformServiceReconciliationResult: Equatable, Sendable {
-  case completed(HostPlatformServiceReconciliationReceipt)
-  case unavailable(reason: String)
+public enum HostPlatformReleaseManifestLoadResult: Equatable, Sendable {
+  case loaded(HostPlatformReleaseArchiveManifest)
   case failed(reason: String)
 }
 
-public protocol HostPlatformServiceReconciling: Sendable {
-  func reconcileServices(
-    request: HostPlatformServiceReconciliationRequest
-  ) -> HostPlatformServiceReconciliationResult
+/// Executes one Host Platform reconciliation effect at a time and reports
+/// typed, Host-owned observations. Each effect is idempotent: re-running it
+/// after a crash resumes to the same outcome instead of corrupting state.
+public protocol HostPlatformReleaseReconciling: Sendable {
+  func loadReleaseManifest(
+    _ release: HostPlatformRelease,
+    installationId: String
+  ) -> HostPlatformReleaseManifestLoadResult
+
+  func verifyTopology(
+    previous: HostPlatformReleaseArchiveManifest,
+    target: HostPlatformReleaseArchiveManifest
+  ) throws
+
+  func readCurrentReleaseTarget() -> HostPlatformCurrentReleaseTargetRead
+
+  func readServiceStates(
+    _ services: [HostPlatformRequiredService]
+  ) -> [HostPlatformLaunchdServiceObservation]
+
+  func quiesceServices(
+    _ services: [HostPlatformRequiredService]
+  ) throws -> [HostPlatformLaunchdServiceObservation]
+
+  func publishInterfaces(
+    _ manifest: HostPlatformReleaseArchiveManifest
+  ) throws
+
+  func activateTarget(
+    _ manifest: HostPlatformReleaseArchiveManifest
+  ) throws -> String
+
+  func loadServices(
+    _ services: [HostPlatformRequiredService]
+  ) throws -> [HostPlatformLaunchdServiceObservation]
 }

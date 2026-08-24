@@ -992,6 +992,13 @@ update bundle도 압축이 필요합니다. 다만 압축 대상은 update artif
 따라서 “bundle을 만든다”는 것은 교체 가능한 세 layer의 현재/rollback
 artifact와 실행 계약 전체를 인증해 묶는다는 뜻입니다.
 
+Helper Host Platform reconcile은 target release의 service definition, operator
+bootstrap, app bundle을 각각 declared destination에 게시한 뒤 `current`를
+원자적으로 target release로 전환합니다. app 게시 후 activation 또는 service
+start가 실패하면 previous release의 app도 `/Applications`에 다시 materialize하는
+보상 effect를 수행합니다. 과거 설치본의 `/Applications` app이 release app
+symlink인 경우에도 target app 게시가 그 링크를 명시적으로 대체합니다.
+
 ### Historical: schema-3와 0.2.1
 
 아래 `release-update-bundle`, `manifest.json`, `checksums.txt`, `signature:

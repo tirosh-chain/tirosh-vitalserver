@@ -262,9 +262,11 @@ enum HostPlatformLayerEffectExecutor {
         )
 
         let process = Process()
+        let managerErrors = Pipe()
         process.executableURL = URL(
             fileURLWithPath: configuration.manager.executablePath
         )
+        process.standardError = managerErrors
         process.arguments = [
             "execute",
             "--request", managerRequestURL.path,
@@ -283,6 +285,14 @@ enum HostPlatformLayerEffectExecutor {
                 String(describing: error)
             )
         }
+        let managerErrorDetail = String(
+            data: managerErrors.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let reportedManagerError =
+            managerErrorDetail?.isEmpty == false
+            ? managerErrorDetail ?? "none"
+            : "none"
 
         let operationData: Data
         do {
@@ -293,7 +303,7 @@ enum HostPlatformLayerEffectExecutor {
             throw
                 HostPlatformLayerEffectExecutorError
                 .ownerOperationUnavailable(
-                    "manager produced no readable operation; terminationStatus=\(process.terminationStatus) reason=\(error)"
+                    "manager produced no readable operation; terminationStatus=\(process.terminationStatus) stderr=\(reportedManagerError) reason=\(error)"
                 )
         }
         let operation = try HostPlatformLayerEffectDocuments.decode(
@@ -302,7 +312,7 @@ enum HostPlatformLayerEffectExecutor {
             path: managerOperationURL.path
         )
         let receipt: ProductUpdateLayerEffectReceipt
-        if operation.state == .succeeded {
+        if operation.phase == .completed {
             receipt = try HostPlatformLayerEffectPolicy.makeLayerReceipt(
                 invocation: invocation,
                 operation: operation
@@ -360,7 +370,7 @@ enum HostPlatformLayerEffectExecutor {
             "\(invocation.updateId).host-platform.\(invocation.operation.rawValue)"
         guard operation.id == expectedOperationId,
             operation.targetRelease.sha256 == invocation.artifactSHA256,
-            operation.state == .failed,
+            operation.phase == .failed,
             let failureReason = operation.failureReason,
             !failureReason.isEmpty
         else {

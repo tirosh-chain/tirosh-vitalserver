@@ -853,6 +853,92 @@ UI는 이 의미를 `Vital Files > Upload to library`와
 검사해 사용자를 안내할 수 있지만, authoritative upload validation과 file index는
 VitalServer API owner 경계에 남는다. Host shared directory 직접 복사는 upload가 아니다.
 
+### 7-4. Host Platform 설치 reconcile (durable)
+
+Helper Host Platform layer의 `current` release 전환은 단일 activation intent 파일만
+남기는 방식이 아니라, 각 irreversible effect가 복구 가능한 durable reconciliation으로
+이루어집니다. Domain state machine이 phase를 정의하고, Application workflow가 각
+effect 전후에 durable journal을 repository에 CAS(operationRevision)로 기록하며, adapter는
+한 effect만 실행하고 typed observation을 반환합니다.
+
+```text
+requested
+  -> prepared            (candidate archive staged + exact closure verified)
+  -> previous-quiesced   (previous replaceable services bootout + not-loaded proof)
+  -> interfaces-published(service definitions/operator bootstrap/app published + closure re-proof)
+  -> target-activated    (current symlink -> target release root)
+  -> target-services-loaded (target services bootstrap + loaded proof)
+  -> completed           (receipt/DB settle)
+  -> compensating -> compensated -> failed   (명시 보상 경로)
+```
+
+Durable phase 의미와 persisted document shape는
+`HostPlatformInstallationContracts.swift`의 `HostPlatformInstallationPhase`,
+`HostPlatformReconciliationJournalEntry`, `HostPlatformLaunchdServiceObservation`가
+소유합니다. 각 journal entry는 `effect`(어떤 irreversible effect였는지),
+`phase`(effect 후 도달한 phase), `currentReleaseTarget`(activation 뒤 `current`가 가리키는
+정확한 resolved target), `services`(bootout/bootstrap/print의 typed launchd observation)를
+기록합니다.
+
+Retry/resume은 durable phase와 Host-owned typed observation을 대조합니다. `current`가
+이미 target release root를 가리키면 activation을 재실행하지 않고 acknowledge한 뒤 load로
+이어가고, 이미 loaded인 service는 bootstrap하지 않습니다. `nextStep`은 missing/failed/
+unknown 상태에서 transition을 추측하지 않고 명시 오류로 남깁니다.
+
+launchctl은 stderr 문자열 매칭을 쓰지 않습니다. exit code contract가 missing/not-loaded/
+permission/read failure를 구분하며 locale과 무관합니다.
+
+| exit code | `print` | `bootout` | `bootstrap` |
+|---|---|---|---|
+| `0` | loaded | accepted | accepted(load request 수락일 뿐 running/healthy proof 아님) |
+| `3`/`113` | not-loaded | already-not-loaded(멱등한 desired outcome) | — |
+| `1`/`13` | permission-denied | permission-denied | permission-denied |
+| 기타 | read failure | failed | failed |
+
+`bootstrap` exit 0은 running/healthy가 아닙니다. load effect는 bootstrap 뒤 `print`로
+loaded proof를 재조회하고, 즉시 unload된 target service는 실패로 남깁니다. readiness가
+필요하면 별도 명시 provider가 담당합니다.
+
+보상(compensation)도 durable입니다. forward effect 실패는 먼저 `compensating`을 CAS로
+기록한 뒤 target service quiesce -> previous interfaces publish -> previous activation ->
+previous service load를 멱등하게 수행하고 `compensated`를 기록한 다음 terminal `failed`로
+마무리합니다. 보상 중 crash가 나도 각 sub-effect가 멱등하므로 resume이 안전합니다.
+
+Candidate staging은 archive의 exact closure(no-extra, no-missing, digest)를 검증하고,
+publish 직전 `verifyCandidateClosure`와 published application의
+`provePublishedApplication`이 manifest-declared exact closure를 다시 증명합니다. undeclared
+file은 거부됩니다.
+
+`stageCandidate`는 멱등합니다. move 이후 `.prepared` journal save 전에 crash가 나도 resume 시
+verified source archive를 temporary에 다시 추출하고, source closure와 기존 staged slot의
+exact closure(모든 regular-file relative path + byte digest + executable bit)를 비교해 완전히
+일치할 때만 `.staged`를 반환합니다. 같은 id/version이지만 payload가 다른 slot은 재사용하지 않으며
+destination 존재만으로는 성공으로 추론하지 않고 missing/invalid/mismatch/read failure를
+구분합니다. 이전 시도가 남긴 temporary 추출 디렉터리는 명시 정책으로 staging/검증 전에 제거하고
+성공/실패 모두 cleanup합니다. rollback target release slot이 이미 존재하는 정상 상황도 같은
+proof로 재사용하므로 rollback이 결정적으로 실패하지 않습니다.
+
+irreversible effect 이전 `.prepared`에서 loadManifest/verifyTopology 같은 영구 오류가 나면
+durable `.failed`로 terminalize해 active operation이 고착되지 않게 합니다. 이 시점엔 staging만
+완료된 상태라 보상할 것이 없으므로 compensation 규칙을 우회하지 않습니다. 보상 effect 성공 후
+`recordCompensated` persistence가 실패하면 "compensation failed"로 오기록하지 않고 실제
+persistence failure를 보존하며, durable `.compensating` 상태로 남겨 resume이 멱등하게 재시도합니다.
+보상 effect가 실패하고 그 terminal failure 기록 persistence까지 실패하면 두 error를 모두
+`HostPlatformCompensationPersistenceFailure`로 보존하고 `.compensating` 상태를 유지해 재시도합니다.
+completed settlement는 명시적 settle 시각을 받아 settle journal `observedAt`, completed
+operation `updatedAt`, manifest `activatedAt`에 동일 시각을 기록합니다.
+
+tar/launchctl child 실행은 공용 `RuntimeProcessOutputCollector`가 child 실행 중 stdout/stderr를
+동시에 drain하고 종료 후 race 없이 수집합니다. pipe buffer보다 큰 출력에서도 hang하지
+않습니다.
+
+`ReceiptWritingHostPlatformServiceReconciler`는 request.json을 쓰고 외부 executable을
+spawn해 receipt.json을 읽는 reconciler-level subprocess wrapper였지만, 실제 composition은
+in-process `MacOSHostPlatformReleaseServiceReconciler`를 직접 사용하고 process 경계는
+`HostPlatformLayerEffectExecutor`가 manager 전체를 spawn하는 방식이었습니다. reconciler-level
+subprocess 경계는 중복이었고 사용되지 않았으므로 제거했습니다. 상세는
+[TS-226](../troubleshooting/226_host_platform_durable_reconciliation.md)를 참고합니다.
+
 ## 8. Source 책임
 
 초기 PoC는 Shell script가 대부분의 일을 직접 수행했습니다. 제품화 단계에서는 책임을 아래처럼 재배치합니다.

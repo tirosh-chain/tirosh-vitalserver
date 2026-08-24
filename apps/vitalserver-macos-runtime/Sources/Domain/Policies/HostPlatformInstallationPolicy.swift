@@ -9,12 +9,26 @@ public enum HostPlatformInstallationPolicyError: Error, Equatable, Sendable {
   case rollbackReleaseUnavailable
   case rollbackTargetMismatch
   case operationCommandMismatch
-  case invalidOperationShape(HostPlatformInstallationOperationState)
+  case invalidOperationShape(HostPlatformInstallationPhase)
+  case invalidJournal(String)
   case invalidTransition(
-    from: HostPlatformInstallationOperationState,
+    from: HostPlatformInstallationPhase,
     event: String
   )
-  case invalidServiceReceipt
+  case activeReleaseNotProven(String)
+  case invalidServiceObservation(String)
+}
+
+/// The next irreversible effect a reconciliation workflow must execute.
+public enum HostPlatformReconciliationStep: Equatable, Sendable {
+  case stageCandidate
+  case quiescePrevious
+  case publishInterfaces
+  case activateTarget
+  case loadTargetServices
+  case settle
+  case compensate
+  case none
 }
 
 public enum HostPlatformInstallationPolicy {
@@ -22,10 +36,6 @@ public enum HostPlatformInstallationPolicy {
     HostPlatformInstallationContract.manifestSchemaVersion
   public static let operationSchemaVersion =
     HostPlatformInstallationContract.operationSchemaVersion
-  public static let serviceRequestSchemaVersion =
-    HostPlatformInstallationContract.serviceRequestSchemaVersion
-  public static let serviceReceiptSchemaVersion =
-    HostPlatformInstallationContract.serviceReceiptSchemaVersion
 
   public static func makeInitialManifest(
     installationId: String,
@@ -80,19 +90,71 @@ public enum HostPlatformInstallationPolicy {
       id: command.operationId,
       operationRevision: 1,
       kind: command.kind,
-      state: .requested,
+      phase: .requested,
       installationId: command.installationId,
       expectedInstallationRevision: command.expectedInstallationRevision,
       targetRelease: command.targetRelease,
       previousRelease: activeManifest.activeRelease,
       candidate: nil,
-      serviceReceipt: nil,
+      journal: [],
       failureReason: nil,
       requestedAt: command.requestedAt,
       updatedAt: command.requestedAt
     )
     try validate(operation)
     return operation
+  }
+
+  /// Decides the next irreversible effect from the durable phase and the
+  /// Host-owned `current` symlink observation. Never advances from missing,
+  /// failed, or unknown state without an explicit transition.
+  public static func nextStep(
+    operation: HostPlatformInstallationOperation,
+    currentReleaseTarget: HostPlatformCurrentReleaseTargetRead,
+    previousReleaseRoot: String,
+    targetReleaseRoot: String
+  ) throws -> HostPlatformReconciliationStep {
+    try validate(operation)
+    switch operation.phase {
+    case .requested:
+      return .stageCandidate
+    case .prepared:
+      switch currentReleaseTarget {
+      case .resolved(let path) where path == previousReleaseRoot:
+        return .quiescePrevious
+      case .resolved(let path) where path == targetReleaseRoot:
+        // Deep resume: activation already happened in a prior attempt.
+        return .activateTarget
+      case .resolved(let path):
+        throw HostPlatformInstallationPolicyError.activeReleaseNotProven(
+          "current target is neither previous nor target actual=\(path)"
+        )
+      case .notSymlink:
+        throw HostPlatformInstallationPolicyError.activeReleaseNotProven(
+          "current release link is not a symlink"
+        )
+      case .missing:
+        throw HostPlatformInstallationPolicyError.activeReleaseNotProven(
+          "current release link is missing"
+        )
+      case .readFailed(let reason):
+        throw HostPlatformInstallationPolicyError.activeReleaseNotProven(
+          "current release link read failed reason=\(reason)"
+        )
+      }
+    case .previousQuiesced:
+      return .publishInterfaces
+    case .interfacesPublished:
+      return .activateTarget
+    case .targetActivated:
+      return .loadTargetServices
+    case .targetServicesLoaded:
+      return .settle
+    case .compensating:
+      return .compensate
+    case .compensated, .completed, .failed:
+      return .none
+    }
   }
 
   public static func validate(
@@ -159,30 +221,37 @@ public enum HostPlatformInstallationPolicy {
     try requireTimestamp(operation.requestedAt, field: "requestedAt")
     try requireTimestamp(operation.updatedAt, field: "updatedAt")
 
-    let validShape: Bool
-    switch operation.state {
+    switch operation.phase {
     case .requested:
-      validShape =
-        operation.candidate == nil
-        && operation.serviceReceipt == nil
-        && operation.failureReason == nil
-    case .candidateStaged:
-      validShape =
-        operation.candidate != nil
-        && operation.serviceReceipt == nil
-        && operation.failureReason == nil
-    case .servicesReconciled, .succeeded:
-      validShape =
-        operation.candidate != nil
-        && operation.serviceReceipt?.outcome == .succeeded
-        && operation.failureReason == nil
+      guard operation.candidate == nil,
+        operation.journal.isEmpty,
+        operation.failureReason == nil
+      else {
+        throw HostPlatformInstallationPolicyError.invalidOperationShape(
+          operation.phase
+        )
+      }
+    case .prepared, .previousQuiesced, .interfacesPublished,
+      .targetActivated, .targetServicesLoaded, .completed:
+      guard operation.candidate != nil, operation.failureReason == nil else {
+        throw HostPlatformInstallationPolicyError.invalidOperationShape(
+          operation.phase
+        )
+      }
+    case .compensating, .compensated:
+      guard operation.candidate != nil,
+        operation.failureReason?.isEmpty == false
+      else {
+        throw HostPlatformInstallationPolicyError.invalidOperationShape(
+          operation.phase
+        )
+      }
     case .failed:
-      validShape = operation.failureReason?.isEmpty == false
-    }
-    guard validShape else {
-      throw HostPlatformInstallationPolicyError.invalidOperationShape(
-        operation.state
-      )
+      guard operation.failureReason?.isEmpty == false else {
+        throw HostPlatformInstallationPolicyError.invalidOperationShape(
+          operation.phase
+        )
+      }
     }
     if let candidate = operation.candidate {
       guard candidate.release == operation.targetRelease else {
@@ -196,9 +265,7 @@ public enum HostPlatformInstallationPolicy {
       )
       try requireTimestamp(candidate.stagedAt, field: "stagedAt")
     }
-    if let receipt = operation.serviceReceipt {
-      try validate(receipt, for: operation)
-    }
+    try validateJournal(operation.journal, phase: operation.phase)
   }
 
   public static func validate(
@@ -223,19 +290,27 @@ public enum HostPlatformInstallationPolicy {
     candidate: HostPlatformStagedCandidate,
     updatedAt: String
   ) throws -> HostPlatformInstallationOperation {
-    guard operation.state == .requested else {
-      throw invalidTransition(operation, event: "candidate-staged")
+    try validate(operation)
+    guard operation.phase == .requested else {
+      throw invalidTransition(operation, event: "prepared")
     }
     guard candidate.release == operation.targetRelease else {
       throw HostPlatformInstallationPolicyError.invalidField(
         "candidate.release"
       )
     }
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .stageCandidate,
+      phase: .prepared,
+      currentReleaseTarget: nil,
+      services: [],
+      observedAt: updatedAt
+    )
     let next = replacing(
       operation,
-      state: .candidateStaged,
+      phase: .prepared,
       candidate: candidate,
-      serviceReceipt: nil,
+      appendedEntry: entry,
       failureReason: nil,
       updatedAt: updatedAt
     )
@@ -243,65 +318,243 @@ public enum HostPlatformInstallationPolicy {
     return next
   }
 
-  public static func serviceRequest(
-    for operation: HostPlatformInstallationOperation
-  ) throws -> HostPlatformServiceReconciliationRequest {
-    try validate(operation)
-    guard operation.state == .candidateStaged else {
-      throw invalidTransition(operation, event: "reconcile-services")
-    }
-    return HostPlatformServiceReconciliationRequest(
-      schemaVersion: serviceRequestSchemaVersion,
-      reconciliationId: "\(operation.id).services",
-      operationId: operation.id,
-      installationId: operation.installationId,
-      expectedInstallationRevision: operation.expectedInstallationRevision,
-      targetRelease: operation.targetRelease,
-      previousRelease: operation.previousRelease
-    )
-  }
-
-  public static func recordServiceReconciliation(
+  public static func recordQuiescePrevious(
     operation: HostPlatformInstallationOperation,
-    receipt: HostPlatformServiceReconciliationReceipt
+    observations: [HostPlatformLaunchdServiceObservation],
+    updatedAt: String
   ) throws -> HostPlatformInstallationOperation {
-    guard operation.state == .candidateStaged else {
-      throw invalidTransition(operation, event: "services-reconciled")
+    try validate(operation)
+    guard operation.phase == .prepared else {
+      throw invalidTransition(operation, event: "previous-quiesced")
     }
-    try validate(receipt, for: operation)
-    guard receipt.outcome == .succeeded else {
-      throw HostPlatformInstallationPolicyError.invalidServiceReceipt
-    }
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .quiescePrevious,
+      phase: .previousQuiesced,
+      currentReleaseTarget: nil,
+      services: observations,
+      observedAt: updatedAt
+    )
     let next = replacing(
       operation,
-      state: .servicesReconciled,
+      phase: .previousQuiesced,
       candidate: operation.candidate,
-      serviceReceipt: receipt,
+      appendedEntry: entry,
       failureReason: nil,
-      updatedAt: receipt.observedAt
+      updatedAt: updatedAt
     )
     try validate(next)
     return next
   }
 
-  public static func makeSucceededSettlement(
-    operation: HostPlatformInstallationOperation
+  public static func recordPublishInterfaces(
+    operation: HostPlatformInstallationOperation,
+    updatedAt: String
+  ) throws -> HostPlatformInstallationOperation {
+    try validate(operation)
+    guard operation.phase == .previousQuiesced else {
+      throw invalidTransition(operation, event: "interfaces-published")
+    }
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .publishInterfaces,
+      phase: .interfacesPublished,
+      currentReleaseTarget: nil,
+      services: [],
+      observedAt: updatedAt
+    )
+    let next = replacing(
+      operation,
+      phase: .interfacesPublished,
+      candidate: operation.candidate,
+      appendedEntry: entry,
+      failureReason: nil,
+      updatedAt: updatedAt
+    )
+    try validate(next)
+    return next
+  }
+
+  public static func recordActivateTarget(
+    operation: HostPlatformInstallationOperation,
+    resolvedTarget: String,
+    updatedAt: String
+  ) throws -> HostPlatformInstallationOperation {
+    try validate(operation)
+    guard operation.phase == .interfacesPublished
+      || operation.phase == .prepared
+    else {
+      throw invalidTransition(operation, event: "target-activated")
+    }
+    guard resolvedTarget.hasPrefix("/") else {
+      throw HostPlatformInstallationPolicyError.invalidField(
+        "resolvedTarget"
+      )
+    }
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .activateTarget,
+      phase: .targetActivated,
+      currentReleaseTarget: resolvedTarget,
+      services: [],
+      observedAt: updatedAt
+    )
+    let next = replacing(
+      operation,
+      phase: .targetActivated,
+      candidate: operation.candidate,
+      appendedEntry: entry,
+      failureReason: nil,
+      updatedAt: updatedAt
+    )
+    try validate(next)
+    return next
+  }
+
+  public static func recordLoadTargetServices(
+    operation: HostPlatformInstallationOperation,
+    observations: [HostPlatformLaunchdServiceObservation],
+    updatedAt: String
+  ) throws -> HostPlatformInstallationOperation {
+    try validate(operation)
+    guard operation.phase == .targetActivated else {
+      throw invalidTransition(operation, event: "target-services-loaded")
+    }
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .loadTargetServices,
+      phase: .targetServicesLoaded,
+      currentReleaseTarget: nil,
+      services: observations,
+      observedAt: updatedAt
+    )
+    let next = replacing(
+      operation,
+      phase: .targetServicesLoaded,
+      candidate: operation.candidate,
+      appendedEntry: entry,
+      failureReason: nil,
+      updatedAt: updatedAt
+    )
+    try validate(next)
+    return next
+  }
+
+  public static func recordCompensating(
+    operation: HostPlatformInstallationOperation,
+    reason: String,
+    updatedAt: String
+  ) throws -> HostPlatformInstallationOperation {
+    try validate(operation)
+    guard !reason.isEmpty else {
+      throw HostPlatformInstallationPolicyError.invalidField("reason")
+    }
+    guard isCompensatable(operation.phase) else {
+      throw invalidTransition(operation, event: "compensating")
+    }
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .compensate,
+      phase: .compensating,
+      currentReleaseTarget: nil,
+      services: [],
+      observedAt: updatedAt
+    )
+    let next = replacing(
+      operation,
+      phase: .compensating,
+      candidate: operation.candidate,
+      appendedEntry: entry,
+      failureReason: reason,
+      updatedAt: updatedAt
+    )
+    try validate(next)
+    return next
+  }
+
+  public static func recordCompensated(
+    operation: HostPlatformInstallationOperation,
+    updatedAt: String
+  ) throws -> HostPlatformInstallationOperation {
+    try validate(operation)
+    guard operation.phase == .compensating else {
+      throw invalidTransition(operation, event: "compensated")
+    }
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .compensate,
+      phase: .compensated,
+      currentReleaseTarget: nil,
+      services: [],
+      observedAt: updatedAt
+    )
+    let next = replacing(
+      operation,
+      phase: .compensated,
+      candidate: operation.candidate,
+      appendedEntry: entry,
+      failureReason: operation.failureReason,
+      updatedAt: updatedAt
+    )
+    try validate(next)
+    return next
+  }
+
+  public static func recordFailure(
+    operation: HostPlatformInstallationOperation,
+    reason: String,
+    updatedAt: String
+  ) throws -> HostPlatformInstallationOperation {
+    try validate(operation)
+    guard !reason.isEmpty else {
+      throw HostPlatformInstallationPolicyError.invalidField("reason")
+    }
+    guard operation.phase == .requested
+      || operation.phase == .prepared
+      || operation.phase == .compensating
+      || operation.phase == .compensated
+    else {
+      throw invalidTransition(operation, event: "failed")
+    }
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .fail,
+      phase: .failed,
+      currentReleaseTarget: nil,
+      services: [],
+      observedAt: updatedAt
+    )
+    let next = replacing(
+      operation,
+      phase: .failed,
+      candidate: operation.candidate,
+      appendedEntry: entry,
+      failureReason: reason,
+      updatedAt: updatedAt
+    )
+    try validate(next)
+    return next
+  }
+
+  public static func makeCompletedSettlement(
+    operation: HostPlatformInstallationOperation,
+    settledAt: String
   ) throws -> (
     operation: HostPlatformInstallationOperation,
     manifest: HostPlatformInstallationManifest
   ) {
-    guard operation.state == .servicesReconciled,
-      let receipt = operation.serviceReceipt
-    else {
-      throw invalidTransition(operation, event: "settle-succeeded")
+    try validate(operation)
+    try requireTimestamp(settledAt, field: "settledAt")
+    guard operation.phase == .targetServicesLoaded else {
+      throw invalidTransition(operation, event: "settle")
     }
-    let succeeded = replacing(
+    let entry = HostPlatformReconciliationJournalEntry(
+      effect: .settle,
+      phase: .completed,
+      currentReleaseTarget: nil,
+      services: [],
+      observedAt: settledAt
+    )
+    let completed = replacing(
       operation,
-      state: .succeeded,
+      phase: .completed,
       candidate: operation.candidate,
-      serviceReceipt: receipt,
+      appendedEntry: entry,
       failureReason: nil,
-      updatedAt: receipt.observedAt
+      updatedAt: settledAt
     )
     let manifest = HostPlatformInstallationManifest(
       schemaVersion: schemaVersion,
@@ -310,34 +563,11 @@ public enum HostPlatformInstallationPolicy {
       activeRelease: operation.targetRelease,
       rollbackRelease: operation.previousRelease,
       activationOperationId: operation.id,
-      activatedAt: receipt.observedAt
+      activatedAt: settledAt
     )
-    try validate(succeeded)
+    try validate(completed)
     try validate(manifest)
-    return (succeeded, manifest)
-  }
-
-  public static func recordFailure(
-    operation: HostPlatformInstallationOperation,
-    reason: String,
-    updatedAt: String
-  ) throws -> HostPlatformInstallationOperation {
-    guard operation.state != .succeeded,
-      operation.state != .failed,
-      !reason.isEmpty
-    else {
-      throw invalidTransition(operation, event: "failed")
-    }
-    let failed = replacing(
-      operation,
-      state: .failed,
-      candidate: operation.candidate,
-      serviceReceipt: operation.serviceReceipt,
-      failureReason: reason,
-      updatedAt: updatedAt
-    )
-    try validate(failed)
-    return failed
+    return (completed, manifest)
   }
 
   public static func validatePersistenceTransition(
@@ -360,22 +590,98 @@ public enum HostPlatformInstallationPolicy {
       throw HostPlatformInstallationPolicyError.operationCommandMismatch
     }
     let allowed: Bool
-    switch (previous.state, next.state) {
-    case (.requested, .candidateStaged),
-      (.candidateStaged, .servicesReconciled),
-      (.servicesReconciled, .succeeded),
+    switch (previous.phase, next.phase) {
+    case (.requested, .prepared),
       (.requested, .failed),
-      (.candidateStaged, .failed),
-      (.servicesReconciled, .failed):
+      (.prepared, .failed),
+      (.prepared, .previousQuiesced),
+      (.prepared, .targetActivated),
+      (.prepared, .compensating),
+      (.previousQuiesced, .interfacesPublished),
+      (.previousQuiesced, .compensating),
+      (.interfacesPublished, .targetActivated),
+      (.interfacesPublished, .compensating),
+      (.targetActivated, .targetServicesLoaded),
+      (.targetActivated, .compensating),
+      (.targetServicesLoaded, .completed),
+      (.targetServicesLoaded, .compensating),
+      (.compensating, .compensated),
+      (.compensating, .failed),
+      (.compensated, .failed):
       allowed = true
     default:
       allowed = false
     }
     guard allowed else {
       throw HostPlatformInstallationPolicyError.invalidTransition(
-        from: previous.state,
-        event: next.state.rawValue
+        from: previous.phase,
+        event: next.phase.rawValue
       )
+    }
+  }
+
+  private static func isCompensatable(
+    _ phase: HostPlatformInstallationPhase
+  ) -> Bool {
+    switch phase {
+    case .prepared, .previousQuiesced, .interfacesPublished,
+      .targetActivated, .targetServicesLoaded:
+      true
+    case .requested, .compensating, .compensated, .completed, .failed:
+      false
+    }
+  }
+
+  private static func validateJournal(
+    _ journal: [HostPlatformReconciliationJournalEntry],
+    phase: HostPlatformInstallationPhase
+  ) throws {
+    if journal.isEmpty {
+      guard phase == .requested else {
+        throw HostPlatformInstallationPolicyError.invalidJournal(
+          "empty journal requires requested phase"
+        )
+      }
+      return
+    }
+    guard journal.last?.phase == phase else {
+      throw HostPlatformInstallationPolicyError.invalidJournal(
+        "last journal phase does not match operation phase"
+      )
+    }
+    for entry in journal {
+      switch (entry.effect, entry.phase) {
+      case (.stageCandidate, .prepared):
+        break
+      case (.quiescePrevious, .previousQuiesced):
+        break
+      case (.publishInterfaces, .interfacesPublished):
+        break
+      case (.activateTarget, .targetActivated):
+        guard entry.currentReleaseTarget?.hasPrefix("/") == true else {
+          throw HostPlatformInstallationPolicyError.invalidJournal(
+            "activateTarget entry is missing the resolved target"
+          )
+        }
+      case (.loadTargetServices, .targetServicesLoaded):
+        break
+      case (.compensate, .compensating),
+        (.compensate, .compensated):
+        break
+      case (.settle, .completed):
+        break
+      case (.fail, .failed):
+        break
+      default:
+        throw HostPlatformInstallationPolicyError.invalidJournal(
+          "effect \(entry.effect.rawValue) does not match phase \(entry.phase.rawValue)"
+        )
+      }
+      guard !entry.observedAt.isEmpty else {
+        throw HostPlatformInstallationPolicyError.invalidJournal(
+          "journal entry is missing observedAt"
+        )
+      }
     }
   }
 
@@ -412,31 +718,11 @@ public enum HostPlatformInstallationPolicy {
     }
   }
 
-  private static func validate(
-    _ receipt: HostPlatformServiceReconciliationReceipt,
-    for operation: HostPlatformInstallationOperation
-  ) throws {
-    guard receipt.schemaVersion == serviceReceiptSchemaVersion,
-      receipt.reconciliationId == "\(operation.id).services",
-      receipt.operationId == operation.id,
-      receipt.installationId == operation.installationId,
-      receipt.expectedInstallationRevision == operation.expectedInstallationRevision,
-      receipt.targetReleaseId == operation.targetRelease.id,
-      receipt.targetReleaseSHA256 == operation.targetRelease.sha256,
-      !receipt.observedAt.isEmpty,
-      (receipt.outcome == .succeeded) == (receipt.failureReason == nil),
-      receipt.outcome == .succeeded
-        || receipt.failureReason?.isEmpty == false
-    else {
-      throw HostPlatformInstallationPolicyError.invalidServiceReceipt
-    }
-  }
-
   private static func replacing(
     _ operation: HostPlatformInstallationOperation,
-    state: HostPlatformInstallationOperationState,
+    phase: HostPlatformInstallationPhase,
     candidate: HostPlatformStagedCandidate?,
-    serviceReceipt: HostPlatformServiceReconciliationReceipt?,
+    appendedEntry: HostPlatformReconciliationJournalEntry,
     failureReason: String?,
     updatedAt: String
   ) -> HostPlatformInstallationOperation {
@@ -445,13 +731,13 @@ public enum HostPlatformInstallationPolicy {
       id: operation.id,
       operationRevision: operation.operationRevision + 1,
       kind: operation.kind,
-      state: state,
+      phase: phase,
       installationId: operation.installationId,
       expectedInstallationRevision: operation.expectedInstallationRevision,
       targetRelease: operation.targetRelease,
       previousRelease: operation.previousRelease,
       candidate: candidate,
-      serviceReceipt: serviceReceipt,
+      journal: operation.journal + [appendedEntry],
       failureReason: failureReason,
       requestedAt: operation.requestedAt,
       updatedAt: updatedAt
@@ -462,19 +748,14 @@ public enum HostPlatformInstallationPolicy {
     _ operation: HostPlatformInstallationOperation,
     event: String
   ) -> HostPlatformInstallationPolicyError {
-    .invalidTransition(from: operation.state, event: event)
+    .invalidTransition(from: operation.phase, event: event)
   }
 
   private static func requireIdentifier(
     _ value: String,
     field: String
   ) throws {
-    guard !value.isEmpty,
-      value.count <= 128,
-      value.allSatisfy({
-        $0.isLetter || $0.isNumber || "-._:".contains($0)
-      })
-    else {
+    guard UpdateBootstrapIdentifierSyntax.isIdentifier(value) else {
       throw HostPlatformInstallationPolicyError.invalidField(field)
     }
   }
@@ -490,6 +771,41 @@ public enum HostPlatformInstallationPolicy {
   private static func requireTimestamp(_ value: String, field: String) throws {
     guard !value.isEmpty else {
       throw HostPlatformInstallationPolicyError.invalidField(field)
+    }
+  }
+}
+
+extension HostPlatformInstallationPolicyError:
+  HostPlatformReconciliationFailure
+{
+  public var reconciliationReason: String {
+    switch self {
+    case .invalidField(let field):
+      return "invalid field \(field)"
+    case .invalidInstallationRevision(let value):
+      return "invalid installation revision \(value)"
+    case .installationIdentityMismatch(let expected, let actual):
+      return "installation identity mismatch expected=\(expected) actual=\(actual)"
+    case .installationRevisionMismatch(let expected, let actual):
+      return "installation revision mismatch expected=\(expected) actual=\(actual)"
+    case .targetIsAlreadyActive:
+      return "target is already active"
+    case .rollbackReleaseUnavailable:
+      return "rollback release is unavailable"
+    case .rollbackTargetMismatch:
+      return "rollback target mismatch"
+    case .operationCommandMismatch:
+      return "operation command mismatch"
+    case .invalidOperationShape(let phase):
+      return "invalid operation shape phase=\(phase.rawValue)"
+    case .invalidJournal(let reason):
+      return "invalid journal \(reason)"
+    case .invalidTransition(let from, let event):
+      return "invalid transition from=\(from.rawValue) event=\(event)"
+    case .activeReleaseNotProven(let reason):
+      return "active release not proven \(reason)"
+    case .invalidServiceObservation(let reason):
+      return "invalid service observation \(reason)"
     }
   }
 }

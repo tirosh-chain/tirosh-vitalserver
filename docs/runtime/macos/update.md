@@ -474,6 +474,15 @@ Control API가 여전히 새 owner code를 실행하는 동안 Container를 roll
 전체 ordered apply/rollback receipt를 보존하며, 누락되거나 순서가 다른
 receipt는 성공 증거가 아닙니다.
 
+Host release service 전환은 `launchctl bootout` 명령의 성공만으로 종료를
+간주하지 않습니다. 각 service를 내린 뒤 launchd가 명시적으로 `notLoaded`를
+보고할 때까지 기다리고, 특히 VM에는 graceful shutdown을 포함한 장기 stop
+window를 적용합니다. target service 시작이 중간에 실패하면 이미 시작된
+target service만 역순으로 내리고 settlement를 확인한 뒤, 실제 unload가
+요청된 previous service만 manifest 순서로 복구합니다. launchctl read 실패,
+권한 실패, unknown state, settlement timeout은 모두 서로 다른 실패로
+보존하며 성공이나 `notLoaded`로 보정하지 않습니다.
+
 Guest content-addressed artifact store는 같은 digest가 이미 존재해도 incoming
 request body를 declared Content-Length까지 소비하고 SHA-256을 검증합니다.
 기존 artifact 존재를 이유로 body를 읽지 않고 성공 응답을 반환하면 Host upload

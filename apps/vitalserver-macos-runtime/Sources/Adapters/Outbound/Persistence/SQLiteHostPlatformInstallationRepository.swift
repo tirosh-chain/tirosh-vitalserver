@@ -240,7 +240,7 @@ public struct SQLiteHostPlatformInstallationRepository:
     do {
       try validateOperation(operation)
       try validateManifest(activeManifest)
-      guard operation.state == .succeeded,
+      guard operation.phase == .completed,
         activeManifest.activationOperationId == operation.id,
         activeManifest.installationId == operation.installationId,
         activeManifest.installationRevision == expectedInstallationRevision + 1,
@@ -310,7 +310,7 @@ public struct SQLiteHostPlatformInstallationRepository:
   ) throws {
     do {
       try validateOperation(operation)
-      guard terminal == (operation.state == .failed) else {
+      guard terminal == (operation.phase == .failed) else {
         throw
           SQLiteHostPlatformInstallationRepositoryError
           .invalidDocument(reason: "terminal state mismatch")
@@ -590,7 +590,7 @@ public struct SQLiteHostPlatformInstallationRepository:
         """,
       bindings: [
         .int(operation.operationRevision),
-        .text(operation.state.rawValue),
+        .text(operation.phase.rawValue),
         .text(try encode(operation)),
         .text(operation.id),
       ]
@@ -603,7 +603,7 @@ public struct SQLiteHostPlatformInstallationRepository:
     [
       .text(operation.id),
       .int(operation.operationRevision),
-      .text(operation.state.rawValue),
+      .text(operation.phase.rawValue),
       .text(try encode(operation)),
     ]
   }
