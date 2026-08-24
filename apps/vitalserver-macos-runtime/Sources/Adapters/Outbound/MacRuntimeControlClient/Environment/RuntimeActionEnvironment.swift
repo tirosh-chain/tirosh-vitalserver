@@ -83,6 +83,10 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
                 RuntimeControlClientConstants.RuntimeCommand.runtime,
                 RuntimeControlClientConstants.RuntimeCommand.verifyUpdateBootstrap,
                 bundleURL.path,
+            ],
+            environment: [
+                RuntimeControlClientConstants.Environment.vmHome:
+                    RuntimeControlClientConstants.Paths.vmHome,
             ]
         )
     }

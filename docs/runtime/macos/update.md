@@ -19,6 +19,19 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
 | update 중 watchdog이 복구를 시도하나? | 안 한다. stable update operation lease가 활성인 동안 watchdog auto-recovery를 suppress한다 |
 
+설치된 launcher를 사용자 shell에서 직접 실행할 때는 installed Host 경계를
+명시해야 합니다.
+
+```sh
+VITALSERVER_VM_HOME="/Library/Application Support/VitalServerHelper/vm" \
+  /usr/local/bin/vitalserver-vm runtime verify-update-bootstrap \
+  /path/to/update.tar.gz
+```
+
+Runtime Control Platform Agent도 같은 값을 명시적으로 worker environment에
+전달합니다. 이 값이 없으면 root service는 `/var/root/.tirosh`를 개발 기본값으로
+선택하므로 installed trust store나 journal을 읽은 것으로 인정할 수 없습니다.
+
 Fresh install은 release manifest의 `releaseLabel`과 실제 rootfs staging
 archive 바이트로 초기 Container Image-Set 및 Guest Runtime Release 계약을
 만든다. Guest bootstrap은 control-store migration 뒤 이 계약을 검증하고,
