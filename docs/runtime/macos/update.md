@@ -467,12 +467,16 @@ invalid, stale, 또는 read-failed이면 apply를 진행하지 않으며 loopbac
 - `/usr/local/bin/vitalserver-host-installation-manager`
 - `/usr/local/bin/vitalserver-update-handoff-supervisor`
 
-Host Platform 적용이 실패하면 Host-owned effect를 먼저 되돌리고, Guest
-Control API가 여전히 새 owner code를 실행하는 동안 Container를 rollback한
-뒤 Guest Runtime을 rollback합니다. 따라서 product layer rollback 순서는
-`Host Platform -> Container -> Guest Runtime`입니다. execution report는
+Host Platform 적용이 실패하면 Host Platform durable compensation이 먼저
+이전 Host release를 되돌립니다. 이 보상은 Host Platform apply receipt의
+실패와 Host Platform phase journal로 남으며, product-update rollback
+receipt의 `host-platform` 항목이 아닙니다. 이미 성공한 product layer는
+역순으로 되돌립니다: Guest Runtime 다음 Container. execution report는
 전체 ordered apply/rollback receipt를 보존하며, 누락되거나 순서가 다른
-receipt는 성공 증거가 아닙니다.
+receipt는 성공 증거가 아닙니다. `prove-update-bootstrap --expect
+failed-rolled-back`은 apply receipts `container, guest-runtime,
+host-platform`(마지막 실패)와 rollback receipts `guest-runtime,
+container`(모두 성공)를 요구합니다.
 
 Host release service 전환은 `launchctl bootout` 명령의 성공만으로 종료를
 간주하지 않습니다. 각 service를 내린 뒤 launchd가 명시적으로 `notLoaded`를
@@ -494,9 +498,23 @@ bundle을 사용합니다.
 
 ### Installed field proof
 
+설치/서명/적용 전에 명령 표면과 이름 붙은 입력만 검사하려면 아래
+non-mutating preflight를 먼저 실행합니다. 이 단계는 VM/rootfs를 만들지
+않고, sudo를 쓰지 않으며, secret 값을 출력하지 않습니다.
+
+```sh
+make dist/update/field-proof-preflight
+```
+
 `apply-update-bootstrap`의 성공 종료는 durable handoff admission과 launch
 성공을 뜻하며 전체 layer 적용 완료를 뜻하지 않습니다. 따라서 field smoke는
 고정 sleep이나 apply exit code로 최종 결과를 추측하지 않습니다.
+`make dist/update/dev/apply-smoke`는 설치된 Helper가 서명된 bundle을
+terminal `succeeded` journal까지 적용했는지를 증명합니다. 설치된
+`helperVersion`과 envelope `targetRelease.productVersion`의 later-than
+비교는 없으므로, 이 smoke만으로 Helper 0.2.2에서 이후 product version으로의
+upgrade를 증명하지 않습니다. 그 관계는 운영자가 명시한 두 identity를
+기록하는 것이고, preflight는 같음/다름만 보고합니다.
 
 ```sh
 make dist/update/dev/apply-smoke \
@@ -519,8 +537,9 @@ read/decode failure, timeout과 terminal failure는 서로 다른 오류입니�
 rollback smoke의 fault bundle은 일반 bundle에서 만들어내거나 암묵적으로
 변형하지 않습니다. Host Platform effect가 의도적으로 실패하도록 별도로
 구성하고 동일 publisher로 서명한 bundle이어야 하며, proof는
-Container/Guest Runtime 적용 성공, Host Platform 적용 실패,
-Container/Guest Runtime owner-safe rollback 성공 receipt를 모두 요구합니다.
+Container와 Guest Runtime 적용 성공, Host Platform 적용 실패,
+Guest Runtime 다음 Container의 owner-safe rollback 성공 receipt를 모두
+요구합니다.
 
 ```text
 rootfs-base.raw.gz = immutable base artifact

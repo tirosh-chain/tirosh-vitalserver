@@ -51,7 +51,7 @@ include make/vm.mk
 	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/cached dist/dmg/dev/compile dist/dmg/dev/verify \
 	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/review dist/pkg/dev/runtime-smoke dist/pkg/dev/verify \
 	dist/dmg/release/review dist/pkg/release/review dist/pkg/release/verify \
-	dist/update/dev dist/update/verify/dev dist/update/dev/smoke dist/update/dev/apply-smoke dist/update/dev/rollback-smoke \
+	dist/update/dev dist/update/verify/dev dist/update/dev/smoke dist/update/dev/apply-smoke dist/update/dev/rollback-smoke dist/update/field-proof-preflight \
 	dist/image-update/dev dist/image-update/verify/dev dist/image-update/dev/smoke dist/image-update/dev/apply-smoke \
 	dist/troubleshooting/dev dist/troubleshooting/dev/verify dist/troubleshooting/release dist/troubleshooting/release/verify \
 	dist/install/dev dist/install/dev/verified dist/installed/health dist/installed/smoke dist/uninstall/dev \
@@ -94,6 +94,7 @@ dist/update/verify/dev: internal/vm/update/verify/dev
 dist/update/dev/smoke: internal/vm/update/smoke/dev
 dist/update/dev/apply-smoke: internal/vm/update/apply-smoke/dev
 dist/update/dev/rollback-smoke: internal/vm/update/rollback-smoke/dev
+dist/update/field-proof-preflight: internal/vm/update/field-proof-preflight
 dist/image-update/dev: internal/vm/image-update/dev
 dist/image-update/verify/dev: internal/vm/image-update/verify/dev
 dist/image-update/dev/smoke: internal/vm/image-update/smoke/dev
@@ -317,6 +318,7 @@ help/dist:
 	@printf "  make dist/dmg/dev/{cached|compile|verify}  # local/diagnostic phases only\n"
 	@printf "  make dist/{pkg|dmg|update|image-update}/{dev|release} [VM_RELEASE_BRANCH=main]\n"
 	@printf "  make dist/{update|image-update}/{dev|release}/smoke\n"
+	@printf "  make dist/update/field-proof-preflight\n"
 	@printf "  make dist/troubleshooting/{dev|release}/verify\n"
 	@printf "  make dist/{install|uninstall}/dev [VM_UNINSTALL_ARGS=--clean]\n"
 	@printf "  make dist/installed/{health|smoke}   # repo-driven dev install checks\n"
@@ -327,6 +329,8 @@ help/dist:
 	@printf "  dist/dmg/dev/verify           Existing-artifact diagnostic: readback plus verified cached golden runtime smoke\n"
 	@printf "  dist/pkg/release/verify       Run review, build release pkg, and run runtime smoke\n"
 	@printf "  dist/dmg/release              Standard release DMG gate: review, environment preflight, clean compile, artifact verify, runtime smoke\n"
+	@printf "  dist/update/field-proof-preflight\n"
+	@printf "                                Validate field-proof command surface and named inputs without install/sign\n"
 	@printf "  dist/update/verify/dev        Verify development product update bundle\n"
 	@printf "  dist/update/verify/release    Verify release product update bundle\n"
 	@printf "  dist/image-update/verify/dev  Verify development VM image/rootfs update bundle\n"

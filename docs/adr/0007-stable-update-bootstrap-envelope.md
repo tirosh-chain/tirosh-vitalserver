@@ -166,8 +166,9 @@ bootstrap-directory readers and a pure exact-closure policy: the envelope, next
 updater, specification, and declared `payloadArtifacts` must be the only
 regular files, duplicate or unsafe paths and symbolic links are rejected, and
 missing, inspection, listing, read, and decode failures remain distinct. The
-Host still treats specification bytes as opaque. Implementation and field
-proof of the v2 envelope remain in progress. The installed CLI now exposes
+Host still treats specification bytes as opaque. The v2 envelope, handoff v2, and Host-owned Guest endpoint are implemented.
+Installed field proof remains the release gate and starts at
+`make dist/update/field-proof-preflight`. The installed CLI now exposes
 `runtime apply-update-bootstrap <bundle> --request-id <id>`. Its Host
 composition materializes an archive or explicit bundle directory, requires the
 installed product release and an absent journal for the envelope ID, loads the
@@ -179,7 +180,7 @@ revision. An existing journal is an explicit collision: this entry point does
 not guess whether it should retry, resume, or replace that state. Archive
 materialization cleanup failure is also reported instead of being hidden.
 Package assembly now requires a release-process-owned public-key trust store as
-an explicit input before VM/rootfs compile. The tooling strict-decodes the v1
+an explicit input before VM/rootfs compile. The tooling strict-decodes the v2
 contract, installs the exact bytes at
 `/Library/Application Support/VitalServerHelper/config/update-bootstrap-trust-store.json`,
 and reads the expanded PKG payload back from the DMG to prove that it matches
@@ -263,7 +264,7 @@ vitalserver-devtools update-bootstrap-bundle \
 
 vitalserver-devtools verify-update-bootstrap-bundle \
   --bundle <tar-gz-path> \
-  --publisher-public-key <ed25519-spki-pem>
+  --publisher-trust-store <update-bootstrap-trust-store.json>
 ```
 
 The payload root is an explicit release-composition input. Every artifact,

@@ -72,6 +72,7 @@ manager/executor/supervisor 및 launchd definition을 명시된 uninstall closur
 | release `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/release` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/release`가 소유 |
 | air-gapped Product Update | `dist/update-bundles/<update-id>.tar.gz` | `make dist/update/release` | publisher-signed Container, Guest Runtime, Helper Host Platform closure |
 | VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make dist/image-update/release` | rootfs-base 교체가 필요한 경우에만 사용 |
+| Product Update field-proof preflight | command surface + named inputs | `make dist/update/field-proof-preflight` | envelope v2/handoff v2 명령 표면과 입력 존재 검사. 설치/서명/sudo 없음. later-version upgrade는 증명하지 않음 |
 | Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | publisher trust, target, next updater, specification digest와 payload closure 검증 |
 | VM Image Update bundle 검증 | VM image update tarball | `make dist/image-update/verify/release` | 전달 전 manifest/checksum 검증 |
 | 개발 설치 테스트 | installed runtime | `make dist/install/dev` | 현재 repo가 있는 개발 Mac에 설치 후 `make dist/installed/health` |
@@ -960,6 +961,7 @@ VM compile 여부는 profile target이 소유합니다. 동일 의미의 긴 `VA
 온라인/오프라인 업데이트는 같은 bundle tarball을 입력으로 사용합니다.
 
 ```sh
+make dist/update/field-proof-preflight
 make dist/update/release
 make dist/update/verify/release
 ```

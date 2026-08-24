@@ -4,7 +4,7 @@
 .PHONY: internal/vm/troubleshooting internal/vm/troubleshooting/verify internal/vm/troubleshooting/dev internal/vm/troubleshooting/dev/verify internal/vm/troubleshooting/release internal/vm/troubleshooting/release/verify
 .PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/artifact-verify internal/vm/dmg/environment-preflight internal/vm/dmg/dev internal/vm/dmg/dev/cached internal/vm/dmg/dev/artifact-verify internal/vm/dmg/dev/compile internal/vm/dmg/dev/review internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/artifact-verify internal/vm/dmg/release/compile internal/vm/dmg/release/review internal/vm/dmg/release/runtime-smoke
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
-.PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release internal/vm/update/smoke internal/vm/update/smoke/dev internal/vm/update/smoke/release internal/vm/update/apply-smoke internal/vm/update/apply-smoke/dev internal/vm/update/apply-smoke/release internal/vm/update/rollback-smoke/dev internal/vm/update/tools internal/vm/update/host-platform-artifact internal/vm/update/host-platform-effect-configuration internal/vm/update/require-inputs
+.PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release internal/vm/update/smoke internal/vm/update/smoke/dev internal/vm/update/smoke/release internal/vm/update/apply-smoke internal/vm/update/apply-smoke/dev internal/vm/update/apply-smoke/release internal/vm/update/rollback-smoke/dev internal/vm/update/field-proof-preflight internal/vm/update/tools internal/vm/update/host-platform-artifact internal/vm/update/host-platform-effect-configuration internal/vm/update/require-inputs
 .PHONY: internal/vm/image-update internal/vm/image-update/dev internal/vm/image-update/legacy-build internal/vm/image-update/legacy-verify internal/vm/image-update/legacy-apply-smoke
 .PHONY: internal/vm/image-update/release
 .PHONY: internal/vm/update/verify internal/vm/update/verify/dev
@@ -577,6 +577,7 @@ internal/vm/distribution/review: repo/verify-submodule product/scenarios/check p
 		packages/vitalserver-devtools/tests/unit/test_packaging_templates.py \
 		packages/vitalserver-devtools/tests/unit/test_release_sync_contract.py \
 		packages/vitalserver-devtools/tests/unit/test_update_bootstrap_trust_store.py \
+		packages/vitalserver-devtools/tests/unit/test_field_proof_preflight.py \
 		packages/vitalserver-devtools/tests/unit/test_upstream_vitalserver_contract.py
 	$(UV) run --project packages/vitalserver-guest-tools pytest \
 		packages/vitalserver-guest-tools/tests/test_redis_repair.py
@@ -974,6 +975,44 @@ internal/vm/update/rollback-smoke/dev:
 		--expect failed-rolled-back \
 		--timeout-seconds "$(VM_UPDATE_PROOF_TIMEOUT_SECONDS)" \
 		--poll-interval-milliseconds "$(VM_UPDATE_PROOF_POLL_INTERVAL_MILLISECONDS)"
+
+VM_UPDATE_FIELD_PROOF_INPUTS := \
+	VM_UPDATE_ID \
+	VM_UPDATE_SPECIFICATION_ID \
+	VM_UPDATE_PRODUCT_VERSION \
+	VM_UPDATE_RUNTIME_VERSION \
+	VM_UPDATE_ISSUED_AT \
+	VM_UPDATE_PUBLISHER_KEY_ID \
+	VM_UPDATE_PUBLISHER_PRIVATE_KEY \
+	VM_UPDATE_BOOTSTRAP_TRUST_STORE \
+	VM_UPDATE_CONTAINER_ARTIFACT \
+	VM_UPDATE_CONTAINER_ROLLBACK_ARTIFACT \
+	VM_UPDATE_CONTAINER_EFFECT_CONFIGURATION \
+	VM_UPDATE_GUEST_RUNTIME_ARTIFACT \
+	VM_UPDATE_GUEST_RUNTIME_ROLLBACK_ARTIFACT \
+	VM_UPDATE_GUEST_RUNTIME_EFFECT_CONFIGURATION \
+	VM_UPDATE_HOST_PLATFORM_ARCHIVE_COMPOSITION \
+	VM_UPDATE_HOST_PLATFORM_ROLLBACK_ARTIFACT \
+	VM_UPDATE_HOST_PLATFORM_INSTALLATION_ID \
+	VM_UPDATE_HOST_PLATFORM_APPLY_REVISION \
+	VM_UPDATE_HOST_PLATFORM_APPLY_RELEASE_ID \
+	VM_UPDATE_HOST_PLATFORM_APPLY_RELEASE_VERSION \
+	VM_UPDATE_HOST_PLATFORM_APPLY_SLOT_RELATIVE_PATH \
+	VM_UPDATE_HOST_PLATFORM_ROLLBACK_REVISION \
+	VM_UPDATE_HOST_PLATFORM_ROLLBACK_RELEASE_ID \
+	VM_UPDATE_HOST_PLATFORM_ROLLBACK_RELEASE_VERSION \
+	VM_UPDATE_HOST_PLATFORM_ROLLBACK_SLOT_RELATIVE_PATH \
+	VM_UPDATE_APPLY_SMOKE_CONFIRM \
+	VM_UPDATE_APPLY_REQUEST_ID \
+	VM_UPDATE_ROLLBACK_PROOF_BUNDLE \
+	VM_UPDATE_ROLLBACK_PROOF_ID \
+	VM_UPDATE_ROLLBACK_PROOF_REQUEST_ID
+
+internal/vm/update/field-proof-preflight:
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" field-proof-preflight \
+		$(if $(VM_UPDATE_BOOTSTRAP_TRUST_STORE),--update-bootstrap-trust-store "$(VM_UPDATE_BOOTSTRAP_TRUST_STORE)")
+
+$(foreach var,$(VM_UPDATE_FIELD_PROOF_INPUTS),$(eval internal/vm/update/field-proof-preflight: export $(var) := $$($(var))))
 
 internal/vm/image-update/legacy-build: internal/vm/release-contract pwa/build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \

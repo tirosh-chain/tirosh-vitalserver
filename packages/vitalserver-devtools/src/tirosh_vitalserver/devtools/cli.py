@@ -21,6 +21,9 @@ from tirosh_vitalserver.devtools.application.usecases import (
     environment as environment_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
+    field_proof_preflight as field_proof_preflight_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
     guest_image as guest_image_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
@@ -1431,6 +1434,29 @@ def main() -> int:
             usecase_inputs.PythonWorkspaceToolInput(
                 uv=args.uv,
                 tool_args=args.tool_args,
+            )
+        )
+    )
+
+    field_proof_preflight = subparsers.add_parser(
+        "field-proof-preflight",
+        help=(
+            "validate Helper 0.2.2 field-proof command surface and named "
+            "inputs without installing, signing, or printing secrets"
+        ),
+        description=(
+            "Validate Helper 0.2.2 field-proof command surface and named "
+            "inputs without installing, signing, or printing secrets."
+        ),
+    )
+    field_proof_preflight.add_argument(
+        "--update-bootstrap-trust-store",
+        type=Path,
+    )
+    field_proof_preflight.set_defaults(
+        handler=lambda args: field_proof_preflight_usecases.run_field_proof_preflight(
+            usecase_inputs.FieldProofPreflightInput(
+                update_bootstrap_trust_store=args.update_bootstrap_trust_store,
             )
         )
     )

@@ -344,6 +344,11 @@ class ApplySmokeReleaseUpdateBundleInput:
 
 
 @dataclass(frozen=True)
+class FieldProofPreflightInput:
+    update_bootstrap_trust_store: Path | None
+
+
+@dataclass(frozen=True)
 class ReleasePackageEnvironmentPreflightInput:
     config: Path
     release_file: Path

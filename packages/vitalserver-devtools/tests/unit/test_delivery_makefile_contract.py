@@ -279,6 +279,7 @@ def test_distribution_review_runs_current_macos_stabilization_contracts() -> Non
         "packages/vitalserver-devtools/tests/unit/test_macos_installed_runtime.py",
         "packages/vitalserver-devtools/tests/unit/test_macos_update_bundle_usecases.py",
         "packages/vitalserver-devtools/tests/unit/test_update_bootstrap_trust_store.py",
+        "packages/vitalserver-devtools/tests/unit/test_field_proof_preflight.py",
     ):
         assert current_product_test in review
 
@@ -367,6 +368,26 @@ def test_stable_update_field_smokes_require_owner_proof() -> None:
     assert "--timeout-seconds" in rollback_smoke
     assert "--poll-interval-milliseconds" in rollback_smoke
     assert "dist/update/dev/rollback-smoke" in root_makefile
+    assert "dist/update/field-proof-preflight" in root_makefile
+
+
+def test_field_proof_preflight_is_non_mutating() -> None:
+    package_makefile = PACKAGE_MAKEFILE.read_text(encoding="utf-8")
+    root_makefile = ROOT_MAKEFILE.read_text(encoding="utf-8")
+    recipe = target_recipe(
+        package_makefile,
+        "internal/vm/update/field-proof-preflight",
+    )
+
+    assert "field-proof-preflight" in recipe
+    assert "sudo" not in recipe
+    assert "apply-update-bootstrap" not in recipe
+    assert "internal/vm/pkg/install" not in recipe
+    assert "helper-stable-update-release" not in recipe
+    assert (
+        "dist/update/field-proof-preflight: "
+        "internal/vm/update/field-proof-preflight"
+    ) in root_makefile
 
 
 def test_public_dmg_targets_route_only_to_the_standard_profiles() -> None:
