@@ -70,10 +70,92 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             )
         )
         XCTAssertNotEqual(receipt.resolvedRuntimeHome, "/var/root/.tirosh/vitalserver-vm")
+        XCTAssertNil(receipt.verificationInvocationId)
         XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: installed.updateBootstrapStagingDirectory
                     .appendingPathComponent("update-0.2.2").path
+            )
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: installed.updateBootstrapVerificationInvocationBinding(
+                    verificationInvocationId:
+                        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+                ).path
+            )
+        )
+    }
+
+    func testVerifyBindsExplicitInvocationIdWithoutInventingOne() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(
+            productRoot: root.appendingPathComponent("product")
+        )
+        let bundle = root.appendingPathComponent("incoming-update")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(
+            at: installed.updateBootstrapTrustStore.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let privateKey = Curve25519.Signing.PrivateKey()
+        try writeTrustStore(
+            privateKey.publicKey.rawRepresentation,
+            to: installed.updateBootstrapTrustStore
+        )
+        try writeSignedBundle(bundle, privateKey: privateKey)
+
+        let invocationId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installed.runtimeHome,
+                installed: installed,
+                config: installed.vmConfig,
+                pidFile: installed.pidFile
+            ),
+            clock: UpdateBootstrapFixedClock()
+        )
+        try lifecycle.verifyUpdateBootstrap(
+            RuntimeVerifyUpdateBootstrapCommand(
+                bundleURL: bundle,
+                verificationInvocationId: invocationId
+            )
+        )
+
+        let receipt = try JSONDecoder().decode(
+            UpdateBootstrapVerificationReceipt.self,
+            from: Data(
+                contentsOf: installed.updateBootstrapVerificationReceipt(
+                    updateId: "update-0.2.2"
+                )
+            )
+        )
+        let binding = try JSONDecoder().decode(
+            UpdateBootstrapVerificationInvocationBinding.self,
+            from: Data(
+                contentsOf: installed
+                    .updateBootstrapVerificationInvocationBinding(
+                        verificationInvocationId: invocationId
+                    )
+            )
+        )
+        XCTAssertEqual(receipt.verificationInvocationId, invocationId)
+        XCTAssertEqual(binding.verificationInvocationId, invocationId)
+        XCTAssertEqual(binding.updateId, receipt.updateId)
+        XCTAssertEqual(
+            binding.canonicalPayloadSHA256,
+            receipt.canonicalPayloadSHA256
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: installed
+                    .platformAgentUpdateBootstrapVerificationEvidence(
+                        verificationInvocationId: invocationId
+                    ).path
             )
         )
     }

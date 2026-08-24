@@ -220,6 +220,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-226 | Host Platform reconcile이 durable, resumable lifecycle로 재구성되고 exit-code 계약으로 분류됨 | Update / Host platform reconciliation | active | [Host Platform reconciliation is now a durable, resumable lifecycle](226_host_platform_durable_reconciliation.md) |
 | TS-227 | prove-update-bootstrap이 terminal journal 이후 persisted Guest URL 또는 Host Platform journal을 거부함 | Update / Field proof | active | [prove-update-bootstrap rejects persisted layer evidence](227_prove_update_bootstrap_rejects_persisted_layer_evidence.md) |
 | TS-228 | prove-update-bootstrap이 terminal journal 이후 verify-update-bootstrap receipt를 거부함 | Update / Field proof | active | [prove-update-bootstrap rejects verify-update-bootstrap receipt](228_prove_update_bootstrap_rejects_verification_receipt.md) |
+| TS-229 | prove-update-bootstrap이 MacPlatformAgent verify를 operator root CLI receipt와 구분하지 못함 | Update / Field proof | active | [Platform Agent verify correlation distinguishes MacPlatformAgent from root CLI](229_platform-agent-verify-correlation.md) |
 | TS-225 | Effect configuration이 v2 schema 검증 없이 서명되고 executor id가 configuration과 불일치함 | Update / Release composition | active | [Effect configuration signed without v2 schema validation](225_effect_configuration_signed_without_v2_validation.md) |
 
 ## Follow-up 규칙

@@ -9,6 +9,19 @@ final class UpdateBootstrapVerificationReceiptPolicyTests: XCTestCase {
         )
     }
 
+    func testRejectsInvalidBoundVerificationInvocationId() {
+        XCTAssertThrowsError(
+            try UpdateBootstrapVerificationReceiptPolicy.validate(
+                receipt(verificationInvocationId: "")
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapVerificationReceiptValidationError,
+                .invalidVerificationInvocationId("")
+            )
+        }
+    }
+
     func testValidationDoesNotHardcodeRootIdentity() throws {
         XCTAssertNoThrow(
             try UpdateBootstrapVerificationReceiptPolicy.validate(
@@ -203,7 +216,8 @@ final class UpdateBootstrapVerificationReceiptPolicyTests: XCTestCase {
         resolvedRuntimeHome: String = "/Library/Application Support/VitalServerHelper/vm",
         observedAt: String = "2026-08-24T00:00:00Z",
         uid: UInt32 = 0,
-        euid: UInt32 = 0
+        euid: UInt32 = 0,
+        verificationInvocationId: String? = nil
     ) -> UpdateBootstrapVerificationReceipt {
         UpdateBootstrapVerificationReceipt(
             schemaVersion: schemaVersion,
@@ -214,7 +228,8 @@ final class UpdateBootstrapVerificationReceiptPolicyTests: XCTestCase {
             trustStorePath: installedTrustStore,
             observedAt: observedAt,
             uid: uid,
-            euid: euid
+            euid: euid,
+            verificationInvocationId: verificationInvocationId
         )
     }
 

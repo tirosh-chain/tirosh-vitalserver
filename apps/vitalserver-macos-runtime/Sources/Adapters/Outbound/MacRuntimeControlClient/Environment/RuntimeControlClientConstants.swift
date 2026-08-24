@@ -62,6 +62,8 @@ enum RuntimeControlClientConstants {
         static let applyUpdateBootstrap = "apply-update-bootstrap"
         static let verifyUpdateBootstrap = "verify-update-bootstrap"
         static let optionRequestID = "--request-id"
+        static let optionVerificationInvocationID =
+            "--verification-invocation-id"
         static let rollback = "rollback"
         static let redisBackup = "redis-backup"
         static let redisRestore = "redis-restore"

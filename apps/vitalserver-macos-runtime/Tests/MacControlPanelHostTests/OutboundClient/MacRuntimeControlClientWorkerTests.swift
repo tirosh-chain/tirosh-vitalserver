@@ -157,6 +157,47 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             RuntimeControlClientConstants.RuntimeCommand.verifyUpdateBootstrap,
             "verify-update-bootstrap"
         )
+        XCTAssertEqual(environment.verificationInvocationIds, [nil])
+    }
+
+    func testCommandWorkerDoesNotMintPlatformAgentIdentityWithoutInvoker() async throws {
+        let environment = AdapterFakeActionEnvironment()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: environment,
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
+        )
+
+        _ = try await worker.verifyUpdateBundle(
+            url: URL(fileURLWithPath: "/bundle")
+        )
+
+        XCTAssertEqual(environment.verificationInvocationIds, [nil])
+    }
+
+    func testCommandWorkerPassesInvokerOwnedCorrelationAcrossTheProcessBoundary()
+        async throws
+    {
+        let environment = AdapterFakeActionEnvironment()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: environment,
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            platformAgentVerificationInvoker: AdapterFakePlatformAgentInvoker(
+                invocationId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            )
+        )
+
+        _ = try await worker.verifyUpdateBundle(
+            url: URL(fileURLWithPath: "/bundle")
+        )
+
+        XCTAssertEqual(
+            environment.verificationInvocationIds,
+            ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
+        )
     }
 
     func testCommandWorkerPreservesFailedGuestDatastoreRepairOperation() async throws {
@@ -692,6 +733,7 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
     private let lock = NSLock()
     private var protectedRemovedTemporaryFiles: [URL] = []
     private var protectedWrittenRecorderIngressSettings: [RuntimeRecorderIngressSettings] = []
+    private var protectedVerificationInvocationIds: [String?] = []
 
     init(executableStates: [String: RuntimeFileState] = [
         RuntimeControlClientConstants.Paths.launcher: .executable,
@@ -732,12 +774,36 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
         }
     }
 
-    func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
-        RuntimeCommandResult(
+    var verificationInvocationIds: [String?] {
+        lock.withLock { protectedVerificationInvocationIds }
+    }
+
+    func verifyBundle(
+        launcher: String,
+        bundleURL: URL,
+        verificationInvocationId: String?
+    ) async -> RuntimeCommandResult {
+        lock.withLock {
+            protectedVerificationInvocationIds.append(verificationInvocationId)
+        }
+        return RuntimeCommandResult(
             exitCode: 0,
             stdout: "integrity-checked publisher-authenticity-unverified:\(bundleURL.path)",
             stderr: ""
         )
+    }
+}
+
+private struct AdapterFakePlatformAgentInvoker:
+    PlatformAgentUpdateBootstrapVerificationInvoking
+{
+    let invocationId: String
+
+    func invoke(
+        bundleURL: URL,
+        spawn: @escaping @Sendable (String) async -> RuntimeCommandResult
+    ) async -> RuntimeCommandResult {
+        await spawn(invocationId)
     }
 }
 

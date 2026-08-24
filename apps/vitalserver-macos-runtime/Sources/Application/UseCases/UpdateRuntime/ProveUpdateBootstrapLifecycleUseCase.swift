@@ -93,6 +93,91 @@ public enum ProveUpdateBootstrapLifecycleError:
     )
     case verificationReceiptUidMismatch(expected: UInt32, actual: UInt32)
     case verificationReceiptEuidMismatch(expected: UInt32, actual: UInt32)
+    case platformAgentVerificationInvocationMissing
+    case platformAgentVerificationBindingMissing(path: String)
+    case platformAgentVerificationBindingInspectionFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationBindingPermissionDenied(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationBindingReadFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationBindingDecodeFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationBindingUnexpectedPathState(
+        path: String,
+        state: String
+    )
+    case platformAgentVerificationBindingInvalid(reason: String)
+    case platformAgentVerificationBindingIdentityMismatch(
+        field: String,
+        expected: String,
+        actual: String
+    )
+    case platformAgentVerificationEvidenceMissing(path: String)
+    case platformAgentVerificationEvidenceInspectionFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationEvidencePermissionDenied(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationEvidenceReadFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationEvidenceDecodeFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationEvidenceUnexpectedPathState(
+        path: String,
+        state: String
+    )
+    case platformAgentVerificationEvidenceInvalid(reason: String)
+    case platformAgentVerificationEvidenceIdentityMismatch(
+        field: String,
+        expected: String,
+        actual: String
+    )
+    case platformAgentVerificationEvidenceInvoked
+    case platformAgentVerificationEvidenceSpawnFailed(reason: String)
+    case platformAgentVerificationEvidenceCommandFailed(exitCode: Int32)
+    case platformAgentVerificationEvidenceBindingMissing(path: String)
+    case platformAgentVerificationEvidenceBindingInspectionFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationEvidenceBindingPermissionDenied(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationEvidenceBindingReadFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationEvidenceBindingDecodeFailed(
+        path: String,
+        reason: String
+    )
+    case platformAgentVerificationEvidenceBindingUnexpectedPathState(
+        path: String,
+        state: String
+    )
+    case platformAgentVerificationEvidenceBindingInvalid(reason: String)
+    case platformAgentVerificationEvidenceBindingIdentityMismatch(
+        field: String,
+        expected: String,
+        actual: String
+    )
 }
 
 public struct ProveUpdateBootstrapLifecycleUseCase {
@@ -304,6 +389,218 @@ public struct ProveUpdateBootstrapLifecycleUseCase {
             throw mapVerificationReceipt(error)
         }
         return receipt
+    }
+
+    public func provePlatformAgentVerification(
+        receipt: UpdateBootstrapVerificationReceipt,
+        expectedUpdateId: String,
+        expectedCanonicalPayloadSHA256: String,
+        bindingRead: UpdateBootstrapVerificationInvocationBindingReadResult,
+        evidenceRead: PlatformAgentUpdateBootstrapVerificationEvidenceReadResult
+    ) throws -> (
+        binding: UpdateBootstrapVerificationInvocationBinding,
+        evidence: PlatformAgentUpdateBootstrapVerificationEvidence
+    ) {
+        guard let invocationId = receipt.verificationInvocationId else {
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationInvocationMissing
+        }
+        let binding = try requireBinding(bindingRead)
+        do {
+            try UpdateBootstrapVerificationInvocationBindingProofPolicy.prove(
+                binding: binding,
+                expectedVerificationInvocationId: invocationId,
+                expectedUpdateId: expectedUpdateId,
+                expectedCanonicalPayloadSHA256: expectedCanonicalPayloadSHA256
+            )
+        } catch let error as
+            UpdateBootstrapVerificationInvocationBindingValidationError
+        {
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationBindingInvalid(
+                    reason: String(describing: error)
+                )
+        } catch let error as
+            UpdateBootstrapVerificationInvocationBindingProofPolicyError
+        {
+            throw mapBinding(error)
+        }
+        let evidence = try requireEvidence(evidenceRead)
+        do {
+            try PlatformAgentUpdateBootstrapVerificationProofPolicy.prove(
+                evidence: evidence,
+                expectedVerificationInvocationId: invocationId,
+                expectedUpdateId: expectedUpdateId,
+                expectedCanonicalPayloadSHA256: expectedCanonicalPayloadSHA256
+            )
+        } catch let error as
+            PlatformAgentUpdateBootstrapVerificationValidationError
+        {
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationEvidenceInvalid(
+                    reason: String(describing: error)
+                )
+        } catch let error as
+            PlatformAgentUpdateBootstrapVerificationProofPolicyError
+        {
+            throw mapEvidence(error)
+        }
+        return (binding, evidence)
+    }
+
+    private func requireBinding(
+        _ bindingRead: UpdateBootstrapVerificationInvocationBindingReadResult
+    ) throws -> UpdateBootstrapVerificationInvocationBinding {
+        switch bindingRead {
+        case .missing(let path):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationBindingMissing(path: path)
+        case .inspectionFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationBindingInspectionFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .permissionDenied(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationBindingPermissionDenied(
+                    path: path,
+                    reason: reason
+                )
+        case .readFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationBindingReadFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .decodeFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationBindingDecodeFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .unexpectedPathState(let path, let state):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationBindingUnexpectedPathState(
+                    path: path,
+                    state: state
+                )
+        case .loaded(let loaded):
+            return loaded
+        }
+    }
+
+    private func requireEvidence(
+        _ evidenceRead: PlatformAgentUpdateBootstrapVerificationEvidenceReadResult
+    ) throws -> PlatformAgentUpdateBootstrapVerificationEvidence {
+        switch evidenceRead {
+        case .missing(let path):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationEvidenceMissing(path: path)
+        case .inspectionFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationEvidenceInspectionFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .permissionDenied(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationEvidencePermissionDenied(
+                    path: path,
+                    reason: reason
+                )
+        case .readFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationEvidenceReadFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .decodeFailed(let path, let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationEvidenceDecodeFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .unexpectedPathState(let path, let state):
+            throw ProveUpdateBootstrapLifecycleError
+                .platformAgentVerificationEvidenceUnexpectedPathState(
+                    path: path,
+                    state: state
+                )
+        case .loaded(let loaded):
+            return loaded
+        }
+    }
+
+    private func mapBinding(
+        _ error: UpdateBootstrapVerificationInvocationBindingProofPolicyError
+    ) -> ProveUpdateBootstrapLifecycleError {
+        switch error {
+        case .identityMismatch(let field, let expected, let actual):
+            return .platformAgentVerificationBindingIdentityMismatch(
+                field: field,
+                expected: expected,
+                actual: actual
+            )
+        }
+    }
+
+    private func mapEvidence(
+        _ error: PlatformAgentUpdateBootstrapVerificationProofPolicyError
+    ) -> ProveUpdateBootstrapLifecycleError {
+        switch error {
+        case .identityMismatch(let field, let expected, let actual):
+            return .platformAgentVerificationEvidenceIdentityMismatch(
+                field: field,
+                expected: expected,
+                actual: actual
+            )
+        case .invoked:
+            return .platformAgentVerificationEvidenceInvoked
+        case .spawnFailed(let reason):
+            return .platformAgentVerificationEvidenceSpawnFailed(reason: reason)
+        case .commandFailed(let exitCode):
+            return .platformAgentVerificationEvidenceCommandFailed(
+                exitCode: exitCode
+            )
+        case .bindingMissing(let path):
+            return .platformAgentVerificationEvidenceBindingMissing(path: path)
+        case .bindingInspectionFailed(let path, let reason):
+            return .platformAgentVerificationEvidenceBindingInspectionFailed(
+                path: path,
+                reason: reason
+            )
+        case .bindingPermissionDenied(let path, let reason):
+            return .platformAgentVerificationEvidenceBindingPermissionDenied(
+                path: path,
+                reason: reason
+            )
+        case .bindingReadFailed(let path, let reason):
+            return .platformAgentVerificationEvidenceBindingReadFailed(
+                path: path,
+                reason: reason
+            )
+        case .bindingDecodeFailed(let path, let reason):
+            return .platformAgentVerificationEvidenceBindingDecodeFailed(
+                path: path,
+                reason: reason
+            )
+        case .bindingUnexpectedPathState(let path, let state):
+            return .platformAgentVerificationEvidenceBindingUnexpectedPathState(
+                path: path,
+                state: state
+            )
+        case .bindingInvalid(let reason):
+            return .platformAgentVerificationEvidenceBindingInvalid(
+                reason: reason
+            )
+        case .bindingIdentityMismatch(let field, let expected, let actual):
+            return .platformAgentVerificationEvidenceBindingIdentityMismatch(
+                field: field,
+                expected: expected,
+                actual: actual
+            )
+        }
     }
 
     public func requireHostPlatformLayer(

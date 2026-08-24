@@ -201,6 +201,40 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         )
     }
 
+    public var updateBootstrapVerificationInvocationDirectory: URL {
+        updateBootstrapVerificationDirectory.appendingPathComponent(
+            UpdateBootstrapVerificationInvocationBindingContract.directoryName,
+            isDirectory: true
+        )
+    }
+
+    public func updateBootstrapVerificationInvocationBinding(
+        verificationInvocationId: String
+    ) -> URL {
+        updateBootstrapVerificationInvocationDirectory.appendingPathComponent(
+            UpdateBootstrapVerificationInvocationBindingContract.fileName(
+                verificationInvocationId: verificationInvocationId
+            )
+        )
+    }
+
+    public var platformAgentUpdateBootstrapVerificationDirectory: URL {
+        productRoot.appendingPathComponent(
+            PlatformAgentUpdateBootstrapVerificationContract.directoryName,
+            isDirectory: true
+        )
+    }
+
+    public func platformAgentUpdateBootstrapVerificationEvidence(
+        verificationInvocationId: String
+    ) -> URL {
+        platformAgentUpdateBootstrapVerificationDirectory.appendingPathComponent(
+            PlatformAgentUpdateBootstrapVerificationContract.fileName(
+                verificationInvocationId: verificationInvocationId
+            )
+        )
+    }
+
     public var hostPlatformCurrentRelease: URL {
         productRoot
             .appendingPathComponent("host-platform", isDirectory: true)

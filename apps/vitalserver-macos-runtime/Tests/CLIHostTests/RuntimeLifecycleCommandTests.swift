@@ -198,7 +198,24 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 "verify-update-bootstrap",
                 bundleURL.path,
             ]),
-            .verifyUpdateBootstrap(bundleURL)
+            .verifyUpdateBootstrap(
+                RuntimeVerifyUpdateBootstrapCommand(bundleURL: bundleURL)
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "verify-update-bootstrap",
+                bundleURL.path,
+                "--verification-invocation-id",
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            ]),
+            .verifyUpdateBootstrap(
+                RuntimeVerifyUpdateBootstrapCommand(
+                    bundleURL: bundleURL,
+                    verificationInvocationId:
+                        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+                )
+            )
         )
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["stage-bundle", bundleURL.path]),
@@ -299,6 +316,28 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                     expectation: .failedRolledBack,
                     timeoutMilliseconds: 600_000,
                     pollIntervalMilliseconds: 500
+                )
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "prove-update-bootstrap",
+                "update-42",
+                "--expect",
+                "succeeded",
+                "--timeout-seconds",
+                "30",
+                "--poll-interval-milliseconds",
+                "250",
+                "--require-platform-agent-verification",
+            ]),
+            .proveUpdateBootstrap(
+                RuntimeProveUpdateBootstrapCommand(
+                    updateId: "update-42",
+                    expectation: .succeeded,
+                    timeoutMilliseconds: 30_000,
+                    pollIntervalMilliseconds: 250,
+                    requirePlatformAgentVerification: true
                 )
             )
         )
@@ -579,7 +618,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         )
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["verify-update-bootstrap"]),
-            expectedMessage: "usage: vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz>"
+            expectedMessage: "usage: vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz> [--verification-invocation-id <id>]"
         )
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["stage-bundle"]),

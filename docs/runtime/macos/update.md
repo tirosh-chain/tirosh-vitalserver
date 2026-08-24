@@ -539,7 +539,9 @@ receipt는 그 product-installed path에서 읽습니다. proof process의
 `VITALSERVER_VM_HOME`으로 기댓값을 바꾸지 않습니다. 이것은 그 bundle에
 대한 root `verify-update-bootstrap`가 product-installed VM home에서 실행된
 증거입니다. MacPlatformAgent caller 증거가 아니며, public CLI나 apply-smoke가
-같은 receipt를 만들 수 있습니다. receipt path는
+같은 receipt를 만들 수 있습니다. Platform Agent 증명은
+`--require-platform-agent-verification`이 있을 때만 receipt, verifier binding,
+MacPlatformAgent evidence를 상관합니다. receipt path는
 `/Library/Application Support/VitalServerHelper/update-bootstrap-verification/<update-id>.json`
 입니다. staging directory와 분리되어 있으므로 apply가 bundle을 교체해도
 receipt를 지우지 않습니다. digest는 같은 `updateId`로 payload가 바뀐
@@ -575,8 +577,26 @@ installed proof는 root identity `uid=0`/`euid=0`과 product-installed VM home
 receipt를 갖도록 두는 root installed-CLI 단계이며,
 `VM_UPDATE_INSTALLED_RUNTIME_HOME`은 그 product-installed path와 같아야
 합니다. caller가 다른 home을 지정하면 field-proof preflight는 INVALID입니다.
-Platform Agent 증거가 아니며 성공을 추론하는 workaround도 아닙니다. MacPlatformAgent와 operator root CLI를
-구분하려면 별도의 caller-owned correlation contract가 필요합니다.
+Platform Agent 증거가 아니며 성공을 추론하는 workaround도 아닙니다.
+MacPlatformAgent 증명은 `prove-update-bootstrap ... --require-platform-agent-verification`
+이 있을 때만 두 독립 owner를 상관합니다. MacPlatformAgentService가 spawn 전에
+unique verification invocation ID를 만들고 `--verification-invocation-id`로
+CLI에 넘기며, caller-owned evidence를
+`/Library/Application Support/VitalServerHelper/platform-agent-update-bootstrap-verification/<invocation-id>.json`
+에 기록합니다. caller evidence의 `state`가 discriminator이며
+bindingMissing/inspection/permission/read/decode/unexpectedPathState/invalid/
+identityMismatch는 서로 다른 값입니다. path와 reason은 detail입니다.
+evidence persist 실패를 child-process spawn 실패로 기록하지 않습니다.
+child verify가 exit 0이어도 terminal caller evidence persist가 실패하면
+outer Platform Agent verify는 nonzero로 실패하며 `isVerified`가 되지 않습니다.
+public CLI는 이 identity를 만들지 않습니다. 공유
+`MacRuntimeControlCommandWorker`는 MacPlatformAgent와 native Control Panel이
+모두 조립하므로 worker 자체가 Platform Agent identity가 아닙니다. native
+Control Panel verify는 이 invoker 없이 실행되므로 MacPlatformAgent 증거가
+아닙니다. PWA verify는 launchd Platform Agent API를 통과합니다. apply는 별도
+`--request-id`를 생성하므로 같은 digest나 clock window로 freshness를 증명하지
+않습니다. fresh-for-this-apply는 아직 미증명입니다. 설치된 MacPlatformAgent
+verify field run도 실제 설치본 실행이 있기 전에는 proven이 아닙니다.
 성공한 trust-store 읽기, `/var/root/.tirosh` 부재, 현재 launchd 환경,
 또는 process 종료 후 environment로는 추론하지 않습니다.
 

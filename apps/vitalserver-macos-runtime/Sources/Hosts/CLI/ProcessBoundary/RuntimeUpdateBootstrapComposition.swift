@@ -9,6 +9,7 @@ import OutboundAdapters
 import Workflow
 
 enum RuntimeUpdateBootstrapCompositionError: Error, Equatable {
+    case invalidVerificationInvocationId(String)
     case installedReleaseMissing
     case installedReleaseReadFailed(reason: String)
     case operationSucceededButLeaseReleaseFailed(
@@ -46,6 +47,11 @@ struct InstalledRootVerificationReceiptProofInputs: Equatable {
     let receiptURL: URL
 }
 
+struct InstalledPlatformAgentVerificationProofInputs: Equatable {
+    let bindingURL: URL
+    let evidenceURL: URL
+}
+
 enum InstalledRootVerificationReceiptProofOwner {
     static func inputs(
         updateId: String
@@ -63,12 +69,30 @@ enum InstalledRootVerificationReceiptProofOwner {
 
 extension RuntimeLifecycle {
     func verifyUpdateBootstrap(_ bundleURL: URL) throws {
-        let materialized = try materializeRuntimeUpdateBundle(bundleURL)
+        try verifyUpdateBootstrap(
+            RuntimeVerifyUpdateBootstrapCommand(bundleURL: bundleURL)
+        )
+    }
+
+    func verifyUpdateBootstrap(
+        _ command: RuntimeVerifyUpdateBootstrapCommand
+    ) throws {
+        if let invocationId = command.verificationInvocationId {
+            guard UpdateBootstrapIdentifierSyntax.isIdentifier(invocationId)
+            else {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .invalidVerificationInvocationId(invocationId)
+            }
+        }
+        let materialized = try materializeRuntimeUpdateBundle(command.bundleURL)
         do {
             let verified = try loadAndVerifyUpdateBootstrapClosure(
                 bundleRoot: materialized.bundleURL
             )
-            try persistUpdateBootstrapVerificationReceipt(verified)
+            try persistUpdateBootstrapVerificationReceipt(
+                verified,
+                verificationInvocationId: command.verificationInvocationId
+            )
             try cleanupMaterializedUpdateBootstrapBundle(materialized)
             print("update bootstrap verified")
             print("update: \(verified.envelope.id)")
@@ -602,6 +626,27 @@ extension RuntimeLifecycle {
                 at: verificationReceiptProof.receiptURL
             )
         )
+        if command.requirePlatformAgentVerification {
+            guard let invocationId =
+                verificationReceipt.verificationInvocationId else {
+                throw ProveUpdateBootstrapLifecycleError
+                    .platformAgentVerificationInvocationMissing
+            }
+            let platformAgentProof =
+                installedPlatformAgentVerificationProofInputs(
+                    verificationInvocationId: invocationId
+                )
+            _ = try proof.provePlatformAgentVerification(
+                receipt: verificationReceipt,
+                expectedUpdateId: journal.id,
+                expectedCanonicalPayloadSHA256: journal.bootstrapSignedSHA256,
+                bindingRead: updateBootstrapVerificationInvocationBindingReader()
+                    .read(at: platformAgentProof.bindingURL),
+                evidenceRead:
+                    platformAgentUpdateBootstrapVerificationEvidenceReader()
+                    .read(at: platformAgentProof.evidenceURL)
+            )
+        }
         try proof.proveGuestControl(
             invocation: input.invocation,
             guestAddressRead: guestAddressProvider.readGuestAddress()
@@ -800,11 +845,27 @@ extension RuntimeLifecycle {
         InstalledRootVerificationReceiptProofOwner.inputs(updateId: updateId)
     }
 
+    func installedPlatformAgentVerificationProofInputs(
+        verificationInvocationId: String
+    ) -> InstalledPlatformAgentVerificationProofInputs {
+        let installed = InstalledRuntimePaths.defaultInstalled
+        return InstalledPlatformAgentVerificationProofInputs(
+            bindingURL: installed.updateBootstrapVerificationInvocationBinding(
+                verificationInvocationId: verificationInvocationId
+            ),
+            evidenceURL: installed
+                .platformAgentUpdateBootstrapVerificationEvidence(
+                    verificationInvocationId: verificationInvocationId
+                )
+        )
+    }
+
     private func persistUpdateBootstrapVerificationReceipt(
         _ verified: (
             envelope: UpdateBootstrapEnvelope,
             verification: VerifiedUpdateBootstrapClosure
-        )
+        ),
+        verificationInvocationId: String?
     ) throws {
         let identity = SystemProcessUserIdentityReader().read()
         let receipt = UpdateBootstrapVerificationReceipt(
@@ -819,7 +880,8 @@ extension RuntimeLifecycle {
                 clock.now
             ),
             uid: identity.uid,
-            euid: identity.euid
+            euid: identity.euid,
+            verificationInvocationId: verificationInvocationId
         )
         try UpdateBootstrapVerificationReceiptWriter(
             operations: UpdateBootstrapVerificationReceiptWriteOperations(
@@ -836,11 +898,61 @@ extension RuntimeLifecycle {
                 updateId: receipt.updateId
             )
         )
+        if let verificationInvocationId {
+            let binding = UpdateBootstrapVerificationInvocationBinding(
+                schemaVersion:
+                    UpdateBootstrapVerificationInvocationBindingContract
+                    .schemaVersion,
+                command: UpdateBootstrapVerificationInvocationBindingContract
+                    .command,
+                verificationInvocationId: verificationInvocationId,
+                updateId: receipt.updateId,
+                canonicalPayloadSHA256: receipt.canonicalPayloadSHA256
+            )
+            try UpdateBootstrapVerificationInvocationBindingWriter(
+                operations:
+                    UpdateBootstrapVerificationInvocationBindingWriteOperations(
+                        pathState: fileStore.pathState,
+                        createDirectory: fileStore.createDirectory,
+                        writeData: { data, url, options in
+                            try fileStore.writeData(
+                                data,
+                                to: url,
+                                options: options
+                            )
+                        },
+                        validate:
+                            UpdateBootstrapVerificationInvocationBindingPolicy
+                            .validate
+                    )
+            ).write(
+                binding,
+                to: installedPaths.updateBootstrapVerificationInvocationBinding(
+                    verificationInvocationId: verificationInvocationId
+                )
+            )
+        }
     }
 
     private func updateBootstrapVerificationReceiptReader(
     ) -> UpdateBootstrapVerificationReceiptReader {
         UpdateBootstrapVerificationReceiptReader(
+            pathState: fileStore.pathState,
+            readData: fileStore.readData
+        )
+    }
+
+    private func updateBootstrapVerificationInvocationBindingReader(
+    ) -> UpdateBootstrapVerificationInvocationBindingReader {
+        UpdateBootstrapVerificationInvocationBindingReader(
+            pathState: fileStore.pathState,
+            readData: fileStore.readData
+        )
+    }
+
+    private func platformAgentUpdateBootstrapVerificationEvidenceReader(
+    ) -> PlatformAgentUpdateBootstrapVerificationEvidenceReader {
+        PlatformAgentUpdateBootstrapVerificationEvidenceReader(
             pathState: fileStore.pathState,
             readData: fileStore.readData
         )

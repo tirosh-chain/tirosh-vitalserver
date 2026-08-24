@@ -400,7 +400,11 @@ private struct ChaosActionEnvironment: RuntimeActionEnvironment {
 
     func removeItem(at url: URL) throws {}
 
-    func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
+    func verifyBundle(
+        launcher: String,
+        bundleURL: URL,
+        verificationInvocationId: String?
+    ) async -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
 }

@@ -24,7 +24,9 @@ from tirosh_vitalserver.devtools.core.field_proof_preflight import (
     SOURCE_HANDOFF_POLICY,
     SOURCE_HOST_PLATFORM_CONTRACTS,
     SOURCE_PACKAGE_MAKEFILE,
+    SOURCE_CONTROL_PANEL_ENVIRONMENT,
     SOURCE_INSTALLED_PATHS,
+    SOURCE_PLATFORM_AGENT_SERVICE,
     SOURCE_PROVE_COMPOSITION,
     SOURCE_PROVE_USECASE,
     SOURCE_RELEASE_DEV,
@@ -86,6 +88,8 @@ def field_proof_preflight_report(
             SOURCE_INSTALLED_PATHS,
             SOURCE_VM_CONFIG_MAKEFILE,
             SOURCE_RELEASE_DEV,
+            SOURCE_PLATFORM_AGENT_SERVICE,
+            SOURCE_CONTROL_PANEL_ENVIRONMENT,
         )
     }
     package_makefile = sources[SOURCE_PACKAGE_MAKEFILE]
@@ -100,6 +104,8 @@ def field_proof_preflight_report(
     installed_paths = sources[SOURCE_INSTALLED_PATHS]
     vm_config_makefile = sources[SOURCE_VM_CONFIG_MAKEFILE]
     release_dev = sources[SOURCE_RELEASE_DEV]
+    platform_agent_service = sources[SOURCE_PLATFORM_AGENT_SERVICE]
+    control_panel_environment = sources[SOURCE_CONTROL_PANEL_ENVIRONMENT]
     named_inputs = tuple(
         _named_input(name, input.update_bootstrap_trust_store)
         for name in (*COMPOSE_INPUT_NAMES, MUTATING_CONFIRM_INPUT)
@@ -139,6 +145,10 @@ def field_proof_preflight_report(
             handoff_contract_source=_loaded_text(handoff_contract),
             installed_paths_source=_loaded_text(installed_paths),
             vm_config_makefile=_loaded_text(vm_config_makefile),
+            platform_agent_service_source=_loaded_text(platform_agent_service),
+            control_panel_environment_source=_loaded_text(
+                control_panel_environment
+            ),
         ),
         named_inputs,
         _trust_store_input(input.update_bootstrap_trust_store),

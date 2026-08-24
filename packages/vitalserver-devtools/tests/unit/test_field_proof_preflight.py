@@ -87,10 +87,12 @@ def valid_surface(**overrides: object) -> FieldProofCommandSurface:
             "func proveGuestControl(\n"
             "func proveHostPlatform(\n"
             "func proveVerificationReceipt(\n"
+            "func provePlatformAgentVerification(\n"
         ),
         "prove_composition_source": (
             "InstalledRuntimePaths.defaultInstalled\n"
             "installedRootVerificationReceiptProofInputs\n"
+            "requirePlatformAgentVerification\n"
         ),
         "installed_paths_source": (
             'defaultProductRoot = URL(fileURLWithPath: '
@@ -99,6 +101,12 @@ def valid_surface(**overrides: object) -> FieldProofCommandSurface:
         "vm_config_makefile": (
             "VM_UPDATE_INSTALLED_RUNTIME_HOME ?= "
             "/Library/Application Support/VitalServerHelper/vm\n"
+        ),
+        "platform_agent_service_source": (
+            "SystemPlatformAgentUpdateBootstrapVerificationInvoker(\n"
+        ),
+        "control_panel_environment_source": (
+            "let commandWorker = MacRuntimeControlCommandWorker(\n"
         ),
         "handoff_policy_source": (
             "public static func makeInvocation(\n"
@@ -603,11 +611,13 @@ def test_inventory_keeps_platform_agent_verify_field_run_unproven() -> None:
     inventory = field_proof_automation_inventory_text()
     sequence = field_proof_sequence_text()
 
-    assert "[unproven] Platform Agent verify field run (TS-220)" in inventory
-    assert "caller-owned correlation is required" in inventory
+    assert "[unproven] Platform Agent verify field run (TS-229)" in inventory
+    assert "contract exists, installed MacPlatformAgent run does not" in inventory
+    assert "[available] prove-update-bootstrap optional --require-platform-agent-verification" in inventory
     assert "MacPlatformAgent evidence" in sequence
     assert "is not MacPlatformAgent evidence" in sequence
-    assert "[available] Platform Agent verify" not in inventory
+    assert "fresh-for-this-apply" in sequence
+    assert "[available] Platform Agent verify field run" not in inventory
 
 
 def test_current_repo_command_surface_understands_v2(

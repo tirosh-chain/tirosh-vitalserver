@@ -19,6 +19,7 @@ public struct UpdateBootstrapVerificationReceipt: Codable, Equatable, Sendable {
     public let observedAt: String
     public let uid: UInt32
     public let euid: UInt32
+    public let verificationInvocationId: String?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion
@@ -30,6 +31,7 @@ public struct UpdateBootstrapVerificationReceipt: Codable, Equatable, Sendable {
         case observedAt
         case uid
         case euid
+        case verificationInvocationId
     }
 
     public init(
@@ -41,7 +43,8 @@ public struct UpdateBootstrapVerificationReceipt: Codable, Equatable, Sendable {
         trustStorePath: String,
         observedAt: String,
         uid: UInt32,
-        euid: UInt32
+        euid: UInt32,
+        verificationInvocationId: String? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.command = command
@@ -52,6 +55,7 @@ public struct UpdateBootstrapVerificationReceipt: Codable, Equatable, Sendable {
         self.observedAt = observedAt
         self.uid = uid
         self.euid = euid
+        self.verificationInvocationId = verificationInvocationId
     }
 
     public init(from decoder: Decoder) throws {
@@ -82,7 +86,48 @@ public struct UpdateBootstrapVerificationReceipt: Codable, Equatable, Sendable {
             ),
             observedAt: try container.decode(String.self, forKey: .observedAt),
             uid: try container.decode(UInt32.self, forKey: .uid),
-            euid: try container.decode(UInt32.self, forKey: .euid)
+            euid: try container.decode(UInt32.self, forKey: .euid),
+            verificationInvocationId: try Self.decodePresentNonNull(
+                container,
+                forKey: .verificationInvocationId
+            )
         )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(command, forKey: .command)
+        try container.encode(updateId, forKey: .updateId)
+        try container.encode(
+            canonicalPayloadSHA256,
+            forKey: .canonicalPayloadSHA256
+        )
+        try container.encode(resolvedRuntimeHome, forKey: .resolvedRuntimeHome)
+        try container.encode(trustStorePath, forKey: .trustStorePath)
+        try container.encode(observedAt, forKey: .observedAt)
+        try container.encode(uid, forKey: .uid)
+        try container.encode(euid, forKey: .euid)
+        try container.encodeIfPresent(
+            verificationInvocationId,
+            forKey: .verificationInvocationId
+        )
+    }
+
+    private static func decodePresentNonNull(
+        _ container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> String? {
+        guard container.contains(key) else {
+            return nil
+        }
+        if try container.decodeNil(forKey: key) {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: container,
+                debugDescription: "\(key.rawValue) must not be null"
+            )
+        }
+        return try container.decode(String.self, forKey: key)
     }
 }

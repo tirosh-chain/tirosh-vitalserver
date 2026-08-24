@@ -117,7 +117,11 @@ public final class MacPlatformAgentService {
         let commandWorker = MacRuntimeControlCommandWorker(
             guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
             guestMaintenanceController: RuntimeGuestMaintenanceControlUseCase(),
-            guestAddressProvider: runtimeEndpointStore
+            guestAddressProvider: runtimeEndpointStore,
+            platformAgentVerificationInvoker:
+                SystemPlatformAgentUpdateBootstrapVerificationInvoker(
+                    installedPaths: installedPaths
+                )
         )
         let client = MacRuntimeControlClient(
             releaseInfo: .generated,

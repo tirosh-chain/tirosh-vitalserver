@@ -99,8 +99,9 @@ That is root installed-CLI evidence, not Platform Agent evidence.
 ## Follow-up
 
 A real MacPlatformAgent verify field run remains unproven. Distinguishing
-MacPlatformAgent from operator-run root CLI requires a future caller-owned
-correlation contract. Do not treat CLI apply-smoke as that run.
+MacPlatformAgent from operator-run root CLI now has an explicit dual-owner
+correlation contract (TS-229). Do not treat CLI apply-smoke as that run. Do
+not mark the field run proven until an installed MacPlatformAgent verify exists.
 
 Inspect the receipt directly:
 

@@ -12,6 +12,7 @@ public enum UpdateBootstrapVerificationReceiptValidationError:
     case invalidResolvedRuntimeHome(String)
     case invalidTrustStorePath(String)
     case invalidObservedAt(String)
+    case invalidVerificationInvocationId(String)
 }
 
 public enum UpdateBootstrapVerificationReceiptProofPolicyError:
@@ -61,6 +62,13 @@ public enum UpdateBootstrapVerificationReceiptPolicy {
         ) else {
             throw UpdateBootstrapVerificationReceiptValidationError
                 .invalidObservedAt(receipt.observedAt)
+        }
+        if let invocationId = receipt.verificationInvocationId {
+            guard UpdateBootstrapIdentifierSyntax.isIdentifier(invocationId)
+            else {
+                throw UpdateBootstrapVerificationReceiptValidationError
+                    .invalidVerificationInvocationId(invocationId)
+            }
         }
     }
 

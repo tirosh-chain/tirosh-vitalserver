@@ -19,6 +19,8 @@ public actor MacRuntimeControlCommandWorker {
     private let guestAddressProvider: any RuntimeGuestAddressProvider
     private let guestControlBaseURLOverride: String?
     private let updateRequestID: @Sendable () -> String
+    private let platformAgentVerificationInvoker:
+        (any PlatformAgentUpdateBootstrapVerificationInvoking)?
 
     public init() {
         self.init(
@@ -37,7 +39,9 @@ public actor MacRuntimeControlCommandWorker {
         guestProductServiceController: any RuntimeGuestProductServiceCommandControlling,
         guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling,
         guestAddressProvider: any RuntimeGuestAddressProvider,
-        guestControlBaseURLOverride: String? = nil
+        guestControlBaseURLOverride: String? = nil,
+        platformAgentVerificationInvoker:
+            (any PlatformAgentUpdateBootstrapVerificationInvoking)? = nil
     ) {
         self.init(
             privilegedCommandRunner: SystemPrivilegedCommandRunner(),
@@ -46,7 +50,8 @@ public actor MacRuntimeControlCommandWorker {
             guestProductServiceController: guestProductServiceController,
             guestMaintenanceController: guestMaintenanceController,
             guestAddressProvider: guestAddressProvider,
-            guestControlBaseURLOverride: guestControlBaseURLOverride
+            guestControlBaseURLOverride: guestControlBaseURLOverride,
+            platformAgentVerificationInvoker: platformAgentVerificationInvoker
         )
     }
 
@@ -60,7 +65,9 @@ public actor MacRuntimeControlCommandWorker {
         guestControlBaseURLOverride: String? = nil,
         updateRequestID: @escaping @Sendable () -> String = {
             UUID().uuidString.lowercased()
-        }
+        },
+        platformAgentVerificationInvoker:
+            (any PlatformAgentUpdateBootstrapVerificationInvoking)? = nil
     ) {
         self.privilegedCommandRunner = privilegedCommandRunner
         self.actionEnvironment = actionEnvironment
@@ -70,11 +77,27 @@ public actor MacRuntimeControlCommandWorker {
         self.guestAddressProvider = guestAddressProvider
         self.guestControlBaseURLOverride = guestControlBaseURLOverride
         self.updateRequestID = updateRequestID
+        self.platformAgentVerificationInvoker = platformAgentVerificationInvoker
     }
 
     public func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
         try ensureExecutable(.launcher)
-        return await actionEnvironment.verifyBundle(launcher: RuntimeControlClientConstants.Paths.launcher, bundleURL: url)
+        let launcher = RuntimeControlClientConstants.Paths.launcher
+        let environment = actionEnvironment
+        guard let invoker = platformAgentVerificationInvoker else {
+            return await environment.verifyBundle(
+                launcher: launcher,
+                bundleURL: url,
+                verificationInvocationId: nil
+            )
+        }
+        return await invoker.invoke(bundleURL: url) { invocationId in
+            await environment.verifyBundle(
+                launcher: launcher,
+                bundleURL: url,
+                verificationInvocationId: invocationId
+            )
+        }
     }
 
     public func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult {

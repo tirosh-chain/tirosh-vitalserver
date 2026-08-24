@@ -103,6 +103,14 @@ SOURCE_INSTALLED_PATHS = (
 )
 SOURCE_VM_CONFIG_MAKEFILE = "make/vm/config.mk"
 SOURCE_RELEASE_DEV = "apps/vitalserver-macos-runtime/release-dev.json"
+SOURCE_PLATFORM_AGENT_SERVICE = (
+    "apps/vitalserver-macos-runtime/Sources/Hosts/MacPlatformAgent/"
+    "MacPlatformAgentService.swift"
+)
+SOURCE_CONTROL_PANEL_ENVIRONMENT = (
+    "apps/vitalserver-macos-runtime/Sources/Hosts/MacControlPanel/Composition/"
+    "MacRuntimeControlEnvironment.swift"
+)
 INSTALLED_RUNTIME_HOME_INPUT = "VM_UPDATE_INSTALLED_RUNTIME_HOME"
 DEFAULT_PRODUCT_ROOT_MARKER = 'defaultProductRoot = URL(fileURLWithPath: "'
 
@@ -143,6 +151,8 @@ class FieldProofCommandSurface:
     handoff_contract_source: str
     installed_paths_source: str
     vm_config_makefile: str
+    platform_agent_service_source: str = ""
+    control_panel_environment_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -272,7 +282,8 @@ def field_proof_sequence_text() -> str:
                  product path, not a caller-named home
                  it is not MacPlatformAgent evidence
        not proven: later-than helperVersion, Platform Agent verify
-                 field run (TS-220), caller/fresh-run correlation
+                 field run (TS-229), fresh-for-this-apply; dual-owner
+                 correlation exists but apply-smoke must not claim it
     7. interruption/restart: TS-192 resume/settle/fail plus TS-226
        Host Platform phase resume (no make target)
     8. make dist/update/dev/rollback-smoke
@@ -299,7 +310,8 @@ def field_proof_automation_inventory_text() -> str:
   [available] Host-failure rollback proof: make dist/update/dev/rollback-smoke
   [unproven] 0.2.2 -> later product version: no later-than comparison exists
   [available] prove-update-bootstrap root verify-update-bootstrap receipt vs product-installed VM home
-  [unproven] Platform Agent verify field run (TS-220); caller-owned correlation is required to distinguish MacPlatformAgent from root CLI
+  [available] prove-update-bootstrap optional --require-platform-agent-verification dual-owner correlation
+  [unproven] Platform Agent verify field run (TS-229); contract exists, installed MacPlatformAgent run does not; apply-smoke must not claim it; fresh-for-this-apply remains unproven
   [available] prove-update-bootstrap Guest URL vs current Guest address (TS-221)
   [available] prove-update-bootstrap Host Platform SQLite phases (TS-226)
   [runbook] durable handoff interrupt: resume/settle/fail (TS-192)
@@ -375,6 +387,12 @@ def _command_surface_checks(
                     surface.apply_smoke_recipe,
                     "runtime apply-bundle",
                     "apply-smoke does not call legacy apply-bundle",
+                ),
+                _absent(
+                    "apply-smoke-not-platform-agent-proof",
+                    surface.apply_smoke_recipe,
+                    "--require-platform-agent-verification",
+                    "apply-smoke does not claim MacPlatformAgent verify proof",
                 ),
                 _contains(
                     "rollback-smoke-proof",
@@ -467,6 +485,14 @@ def _command_surface_checks(
                 "prove-update-bootstrap correlates verify-update-bootstrap receipt",
             )
         )
+        checks.append(
+            _contains(
+                "prove-platform-agent-verification",
+                surface.prove_usecase_source,
+                "provePlatformAgentVerification",
+                "prove-update-bootstrap can correlate MacPlatformAgent verification owners",
+            )
+        )
     if _source_usable(source_reads, SOURCE_PROVE_COMPOSITION):
         checks.append(
             _contains(
@@ -482,6 +508,32 @@ def _command_surface_checks(
                 surface.prove_composition_source,
                 "installedRootVerificationReceiptProofInputs",
                 "prove-update-bootstrap injects product-installed receipt expectations",
+            )
+        )
+        checks.append(
+            _contains(
+                "prove-platform-agent-flag",
+                surface.prove_composition_source,
+                "requirePlatformAgentVerification",
+                "prove-update-bootstrap correlates Platform Agent owners only when claimed",
+            )
+        )
+    if _source_usable(source_reads, SOURCE_PLATFORM_AGENT_SERVICE):
+        checks.append(
+            _contains(
+                "platform-agent-owns-verify-invoker",
+                surface.platform_agent_service_source,
+                "SystemPlatformAgentUpdateBootstrapVerificationInvoker",
+                "MacPlatformAgentService injects the privileged verify correlation owner",
+            )
+        )
+    if _source_usable(source_reads, SOURCE_CONTROL_PANEL_ENVIRONMENT):
+        checks.append(
+            _absent(
+                "control-panel-does-not-mint-platform-agent-verify",
+                surface.control_panel_environment_source,
+                "SystemPlatformAgentUpdateBootstrapVerificationInvoker",
+                "Control Panel does not mint MacPlatformAgent verification identity",
             )
         )
     return checks

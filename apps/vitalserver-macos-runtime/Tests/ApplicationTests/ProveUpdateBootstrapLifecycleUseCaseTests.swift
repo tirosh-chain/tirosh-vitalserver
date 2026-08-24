@@ -506,6 +506,304 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
         }
     }
 
+    func testProvePlatformAgentVerificationRequiresBoundInvocationId() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let receipt = verificationReceipt(journal: journal)
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .provePlatformAgentVerification(
+                    receipt: receipt,
+                    expectedUpdateId: journal.id,
+                    expectedCanonicalPayloadSHA256:
+                        journal.bootstrapSignedSHA256,
+                    bindingRead: .loaded(platformAgentBinding(journal: journal)),
+                    evidenceRead: .loaded(
+                        platformAgentEvidence(journal: journal)
+                    )
+                )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .platformAgentVerificationInvocationMissing
+            )
+        }
+    }
+
+    func testProvePlatformAgentVerificationKeepsMissingEvidenceDistinct() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let receipt = verificationReceipt(
+            journal: journal,
+            verificationInvocationId: invocationId
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .provePlatformAgentVerification(
+                    receipt: receipt,
+                    expectedUpdateId: journal.id,
+                    expectedCanonicalPayloadSHA256:
+                        journal.bootstrapSignedSHA256,
+                    bindingRead: .loaded(platformAgentBinding(journal: journal)),
+                    evidenceRead: .missing(path: evidencePath)
+                )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .platformAgentVerificationEvidenceMissing(path: evidencePath)
+            )
+        }
+    }
+
+    func testProvePlatformAgentVerificationRejectsUnrelatedCorrelation() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let receipt = verificationReceipt(
+            journal: journal,
+            verificationInvocationId: invocationId
+        )
+        let unrelated = platformAgentBinding(
+            journal: journal,
+            verificationInvocationId: "other-invocation"
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .provePlatformAgentVerification(
+                    receipt: receipt,
+                    expectedUpdateId: journal.id,
+                    expectedCanonicalPayloadSHA256:
+                        journal.bootstrapSignedSHA256,
+                    bindingRead: .loaded(unrelated),
+                    evidenceRead: .loaded(
+                        platformAgentEvidence(journal: journal)
+                    )
+                )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .platformAgentVerificationBindingIdentityMismatch(
+                    field: "verificationInvocationId",
+                    expected: invocationId,
+                    actual: "other-invocation"
+                )
+            )
+        }
+    }
+
+    func testProvePlatformAgentVerificationAcceptsCorrelatedOwners() throws {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let receipt = verificationReceipt(
+            journal: journal,
+            verificationInvocationId: invocationId
+        )
+
+        let proven = try ProveUpdateBootstrapLifecycleUseCase()
+            .provePlatformAgentVerification(
+                receipt: receipt,
+                expectedUpdateId: journal.id,
+                expectedCanonicalPayloadSHA256: journal.bootstrapSignedSHA256,
+                bindingRead: .loaded(platformAgentBinding(journal: journal)),
+                evidenceRead: .loaded(platformAgentEvidence(journal: journal))
+            )
+
+        XCTAssertEqual(proven.binding.verificationInvocationId, invocationId)
+        XCTAssertEqual(proven.evidence.state, "succeeded")
+    }
+
+    func testProvePlatformAgentVerificationSurfacesObservedMismatchKindsWhenBindingIsReadable() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let receipt = verificationReceipt(
+            journal: journal,
+            verificationInvocationId: invocationId
+        )
+        let invoked = PlatformAgentUpdateBootstrapVerificationPolicy.invoked(
+            verificationInvocationId: invocationId,
+            bundlePath: "/tmp/update.tar.gz",
+            observedAt: "2026-08-24T00:00:00Z"
+        )
+        let cases: [(
+            PlatformAgentUpdateBootstrapVerificationOutcome,
+            ProveUpdateBootstrapLifecycleError
+        )] = [
+            (
+                .spawnFailed(reason: "launcher missing"),
+                .platformAgentVerificationEvidenceSpawnFailed(
+                    reason: "launcher missing"
+                )
+            ),
+            (
+                .commandFailed(exitCode: 2),
+                .platformAgentVerificationEvidenceCommandFailed(exitCode: 2)
+            ),
+            (
+                .bindingMissing(path: "/tmp/binding.json"),
+                .platformAgentVerificationEvidenceBindingMissing(
+                    path: "/tmp/binding.json"
+                )
+            ),
+            (
+                .bindingInspectionFailed(
+                    path: "/tmp/binding.json",
+                    reason: "stat failed"
+                ),
+                .platformAgentVerificationEvidenceBindingInspectionFailed(
+                    path: "/tmp/binding.json",
+                    reason: "stat failed"
+                )
+            ),
+            (
+                .bindingPermissionDenied(
+                    path: "/tmp/binding.json",
+                    reason: "EACCES"
+                ),
+                .platformAgentVerificationEvidenceBindingPermissionDenied(
+                    path: "/tmp/binding.json",
+                    reason: "EACCES"
+                )
+            ),
+            (
+                .bindingReadFailed(path: "/tmp/binding.json", reason: "EIO"),
+                .platformAgentVerificationEvidenceBindingReadFailed(
+                    path: "/tmp/binding.json",
+                    reason: "EIO"
+                )
+            ),
+            (
+                .bindingDecodeFailed(
+                    path: "/tmp/binding.json",
+                    reason: "not json"
+                ),
+                .platformAgentVerificationEvidenceBindingDecodeFailed(
+                    path: "/tmp/binding.json",
+                    reason: "not json"
+                )
+            ),
+            (
+                .bindingUnexpectedPathState(
+                    path: "/tmp/binding.json",
+                    state: "directory"
+                ),
+                .platformAgentVerificationEvidenceBindingUnexpectedPathState(
+                    path: "/tmp/binding.json",
+                    state: "directory"
+                )
+            ),
+            (
+                .bindingInvalid(reason: "unsupportedSchemaVersion"),
+                .platformAgentVerificationEvidenceBindingInvalid(
+                    reason: "unsupportedSchemaVersion"
+                )
+            ),
+            (
+                .bindingIdentityMismatch(
+                    field: "verificationInvocationId",
+                    expected: "other",
+                    actual: invocationId
+                ),
+                .platformAgentVerificationEvidenceBindingIdentityMismatch(
+                    field: "verificationInvocationId",
+                    expected: "other",
+                    actual: invocationId
+                )
+            ),
+        ]
+        for (outcome, expected) in cases {
+            XCTAssertThrowsError(
+                try ProveUpdateBootstrapLifecycleUseCase()
+                    .provePlatformAgentVerification(
+                        receipt: receipt,
+                        expectedUpdateId: journal.id,
+                        expectedCanonicalPayloadSHA256:
+                            journal.bootstrapSignedSHA256,
+                        bindingRead: .loaded(
+                            platformAgentBinding(journal: journal)
+                        ),
+                        evidenceRead: .loaded(
+                            PlatformAgentUpdateBootstrapVerificationPolicy
+                                .evidence(from: invoked, outcome: outcome)
+                        )
+                    )
+            ) { error in
+                XCTAssertEqual(
+                    error as? ProveUpdateBootstrapLifecycleError,
+                    expected
+                )
+            }
+        }
+    }
+
+    func testProvePlatformAgentVerificationSurfacesInvokedEvidenceAsIncomplete() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let receipt = verificationReceipt(
+            journal: journal,
+            verificationInvocationId: invocationId
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .provePlatformAgentVerification(
+                    receipt: receipt,
+                    expectedUpdateId: journal.id,
+                    expectedCanonicalPayloadSHA256:
+                        journal.bootstrapSignedSHA256,
+                    bindingRead: .loaded(platformAgentBinding(journal: journal)),
+                    evidenceRead: .loaded(
+                        PlatformAgentUpdateBootstrapVerificationPolicy.invoked(
+                            verificationInvocationId: invocationId,
+                            bundlePath: "/tmp/update.tar.gz",
+                            observedAt: "2026-08-24T00:00:00Z"
+                        )
+                    )
+                )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .platformAgentVerificationEvidenceInvoked
+            )
+        }
+    }
+
+    func testProvePlatformAgentVerificationKeepsCurrentUnreadableBindingAheadOfEvidence() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+        let receipt = verificationReceipt(
+            journal: journal,
+            verificationInvocationId: invocationId
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .provePlatformAgentVerification(
+                    receipt: receipt,
+                    expectedUpdateId: journal.id,
+                    expectedCanonicalPayloadSHA256:
+                        journal.bootstrapSignedSHA256,
+                    bindingRead: .permissionDenied(
+                        path: "/tmp/binding.json",
+                        reason: "EACCES"
+                    ),
+                    evidenceRead: .loaded(
+                        PlatformAgentUpdateBootstrapVerificationPolicy.evidence(
+                            from: PlatformAgentUpdateBootstrapVerificationPolicy
+                                .invoked(
+                                    verificationInvocationId: invocationId,
+                                    bundlePath: "/tmp/update.tar.gz",
+                                    observedAt: "2026-08-24T00:00:00Z"
+                                ),
+                            outcome: .spawnFailed(reason: "launcher missing")
+                        )
+                    )
+                )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .platformAgentVerificationBindingPermissionDenied(
+                    path: "/tmp/binding.json",
+                    reason: "EACCES"
+                )
+            )
+        }
+    }
+
     func testRequireHostPlatformLayerRejectsSpecificationWithoutHostLayer() {
         let specification = ProductUpdateSpecification(
             schemaVersion: "vitalserver.product-update-specification/v1",
@@ -866,7 +1164,8 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
         resolvedRuntimeHome: String = "/Library/Application Support/VitalServerHelper/vm",
         canonicalPayloadSHA256: String? = nil,
         uid: UInt32 = 0,
-        euid: UInt32 = 0
+        euid: UInt32 = 0,
+        verificationInvocationId: String? = nil
     ) -> UpdateBootstrapVerificationReceipt {
         UpdateBootstrapVerificationReceipt(
             schemaVersion: UpdateBootstrapVerificationReceiptContract
@@ -879,8 +1178,51 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
             trustStorePath: installedTrustStore,
             observedAt: "2026-08-24T00:00:00Z",
             uid: uid,
-            euid: euid
+            euid: euid,
+            verificationInvocationId: verificationInvocationId
         )
+    }
+
+    private func platformAgentBinding(
+        journal: UpdateBootstrapJournal,
+        verificationInvocationId: String? = nil
+    ) -> UpdateBootstrapVerificationInvocationBinding {
+        UpdateBootstrapVerificationInvocationBinding(
+            schemaVersion:
+                UpdateBootstrapVerificationInvocationBindingContract
+                .schemaVersion,
+            command: UpdateBootstrapVerificationInvocationBindingContract
+                .command,
+            verificationInvocationId: verificationInvocationId
+                ?? invocationId,
+            updateId: journal.id,
+            canonicalPayloadSHA256: journal.bootstrapSignedSHA256
+        )
+    }
+
+    private func platformAgentEvidence(
+        journal: UpdateBootstrapJournal
+    ) -> PlatformAgentUpdateBootstrapVerificationEvidence {
+        PlatformAgentUpdateBootstrapVerificationEvidence(
+            schemaVersion:
+                PlatformAgentUpdateBootstrapVerificationContract.schemaVersion,
+            producer: PlatformAgentUpdateBootstrapVerificationContract.producer,
+            verificationInvocationId: invocationId,
+            bundlePath: "/tmp/update.tar.gz",
+            observedAt: "2026-08-24T00:00:00Z",
+            state: PlatformAgentUpdateBootstrapVerificationContract
+                .stateSucceeded,
+            updateId: journal.id,
+            canonicalPayloadSHA256: journal.bootstrapSignedSHA256
+        )
+    }
+
+    private var invocationId: String {
+        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    }
+
+    private var evidencePath: String {
+        "/Library/Application Support/VitalServerHelper/platform-agent-update-bootstrap-verification/\(invocationId).json"
     }
 
     private var installedHome: String {

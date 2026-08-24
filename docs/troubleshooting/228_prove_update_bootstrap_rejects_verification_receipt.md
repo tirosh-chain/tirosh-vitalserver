@@ -105,8 +105,9 @@ uid mismatch, and euid mismatch stay distinct.
   `observedAt` is not canonical UTC `yyyy-MM-ddTHH:mm:ssZ`. Do not add a
   compatibility fallback.
 
-Distinguishing MacPlatformAgent from operator-run root CLI requires a future
-caller-owned correlation contract. See TS-220.
+Distinguishing MacPlatformAgent from operator-run root CLI uses the explicit
+`--require-platform-agent-verification` dual-owner contract. See TS-229. Do
+not pass that flag from apply-smoke. Fresh-for-this-apply remains unproven.
 
 ## Prevention
 

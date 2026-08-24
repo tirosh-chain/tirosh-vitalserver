@@ -3298,6 +3298,69 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testMacPlatformAgentOwnsVerifyCorrelationAndControlPanelDoesNotMintIt() throws {
+        let root = packageRoot()
+        let serviceText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/MacPlatformAgent/MacPlatformAgentService.swift"
+            ),
+            encoding: .utf8
+        )
+        let environmentText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlEnvironment.swift"
+            ),
+            encoding: .utf8
+        )
+        let workerText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands/MacRuntimeControlCommandWorker.swift"
+            ),
+            encoding: .utf8
+        )
+        let cliText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/RuntimeUpdateBootstrapComposition.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            serviceText.contains(
+                "platformAgentVerificationInvoker:"
+            ),
+            "MacPlatformAgentService must inject the Platform Agent verification owner"
+        )
+        XCTAssertTrue(
+            serviceText.contains(
+                "SystemPlatformAgentUpdateBootstrapVerificationInvoker"
+            ),
+            "MacPlatformAgentService must construct the privileged verification invoker"
+        )
+        XCTAssertFalse(
+            environmentText.contains(
+                "SystemPlatformAgentUpdateBootstrapVerificationInvoker"
+            ),
+            "Control Panel must not mint MacPlatformAgent verification identity"
+        )
+        XCTAssertFalse(
+            environmentText.contains("platformAgentVerificationInvoker"),
+            "Control Panel-hosted command worker must not receive a Platform Agent invoker"
+        )
+        XCTAssertTrue(
+            workerText.contains("platformAgentVerificationInvoker else"),
+            "Shared command worker must spawn ordinary CLI when no Platform Agent invoker is injected"
+        )
+        XCTAssertTrue(
+            cliText.contains("command.verificationInvocationId"),
+            "Public CLI must bind an explicit verification invocation ID when provided"
+        )
+        XCTAssertFalse(
+            cliText.contains("verificationInvocationId: UUID()"),
+            "Public CLI must not invent a Platform Agent verification invocation identity"
+        )
+    }
+
     func testMacPlatformAgentOwnsLocalAPIStatusAndControlPanelDoesNotPublishIt() throws {
         let environmentFile = packageRoot()
             .appendingPathComponent("Sources/Hosts/MacControlPanel/Composition/MacRuntimeControlEnvironment.swift")

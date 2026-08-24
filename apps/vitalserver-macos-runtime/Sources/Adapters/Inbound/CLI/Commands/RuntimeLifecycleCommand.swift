@@ -13,7 +13,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case watchdog
     case configure(RuntimeConfigureCommand)
     case verifyBundle(URL)
-    case verifyUpdateBootstrap(URL)
+    case verifyUpdateBootstrap(RuntimeVerifyUpdateBootstrapCommand)
     case stageBundle(URL)
     case applyBundle(RuntimeApplyBundleCommand)
     case applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand)
@@ -78,11 +78,9 @@ extension RuntimeLifecycleCommand {
                 usage: "usage: vitalserver-vm runtime verify-bundle <bundle.tar.gz>"
             ))
         case "verify-update-bootstrap":
-            return .verifyUpdateBootstrap(try requiredBundleURL(
-                in: remaining,
-                usage:
-                    "usage: vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz>"
-            ))
+            return .verifyUpdateBootstrap(
+                try parseVerifyUpdateBootstrapCommand(remaining)
+            )
         case "stage-bundle":
             return .stageBundle(try requiredBundleURL(
                 in: remaining,
@@ -235,12 +233,13 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--runtime-control-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|observe_only|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-max-mib-per-second <count>] [--container-memory-limits true|false] [--vitalserver-container-memory-limit-mib <mib>] [--recorder-ingress-container-memory-limit-mib <mib>] [--redis-container-memory-limit-mib <mib>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--restart|--restart-vm-runtime]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart|--restart-vm-runtime]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
+      vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz> [--verification-invocation-id <id>]
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
       vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
       vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>
       vitalserver-vm runtime resume-update-bootstrap-handoff <update-id>
       vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>
-      vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds>
+      vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds> [--require-platform-agent-verification]
       vitalserver-vm runtime fail-update-bootstrap <update-id> --reason <reason>
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
@@ -355,8 +354,8 @@ extension RuntimeLifecycleCommand {
         _ arguments: [String]
     ) throws -> RuntimeProveUpdateBootstrapCommand {
         let usage =
-            "usage: vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds>"
-        guard arguments.count == 7,
+            "usage: vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds> [--require-platform-agent-verification]"
+        guard arguments.count == 7 || arguments.count == 8,
               !arguments[0].isEmpty,
               arguments[1] == "--expect",
               let expectation = UpdateBootstrapLifecycleProofExpectation(
@@ -371,11 +370,48 @@ extension RuntimeLifecycleCommand {
               pollIntervalMilliseconds > 0 else {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
+        var requirePlatformAgentVerification = false
+        if arguments.count == 8 {
+            guard arguments[7] == "--require-platform-agent-verification" else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+            requirePlatformAgentVerification = true
+        }
         return RuntimeProveUpdateBootstrapCommand(
             updateId: arguments[0],
             expectation: expectation,
             timeoutMilliseconds: timeoutSeconds * 1_000,
-            pollIntervalMilliseconds: pollIntervalMilliseconds
+            pollIntervalMilliseconds: pollIntervalMilliseconds,
+            requirePlatformAgentVerification: requirePlatformAgentVerification
+        )
+    }
+
+    private static func parseVerifyUpdateBootstrapCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeVerifyUpdateBootstrapCommand {
+        let usage =
+            "usage: vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz> [--verification-invocation-id <id>]"
+        guard let bundlePath = arguments.first,
+              !bundlePath.isEmpty,
+              bundlePath != "--verification-invocation-id" else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        var verificationInvocationId: String?
+        var index = 1
+        while index < arguments.count {
+            let argument = arguments[index]
+            guard argument == "--verification-invocation-id",
+                  index + 1 < arguments.count,
+                  verificationInvocationId == nil,
+                  !arguments[index + 1].isEmpty else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+            verificationInvocationId = arguments[index + 1]
+            index += 2
+        }
+        return RuntimeVerifyUpdateBootstrapCommand(
+            bundleURL: URL(fileURLWithPath: bundlePath),
+            verificationInvocationId: verificationInvocationId
         )
     }
 

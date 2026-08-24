@@ -24,6 +24,7 @@ final class UpdateBootstrapVerificationReceiptContractsTests: XCTestCase {
         )
         XCTAssertEqual(receipt.uid, 0)
         XCTAssertEqual(receipt.euid, 0)
+        XCTAssertNil(receipt.verificationInvocationId)
     }
 
     func testRoundTripsExplicitFields() throws {

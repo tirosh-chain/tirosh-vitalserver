@@ -1,6 +1,8 @@
+import Application
 import Foundation
 import RuntimeControl
 @testable import MacControlPanelHost
+@testable import MacPlatformAgent
 import XCTest
 import Errors
 @testable import InboundAdapters
@@ -34,6 +36,39 @@ final class RuntimeUpdateBundleVerifierTests: XCTestCase {
             "\(AppConstants.StatusText.updateBundleVerificationFailed)\n\nbad signature"
         )
         XCTAssertEqual(result.message, result.verification)
+    }
+
+    func testVerifyDoesNotTreatChildSuccessWithEvidencePersistFailureAsVerified() async {
+        let mapped = PlatformAgentVerificationPersistFailureMapping.commandResult(
+            error: InvokePlatformAgentUpdateBootstrapVerificationError
+                .evidencePersistFailed(reason: "EACCES"),
+            spawned: RuntimeCommandResult(
+                exitCode: 0,
+                stdout: "update bootstrap verified",
+                stderr: "",
+                executionIssue: nil
+            )
+        )
+        let verifier = RuntimeUpdateBundleVerifier()
+
+        let result = await verifier.verify(
+            bundleURL: URL(fileURLWithPath: "/tmp/update-bundle.tar.gz")
+        ) { _ in
+            mapped
+        }
+
+        XCTAssertEqual(mapped.exitCode, 1)
+        XCTAssertNil(mapped.executionIssue)
+        XCTAssertFalse(result.isVerified)
+        XCTAssertTrue(
+            result.verification.contains(
+                AppConstants.StatusText.updateBundleVerificationFailed
+            )
+        )
+        XCTAssertNotEqual(
+            result.verification,
+            AppConstants.StatusText.updateBundleIntegrityChecked
+        )
     }
 
     func testVerifyReportsThrownError() async {

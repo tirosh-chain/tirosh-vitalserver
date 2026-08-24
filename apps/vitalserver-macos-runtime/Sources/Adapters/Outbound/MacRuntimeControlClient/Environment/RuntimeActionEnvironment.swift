@@ -9,7 +9,11 @@ protocol RuntimeActionEnvironment: Sendable {
     func writeAdminPasswordFile(_ password: String) throws -> URL
     func writeRecorderIngressSettingsFile(_ settings: RuntimeRecorderIngressSettings) throws -> URL
     func removeItem(at url: URL) throws
-    func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult
+    func verifyBundle(
+        launcher: String,
+        bundleURL: URL,
+        verificationInvocationId: String?
+    ) async -> RuntimeCommandResult
 }
 
 struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Sendable {
@@ -76,14 +80,26 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
         try fileStore.removeItem(at: url)
     }
 
-    func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
-        await ProcessRunner.run(
+    func verifyBundle(
+        launcher: String,
+        bundleURL: URL,
+        verificationInvocationId: String?
+    ) async -> RuntimeCommandResult {
+        var arguments = [
+            RuntimeControlClientConstants.RuntimeCommand.runtime,
+            RuntimeControlClientConstants.RuntimeCommand.verifyUpdateBootstrap,
+            bundleURL.path,
+        ]
+        if let verificationInvocationId {
+            arguments.append(
+                RuntimeControlClientConstants.RuntimeCommand
+                    .optionVerificationInvocationID
+            )
+            arguments.append(verificationInvocationId)
+        }
+        return await ProcessRunner.run(
             launcher,
-            arguments: [
-                RuntimeControlClientConstants.RuntimeCommand.runtime,
-                RuntimeControlClientConstants.RuntimeCommand.verifyUpdateBootstrap,
-                bundleURL.path,
-            ],
+            arguments: arguments,
             environment: [
                 RuntimeControlClientConstants.Environment.vmHome:
                     RuntimeControlClientConstants.Paths.vmHome,
