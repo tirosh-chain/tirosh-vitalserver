@@ -34,7 +34,7 @@
     exchange/
 
 /Applications/VitalServer Helper.app
-  -> .../host-platform/current/app/VitalServer Helper.app
+  Contents/...
 
 /usr/local/bin/
   vitalserver-host-installation-manager
@@ -42,16 +42,22 @@
   vitalserver-update-handoff-supervisor
 ```
 
-`current`와 `/Applications`의 app은 상태를 추론하기 위한 표식이 아니라 설치
-manifest가 선언한 active release를 노출하는 안정된 참조입니다. postinstall은
-패키지에 포함된 initial installation manifest로 SQLite owner를 초기화합니다.
-누락된 manifest나 manager를 package receipt, 파일 검색, launchd 상태로 보정하지
-않습니다.
+`current`는 교체 가능한 service와 CLI가 active release를 참조하는 symlink입니다.
+반면 `/Applications/VitalServer Helper.app`은 LaunchServices, Finder, Launchpad가
+application bundle로 식별할 수 있는 materialized directory입니다. release slot의
+app은 배포 source이고, PKG 설치와 Host Platform reconcile은 그 app을
+`/Applications`에 복사해 게시합니다. `/Applications` app을 `current` 아래 app의
+symlink로 만들지 않습니다.
+
+postinstall은 패키지에 포함된 initial installation manifest로 SQLite owner를
+초기화하고, `/Applications` app이 symlink가 아니며 `Info.plist`와 executable을
+가졌는지 검증합니다. 누락된 manifest나 manager를 package receipt, 파일 검색,
+launchd 상태로 보정하지 않습니다.
 
 VM, proxy, platform agent 등 교체 가능한 launchd service의 실행 경로는
 `host-platform/current` 아래를 가리킵니다. 반대로 installation manager와 update
 handoff supervisor는 자신이 교체하는 release 바깥의 fixed path에 남습니다.
-clean uninstall은 `current`, 모든 release slot, SQLite DB, stable app/CLI link,
+clean uninstall은 `current`, 모든 release slot, SQLite DB, published app/CLI link,
 manager/executor/supervisor 및 launchd definition을 명시된 uninstall closure로
 삭제합니다.
 
@@ -588,13 +594,14 @@ Install VitalServer Helper.pkg
     -> /usr/local/bin/vitalserver-proxy-run
     -> /Library/Application Support/VitalServerHelper/vm/runtime/rootfs-base.raw.gz
     -> /Library/Application Support/VitalServerHelper/vm/data/deploy/*
-    -> /Library/Application Support/VitalServerHelper/nginx/*
+    -> /Library/Application Support/VitalServerHelper/host-platform/releases/<release>/release/nginx/*
+    -> /Library/Application Support/VitalServerHelper/host-platform/current
     -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist
   -> rendered postinstall from Support/Packaging/postinstall.template
     -> vitalserver-vm runtime install-provision
       -> schema/packageIdentifier/targetVersion/intent contract validation
       -> read /private/tmp/tirosh-vitalserver-install.json if present
-      -> create runtime/data/log directories
+      -> create runtime/data/log directories, including mutable nginx config/log/temp root
       -> write deploy/runtime-config.json
       -> gunzip rootfs-base.raw.gz into runtime/vm-disk.img if missing
       -> truncate vm-disk.img to configured diskGiB

@@ -84,7 +84,7 @@ def settings_install_update_handoff_jobs(
 
 
 def settings_install_nginx_prefix(settings: MacOSReleaseSettings) -> str:
-    return settings_current_release_nginx_prefix(settings)
+    return f"{settings_install_prefix(settings)}/nginx"
 
 
 def package_install_value(context: PackageContext, key: str) -> str:
@@ -127,7 +127,7 @@ def install_nginx_prefix(context: PackageContext) -> str:
 
 
 def install_nginx_bin(context: PackageContext) -> str:
-    return f"{install_nginx_prefix(context)}/sbin/nginx"
+    return f"{settings_current_release_nginx_prefix(context.settings)}/sbin/nginx"
 
 
 def package_path(context: PackageContext, path: str) -> Path:

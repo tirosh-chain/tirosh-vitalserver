@@ -17,9 +17,16 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.hostRunDirectory.path, "/Library/Application Support/VitalServerHelper/vm/run")
         XCTAssertEqual(paths.guestRunDirectory.path, "/Library/Application Support/VitalServerHelper/vm/data/run")
         XCTAssertEqual(paths.pidFile.path, "/Library/Application Support/VitalServerHelper/vm/run/vitalserver-vm.pid")
+        XCTAssertEqual(
+            paths.hostPlatformCurrentRelease.path,
+            "/Library/Application Support/VitalServerHelper/host-platform/current"
+        )
         XCTAssertEqual(paths.nginxDirectory.path, "/Library/Application Support/VitalServerHelper/nginx")
         XCTAssertEqual(paths.nginxLogsDirectory.path, "/Library/Application Support/VitalServerHelper/nginx/logs")
-        XCTAssertEqual(paths.nginxExecutable.path, "/Library/Application Support/VitalServerHelper/nginx/sbin/nginx")
+        XCTAssertEqual(
+            paths.nginxExecutable.path,
+            "/Library/Application Support/VitalServerHelper/host-platform/current/nginx/sbin/nginx"
+        )
         XCTAssertEqual(paths.productLogsDirectory.path, "/Library/Application Support/VitalServerHelper/logs")
         XCTAssertEqual(paths.centralRuntimeLogsDirectory.path, "/Library/Application Support/VitalServerHelper/logs/runtime")
         XCTAssertEqual(paths.proxyNginxAccessLog.path, "/Library/Application Support/VitalServerHelper/logs/runtime/proxy-nginx.access.log")

@@ -877,11 +877,13 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
         "releases/helper-1.2.3/release"
     )
     stable_app = settings.pkg_root / "Applications/VitalServer Helper.app"
-    assert stable_app.is_symlink()
-    assert os.readlink(stable_app) == (
-        "/Library/Application Support/VitalServerHelper/host-platform/"
-        "current/app/VitalServer Helper.app"
-    )
+    assert stable_app.is_dir()
+    assert not stable_app.is_symlink()
+    assert (stable_app / "Contents/MacOS/VitalServer Helper").read_bytes() == (
+        installation_root
+        / "releases/helper-1.2.3/release/app/VitalServer Helper.app"
+        / "Contents/MacOS/VitalServer Helper"
+    ).read_bytes()
     release_root = (
         installation_root / "releases/helper-1.2.3/release"
     )

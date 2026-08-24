@@ -144,9 +144,6 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
             "INITIAL_RELEASE_ROOT":
                 "/Library/Application Support/VitalServerHelper/"
                 "host-platform/releases/helper-0.2.2/release",
-            "INITIAL_APPLICATION_TARGET":
-                "/Library/Application Support/VitalServerHelper/"
-                "host-platform/current/app/VitalServer Helper.app",
         },
     )
     render_packaging_executable(
@@ -286,7 +283,14 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'readlink "${host_platform_installation_root}/current"'
         in postinstall_text
     )
-    assert 'readlink "${manager_app}"' in postinstall_text
+    assert '[ -L "${manager_app}" ]' in postinstall_text
+    assert '[ ! -d "${manager_app}" ]' in postinstall_text
+    assert '[ ! -f "${manager_app}/Contents/Info.plist" ]' in postinstall_text
+    assert (
+        '[ ! -x "${manager_app}/Contents/MacOS/VitalServer Helper" ]'
+        in postinstall_text
+    )
+    assert 'readlink "${manager_app}"' not in postinstall_text
     assert "VitalServer Helper postinstall started" in postinstall_text
     assert "VitalServer Helper postinstall completed" in postinstall_text
     platform_agent_launchd_text = platform_agent_launchd_template.read_text(
@@ -324,6 +328,15 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert (
         'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"'
         in proxy_run_text
+    )
+    assert (
+        'nginx_prefix="${VITALSERVER_NGINX_PREFIX:-'
+        '/Library/Application Support/VitalServerHelper/nginx}"' in proxy_run_text
+    )
+    assert (
+        'nginx_bin="${VITALSERVER_NGINX_BIN:-'
+        "/Library/Application Support/VitalServerHelper/"
+        'host-platform/current/nginx/sbin/nginx}"' in proxy_run_text
     )
     assert "runtime-endpoint.json" not in proxy_run_text
     assert 'state_file="${vm_home}/data/run/runtime-observation.json"' not in proxy_run_text

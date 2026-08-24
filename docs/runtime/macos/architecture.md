@@ -405,7 +405,11 @@ VitalServerHelper.pkg
   -> /usr/local/bin/vitalserver-proxy-run
   -> /usr/local/bin/tirosh-vitalserver-uninstall
   -> /Applications/VitalServer Helper.app
-  -> /Library/Application Support/VitalServerHelper/nginx/sbin/nginx
+  -> /Library/Application Support/VitalServerHelper/host-platform/current/nginx/sbin/nginx
+  -> /Library/Application Support/VitalServerHelper/nginx/
+       vitalserver.conf
+       logs/
+       temp/
   -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist
   -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.vm.plist
   -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist
@@ -579,12 +583,17 @@ rollback success    -> healthy
 ```text
 VitalServerHelper.dmg
   -> Install VitalServer Helper.pkg
-      -> /Applications/VitalServer Helper.app
+      -> /Applications/VitalServer Helper.app (materialized app bundle)
       -> /Library/Application Support/VitalServerHelper runtime data
       -> /usr/local/bin Updater/Supervisor/VM Driver tools
       -> LaunchDaemons
       -> postinstall runtime provisioning
 ```
+
+`/Applications/VitalServer Helper.app`은 release slot을 가리키는 symlink가
+아닙니다. macOS LaunchServices가 application으로 등록할 수 있는 실제 bundle을
+PKG와 Host Platform updater가 게시합니다. immutable release slot의 app은 초기
+설치, update, rollback에서 이 public bundle을 재게시하는 source입니다.
 
 | 설정 | 저장 위치 |
 |---|---|

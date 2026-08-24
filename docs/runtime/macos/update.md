@@ -545,7 +545,7 @@ VM Image Update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치
 | managed backups | `backups/<timestamp>-before-<version>` | 생성/보존 |
 | Helper app | `/Applications/VitalServer Helper.app` | 교체 |
 | runtime CLI | `/usr/local/bin/*` | 교체 |
-| host nginx bundle | product `nginx/` | 교체 |
+| host nginx bundle | host-platform/current release nginx | 교체 |
 | guest deploy bundle | `vm/data/deploy/` | 교체 |
 
 `guest-deploy.tar.gz` 안에 Docker image bundle이 포함되어도, 그것은 “host shared directory에 새 image tar가 놓였다”는 뜻입니다. VM 안의 Docker daemon에 image가 실제로 load되고, 기존 container가 새 image로 recreate되는 것은 별도의 guest-side activation입니다.

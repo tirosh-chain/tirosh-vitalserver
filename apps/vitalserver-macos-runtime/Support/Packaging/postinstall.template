@@ -16,7 +16,6 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 package_install_contract="${script_dir}/package-install-contract.json"
 initial_host_installation_manifest="${script_dir}/initial-host-platform-installation.json"
 initial_release_root="${INITIAL_RELEASE_ROOT}"
-initial_application_target="${INITIAL_APPLICATION_TARGET}"
 failure_log="/private/tmp/tirosh-vitalserver-postinstall-failure.log"
 max_log_bytes=$((10 * 1024 * 1024))
 keep_log_count=5
@@ -90,12 +89,20 @@ if [ "$(readlink "${host_platform_installation_root}/current")" != "${initial_re
   log "current Helper Host release target differs path=${host_platform_installation_root}/current"
   exit 1
 fi
-if [ ! -L "${manager_app}" ]; then
-  log "helper app missing path=${manager_app}"
+if [ -L "${manager_app}" ]; then
+  log "helper app must be a materialized application bundle, not a symbolic link path=${manager_app}"
   exit 1
 fi
-if [ "$(readlink "${manager_app}")" != "${initial_application_target}" ]; then
-  log "helper app target differs path=${manager_app}"
+if [ ! -d "${manager_app}" ]; then
+  log "helper app bundle missing path=${manager_app}"
+  exit 1
+fi
+if [ ! -f "${manager_app}/Contents/Info.plist" ]; then
+  log "helper app Info.plist missing path=${manager_app}/Contents/Info.plist"
+  exit 1
+fi
+if [ ! -x "${manager_app}/Contents/MacOS/VitalServer Helper" ]; then
+  log "helper app executable missing path=${manager_app}/Contents/MacOS/VitalServer Helper"
   exit 1
 fi
 if [ ! -x "${host_installation_manager}" ]; then

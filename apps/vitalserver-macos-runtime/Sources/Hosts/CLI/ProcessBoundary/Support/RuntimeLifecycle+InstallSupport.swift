@@ -560,7 +560,7 @@ extension RuntimeLifecycle {
         try RuntimeInstallPermissionConfigurator(
             context: RuntimeInstallPermissionContext(
                 runtimeHome: paths.home,
-                nginxDirectory: productRoot.appendingPathComponent("nginx"),
+                nginxDirectory: installedPaths.nginxDirectory,
                 runtimeStateDatabase: installedPaths.runtimeStateDatabase,
                 runtimeControlSettings: installedPaths.runtimeControlSettings,
                 proxyLaunchDaemonPlist: RuntimeManagedServicePaths.launchDaemonPlist(.proxy),

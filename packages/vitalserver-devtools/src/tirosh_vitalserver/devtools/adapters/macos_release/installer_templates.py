@@ -16,6 +16,7 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     package_install_value,
     package_path,
     settings_current_release_binary,
+    settings_current_release_nginx_prefix,
     settings_install_app_bundle,
     settings_install_home,
     settings_install_nginx_prefix,
@@ -85,6 +86,9 @@ def packaging_template_values(settings: MacOSReleaseSettings) -> dict[str, str]:
         ),
         "NGINX_PREFIX": shell_double_quoted_content(
             settings_install_nginx_prefix(settings)
+        ),
+        "NGINX_BIN": shell_double_quoted_content(
+            f"{settings_current_release_nginx_prefix(settings)}/sbin/nginx"
         ),
         "LAUNCH_DAEMONS_DIR": shell_double_quoted_content(
             settings_install_value(

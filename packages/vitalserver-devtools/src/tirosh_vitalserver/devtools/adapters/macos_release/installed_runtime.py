@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import plistlib
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ RunProcess = Callable[
     subprocess.CompletedProcess[str],
 ]
 LAUNCHD_SERVICE_NOT_FOUND_EXIT_CODE = 113
+APP_BUNDLE_PACKAGE_TYPE = "APPL"
 
 
 @dataclass(frozen=True)
@@ -88,8 +90,16 @@ def installed_status(
 
     print("Installed VM runtime")
     manager_app = Path(settings.install.applications_dir) / f"{settings.app_name}.app"
-    if manager_app.is_dir():
+    if manager_app.is_symlink():
+        print(f"  helper app is a symbolic link: {manager_app}")
+        status = 1
+    elif manager_app.is_dir():
         print(f"  helper app: {manager_app}")
+        status |= verify_helper_app_plist(
+            manager_app,
+            settings.app_name,
+            settings.package_identifier,
+        )
         manager_executable = manager_app / "Contents/MacOS" / settings.app_name
         if manager_executable.is_file() and os.access(manager_executable, os.X_OK):
             print(f"  helper executable: {manager_executable}")
@@ -104,7 +114,10 @@ def installed_status(
         ("launcher", Path(settings.install.vm_cli)),
         ("proxy runner", Path(settings.install.proxy_runner)),
         ("uninstaller", Path(settings.install.uninstaller)),
-        ("nginx", product_root / "nginx/sbin/nginx"),
+        (
+            "nginx",
+            product_root / "host-platform/current/nginx/sbin/nginx",
+        ),
     ]:
         if path.is_file() and os.access(path, os.X_OK):
             print(f"  {label}: {path}")
@@ -153,6 +166,62 @@ def installed_status(
         status = 1
 
     return status
+
+
+def verify_helper_app_plist(
+    manager_app: Path,
+    expected_executable: str,
+    expected_bundle_identifier: str,
+) -> int:
+    """Verify the app bundle Info.plist declares the expected identity contract."""
+    info_plist = manager_app / "Contents" / "Info.plist"
+    if not info_plist.is_file():
+        print(f"  helper app Info.plist: missing: {info_plist}")
+        return 1
+    try:
+        with info_plist.open("rb") as file:
+            document = plistlib.load(file)
+    except (OSError, plistlib.InvalidFileException, ValueError, TypeError) as error:
+        print(f"  helper app Info.plist: decode failed: {info_plist}: {error}")
+        return 1
+    if not isinstance(document, dict):
+        print(f"  helper app Info.plist: invalid root: {info_plist}")
+        return 1
+    for key, expected in (
+        ("CFBundleExecutable", expected_executable),
+        ("CFBundleIdentifier", expected_bundle_identifier),
+        ("CFBundlePackageType", APP_BUNDLE_PACKAGE_TYPE),
+    ):
+        status = _verify_plist_string_key(document, key, expected, info_plist)
+        if status != 0:
+            return status
+    print(
+        f"  helper executable identity: {document['CFBundleExecutable']} "
+        f"bundle: {document['CFBundleIdentifier']}"
+    )
+    return 0
+
+
+def _verify_plist_string_key(
+    document: Mapping[str, object],
+    key: str,
+    expected: str,
+    info_plist: Path,
+) -> int:
+    value = document.get(key)
+    if value is None:
+        print(f"  helper app Info.plist: {key} missing: {info_plist}")
+        return 1
+    if not isinstance(value, str) or not value:
+        print(f"  helper app Info.plist: {key} invalid: {info_plist}")
+        return 1
+    if value != expected:
+        print(
+            f"  helper app Info.plist: {key} mismatch "
+            f"declared={value} expected={expected}: {info_plist}"
+        )
+        return 1
+    return 0
 
 
 def installed_health(

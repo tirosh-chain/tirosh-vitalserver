@@ -786,6 +786,10 @@ def stage_pkg_root(context: PackageContext) -> None:
     )
     copy_tree(context.app_bundle, package_path(context, release_app_path))
     copy_tree(
+        context.app_bundle,
+        package_path(context, install_app_bundle(context)),
+    )
+    copy_tree(
         context.nginx_bundle,
         package_path(context, release_nginx_path),
     )
@@ -986,11 +990,6 @@ def stage_pkg_root(context: PackageContext) -> None:
     current_link.symlink_to(f"{slot_path}/release")
     stable_links = (
         (
-            package_path(context, install_app_bundle(context)),
-            f"{settings_host_platform_current_release(context.settings)}/"
-            f"{application_relative_path}",
-        ),
-        (
             package_path(context, package_install_value(context, "vm_cli")),
             settings_current_release_binary(
                 context.settings,
@@ -1019,10 +1018,6 @@ def stage_pkg_root(context: PackageContext) -> None:
         context.pkg_scripts / "postinstall",
         {
             "INITIAL_RELEASE_ROOT": release_path,
-            "INITIAL_APPLICATION_TARGET": (
-                f"{settings_host_platform_current_release(context.settings)}/"
-                f"{application_relative_path}"
-            ),
         },
     )
     render_packaging_template(
@@ -1030,7 +1025,9 @@ def stage_pkg_root(context: PackageContext) -> None:
         packaging_dir / "components.plist.template",
         context.settings.pkg_component_plist,
         {
-            "APP_BUNDLE_ROOT_RELATIVE": plist_text(release_app_path.strip("/")),
+            "APP_BUNDLE_ROOT_RELATIVE": plist_text(
+                install_app_bundle(context).strip("/")
+            ),
         },
     )
     remove_apple_double_files(context.pkg_root)

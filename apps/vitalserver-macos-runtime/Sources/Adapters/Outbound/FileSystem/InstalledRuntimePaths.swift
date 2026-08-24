@@ -184,6 +184,13 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         )
     }
 
+    public var hostPlatformCurrentRelease: URL {
+        productRoot
+            .appendingPathComponent("host-platform", isDirectory: true)
+            .appendingPathComponent("current", isDirectory: true)
+    }
+
+    /// Mutable nginx working directory owned by the Host runtime.
     public var nginxDirectory: URL {
         productRoot.appendingPathComponent("nginx")
     }
@@ -192,8 +199,9 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         nginxDirectory.appendingPathComponent("logs")
     }
 
+    /// Immutable nginx executable supplied by the active Host release.
     public var nginxExecutable: URL {
-        nginxDirectory.appendingPathComponent("sbin/nginx")
+        hostPlatformCurrentRelease.appendingPathComponent("nginx/sbin/nginx")
     }
 
     public var vitalFilesDirectory: URL {
