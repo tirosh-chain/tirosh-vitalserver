@@ -236,7 +236,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz> [--verification-invocation-id <id>]
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
       vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
-      vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>
+      vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id> [--require-platform-agent-selection]
       vitalserver-vm runtime resume-update-bootstrap-handoff <update-id>
       vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>
       vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds> [--require-platform-agent-verification]
@@ -311,30 +311,43 @@ extension RuntimeLifecycleCommand {
     private static func parseApplyUpdateBootstrapCommand(
         _ arguments: [String]
     ) throws -> RuntimeApplyUpdateBootstrapCommand {
-        let usage = "usage: vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>"
+        let usage = "usage: vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id> [--require-platform-agent-selection]"
         guard let bundlePath = arguments.first,
               !bundlePath.isEmpty,
-              bundlePath != "--request-id" else {
+              bundlePath != "--request-id",
+              bundlePath != "--require-platform-agent-selection" else {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         var requestId: String?
+        var requirePlatformAgentSelection = false
         var index = 1
         while index < arguments.count {
             let argument = arguments[index]
-            guard argument == "--request-id",
-                  index + 1 < arguments.count,
-                  requestId == nil else {
+            switch argument {
+            case "--request-id":
+                guard index + 1 < arguments.count,
+                      requestId == nil else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+                }
+                requestId = arguments[index + 1]
+                index += 2
+            case "--require-platform-agent-selection":
+                guard !requirePlatformAgentSelection else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+                }
+                requirePlatformAgentSelection = true
+                index += 1
+            default:
                 throw RuntimeLifecycleCommandParseError.missingArgument(usage)
             }
-            requestId = arguments[index + 1]
-            index += 2
         }
         guard let requestId, !requestId.isEmpty else {
             throw RuntimeLifecycleCommandParseError.missingArgument(usage)
         }
         return RuntimeApplyUpdateBootstrapCommand(
             bundleURL: URL(fileURLWithPath: bundlePath),
-            requestId: requestId
+            requestId: requestId,
+            requirePlatformAgentSelection: requirePlatformAgentSelection
         )
     }
 

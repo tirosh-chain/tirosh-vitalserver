@@ -3359,6 +3359,50 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             cliText.contains("verificationInvocationId: UUID()"),
             "Public CLI must not invent a Platform Agent verification invocation identity"
         )
+        XCTAssertTrue(
+            serviceText.contains(
+                "SystemPlatformAgentUpdateBootstrapSelectionOwner"
+            ),
+            "MacPlatformAgentService must own verified-selection persistence"
+        )
+        XCTAssertTrue(
+            serviceText.contains("platformAgentSelectionOwner:"),
+            "MacPlatformAgentService must inject the selection owner into apply"
+        )
+        XCTAssertFalse(
+            environmentText.contains(
+                "SystemPlatformAgentUpdateBootstrapSelectionOwner"
+            ),
+            "Control Panel must not mint MacPlatformAgent verified selection identity"
+        )
+        XCTAssertFalse(
+            environmentText.contains("platformAgentSelectionOwner"),
+            "Control Panel-hosted command worker must not receive a Platform Agent selection owner"
+        )
+        XCTAssertTrue(
+            workerText.contains("platformAgentSelectionOwner"),
+            "Shared command worker must consume Platform Agent selection only when injected"
+        )
+        XCTAssertFalse(
+            cliText.contains("--selection-id"),
+            "Public apply-update-bootstrap must not take a selection identity argument"
+        )
+        XCTAssertTrue(
+            cliText.contains("requirePlatformAgentSelection"),
+            "apply-update-bootstrap must take an explicit Platform Agent selection requirement"
+        )
+        XCTAssertTrue(
+            workerText.contains("case verifyInFlight"),
+            "Platform Agent worker must reject apply while verify is in flight"
+        )
+        XCTAssertTrue(
+            workerText.contains("case applyInFlight"),
+            "Platform Agent worker must reject verify while apply is in flight"
+        )
+        XCTAssertTrue(
+            cliText.contains("journalAlreadyExists"),
+            "CLI spend of a committed selection is journal-admission recovery, not live child spend"
+        )
     }
 
     func testMacPlatformAgentOwnsLocalAPIStatusAndControlPanelDoesNotPublishIt() throws {

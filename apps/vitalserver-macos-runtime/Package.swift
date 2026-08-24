@@ -298,11 +298,11 @@ let package = Package(
         ),
         .testTarget(
             name: "MacControlPanelHostTests",
-            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters", "MacPlatformAgent", "MacControlPanelHost"]
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl", "InboundAdapters", "OutboundAdapters", "MacPlatformAgent", "MacControlPanelHost"]
         ),
         .testTarget(
             name: "MacPlatformAgentTests",
-            dependencies: ["RuntimeControl", "OutboundAdapters", "MacPlatformAgent"]
+            dependencies: ["Application", "RuntimeControl", "OutboundAdapters", "MacPlatformAgent"]
         )
     ]
 )

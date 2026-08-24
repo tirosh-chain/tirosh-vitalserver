@@ -109,6 +109,57 @@ public struct UpdateBootstrapCompletionReceipt: Codable, Equatable, Sendable {
     }
 }
 
+public struct UpdateBootstrapPlatformAgentSelectionCorrelation:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let selectionId: String
+    public let verificationInvocationId: String
+    public let updateId: String
+    public let canonicalPayloadSHA256: String
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case selectionId
+        case verificationInvocationId
+        case updateId
+        case canonicalPayloadSHA256
+    }
+
+    public init(
+        selectionId: String,
+        verificationInvocationId: String,
+        updateId: String,
+        canonicalPayloadSHA256: String
+    ) {
+        self.selectionId = selectionId
+        self.verificationInvocationId = verificationInvocationId
+        self.updateId = updateId
+        self.canonicalPayloadSHA256 = canonicalPayloadSHA256
+    }
+
+    public init(from decoder: Decoder) throws {
+        try rejectUnknownUpdateBootstrapKeys(
+            decoder,
+            allowed: CodingKeys.allCases.map(\.rawValue),
+            type: "UpdateBootstrapPlatformAgentSelectionCorrelation"
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            selectionId: try container.decode(String.self, forKey: .selectionId),
+            verificationInvocationId: try container.decode(
+                String.self,
+                forKey: .verificationInvocationId
+            ),
+            updateId: try container.decode(String.self, forKey: .updateId),
+            canonicalPayloadSHA256: try container.decode(
+                String.self,
+                forKey: .canonicalPayloadSHA256
+            )
+        )
+    }
+}
+
 public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
     public let schemaVersion: String
     public let id: String
@@ -126,6 +177,8 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
     public let failureReason: String?
     public let createdAt: String
     public let updatedAt: String
+    public let platformAgentSelectionCorrelation:
+        UpdateBootstrapPlatformAgentSelectionCorrelation?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion
@@ -144,6 +197,7 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
         case failureReason
         case createdAt
         case updatedAt
+        case platformAgentSelectionCorrelation
     }
 
     public init(
@@ -162,7 +216,9 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
         completion: UpdateBootstrapCompletionReceipt?,
         failureReason: String?,
         createdAt: String,
-        updatedAt: String
+        updatedAt: String,
+        platformAgentSelectionCorrelation:
+            UpdateBootstrapPlatformAgentSelectionCorrelation? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -180,6 +236,8 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
         self.failureReason = failureReason
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.platformAgentSelectionCorrelation =
+            platformAgentSelectionCorrelation
     }
 
     public init(from decoder: Decoder) throws {
@@ -226,7 +284,64 @@ public struct UpdateBootstrapJournal: Codable, Equatable, Sendable {
                 forKey: .failureReason
             ),
             createdAt: try container.decode(String.self, forKey: .createdAt),
-            updatedAt: try container.decode(String.self, forKey: .updatedAt)
+            updatedAt: try container.decode(String.self, forKey: .updatedAt),
+            platformAgentSelectionCorrelation: try Self.decodePresentNonNull(
+                container,
+                forKey: .platformAgentSelectionCorrelation
+            )
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(id, forKey: .id)
+        try container.encode(journalRevision, forKey: .journalRevision)
+        try container.encode(operationId, forKey: .operationId)
+        try container.encode(targetInstallationId, forKey: .targetInstallationId)
+        try container.encode(
+            expectedInstallationRevision,
+            forKey: .expectedInstallationRevision
+        )
+        try container.encode(requestId, forKey: .requestId)
+        try container.encode(envelope, forKey: .envelope)
+        try container.encode(bootstrapSignedSHA256, forKey: .bootstrapSignedSHA256)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(
+            stagedUpdaterRelativePath,
+            forKey: .stagedUpdaterRelativePath
+        )
+        try container.encodeIfPresent(
+            stagedSpecificationRelativePath,
+            forKey: .stagedSpecificationRelativePath
+        )
+        try container.encodeIfPresent(completion, forKey: .completion)
+        try container.encodeIfPresent(failureReason, forKey: .failureReason)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encodeIfPresent(
+            platformAgentSelectionCorrelation,
+            forKey: .platformAgentSelectionCorrelation
+        )
+    }
+
+    private static func decodePresentNonNull(
+        _ container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> UpdateBootstrapPlatformAgentSelectionCorrelation? {
+        guard container.contains(key) else {
+            return nil
+        }
+        if try container.decodeNil(forKey: key) {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: container,
+                debugDescription: "\(key.rawValue) must not be null"
+            )
+        }
+        return try container.decode(
+            UpdateBootstrapPlatformAgentSelectionCorrelation.self,
+            forKey: key
         )
     }
 }

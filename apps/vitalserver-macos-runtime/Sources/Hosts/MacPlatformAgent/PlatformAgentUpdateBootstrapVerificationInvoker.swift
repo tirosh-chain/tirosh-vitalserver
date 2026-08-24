@@ -13,6 +13,7 @@ public struct SystemPlatformAgentUpdateBootstrapVerificationInvoker:
     private let clock: any RuntimeClock
     private let generateInvocationId: @Sendable () -> String
     private let fileStore: RuntimeFileStore
+    private let selectionOwner: (any PlatformAgentUpdateBootstrapSelectionOwning)?
 
     public init(
         installedPaths: InstalledRuntimePaths = .defaultInstalled,
@@ -20,12 +21,14 @@ public struct SystemPlatformAgentUpdateBootstrapVerificationInvoker:
         generateInvocationId: @escaping @Sendable () -> String = {
             UUID().uuidString.lowercased()
         },
-        fileStore: RuntimeFileStore = SystemRuntimeFileStore()
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        selectionOwner: (any PlatformAgentUpdateBootstrapSelectionOwning)? = nil
     ) {
         self.installedPaths = installedPaths
         self.clock = clock
         self.generateInvocationId = generateInvocationId
         self.fileStore = fileStore
+        self.selectionOwner = selectionOwner
     }
 
     public func invoke(
@@ -35,7 +38,7 @@ public struct SystemPlatformAgentUpdateBootstrapVerificationInvoker:
         let invocationId = generateInvocationId()
         let spawned = SpawnCapture()
         do {
-            _ = try await InvokePlatformAgentUpdateBootstrapVerificationUseCase()
+            let outcome = try await InvokePlatformAgentUpdateBootstrapVerificationUseCase()
                 .invoke(
                     verificationInvocationId: invocationId,
                     bundlePath: bundleURL.path,
@@ -88,6 +91,19 @@ public struct SystemPlatformAgentUpdateBootstrapVerificationInvoker:
                         )
                     }
                 )
+            if case .succeeded(let updateId, let digest) = outcome,
+               let selectionOwner
+            {
+                try selectionOwner.recordVerifiedSelection(
+                    verificationInvocationId: invocationId,
+                    updateId: updateId,
+                    canonicalPayloadSHA256: digest,
+                    observedBundlePath: bundleURL.path,
+                    observedAt: UpdateBootstrapCanonicalTimestampSyntax.format(
+                        clock.now
+                    )
+                )
+            }
         } catch {
             return PlatformAgentVerificationPersistFailureMapping.commandResult(
                 error: error,
@@ -122,6 +138,16 @@ enum PlatformAgentVerificationPersistFailureMapping {
                 if spawned.exitCode == 0 {
                     exitCode = 1
                 }
+            } else if let recordError = selectionRecordError(error) {
+                issues.append(
+                    RuntimeCommandOutputIssue(
+                        stream: .stderr,
+                        message: selectionRecordMessage(recordError)
+                    )
+                )
+                if spawned.exitCode == 0 {
+                    exitCode = 1
+                }
             }
             return RuntimeCommandResult(
                 exitCode: exitCode,
@@ -135,6 +161,8 @@ enum PlatformAgentVerificationPersistFailureMapping {
         if isEvidencePersistFailed(error) {
             stderr =
                 "platform-agent verification evidence persist failed: \(error)"
+        } else if let recordError = selectionRecordError(error) {
+            stderr = selectionRecordMessage(recordError)
         } else {
             stderr = String(describing: error)
         }
@@ -155,6 +183,60 @@ enum PlatformAgentVerificationPersistFailureMapping {
             return true
         }
         return false
+    }
+
+    private static func selectionRecordError(
+        _ error: Error
+    ) -> RecordPlatformAgentUpdateBootstrapVerifiedSelectionError? {
+        error as? RecordPlatformAgentUpdateBootstrapVerifiedSelectionError
+    }
+
+    private static func selectionRecordMessage(
+        _ error: RecordPlatformAgentUpdateBootstrapVerifiedSelectionError
+    ) -> String {
+        switch error {
+        case .persistFailed(let reason):
+            return
+                "platform-agent verified selection persist failed: \(reason)"
+        case .inFlight(let requestId):
+            return
+                "platform-agent verified selection in flight requestId=\(requestId)"
+        case .inspectionFailed(let path, let reason):
+            return
+                "platform-agent verified selection inspection failed path=\(path) reason=\(reason)"
+        case .permissionDenied(let path, let reason):
+            return
+                "platform-agent verified selection permission denied path=\(path) reason=\(reason)"
+        case .readFailed(let path, let reason):
+            return
+                "platform-agent verified selection read failed path=\(path) reason=\(reason)"
+        case .decodeFailed(let path, let reason):
+            return
+                "platform-agent verified selection decode failed path=\(path) reason=\(reason)"
+        case .unexpectedPathState(let path, let state):
+            return
+                "platform-agent verified selection unexpected path state path=\(path) state=\(state)"
+        case .missing(let path):
+            return "platform-agent verified selection missing: \(path)"
+        case .invalidSelectionId(let value):
+            return "platform-agent verified selection invalidSelectionId: \(value)"
+        case .invalidVerificationInvocationId(let value):
+            return
+                "platform-agent verified selection invalidVerificationInvocationId: \(value)"
+        case .invalidUpdateId(let value):
+            return "platform-agent verified selection invalidUpdateId: \(value)"
+        case .invalidCanonicalPayloadSHA256(let value):
+            return
+                "platform-agent verified selection invalidCanonicalPayloadSHA256: \(value)"
+        case .invalidObservedBundlePath(let value):
+            return
+                "platform-agent verified selection invalidObservedBundlePath: \(value)"
+        case .invalidObservedAt(let value):
+            return
+                "platform-agent verified selection invalidObservedAt: \(value)"
+        case .invalid(let reason):
+            return "platform-agent verified selection invalid: \(reason)"
+        }
     }
 }
 

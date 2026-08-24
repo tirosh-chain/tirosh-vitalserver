@@ -251,6 +251,20 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 requestId: "request-1"
             ))
         )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "apply-update-bootstrap",
+                bundleURL.path,
+                "--request-id",
+                "request-1",
+                "--require-platform-agent-selection",
+            ]),
+            .applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand(
+                bundleURL: bundleURL,
+                requestId: "request-1",
+                requirePlatformAgentSelection: true
+            ))
+        )
     }
 
     func testApplyBundleRejectsUnknownOrMisplacedUnsignedDevelopmentIntent() {
@@ -273,7 +287,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
     }
 
     func testApplyUpdateBootstrapRequiresExactlyOneExplicitRequestID() {
-        let usage = "usage: vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>"
+        let usage = "usage: vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id> [--require-platform-agent-selection]"
         for arguments in [
             ["apply-update-bootstrap"],
             ["apply-update-bootstrap", ""],

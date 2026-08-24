@@ -477,7 +477,7 @@ struct Launcher {
               vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz> [--verification-invocation-id <id>]
               vitalserver-vm runtime stage-bundle <bundle.tar.gz>
               vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
-              vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id>
+              vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id> [--require-platform-agent-selection]
               vitalserver-vm runtime rollback [backup-dir]
               vitalserver-vm clean
               vitalserver-vm version

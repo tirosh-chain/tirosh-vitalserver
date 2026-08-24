@@ -5,6 +5,8 @@ public enum UpdateBootstrapAdmissionError: Error, Equatable, Sendable {
     case verificationDigestMismatch(expected: String, actual: String)
     case verifiedArtifactSetMismatch(expected: [String], actual: [String])
     case verifiedPayloadArtifactSetMismatch(expected: [String], actual: [String])
+    case platformAgentSelectionUpdateMismatch(expected: String, actual: String)
+    case platformAgentSelectionDigestMismatch(expected: String, actual: String)
 }
 
 public enum UpdateBootstrapAdmissionPolicy {
@@ -14,7 +16,9 @@ public enum UpdateBootstrapAdmissionPolicy {
         operationId: String,
         installedRelease: InstalledProductRelease,
         requestId: String,
-        admittedAt: String
+        admittedAt: String,
+        platformAgentSelectionCorrelation:
+            UpdateBootstrapPlatformAgentSelectionCorrelation? = nil
     ) throws -> UpdateBootstrapJournal {
         guard verification.updateId == envelope.id else {
             throw UpdateBootstrapAdmissionError.verificationUpdateMismatch(
@@ -53,6 +57,25 @@ public enum UpdateBootstrapAdmissionPolicy {
                 )
         }
 
+        if let correlation = platformAgentSelectionCorrelation {
+            guard correlation.updateId == envelope.id else {
+                throw UpdateBootstrapAdmissionError
+                    .platformAgentSelectionUpdateMismatch(
+                        expected: envelope.id,
+                        actual: correlation.updateId
+                    )
+            }
+            guard correlation.canonicalPayloadSHA256
+                == verification.canonicalPayloadSHA256
+            else {
+                throw UpdateBootstrapAdmissionError
+                    .platformAgentSelectionDigestMismatch(
+                        expected: verification.canonicalPayloadSHA256,
+                        actual: correlation.canonicalPayloadSHA256
+                    )
+            }
+        }
+
         let journal = UpdateBootstrapJournal(
             schemaVersion: "v2",
             id: envelope.id,
@@ -69,7 +92,9 @@ public enum UpdateBootstrapAdmissionPolicy {
             completion: nil,
             failureReason: nil,
             createdAt: admittedAt,
-            updatedAt: admittedAt
+            updatedAt: admittedAt,
+            platformAgentSelectionCorrelation:
+                platformAgentSelectionCorrelation
         )
         try UpdateBootstrapJournalPolicy.validate(journal)
         return journal

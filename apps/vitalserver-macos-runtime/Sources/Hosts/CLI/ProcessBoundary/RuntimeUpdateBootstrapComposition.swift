@@ -34,6 +34,15 @@ enum RuntimeUpdateBootstrapCompositionError: Error, Equatable {
     case completionReportDecodeFailed(path: String, reason: String)
     case platformOperationJournalMismatch(updateId: String)
     case platformOperationContractInvalid(reason: String)
+    case platformAgentApplyCorrelationInspectionFailed(path: String, reason: String)
+    case platformAgentApplyCorrelationPermissionDenied(path: String, reason: String)
+    case platformAgentApplyCorrelationReadFailed(path: String, reason: String)
+    case platformAgentApplyCorrelationDecodeFailed(path: String, reason: String)
+    case platformAgentApplyCorrelationUnexpectedPathState(path: String, state: String)
+    case platformAgentApplyCorrelationInvalid(reason: String)
+    case platformAgentSelectionRequiredMissing(path: String)
+    case platformAgentSelectionNotCommitted(state: String)
+    case platformAgentSelectionRequestMismatch(expected: String, actual: String)
 }
 
 enum InstalledRootVerifierIdentity {
@@ -182,6 +191,8 @@ extension RuntimeLifecycle {
             let output = try executeUpdateBootstrap(
                 bundleRoot: materialized.bundleURL,
                 requestId: command.requestId,
+                requirePlatformAgentSelection:
+                    command.requirePlatformAgentSelection,
                 lease: lease
             )
             try cleanupMaterializedUpdateBootstrapBundle(materialized)
@@ -210,6 +221,7 @@ extension RuntimeLifecycle {
     private func executeUpdateBootstrap(
         bundleRoot: URL,
         requestId: String,
+        requirePlatformAgentSelection: Bool,
         lease: RuntimeOperationLeaseDocument
     ) throws -> UpdateBootstrapHandoffWorkflowOutput {
         let verifiedBundle = try loadAndVerifyUpdateBootstrapClosure(
@@ -219,12 +231,33 @@ extension RuntimeLifecycle {
         let verification = verifiedBundle.verification
 
         let repository = updateBootstrapJournalRepository()
-        let currentRelease = try RequireUpdateBootstrapAdmissionStateUseCase()
-            .requireNewAdmission(
-                installedRelease: repository.loadInstalledProductRelease(),
-                journalId: envelope.id,
-                journal: repository.loadUpdateBootstrapJournal(id: envelope.id)
-            )
+        let currentRelease: InstalledProductRelease
+        do {
+            currentRelease = try RequireUpdateBootstrapAdmissionStateUseCase()
+                .requireNewAdmission(
+                    installedRelease: repository.loadInstalledProductRelease(),
+                    journalId: envelope.id,
+                    journal: repository.loadUpdateBootstrapJournal(id: envelope.id)
+                )
+        } catch let error as RequireUpdateBootstrapAdmissionStateError {
+            if case .journalAlreadyExists(_, _, let existingRequestId) = error,
+               requirePlatformAgentSelection
+            {
+                do {
+                    try spendPlatformAgentSelectionStore(
+                        requestId: existingRequestId
+                    )
+                } catch let spendError as
+                    SpendPlatformAgentUpdateBootstrapApplyError
+                {
+                    if case .missing = spendError {
+                    } else {
+                        throw spendError
+                    }
+                }
+            }
+            throw error
+        }
         try ValidateInstalledProductReleaseUseCase().validate(currentRelease)
         guard currentRelease.installationId == lease.targetInstallationId,
               currentRelease.installationRevision == lease.expectedInstallationRevision else {
@@ -240,7 +273,12 @@ extension RuntimeLifecycle {
             operationId: lease.operationId,
             installedRelease: currentRelease,
             requestId: requestId,
-            admittedAt: admittedAt
+            admittedAt: admittedAt,
+            platformAgentSelectionCorrelation:
+                try platformAgentApplySelectionCorrelation(
+                    requestId: requestId,
+                    required: requirePlatformAgentSelection
+                )
         )
         let advance = AdvanceUpdateBootstrapJournalUseCase()
         let invocationWriter = updateBootstrapInvocationWriter()
@@ -261,7 +299,12 @@ extension RuntimeLifecycle {
                 )
             ),
             operations: UpdateBootstrapHandoffWorkflowOperations(
-                saveJournal: repository.saveUpdateBootstrapJournal,
+                saveJournal: { journal, expectedRevision in
+                    try repository.saveUpdateBootstrapJournal(
+                        journal,
+                        expectedRevision: expectedRevision
+                    )
+                },
                 stage: immutableUpdateBootstrapStager().stage,
                 verifyStagedClosure: { stagedRoot in
                     try loadAndVerifyUpdateBootstrapClosure(
@@ -646,6 +689,12 @@ extension RuntimeLifecycle {
                     platformAgentUpdateBootstrapVerificationEvidenceReader()
                     .read(at: platformAgentProof.evidenceURL)
             )
+            _ = try proof.provePlatformAgentApplySelection(
+                journal: journal,
+                expectedVerificationInvocationId: invocationId,
+                expectedUpdateId: journal.id,
+                expectedCanonicalPayloadSHA256: journal.bootstrapSignedSHA256
+            )
         }
         try proof.proveGuestControl(
             invocation: input.invocation,
@@ -955,6 +1004,125 @@ extension RuntimeLifecycle {
         PlatformAgentUpdateBootstrapVerificationEvidenceReader(
             pathState: fileStore.pathState,
             readData: fileStore.readData
+        )
+    }
+
+    private func platformAgentUpdateBootstrapVerifiedSelectionReader(
+    ) -> PlatformAgentUpdateBootstrapVerifiedSelectionReader {
+        PlatformAgentUpdateBootstrapVerifiedSelectionReader(
+            pathState: fileStore.pathState,
+            readData: fileStore.readData
+        )
+    }
+
+    private func platformAgentApplySelectionCorrelation(
+        requestId: String,
+        required: Bool
+    ) throws -> UpdateBootstrapPlatformAgentSelectionCorrelation? {
+        if !required {
+            return nil
+        }
+        let url = installedPaths.platformAgentUpdateBootstrapVerifiedSelection
+        switch platformAgentUpdateBootstrapVerifiedSelectionReader().read(at: url)
+        {
+        case .missing(let path):
+            throw RuntimeUpdateBootstrapCompositionError
+                .platformAgentSelectionRequiredMissing(path: path)
+        case .loaded(let store):
+            do {
+                try PlatformAgentUpdateBootstrapVerifiedSelectionPolicy.validate(
+                    store
+                )
+            } catch {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .platformAgentApplyCorrelationInvalid(
+                        reason: String(describing: error)
+                    )
+            }
+            guard store.state
+                == PlatformAgentUpdateBootstrapVerifiedSelectionContract
+                .stateApplyCommitted
+            else {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .platformAgentSelectionNotCommitted(state: store.state)
+            }
+            guard store.boundRequestId == requestId else {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .platformAgentSelectionRequestMismatch(
+                        expected: store.boundRequestId ?? "",
+                        actual: requestId
+                    )
+            }
+            guard let correlation = store.journalCorrelation else {
+                throw RuntimeUpdateBootstrapCompositionError
+                    .platformAgentApplyCorrelationInvalid(
+                        reason: "missingField(journalCorrelation)"
+                    )
+            }
+            return correlation
+        case .inspectionFailed(let path, let reason):
+            throw RuntimeUpdateBootstrapCompositionError
+                .platformAgentApplyCorrelationInspectionFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .permissionDenied(let path, let reason):
+            throw RuntimeUpdateBootstrapCompositionError
+                .platformAgentApplyCorrelationPermissionDenied(
+                    path: path,
+                    reason: reason
+                )
+        case .readFailed(let path, let reason):
+            throw RuntimeUpdateBootstrapCompositionError
+                .platformAgentApplyCorrelationReadFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .decodeFailed(let path, let reason):
+            throw RuntimeUpdateBootstrapCompositionError
+                .platformAgentApplyCorrelationDecodeFailed(
+                    path: path,
+                    reason: reason
+                )
+        case .unexpectedPathState(let path, let state):
+            throw RuntimeUpdateBootstrapCompositionError
+                .platformAgentApplyCorrelationUnexpectedPathState(
+                    path: path,
+                    state: state
+                )
+        }
+    }
+
+    private func spendPlatformAgentSelectionStore(requestId: String) throws {
+        try SpendPlatformAgentUpdateBootstrapApplyUseCase().spend(
+            requestId: requestId,
+            observedAt: updateBootstrapTimestamp(),
+            currentRead: platformAgentUpdateBootstrapVerifiedSelectionReader()
+                .read(
+                    at: installedPaths.platformAgentUpdateBootstrapVerifiedSelection
+                ),
+            persist: { selection in
+                try PlatformAgentUpdateBootstrapVerifiedSelectionWriter(
+                    operations:
+                        PlatformAgentUpdateBootstrapVerifiedSelectionWriteOperations(
+                            pathState: fileStore.pathState,
+                            createDirectory: fileStore.createDirectory,
+                            writeData: { data, url, options in
+                                try fileStore.writeData(
+                                    data,
+                                    to: url,
+                                    options: options
+                                )
+                            },
+                            validate:
+                                PlatformAgentUpdateBootstrapVerifiedSelectionPolicy
+                                .validate
+                        )
+                ).write(
+                    selection,
+                    to: installedPaths.platformAgentUpdateBootstrapVerifiedSelection
+                )
+            }
         )
     }
 

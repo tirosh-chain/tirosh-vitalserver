@@ -114,14 +114,20 @@ public final class MacPlatformAgentService {
             installedProductReleaseReader: installedProductReleaseReader,
             hostSettingsReader: hostSettingsRepository
         )
+        let platformAgentSelectionOwner =
+            SystemPlatformAgentUpdateBootstrapSelectionOwner(
+                installedPaths: installedPaths
+            )
         let commandWorker = MacRuntimeControlCommandWorker(
             guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
             guestMaintenanceController: RuntimeGuestMaintenanceControlUseCase(),
             guestAddressProvider: runtimeEndpointStore,
             platformAgentVerificationInvoker:
                 SystemPlatformAgentUpdateBootstrapVerificationInvoker(
-                    installedPaths: installedPaths
-                )
+                    installedPaths: installedPaths,
+                    selectionOwner: platformAgentSelectionOwner
+                ),
+            platformAgentSelectionOwner: platformAgentSelectionOwner
         )
         let client = MacRuntimeControlClient(
             releaseInfo: .generated,

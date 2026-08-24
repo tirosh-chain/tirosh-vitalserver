@@ -8,6 +8,7 @@ public enum UpdateBootstrapJournalValidationError: Error, Equatable, Sendable {
     case invalidStateShape(UpdateBootstrapJournalState)
     case invalidStagedPath(field: String, value: String)
     case invalidCompletionReceipt(field: String)
+    case invalidPlatformAgentSelectionCorrelation(field: String)
 }
 
 public enum UpdateBootstrapJournalPolicy {
@@ -46,6 +47,9 @@ public enum UpdateBootstrapJournalPolicy {
         }
         if let completion = journal.completion {
             try validate(completion, journal: journal)
+        }
+        if let correlation = journal.platformAgentSelectionCorrelation {
+            try validate(correlation, journal: journal)
         }
         guard hasValidStateShape(journal) else {
             throw UpdateBootstrapJournalValidationError.invalidStateShape(
@@ -117,6 +121,31 @@ public enum UpdateBootstrapJournalPolicy {
                 throw UpdateBootstrapJournalValidationError
                     .invalidCompletionReceipt(field: "failureReason")
             }
+        }
+    }
+
+    private static func validate(
+        _ correlation: UpdateBootstrapPlatformAgentSelectionCorrelation,
+        journal: UpdateBootstrapJournal
+    ) throws {
+        do {
+            try PlatformAgentUpdateBootstrapVerifiedSelectionPolicy
+                .validateJournalCorrelation(correlation)
+        } catch {
+            throw UpdateBootstrapJournalValidationError
+                .invalidPlatformAgentSelectionCorrelation(field: "identity")
+        }
+        guard correlation.updateId == journal.id else {
+            throw UpdateBootstrapJournalValidationError
+                .invalidPlatformAgentSelectionCorrelation(field: "updateId")
+        }
+        guard correlation.canonicalPayloadSHA256
+            == journal.bootstrapSignedSHA256
+        else {
+            throw UpdateBootstrapJournalValidationError
+                .invalidPlatformAgentSelectionCorrelation(
+                    field: "canonicalPayloadSHA256"
+                )
         }
     }
 

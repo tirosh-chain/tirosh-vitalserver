@@ -178,6 +178,13 @@ public enum ProveUpdateBootstrapLifecycleError:
         expected: String,
         actual: String
     )
+    case platformAgentApplySelectionMissing
+    case platformAgentApplySelectionInvalid(reason: String)
+    case platformAgentApplySelectionIdentityMismatch(
+        field: String,
+        expected: String,
+        actual: String
+    )
 }
 
 public struct ProveUpdateBootstrapLifecycleUseCase {
@@ -446,6 +453,48 @@ public struct ProveUpdateBootstrapLifecycleUseCase {
             throw mapEvidence(error)
         }
         return (binding, evidence)
+    }
+
+    public func provePlatformAgentApplySelection(
+        journal: UpdateBootstrapJournal,
+        expectedVerificationInvocationId: String,
+        expectedUpdateId: String,
+        expectedCanonicalPayloadSHA256: String
+    ) throws -> UpdateBootstrapPlatformAgentSelectionCorrelation {
+        do {
+            return try PlatformAgentUpdateBootstrapApplySelectionProofPolicy
+                .prove(
+                    journalCorrelation: journal.platformAgentSelectionCorrelation,
+                    expectedVerificationInvocationId:
+                        expectedVerificationInvocationId,
+                    expectedUpdateId: expectedUpdateId,
+                    expectedCanonicalPayloadSHA256:
+                        expectedCanonicalPayloadSHA256
+                )
+        } catch let error as
+            PlatformAgentUpdateBootstrapApplySelectionProofPolicyError
+        {
+            throw mapApplySelection(error)
+        }
+    }
+
+    private func mapApplySelection(
+        _ error: PlatformAgentUpdateBootstrapApplySelectionProofPolicyError
+    ) -> ProveUpdateBootstrapLifecycleError {
+        switch error {
+        case .missing:
+            return .platformAgentApplySelectionMissing
+        case .invalid(let validation):
+            return .platformAgentApplySelectionInvalid(
+                reason: String(describing: validation)
+            )
+        case .identityMismatch(let field, let expected, let actual):
+            return .platformAgentApplySelectionIdentityMismatch(
+                field: field,
+                expected: expected,
+                actual: actual
+            )
+        }
     }
 
     private func requireBinding(

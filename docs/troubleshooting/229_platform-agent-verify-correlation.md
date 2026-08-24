@@ -86,9 +86,10 @@ read error still fails first. If the binding is readable, persisted caller
 evidence still reports the typed observation from the spawn. Evidence persist
 failure is not recorded or returned as child-process spawn failure.
 
-Native UI apply still generates a new `--request-id` at apply time. Verify and
-apply do not share a selection identity. Same digest, clocks, logs, and file
-absence are not freshness. Fresh-for-this-apply remains unproven.
+Native UI apply still generates a new `--request-id` at apply time unless the
+worker is hosted by MacPlatformAgent with the selection owner. Verify and apply
+share a Host-owned selection identity only on that PWA/MacPlatformAgent route.
+See TS-230. Same digest, clocks, logs, and file absence are not freshness.
 
 ## Checks
 
@@ -160,3 +161,4 @@ Platform Agent proof.
 
 - [TS-220: Platform Agent update verifier uses root home](220_platform-agent-update-verifier-uses-root-home.md)
 - [TS-228: prove-update-bootstrap rejects verify-update-bootstrap receipt](228_prove_update_bootstrap_rejects_verification_receipt.md)
+- [TS-230: Platform Agent apply does not share the verified bundle selection](230_platform-agent-verify-apply-selection-correlation.md)

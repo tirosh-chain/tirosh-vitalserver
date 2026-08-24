@@ -75,6 +75,10 @@ final class InstalledRuntimePathsTests: XCTestCase {
             "/Library/Application Support/VitalServerHelper/platform-agent-update-bootstrap-verification/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
         )
         XCTAssertEqual(
+            paths.platformAgentUpdateBootstrapVerifiedSelection.path,
+            "/Library/Application Support/VitalServerHelper/platform-agent-update-bootstrap-selection/current.json"
+        )
+        XCTAssertEqual(
             paths.standardUninstallRetainedDataRoot.path,
             "/Library/Application Support/VitalServerHelper-retained-uninstall-data"
         )

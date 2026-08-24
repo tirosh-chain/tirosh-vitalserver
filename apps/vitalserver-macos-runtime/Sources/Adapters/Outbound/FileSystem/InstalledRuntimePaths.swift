@@ -235,6 +235,20 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         )
     }
 
+    public var platformAgentUpdateBootstrapVerifiedSelectionDirectory: URL {
+        productRoot.appendingPathComponent(
+            PlatformAgentUpdateBootstrapVerifiedSelectionContract.directoryName,
+            isDirectory: true
+        )
+    }
+
+    public var platformAgentUpdateBootstrapVerifiedSelection: URL {
+        platformAgentUpdateBootstrapVerifiedSelectionDirectory
+            .appendingPathComponent(
+                PlatformAgentUpdateBootstrapVerifiedSelectionContract.fileName
+            )
+    }
+
     public var hostPlatformCurrentRelease: URL {
         productRoot
             .appendingPathComponent("host-platform", isDirectory: true)

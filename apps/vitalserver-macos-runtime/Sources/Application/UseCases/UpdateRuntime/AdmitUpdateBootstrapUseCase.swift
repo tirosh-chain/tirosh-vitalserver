@@ -10,7 +10,9 @@ public struct AdmitUpdateBootstrapUseCase {
         operationId: String,
         installedRelease: InstalledProductRelease,
         requestId: String,
-        admittedAt: String
+        admittedAt: String,
+        platformAgentSelectionCorrelation:
+            UpdateBootstrapPlatformAgentSelectionCorrelation? = nil
     ) throws -> UpdateBootstrapJournal {
         try UpdateBootstrapAdmissionPolicy.admit(
             envelope: envelope,
@@ -18,7 +20,9 @@ public struct AdmitUpdateBootstrapUseCase {
             operationId: operationId,
             installedRelease: installedRelease,
             requestId: requestId,
-            admittedAt: admittedAt
+            admittedAt: admittedAt,
+            platformAgentSelectionCorrelation:
+                platformAgentSelectionCorrelation
         )
     }
 }

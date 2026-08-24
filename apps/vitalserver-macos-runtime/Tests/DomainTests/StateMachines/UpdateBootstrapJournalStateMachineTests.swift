@@ -111,6 +111,52 @@ final class UpdateBootstrapJournalStateMachineTests: XCTestCase {
         )
     }
 
+    func testPreservesPlatformAgentSelectionCorrelationAcrossTransitions() throws {
+        let admitted = UpdateBootstrapJournal(
+            schemaVersion: "v2",
+            id: "update-operation-1",
+            journalRevision: 1,
+            operationId: "operation-1",
+            targetInstallationId: "installation-1",
+            expectedInstallationRevision: 1,
+            requestId: "request-1",
+            envelope: envelope(),
+            bootstrapSignedSHA256: String(repeating: "c", count: 64),
+            state: .admitted,
+            stagedUpdaterRelativePath: nil,
+            stagedSpecificationRelativePath: nil,
+            completion: nil,
+            failureReason: nil,
+            createdAt: "2026-07-27T00:00:00Z",
+            updatedAt: "2026-07-27T00:00:00Z",
+            platformAgentSelectionCorrelation:
+                UpdateBootstrapPlatformAgentSelectionCorrelation(
+                    selectionId: "11111111-2222-3333-4444-555555555555",
+                    verificationInvocationId:
+                        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    updateId: "update-operation-1",
+                    canonicalPayloadSHA256: String(repeating: "c", count: 64)
+                )
+        )
+        let pending = try UpdateBootstrapJournalStateMachine.transition(
+            journal: admitted,
+            event: .verifiedAndStaged(
+                updaterRelativePath: "staged/next-updater",
+                specificationRelativePath: "staged/update-specification.json",
+                observedAt: "2026-07-27T00:01:00Z"
+            )
+        )
+
+        XCTAssertEqual(
+            pending.platformAgentSelectionCorrelation?.selectionId,
+            "11111111-2222-3333-4444-555555555555"
+        )
+        XCTAssertEqual(
+            pending.platformAgentSelectionCorrelation?.verificationInvocationId,
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        )
+    }
+
     private func admittedJournal() -> UpdateBootstrapJournal {
         UpdateBootstrapJournal(
             schemaVersion: "v2",

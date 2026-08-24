@@ -593,10 +593,15 @@ public CLI는 이 identity를 만들지 않습니다. 공유
 `MacRuntimeControlCommandWorker`는 MacPlatformAgent와 native Control Panel이
 모두 조립하므로 worker 자체가 Platform Agent identity가 아닙니다. native
 Control Panel verify는 이 invoker 없이 실행되므로 MacPlatformAgent 증거가
-아닙니다. PWA verify는 launchd Platform Agent API를 통과합니다. apply는 별도
-`--request-id`를 생성하므로 같은 digest나 clock window로 freshness를 증명하지
-않습니다. fresh-for-this-apply는 아직 미증명입니다. 설치된 MacPlatformAgent
-verify field run도 실제 설치본 실행이 있기 전에는 proven이 아닙니다.
+아닙니다. PWA verify는 launchd Platform Agent API를 통과합니다. MacPlatformAgent
+verify 성공은 current verified-selection 문서를 남기고, 같은 host의 apply는
+그 store를 `applyCommitted`로 원자 교체한 뒤
+`--require-platform-agent-selection`으로 child에 요구합니다. public CLI는
+selection identity argument를 받지 않으며, native Control Panel apply는 이
+owner를 주입받지 않고 requirement flag도 붙이지 않습니다. `--require-platform-agent-verification`
+은 journal selection identity를 세 verify owner와 상관합니다. ordinary
+apply-smoke는 그 flag를 쓰지 않습니다. 설치된 MacPlatformAgent verify-then-apply
+field run은 실제 설치본 실행이 있기 전에는 proven이 아닙니다.
 성공한 trust-store 읽기, `/var/root/.tirosh` 부재, 현재 launchd 환경,
 또는 process 종료 후 environment로는 추론하지 않습니다.
 

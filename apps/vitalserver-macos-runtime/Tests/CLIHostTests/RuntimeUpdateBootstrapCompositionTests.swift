@@ -303,6 +303,7 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
         }
         XCTAssertEqual(journal.state, .succeeded)
         XCTAssertEqual(journal.requestId, "request-1")
+        XCTAssertNil(journal.platformAgentSelectionCorrelation)
         guard case .loaded(let release) =
             repository.loadInstalledProductRelease() else {
             return XCTFail("expected installed release")
@@ -320,6 +321,163 @@ final class RuntimeUpdateBootstrapCompositionTests: XCTestCase {
             ).loadOperationLease(),
             .missing
         )
+    }
+
+    func testApplyDoesNotTreatUnreadablePlatformAgentCorrelationAsMissing() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(productRoot: root.appendingPathComponent("product"))
+        let bundle = root.appendingPathComponent("incoming-update")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(
+            at: installed.updateBootstrapTrustStore.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        _ = try SQLiteHostRuntimeStateDatabase(
+            url: installed.runtimeStateDatabase
+        ).initialize()
+        let repository = makeRepository(installed)
+        try repository.settlePackageInstallRelease(
+            try InstalledProductReleasePolicy.makePackageInstall(
+                installationId: "installation-1",
+                productId: Constants.Product.identifier,
+                productVersion: "0.2.1",
+                runtimeVersion: "0.2.1",
+                installOperationId: "install-1",
+                settledAt: "2026-07-27T00:00:00Z"
+            )
+        )
+
+        let privateKey = Curve25519.Signing.PrivateKey()
+        try writeTrustStore(
+            privateKey.publicKey.rawRepresentation,
+            to: installed.updateBootstrapTrustStore
+        )
+        try writeSignedBundle(bundle, privateKey: privateKey)
+        try FileManager.default.createDirectory(
+            at: installed.platformAgentUpdateBootstrapVerifiedSelectionDirectory,
+            withIntermediateDirectories: true
+        )
+        try Data("{".utf8).write(
+            to: installed.platformAgentUpdateBootstrapVerifiedSelection
+        )
+
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installed.runtimeHome,
+                installed: installed,
+                config: installed.vmConfig,
+                pidFile: installed.pidFile
+            ),
+            clock: UpdateBootstrapFixedClock(),
+            commandRunner: SuccessfulUpdateBootstrapRunner(),
+            serviceManager: UpdateHandoffTestServiceManager(
+                jobsRoot: installed.updateHandoffJobsDirectory,
+                runner: SuccessfulUpdateBootstrapRunner()
+            ),
+            guestAddressProvider: UpdateBootstrapGuestAddressProvider()
+        )
+
+        XCTAssertThrowsError(
+            try lifecycle.applyUpdateBootstrap(
+                RuntimeApplyUpdateBootstrapCommand(
+                    bundleURL: bundle,
+                    requestId: "request-1",
+                    requirePlatformAgentSelection: true
+                )
+            )
+        ) { error in
+            guard let compositionError =
+                error as? RuntimeUpdateBootstrapCompositionError,
+                case .platformAgentApplyCorrelationDecodeFailed =
+                    compositionError
+            else {
+                return XCTFail("expected decode failure, got \(error)")
+            }
+        }
+        guard case .missing =
+            repository.loadUpdateBootstrapJournal(id: "update-0.2.2") else {
+            return XCTFail("corrupt correlation must not admit a journal")
+        }
+    }
+
+    func testRequiredPlatformAgentSelectionMissingIsFatalAndOrdinaryApplyIgnoresStore()
+        throws
+    {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let installed = InstalledRuntimePaths(
+            productRoot: root.appendingPathComponent("product")
+        )
+        let bundle = root.appendingPathComponent("incoming-update")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try FileManager.default.createDirectory(
+            at: installed.updateBootstrapTrustStore.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        _ = try SQLiteHostRuntimeStateDatabase(
+            url: installed.runtimeStateDatabase
+        ).initialize()
+        let repository = makeRepository(installed)
+        try repository.settlePackageInstallRelease(
+            try InstalledProductReleasePolicy.makePackageInstall(
+                installationId: "installation-1",
+                productId: Constants.Product.identifier,
+                productVersion: "0.2.1",
+                runtimeVersion: "0.2.1",
+                installOperationId: "install-1",
+                settledAt: "2026-07-27T00:00:00Z"
+            )
+        )
+        let privateKey = Curve25519.Signing.PrivateKey()
+        try writeTrustStore(
+            privateKey.publicKey.rawRepresentation,
+            to: installed.updateBootstrapTrustStore
+        )
+        try writeSignedBundle(bundle, privateKey: privateKey)
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installed.runtimeHome,
+                installed: installed,
+                config: installed.vmConfig,
+                pidFile: installed.pidFile
+            ),
+            clock: UpdateBootstrapFixedClock(),
+            commandRunner: SuccessfulUpdateBootstrapRunner(),
+            serviceManager: UpdateHandoffTestServiceManager(
+                jobsRoot: installed.updateHandoffJobsDirectory,
+                runner: SuccessfulUpdateBootstrapRunner()
+            ),
+            guestAddressProvider: UpdateBootstrapGuestAddressProvider()
+        )
+
+        XCTAssertThrowsError(
+            try lifecycle.applyUpdateBootstrap(
+                RuntimeApplyUpdateBootstrapCommand(
+                    bundleURL: bundle,
+                    requestId: "request-required",
+                    requirePlatformAgentSelection: true
+                )
+            )
+        ) { error in
+            guard let compositionError =
+                error as? RuntimeUpdateBootstrapCompositionError,
+                case .platformAgentSelectionRequiredMissing =
+                    compositionError
+            else {
+                return XCTFail("expected required missing, got \(error)")
+            }
+        }
+        guard case .missing =
+            repository.loadUpdateBootstrapJournal(id: "update-0.2.2") else {
+            return XCTFail("required missing must not admit a journal")
+        }
     }
 
     func testResumesOnlyVerifiedPendingStagedHandoff() throws {

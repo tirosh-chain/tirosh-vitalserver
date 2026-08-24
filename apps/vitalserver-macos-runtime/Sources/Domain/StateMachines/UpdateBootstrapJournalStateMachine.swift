@@ -213,7 +213,9 @@ public enum UpdateBootstrapJournalStateMachine {
             completion: completion,
             failureReason: failureReason,
             createdAt: journal.createdAt,
-            updatedAt: observedAt
+            updatedAt: observedAt,
+            platformAgentSelectionCorrelation:
+                journal.platformAgentSelectionCorrelation
         )
     }
 }

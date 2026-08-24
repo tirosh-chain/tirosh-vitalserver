@@ -64,6 +64,8 @@ enum RuntimeControlClientConstants {
         static let optionRequestID = "--request-id"
         static let optionVerificationInvocationID =
             "--verification-invocation-id"
+        static let optionRequirePlatformAgentSelection =
+            "--require-platform-agent-selection"
         static let rollback = "rollback"
         static let redisBackup = "redis-backup"
         static let redisRestore = "redis-restore"

@@ -27,6 +27,59 @@ final class UpdateBootstrapAdmissionPolicyTests: XCTestCase {
         )
         XCTAssertNil(journal.stagedUpdaterRelativePath)
         XCTAssertNil(journal.completion)
+        XCTAssertNil(journal.platformAgentSelectionCorrelation)
+    }
+
+    func testPersistsPlatformAgentSelectionCorrelationWhenIdentitiesMatch() throws {
+        let envelope = makeEnvelope()
+        let correlation = UpdateBootstrapPlatformAgentSelectionCorrelation(
+            selectionId: "11111111-2222-3333-4444-555555555555",
+            verificationInvocationId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            updateId: envelope.id,
+            canonicalPayloadSHA256: envelope.signature.signedSha256
+        )
+
+        let journal = try UpdateBootstrapAdmissionPolicy.admit(
+            envelope: envelope,
+            verification: verification(for: envelope),
+            operationId: "operation-42",
+            installedRelease: installedRelease(),
+            requestId: "request-42",
+            admittedAt: "2026-07-27T08:00:00Z",
+            platformAgentSelectionCorrelation: correlation
+        )
+
+        XCTAssertEqual(journal.platformAgentSelectionCorrelation, correlation)
+    }
+
+    func testRejectsPlatformAgentSelectionDigestMismatchAsApplyMismatch() {
+        let envelope = makeEnvelope()
+        let other = String(repeating: "ab", count: 32)
+
+        XCTAssertThrowsError(try UpdateBootstrapAdmissionPolicy.admit(
+            envelope: envelope,
+            verification: verification(for: envelope),
+            operationId: "operation-42",
+            installedRelease: installedRelease(),
+            requestId: "request-42",
+            admittedAt: "2026-07-27T08:00:00Z",
+            platformAgentSelectionCorrelation:
+                UpdateBootstrapPlatformAgentSelectionCorrelation(
+                    selectionId: "11111111-2222-3333-4444-555555555555",
+                    verificationInvocationId:
+                        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    updateId: envelope.id,
+                    canonicalPayloadSHA256: other
+                )
+        )) { error in
+            XCTAssertEqual(
+                error as? UpdateBootstrapAdmissionError,
+                .platformAgentSelectionDigestMismatch(
+                    expected: envelope.signature.signedSha256,
+                    actual: other
+                )
+            )
+        }
     }
 
     func testRejectsVerificationForDifferentEnvelope() {

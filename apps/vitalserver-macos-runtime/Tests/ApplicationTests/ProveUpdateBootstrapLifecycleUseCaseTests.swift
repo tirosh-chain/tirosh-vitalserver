@@ -610,6 +610,88 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
         XCTAssertEqual(proven.evidence.state, "succeeded")
     }
 
+    func testProvePlatformAgentApplySelectionRequiresJournalCorrelation() {
+        let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .provePlatformAgentApplySelection(
+                    journal: journal,
+                    expectedVerificationInvocationId: invocationId,
+                    expectedUpdateId: journal.id,
+                    expectedCanonicalPayloadSHA256: journal.bootstrapSignedSHA256
+                )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .platformAgentApplySelectionMissing
+            )
+        }
+    }
+
+    func testProvePlatformAgentApplySelectionCorrelatesJournalToVerificationOwners()
+        throws
+    {
+        let journal = terminalJournal(
+            state: .succeeded,
+            outcome: .succeeded,
+            platformAgentSelectionCorrelation:
+                UpdateBootstrapPlatformAgentSelectionCorrelation(
+                    selectionId: "11111111-2222-3333-4444-555555555555",
+                    verificationInvocationId: invocationId,
+                    updateId: "update-42",
+                    canonicalPayloadSHA256: String(repeating: "a", count: 64)
+                )
+        )
+
+        let proven = try ProveUpdateBootstrapLifecycleUseCase()
+            .provePlatformAgentApplySelection(
+                journal: journal,
+                expectedVerificationInvocationId: invocationId,
+                expectedUpdateId: journal.id,
+                expectedCanonicalPayloadSHA256: journal.bootstrapSignedSHA256
+            )
+
+        XCTAssertEqual(
+            proven.selectionId,
+            "11111111-2222-3333-4444-555555555555"
+        )
+        XCTAssertEqual(proven.verificationInvocationId, invocationId)
+    }
+
+    func testProvePlatformAgentApplySelectionKeepsDigestMismatchDistinct() {
+        let journal = terminalJournal(
+            state: .succeeded,
+            outcome: .succeeded,
+            platformAgentSelectionCorrelation:
+                UpdateBootstrapPlatformAgentSelectionCorrelation(
+                    selectionId: "11111111-2222-3333-4444-555555555555",
+                    verificationInvocationId: invocationId,
+                    updateId: "update-42",
+                    canonicalPayloadSHA256: String(repeating: "ab", count: 32)
+                )
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .provePlatformAgentApplySelection(
+                    journal: journal,
+                    expectedVerificationInvocationId: invocationId,
+                    expectedUpdateId: journal.id,
+                    expectedCanonicalPayloadSHA256: journal.bootstrapSignedSHA256
+                )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .platformAgentApplySelectionIdentityMismatch(
+                    field: "canonicalPayloadSHA256",
+                    expected: journal.bootstrapSignedSHA256,
+                    actual: String(repeating: "ab", count: 32)
+                )
+            )
+        }
+    }
+
     func testProvePlatformAgentVerificationSurfacesObservedMismatchKindsWhenBindingIsReadable() {
         let journal = terminalJournal(state: .succeeded, outcome: .succeeded)
         let receipt = verificationReceipt(
@@ -845,7 +927,9 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
 
     private func terminalJournal(
         state: UpdateBootstrapJournalState,
-        outcome: UpdateBootstrapCompletionOutcome
+        outcome: UpdateBootstrapCompletionOutcome,
+        platformAgentSelectionCorrelation:
+            UpdateBootstrapPlatformAgentSelectionCorrelation? = nil
     ) -> UpdateBootstrapJournal {
         let base = recoveryJournal(state: .running)
         return UpdateBootstrapJournal(
@@ -883,7 +967,9 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
                 ? "host effect failed"
                 : nil,
             createdAt: base.createdAt,
-            updatedAt: "2026-07-29T01:00:00Z"
+            updatedAt: "2026-07-29T01:00:00Z",
+            platformAgentSelectionCorrelation:
+                platformAgentSelectionCorrelation
         )
     }
 

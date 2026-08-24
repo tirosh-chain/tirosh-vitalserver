@@ -282,8 +282,9 @@ def field_proof_sequence_text() -> str:
                  product path, not a caller-named home
                  it is not MacPlatformAgent evidence
        not proven: later-than helperVersion, Platform Agent verify
-                 field run (TS-229), fresh-for-this-apply; dual-owner
-                 correlation exists but apply-smoke must not claim it
+                 field run (TS-229), Platform Agent verify-then-apply
+                 selection correlation field run (TS-230); contracts
+                 exist but apply-smoke must not claim them
     7. interruption/restart: TS-192 resume/settle/fail plus TS-226
        Host Platform phase resume (no make target)
     8. make dist/update/dev/rollback-smoke
@@ -311,7 +312,9 @@ def field_proof_automation_inventory_text() -> str:
   [unproven] 0.2.2 -> later product version: no later-than comparison exists
   [available] prove-update-bootstrap root verify-update-bootstrap receipt vs product-installed VM home
   [available] prove-update-bootstrap optional --require-platform-agent-verification dual-owner correlation
-  [unproven] Platform Agent verify field run (TS-229); contract exists, installed MacPlatformAgent run does not; apply-smoke must not claim it; fresh-for-this-apply remains unproven
+  [unproven] Platform Agent verify field run (TS-229); contract exists, installed MacPlatformAgent run does not; apply-smoke must not claim it
+  [available] prove-update-bootstrap optional --require-platform-agent-verification journal selection correlation (TS-230)
+  [unproven] Platform Agent verify-then-apply field run (TS-230); contract exists, installed MacPlatformAgent PWA verify/apply run does not; native Control Panel and apply-smoke must not claim it
   [available] prove-update-bootstrap Guest URL vs current Guest address (TS-221)
   [available] prove-update-bootstrap Host Platform SQLite phases (TS-226)
   [runbook] durable handoff interrupt: resume/settle/fail (TS-192)
@@ -393,6 +396,12 @@ def _command_surface_checks(
                     surface.apply_smoke_recipe,
                     "--require-platform-agent-verification",
                     "apply-smoke does not claim MacPlatformAgent verify proof",
+                ),
+                _absent(
+                    "apply-smoke-not-platform-agent-selection",
+                    surface.apply_smoke_recipe,
+                    "--require-platform-agent-selection",
+                    "apply-smoke does not require MacPlatformAgent selection identity",
                 ),
                 _contains(
                     "rollback-smoke-proof",
@@ -493,6 +502,14 @@ def _command_surface_checks(
                 "prove-update-bootstrap can correlate MacPlatformAgent verification owners",
             )
         )
+        checks.append(
+            _contains(
+                "prove-platform-agent-apply-selection",
+                surface.prove_usecase_source,
+                "provePlatformAgentApplySelection",
+                "prove-update-bootstrap can correlate journal apply selection to verification owners",
+            )
+        )
     if _source_usable(source_reads, SOURCE_PROVE_COMPOSITION):
         checks.append(
             _contains(
@@ -527,6 +544,14 @@ def _command_surface_checks(
                 "MacPlatformAgentService injects the privileged verify correlation owner",
             )
         )
+        checks.append(
+            _contains(
+                "platform-agent-owns-verified-selection",
+                surface.platform_agent_service_source,
+                "SystemPlatformAgentUpdateBootstrapSelectionOwner",
+                "MacPlatformAgentService owns verified-selection persistence for apply",
+            )
+        )
     if _source_usable(source_reads, SOURCE_CONTROL_PANEL_ENVIRONMENT):
         checks.append(
             _absent(
@@ -534,6 +559,14 @@ def _command_surface_checks(
                 surface.control_panel_environment_source,
                 "SystemPlatformAgentUpdateBootstrapVerificationInvoker",
                 "Control Panel does not mint MacPlatformAgent verification identity",
+            )
+        )
+        checks.append(
+            _absent(
+                "control-panel-does-not-mint-platform-agent-selection",
+                surface.control_panel_environment_source,
+                "SystemPlatformAgentUpdateBootstrapSelectionOwner",
+                "Control Panel does not mint MacPlatformAgent verified selection identity",
             )
         )
     return checks

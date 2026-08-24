@@ -88,6 +88,7 @@ def valid_surface(**overrides: object) -> FieldProofCommandSurface:
             "func proveHostPlatform(\n"
             "func proveVerificationReceipt(\n"
             "func provePlatformAgentVerification(\n"
+            "func provePlatformAgentApplySelection(\n"
         ),
         "prove_composition_source": (
             "InstalledRuntimePaths.defaultInstalled\n"
@@ -104,6 +105,7 @@ def valid_surface(**overrides: object) -> FieldProofCommandSurface:
         ),
         "platform_agent_service_source": (
             "SystemPlatformAgentUpdateBootstrapVerificationInvoker(\n"
+            "SystemPlatformAgentUpdateBootstrapSelectionOwner(\n"
         ),
         "control_panel_environment_source": (
             "let commandWorker = MacRuntimeControlCommandWorker(\n"
@@ -616,7 +618,9 @@ def test_inventory_keeps_platform_agent_verify_field_run_unproven() -> None:
     assert "[available] prove-update-bootstrap optional --require-platform-agent-verification" in inventory
     assert "MacPlatformAgent evidence" in sequence
     assert "is not MacPlatformAgent evidence" in sequence
-    assert "fresh-for-this-apply" in sequence
+    assert "TS-230" in sequence
+    assert "[available] prove-update-bootstrap optional --require-platform-agent-verification journal selection correlation (TS-230)" in inventory
+    assert "[unproven] Platform Agent verify-then-apply field run (TS-230)" in inventory
     assert "[available] Platform Agent verify field run" not in inventory
 
 
