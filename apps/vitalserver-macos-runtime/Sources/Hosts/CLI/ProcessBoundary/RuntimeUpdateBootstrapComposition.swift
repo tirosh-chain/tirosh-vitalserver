@@ -560,10 +560,52 @@ extension RuntimeLifecycle {
             journal: platformJournal,
             report: report
         )
+        try proof.proveGuestControl(
+            invocation: input.invocation,
+            guestAddressRead: guestAddressProvider.readGuestAddress()
+        )
+        let hostPlatformDocuments =
+            try HostPlatformLayerEffectConfigurationReader(
+                operations: BundleOwnedProductUpdateInputReadOperations(
+                    pathState: fileStore.pathState,
+                    fileSize: fileStore.fileSize,
+                    readData: fileStore.readData
+                )
+            ).read(
+                specification: input.specification,
+                stagedBundleRoot: stagedRoot
+            )
+        let hostPlatformRepository = SQLiteHostPlatformInstallationRepository(
+            databaseURL: URL(
+                fileURLWithPath: hostPlatformDocuments.configuration.manager
+                    .databasePath
+            ),
+            validateManifest: HostPlatformInstallationPolicy.validate,
+            validateOperation: HostPlatformInstallationPolicy.validate,
+            validateTransition:
+                HostPlatformInstallationPolicy.validatePersistenceTransition
+        )
+        let hostPlatformOperation = try proof.proveHostPlatform(
+            expectation: command.expectation,
+            updateId: command.updateId,
+            apply: hostPlatformDocuments.configuration.apply,
+            applyArtifactSHA256: hostPlatformDocuments.layerPlan.artifact.sha256,
+            operationRead: hostPlatformRepository.loadOperation(
+                id: HostPlatformUpdateProofPolicy.expectedApplyOperationId(
+                    updateId: command.updateId
+                )
+            ),
+            installationRead: hostPlatformRepository.loadActiveInstallation()
+        )
         print("update bootstrap lifecycle proof verified")
         print("journal: \(proven.id)")
         print("state: \(proven.state.rawValue)")
         print("expectation: \(command.expectation.rawValue)")
+        print("guestControlBaseURL: \(input.invocation.guestControlBaseURL)")
+        print(
+            "hostPlatformOperation: \(hostPlatformOperation.id)"
+        )
+        print("hostPlatformPhase: \(hostPlatformOperation.phase.rawValue)")
     }
 
 

@@ -1,4 +1,5 @@
 import Contracts
+import Domain
 
 public enum UpdateBootstrapLifecycleProofExpectation:
     String,
@@ -38,6 +39,37 @@ public enum ProveUpdateBootstrapLifecycleError:
         completionOutcome: UpdateBootstrapCompletionOutcome,
         reportState: ProductUpdateExecutionState,
         rollbackState: ProductUpdateRollbackState
+    )
+    case guestControlBaseURLInvalid(String)
+    case guestControlBaseURLHostLoopback(String)
+    case guestAddressMissing(String)
+    case guestAddressInvalid(String)
+    case guestAddressStale(String)
+    case guestAddressReadFailed(String)
+    case guestAddressNotReported
+    case guestControlHostMismatch(
+        invocationHost: String,
+        observedAddress: String
+    )
+    case guestControlPortMismatch(actual: Int?, expected: Int)
+    case hostPlatformLayerMissing
+    case hostPlatformOperationMissing(id: String)
+    case hostPlatformOperationReadFailed(id: String, reason: String)
+    case hostPlatformIdentityMismatch(
+        field: String,
+        expected: String,
+        actual: String
+    )
+    case hostPlatformPhaseMismatch(
+        accepted: [HostPlatformInstallationPhase],
+        actual: HostPlatformInstallationPhase
+    )
+    case hostPlatformInstallationMissing
+    case hostPlatformInstallationReadFailed(reason: String)
+    case hostPlatformInstallationIdentityMismatch(
+        field: String,
+        expected: String,
+        actual: String
     )
 }
 
@@ -123,6 +155,83 @@ public struct ProveUpdateBootstrapLifecycleUseCase {
         return journal
     }
 
+    public func proveGuestControl(
+        invocation: UpdateBootstrapHandoffInvocation,
+        guestAddressRead: RuntimeGuestAddressReadResult
+    ) throws {
+        do {
+            try UpdateBootstrapGuestControlProofPolicy.prove(
+                persistedGuestControlBaseURL: invocation.guestControlBaseURL,
+                guestAddressRead: guestAddressRead,
+                expectedPort: RuntimeGuestControlEndpointContract.port
+            )
+        } catch let error as UpdateBootstrapGuestControlProofPolicyError {
+            throw mapGuestControl(error)
+        }
+    }
+
+    public func proveHostPlatform(
+        expectation: UpdateBootstrapLifecycleProofExpectation,
+        updateId: String,
+        apply: HostPlatformLayerTransition,
+        applyArtifactSHA256: String,
+        operationRead: HostPlatformInstallationOperationReadResult,
+        installationRead: HostPlatformInstallationManifestReadResult
+    ) throws -> HostPlatformInstallationOperation {
+        let operationId = HostPlatformUpdateProofPolicy
+            .expectedApplyOperationId(updateId: updateId)
+        let operation: HostPlatformInstallationOperation
+        switch operationRead {
+        case .missing:
+            throw ProveUpdateBootstrapLifecycleError
+                .hostPlatformOperationMissing(id: operationId)
+        case .failed(let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .hostPlatformOperationReadFailed(
+                    id: operationId,
+                    reason: reason
+                )
+        case .loaded(let loaded):
+            operation = loaded
+        }
+
+        let installation: HostPlatformInstallationManifest
+        switch installationRead {
+        case .missing:
+            throw ProveUpdateBootstrapLifecycleError
+                .hostPlatformInstallationMissing
+        case .failed(let reason):
+            throw ProveUpdateBootstrapLifecycleError
+                .hostPlatformInstallationReadFailed(reason: reason)
+        case .loaded(let loaded):
+            installation = loaded
+        }
+
+        do {
+            try HostPlatformUpdateProofPolicy.prove(
+                acceptedPhases: hostPlatformAcceptedPhases(expectation),
+                updateId: updateId,
+                apply: apply,
+                applyArtifactSHA256: applyArtifactSHA256,
+                operation: operation,
+                installation: installation
+            )
+        } catch let error as HostPlatformUpdateProofPolicyError {
+            throw mapHostPlatform(error)
+        }
+        return operation
+    }
+
+    public func requireHostPlatformLayer(
+        specification: ProductUpdateSpecification
+    ) throws -> ProductUpdateLayerPlan {
+        let layers = specification.layerPlan.filter { $0.layer == .hostPlatform }
+        guard layers.count == 1, let layer = layers.first else {
+            throw ProveUpdateBootstrapLifecycleError.hostPlatformLayerMissing
+        }
+        return layer
+    }
+
     public func awaitTerminalJournal(
         updateId: String,
         timeoutMilliseconds: UInt64,
@@ -187,5 +296,68 @@ public struct ProveUpdateBootstrapLifecycleUseCase {
                 )
         }
         return journal
+    }
+
+    private func hostPlatformAcceptedPhases(
+        _ expectation: UpdateBootstrapLifecycleProofExpectation
+    ) -> [HostPlatformInstallationPhase] {
+        switch expectation {
+        case .succeeded:
+            return [.completed]
+        case .failedRolledBack:
+            return [.failed, .compensated]
+        }
+    }
+
+    private func mapGuestControl(
+        _ error: UpdateBootstrapGuestControlProofPolicyError
+    ) -> ProveUpdateBootstrapLifecycleError {
+        switch error {
+        case .invalidURL(let url):
+            return .guestControlBaseURLInvalid(url)
+        case .hostLoopback(let url):
+            return .guestControlBaseURLHostLoopback(url)
+        case .guestAddressMissing(let reason):
+            return .guestAddressMissing(reason)
+        case .guestAddressInvalid(let reason):
+            return .guestAddressInvalid(reason)
+        case .guestAddressStale(let reason):
+            return .guestAddressStale(reason)
+        case .guestAddressReadFailed(let reason):
+            return .guestAddressReadFailed(reason)
+        case .guestAddressNotReported:
+            return .guestAddressNotReported
+        case .hostMismatch(let invocationHost, let observedAddress):
+            return .guestControlHostMismatch(
+                invocationHost: invocationHost,
+                observedAddress: observedAddress
+            )
+        case .portMismatch(let actual, let expected):
+            return .guestControlPortMismatch(actual: actual, expected: expected)
+        }
+    }
+
+    private func mapHostPlatform(
+        _ error: HostPlatformUpdateProofPolicyError
+    ) -> ProveUpdateBootstrapLifecycleError {
+        switch error {
+        case .operationIdentityMismatch(let field, let expected, let actual):
+            return .hostPlatformIdentityMismatch(
+                field: field,
+                expected: expected,
+                actual: actual
+            )
+        case .phaseMismatch(let accepted, let actual):
+            return .hostPlatformPhaseMismatch(
+                accepted: accepted,
+                actual: actual
+            )
+        case .installationIdentityMismatch(let field, let expected, let actual):
+            return .hostPlatformInstallationIdentityMismatch(
+                field: field,
+                expected: expected,
+                actual: actual
+            )
+        }
     }
 }

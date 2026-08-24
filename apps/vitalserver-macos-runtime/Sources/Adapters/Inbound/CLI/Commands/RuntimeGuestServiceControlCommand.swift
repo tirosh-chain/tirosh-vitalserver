@@ -1,5 +1,8 @@
+import Contracts
+
 public struct RuntimeGuestServiceControlCommand: Equatable, Sendable {
-    public static let defaultGuestControlBaseURL = "http://127.0.0.1:18330"
+    public static let defaultGuestControlBaseURL =
+        RuntimeGuestControlEndpointContract.baseURL(host: "127.0.0.1")
 
     public let service: String
     public let guestControlBaseURL: String

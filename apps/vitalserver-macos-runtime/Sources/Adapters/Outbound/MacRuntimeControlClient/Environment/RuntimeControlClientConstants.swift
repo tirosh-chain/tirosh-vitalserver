@@ -26,7 +26,7 @@ enum RuntimeControlClientConstants {
         }
 
         static func guestControlAPIBaseURL(vmIP: String) -> String {
-            "http://\(vmIP):18330"
+            RuntimeGuestControlEndpointContract.baseURL(host: vmIP)
         }
 
         static func guestControlAPIBaseURL(

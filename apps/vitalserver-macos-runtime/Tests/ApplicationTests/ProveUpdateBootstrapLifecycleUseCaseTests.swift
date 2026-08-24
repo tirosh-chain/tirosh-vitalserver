@@ -1,5 +1,6 @@
 import Application
 import Contracts
+import Domain
 import XCTest
 
 final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
@@ -164,6 +165,190 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
                     applyLayers: [.container, .guestRuntime],
                     rollbackLayers: [.container]
                 )
+            )
+        }
+    }
+
+    func testProveGuestControlMapsLoopbackToDistinctProofError() {
+        let invocation = handoffInvocation(
+            guestControlBaseURL: "http://127.0.0.1:18330/"
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase().proveGuestControl(
+                invocation: invocation,
+                guestAddressRead: .loaded(
+                    address: "127.0.0.1",
+                    source: .platformAgent
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .guestControlBaseURLHostLoopback("http://127.0.0.1:18330/")
+            )
+        }
+    }
+
+    func testProveGuestControlMapsReadFailedWithoutComparingHosts() {
+        let invocation = handoffInvocation()
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase().proveGuestControl(
+                invocation: invocation,
+                guestAddressRead: .readFailed("permission denied")
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .guestAddressReadFailed("permission denied")
+            )
+        }
+    }
+
+    func testProveGuestControlAcceptsMatchingLoadedGuestAddress() throws {
+        try ProveUpdateBootstrapLifecycleUseCase().proveGuestControl(
+            invocation: handoffInvocation(),
+            guestAddressRead: .loaded(
+                address: "192.168.64.3",
+                source: .platformAgent
+            )
+        )
+    }
+
+    func testProveGuestControlMapsOmittedPortToPortMismatch() {
+        let invocation = handoffInvocation(
+            guestControlBaseURL: "http://192.168.64.3"
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase().proveGuestControl(
+                invocation: invocation,
+                guestAddressRead: .loaded(
+                    address: "192.168.64.3",
+                    source: .platformAgent
+                )
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .guestControlPortMismatch(
+                    actual: nil,
+                    expected: RuntimeGuestControlEndpointContract.port
+                )
+            )
+        }
+    }
+
+    func testProveHostPlatformMapsMissingOperationWithoutGuessingPhase() {
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase().proveHostPlatform(
+                expectation: .succeeded,
+                updateId: "update-42",
+                apply: applyTransition(),
+                applyArtifactSHA256: String(repeating: "b", count: 64),
+                operationRead: .missing,
+                installationRead: .loaded(try! initialHostManifest())
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .hostPlatformOperationMissing(
+                    id: "update-42.host-platform.apply"
+                )
+            )
+        }
+    }
+
+    func testProveHostPlatformMapsOperationReadFailure() {
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase().proveHostPlatform(
+                expectation: .succeeded,
+                updateId: "update-42",
+                apply: applyTransition(),
+                applyArtifactSHA256: String(repeating: "b", count: 64),
+                operationRead: .failed(reason: "database unavailable"),
+                installationRead: .loaded(try! initialHostManifest())
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .hostPlatformOperationReadFailed(
+                    id: "update-42.host-platform.apply",
+                    reason: "database unavailable"
+                )
+            )
+        }
+    }
+
+    func testProveHostPlatformMapsMissingInstallation() throws {
+        let settlement = try completedHostSettlement()
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase().proveHostPlatform(
+                expectation: .succeeded,
+                updateId: "update-42",
+                apply: applyTransition(),
+                applyArtifactSHA256: String(repeating: "b", count: 64),
+                operationRead: .loaded(settlement.operation),
+                installationRead: .missing
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .hostPlatformInstallationMissing
+            )
+        }
+    }
+
+    func testProveHostPlatformAcceptsCompletedApply() throws {
+        let settlement = try completedHostSettlement()
+
+        let proven = try ProveUpdateBootstrapLifecycleUseCase()
+            .proveHostPlatform(
+                expectation: .succeeded,
+                updateId: "update-42",
+                apply: applyTransition(),
+                applyArtifactSHA256: String(repeating: "b", count: 64),
+                operationRead: .loaded(settlement.operation),
+                installationRead: .loaded(settlement.manifest)
+            )
+
+        XCTAssertEqual(proven.phase, .completed)
+        XCTAssertEqual(proven.id, "update-42.host-platform.apply")
+    }
+
+    func testProveHostPlatformAcceptsCompensatedApplyForRollbackExpectation() throws {
+        let compensated = try compensatedHostOperation()
+
+        let proven = try ProveUpdateBootstrapLifecycleUseCase()
+            .proveHostPlatform(
+                expectation: .failedRolledBack,
+                updateId: "update-42",
+                apply: applyTransition(),
+                applyArtifactSHA256: String(repeating: "b", count: 64),
+                operationRead: .loaded(compensated),
+                installationRead: .loaded(try initialHostManifest())
+            )
+
+        XCTAssertEqual(proven.phase, .compensated)
+    }
+
+    func testRequireHostPlatformLayerRejectsSpecificationWithoutHostLayer() {
+        let specification = ProductUpdateSpecification(
+            schemaVersion: "vitalserver.product-update-specification/v1",
+            id: "specification-42",
+            bootstrapEnvelopeId: "envelope-42",
+            layerPlan: []
+        )
+
+        XCTAssertThrowsError(
+            try ProveUpdateBootstrapLifecycleUseCase()
+                .requireHostPlatformLayer(specification: specification)
+        ) { error in
+            XCTAssertEqual(
+                error as? ProveUpdateBootstrapLifecycleError,
+                .hostPlatformLayerMissing
             )
         }
     }
@@ -342,6 +527,144 @@ final class ProveUpdateBootstrapLifecycleUseCaseTests: XCTestCase {
             message: "host effect failed",
             retryable: false,
             dependency: "host-platform-effect-executor"
+        )
+    }
+
+    private func handoffInvocation(
+        guestControlBaseURL: String = "http://192.168.64.3:18330"
+    ) -> UpdateBootstrapHandoffInvocation {
+        UpdateBootstrapHandoffInvocation(
+            schemaVersion: UpdateBootstrapHandoffPolicy.schemaVersion,
+            updateId: "update-42",
+            operationId: "operation-42",
+            requestId: "request-42",
+            bootstrapEnvelopeId: "envelope-42",
+            bootstrapSignedSHA256: String(repeating: "a", count: 64),
+            updateSpecificationSHA256: String(repeating: "c", count: 64),
+            guestControlBaseURL: guestControlBaseURL,
+            layerOrder: [.container, .guestRuntime, .hostPlatform],
+            payloadArtifacts: [],
+            expectedJournalRevision: 3,
+            updaterRelativePath: "payload/bin/vitalserver-update",
+            specificationRelativePath: "payload/update-specification.json",
+            completionReceiptRelativePath: "handoff/completion-receipt.json"
+        )
+    }
+
+    private func applyTransition() -> HostPlatformLayerTransition {
+        HostPlatformLayerTransition(
+            installationId: "installation-1",
+            expectedInstallationRevision: 1,
+            targetReleaseId: "host-0.2.2",
+            targetReleaseVersion: "0.2.2",
+            targetSlotRelativePath: "releases/host-0.2.2"
+        )
+    }
+
+    private func completedHostSettlement() throws -> (
+        operation: HostPlatformInstallationOperation,
+        manifest: HostPlatformInstallationManifest
+    ) {
+        let published = try HostPlatformInstallationPolicy
+            .recordPublishInterfaces(
+                operation: try HostPlatformInstallationPolicy
+                    .recordQuiescePrevious(
+                        operation: try stagedHostOperation(),
+                        observations: [],
+                        updatedAt: "2026-07-29T01:00:02Z"
+                    ),
+                updatedAt: "2026-07-29T01:00:03Z"
+            )
+        let loaded = try HostPlatformInstallationPolicy
+            .recordLoadTargetServices(
+                operation: try HostPlatformInstallationPolicy
+                    .recordActivateTarget(
+                        operation: published,
+                        resolvedTarget: "/install/releases/host-0.2.2/release",
+                        updatedAt: "2026-07-29T01:00:04Z"
+                    ),
+                observations: [],
+                updatedAt: "2026-07-29T01:00:05Z"
+            )
+        return try HostPlatformInstallationPolicy.makeCompletedSettlement(
+            operation: loaded,
+            settledAt: "2026-07-29T01:00:06Z"
+        )
+    }
+
+    private func compensatedHostOperation() throws -> HostPlatformInstallationOperation {
+        let published = try HostPlatformInstallationPolicy
+            .recordPublishInterfaces(
+                operation: try HostPlatformInstallationPolicy
+                    .recordQuiescePrevious(
+                        operation: try stagedHostOperation(),
+                        observations: [],
+                        updatedAt: "2026-07-29T01:00:02Z"
+                    ),
+                updatedAt: "2026-07-29T01:00:03Z"
+            )
+        let compensating = try HostPlatformInstallationPolicy.recordCompensating(
+            operation: published,
+            reason: "target service load failed",
+            updatedAt: "2026-07-29T01:00:04Z"
+        )
+        return try HostPlatformInstallationPolicy.recordCompensated(
+            operation: compensating,
+            updatedAt: "2026-07-29T01:00:05Z"
+        )
+    }
+
+    private func stagedHostOperation() throws -> HostPlatformInstallationOperation {
+        try HostPlatformInstallationPolicy.recordStagedCandidate(
+            operation: try requestedHostOperation(),
+            candidate: HostPlatformStagedCandidate(
+                release: hostTargetRelease(),
+                stagingReceiptId: "update-42.candidate",
+                stagedAt: "2026-07-29T01:00:01Z"
+            ),
+            updatedAt: "2026-07-29T01:00:01Z"
+        )
+    }
+
+    private func requestedHostOperation() throws -> HostPlatformInstallationOperation {
+        try HostPlatformInstallationPolicy.makeRequestedOperation(
+            command: HostPlatformInstallationCommand(
+                operationId: "update-42.host-platform.apply",
+                kind: .apply,
+                installationId: "installation-1",
+                expectedInstallationRevision: 1,
+                targetRelease: hostTargetRelease(),
+                sourceArtifactPath: "/incoming/host-platform.pkg",
+                sourceArtifactSizeBytes: 1024,
+                sourceArtifactMediaType:
+                    HostPlatformReleaseArchiveContract.mediaType,
+                stagingAttemptId: "update-42.apply",
+                requestedAt: "2026-07-29T01:00:00Z"
+            ),
+            activeManifest: try initialHostManifest()
+        )
+    }
+
+    private func initialHostManifest() throws -> HostPlatformInstallationManifest {
+        try HostPlatformInstallationPolicy.makeInitialManifest(
+            installationId: "installation-1",
+            activeRelease: HostPlatformRelease(
+                id: "host-0.2.1",
+                version: "0.2.1",
+                sha256: String(repeating: "a", count: 64),
+                slotRelativePath: "releases/host-0.2.1"
+            ),
+            operationId: "fresh-install.host-0.2.1",
+            activatedAt: "2026-07-29T00:00:00Z"
+        )
+    }
+
+    private func hostTargetRelease() -> HostPlatformRelease {
+        HostPlatformRelease(
+            id: "host-0.2.2",
+            version: "0.2.2",
+            sha256: String(repeating: "b", count: 64),
+            slotRelativePath: "releases/host-0.2.2"
         )
     }
 }

@@ -216,9 +216,10 @@ def field_proof_sequence_text() -> str:
          VM_UPDATE_APPLY_REQUEST_ID=<unique-request-id>
        pass: prove-update-bootstrap --expect succeeded
        evidence: Host journal, execution report, Runtime Control
-                 /platform/operations journal equality
-       not proven: later-than helperVersion, VITALSERVER_VM_HOME,
-                   Host Platform phase journal, handoff Guest URL on disk
+                 /platform/operations journal equality, persisted handoff
+                 guestControlBaseURL vs current Guest address, Host
+                 Platform SQLite apply phase journal
+       not proven: later-than helperVersion, VITALSERVER_VM_HOME (TS-220)
     7. interruption/restart: TS-192 resume/settle/fail plus TS-226
        Host Platform phase resume (no make target)
     8. make dist/update/dev/rollback-smoke
@@ -244,8 +245,9 @@ def field_proof_automation_inventory_text() -> str:
   [available] installed apply proof: make dist/update/dev/apply-smoke
   [available] Host-failure rollback proof: make dist/update/dev/rollback-smoke
   [unproven] 0.2.2 -> later product version: no later-than comparison exists
-  [unproven] apply-smoke VITALSERVER_VM_HOME (TS-220)
-  [unproven] prove-update-bootstrap Guest URL and Host Platform phases
+  [unproven] Platform Agent verify VITALSERVER_VM_HOME (TS-220)
+  [available] prove-update-bootstrap Guest URL vs current Guest address (TS-221)
+  [available] prove-update-bootstrap Host Platform SQLite phases (TS-226)
   [runbook] durable handoff interrupt: resume/settle/fail (TS-192)
   [runbook] Host Platform phase interrupt: manager resume (TS-226)
   [runbook] Recorder/Postgres/Helper/PWA: compose/testkit; no installed target
@@ -375,6 +377,22 @@ def _command_surface_checks(
         checks.extend(_host_platform_phase_checks(surface.host_platform_phase_source))
     if _source_usable(source_reads, SOURCE_PROVE_USECASE):
         checks.append(_rollback_receipt_order(surface.prove_usecase_source))
+        checks.append(
+            _contains(
+                "prove-guest-control",
+                surface.prove_usecase_source,
+                "proveGuestControl",
+                "prove-update-bootstrap correlates persisted handoff Guest URL",
+            )
+        )
+        checks.append(
+            _contains(
+                "prove-host-platform",
+                surface.prove_usecase_source,
+                "proveHostPlatform",
+                "prove-update-bootstrap correlates Host Platform SQLite journal",
+            )
+        )
     return checks
 
 

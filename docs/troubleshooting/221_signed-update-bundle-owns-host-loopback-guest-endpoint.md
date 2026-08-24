@@ -67,11 +67,23 @@ The generated layer-effect invocation must contain the current Guest endpoint:
 ```
 
 The signed `effect-configuration.json` must not contain
-`guestControlBaseURL`. Field proof must confirm the durable journal reaches a
-terminal state; the apply API response alone is only handoff evidence.
+`guestControlBaseURL`. Field proof reads the persisted handoff owner:
+
+```text
+/Library/Application Support/VitalServerHelper/update-bootstrap/<update-id>/handoff/invocation.json
+```
+
+`prove-update-bootstrap` decodes required `guestControlBaseURL` from that
+document, rejects host-loopback and invalid URLs, then correlates the URL to
+the Host-owned Guest Control endpoint: current Guest address plus HTTP port
+`18330`. Omitted port and wrong port are port mismatch, not a host match.
+Guest address missing, invalid, stale, read-failed, and not-reported stay
+distinct from host mismatch and port mismatch. The apply API response alone
+is only handoff admission evidence.
 
 ## Related Cases
 
 - [TS-108: Product Lab send without VitalDB tracks](108_product-lab-send-without-vitaldb-tracks.md)
 - [TS-192: Update bootstrap journal requires explicit recovery](192_update-bootstrap-journal-requires-explicit-recovery.md)
 - [TS-220: Platform Agent update verifier uses root home](220_platform-agent-update-verifier-uses-root-home.md)
+- [TS-227: prove-update-bootstrap rejects persisted layer evidence](227_prove_update_bootstrap_rejects_persisted_layer_evidence.md)

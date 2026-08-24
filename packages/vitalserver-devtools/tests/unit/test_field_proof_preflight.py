@@ -75,7 +75,9 @@ def valid_surface(**overrides: object) -> FieldProofCommandSurface:
             "let expectedRollbackLayers: [UpdateLayer] = [\n"
             "    .guestRuntime,\n"
             "    .container,\n"
-            "]"
+            "]\n"
+            "func proveGuestControl(\n"
+            "func proveHostPlatform(\n"
         ),
         "handoff_policy_source": (
             "public static func makeInvocation(\n"
@@ -340,6 +342,26 @@ def test_evaluate_rejects_host_platform_before_guest_rollback_order() -> None:
         check for check in report.blockers if check.name == "rollback-receipt-order"
     )
     assert blocker.status == PreflightStatus.INVALID
+
+
+def test_evaluate_requires_guest_url_and_host_platform_proof_methods() -> None:
+    report = evaluate_field_proof_preflight(
+        valid_surface(
+            prove_usecase_source=(
+                "let expectedRollbackLayers: [UpdateLayer] = [\n"
+                "    .guestRuntime,\n"
+                "    .container,\n"
+                "]"
+            )
+        ),
+        present_inputs(),
+        valid_trust_store(),
+    )
+
+    assert not report.passed
+    names = {check.name for check in report.blockers}
+    assert "prove-guest-control" in names
+    assert "prove-host-platform" in names
 
 
 def test_evaluate_skips_recipe_guesses_when_makefile_read_failed() -> None:

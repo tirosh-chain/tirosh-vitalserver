@@ -531,8 +531,23 @@ make dist/update/dev/rollback-smoke \
 proof command는 명시된 timeout과 poll interval 동안 Host owner SQLite journal의
 terminal state를 기다립니다. 이후 digest로 고정된 execution report와 signed
 specification을 검증하고, Runtime Control `/platform/operations`가 제공한
-stable update journal이 Host owner journal과 동일한지 확인합니다. missing,
-read/decode failure, timeout과 terminal failure는 서로 다른 오류입니다.
+stable update journal이 Host owner journal과 동일한지 확인합니다. 이어서
+staged `handoff/invocation.json`의 required `guestControlBaseURL`을 현재
+Host-owned Guest address observation과 상관합니다. Host endpoint 계약은
+HTTP와 port `18330`입니다. omitted/wrong port는 host mismatch와 다른
+오류입니다. signed Host Platform effect configuration이 가리키는 Host
+Platform SQLite journal에서 `<update-id>.host-platform.apply` operation과
+active installation identity를 읽습니다. `--expect succeeded`는 phase
+`completed`와 target release로의 settlement를 요구합니다.
+`--expect failed-rolled-back`은 `failed` 또는 `compensated`를 서로 다른
+terminal로 허용하고, active installation이 `previousRelease`와 원래
+installation revision에 남아 있으며 `activationOperationId`가 이
+operation이 아닌지로 복원을 증명합니다. missing, invalid,
+failed, stale, mismatch, compensated, completed는 서로 다른 오류입니다.
+
+`VITALSERVER_VM_HOME`이 Platform Agent verify 경로에 전달됐는지는 아직
+field-provable하지 않습니다. verify invocation은 그 환경 값을 지속 계약으로
+남기지 않으므로, 성공한 trust-store 읽기나 process 부재로 추론하지 않습니다.
 
 rollback smoke의 fault bundle은 일반 bundle에서 만들어내거나 암묵적으로
 변형하지 않습니다. Host Platform effect가 의도적으로 실패하도록 별도로

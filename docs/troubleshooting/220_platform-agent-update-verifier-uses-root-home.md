@@ -55,17 +55,43 @@ worker because they have different process owners and environment boundaries.
 
 ## Evidence
 
+Direct CLI verification can name the installed runtime home in the invoking
+shell:
+
 ```sh
 VITALSERVER_VM_HOME="/Library/Application Support/VitalServerHelper/vm" \
   /usr/local/bin/vitalserver-vm runtime verify-update-bootstrap \
   <bundle.tar.gz>
 ```
 
-The PWA `POST /platform/update-bundles/verify` operation must then complete
-against the same bundle and installed trust store without referencing
-`/var/root/.tirosh`.
+That is operator intent, not proof that the root Platform Agent worker used
+the same value. `prove-update-bootstrap` and apply-smoke do not have a
+persisted/observable owner for the verify process environment. Success against
+the installed trust store, absence of `/var/root/.tirosh`, logs, or the
+current Platform Agent launchd environment must not be treated as that proof.
+
+## Follow-up
+
+Field proof of TS-220 is blocked until verify persists an explicit document
+that records the resolved installed runtime home used to open the trust store.
+The smallest producer-side contract is a verify admission/receipt written by
+`verify-update-bootstrap` after `InstalledRuntimePaths` resolution, containing
+at least:
+
+- `schemaVersion`
+- `command` = `verify-update-bootstrap`
+- `resolvedRuntimeHome` = the exact `VITALSERVER_VM_HOME` used
+- `trustStorePath` = the path actually opened
+- `updateId` / bundle identity
+- `observedAt`
+- process owner identity (`uid`/`euid`)
+
+Missing, unreadable, and decode-failed receipts must stay distinct from a
+successful verify. Do not reconstruct the home from source defaults or from
+the current Platform Agent environment.
 
 ## Related Cases
 
 - [TS-196: Helper UI uses the legacy update bundle engine](196_helper_ui_uses_legacy_update_bundle_engine.md)
 - [TS-219: Swift bootstrap verifier rejects specification payload](219_swift-bootstrap-verifier-rejects-declared-payload.md)
+- [TS-227: prove-update-bootstrap rejects persisted layer evidence](227_prove_update_bootstrap_rejects_persisted_layer_evidence.md)

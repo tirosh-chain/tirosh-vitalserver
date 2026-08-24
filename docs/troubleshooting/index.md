@@ -218,6 +218,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-223 | Host candidate receipt ID가 128자 계약을 초과해 staging 후 manager operation이 requested에 남음 | Update / Host installation manager | active | [Host candidate receipt exceeds the identifier contract](223_host_candidate_receipt_exceeds_identifier_contract.md) |
 | TS-224 | Host release가 VM 종료 완료 전에 같은 launchd label을 시작하고 부분 시작 보상도 중단됨 | Update / Host platform reconciliation | active | [Host release restarts launchd before the VM stops](224_host_release_restarts_launchd_before_vm_stops.md) |
 | TS-226 | Host Platform reconcile이 durable, resumable lifecycle로 재구성되고 exit-code 계약으로 분류됨 | Update / Host platform reconciliation | active | [Host Platform reconciliation is now a durable, resumable lifecycle](226_host_platform_durable_reconciliation.md) |
+| TS-227 | prove-update-bootstrap이 terminal journal 이후 persisted Guest URL 또는 Host Platform journal을 거부함 | Update / Field proof | active | [prove-update-bootstrap rejects persisted layer evidence](227_prove_update_bootstrap_rejects_persisted_layer_evidence.md) |
 | TS-225 | Effect configuration이 v2 schema 검증 없이 서명되고 executor id가 configuration과 불일치함 | Update / Release composition | active | [Effect configuration signed without v2 schema validation](225_effect_configuration_signed_without_v2_validation.md) |
 
 ## Follow-up 규칙

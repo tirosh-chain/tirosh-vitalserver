@@ -109,6 +109,37 @@ The model is documented in `docs/runtime/macos/architecture.md` §7-4.
 - [TS-224: Host release restarts launchd before the VM stops](224_host_release_restarts_launchd_before_vm_stops.md)
 - [TS-223: Host candidate receipt exceeds the identifier contract](223_host_candidate_receipt_exceeds_identifier_contract.md)
 - [TS-218: Applications Helper symlink is not registered](218_applications-helper-symlink-not-registered.md)
+- [TS-227: prove-update-bootstrap rejects persisted layer evidence](227_prove_update_bootstrap_rejects_persisted_layer_evidence.md)
+
+## Evidence
+
+`prove-update-bootstrap` does not infer Host Platform phase from the `current`
+symlink or from logs. It reads the signed Host Platform effect configuration
+from the staged update (digest-bound) and then reads the Host Platform SQLite
+journal at `manager.databasePath`:
+
+```text
+/Library/Application Support/VitalServerHelper/update-manager/state.sqlite
+```
+
+The apply operation id is `<update-id>.host-platform.apply`. Proof correlates
+installation id, expected revision, candidate/target release identity, and
+artifact SHA-256, then requires a terminal phase:
+
+- `--expect succeeded` → phase `completed`, and the active installation
+  must be this operation's target release (id/version/digest/slot) at
+  `expectedInstallationRevision + 1`
+- `--expect failed-rolled-back` → phase `failed` or `compensated` as distinct
+  terminals; the active installation must still be `operation.previousRelease`
+  (id/version/digest/slot) at `expectedInstallationRevision`, and
+  `activationOperationId` must not be this operation. This holds for
+  requested/prepared failure and for compensated failure because failed
+  settlement does not advance the SQLite installation.
+
+Missing, read-failed, identity mismatch, and non-terminal phases stay
+distinct. Staging under `update-bootstrap/<update-id>/` must still be present
+at proof time because the configuration path and digest come from that
+closure.
 
 ## Follow-up
 
