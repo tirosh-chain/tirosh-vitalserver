@@ -112,8 +112,29 @@ def test_runtime_compose_includes_postgres_service() -> None:
     assert isinstance(postgres, dict)
     assert postgres["image"] == "postgres:16-alpine"
     assert postgres["environment"]["POSTGRES_DB"] == "vitalserver"
-    assert postgres["ports"] == ["127.0.0.1:15432:5432"]
+    assert postgres["ports"] == [
+        "127.0.0.1:${VITALSERVER_POSTGRES_BIND_PORT:-15432}:5432"
+    ]
     assert "postgres-data" in volumes
+
+
+def test_runtime_compose_postgres_bind_port_preserves_15432_default() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    postgres = document["services"]["postgres"]
+
+    port_mapping = postgres["ports"][0]
+    match = re.fullmatch(
+        r"127\.0\.0\.1:\$\{VITALSERVER_POSTGRES_BIND_PORT:-([0-9]+)\}:5432",
+        port_mapping,
+    )
+    assert match is not None
+    assert int(match.group(1)) == 15432
+    assert "5432" in port_mapping
 
 
 def test_runtime_compose_gates_products_on_postgres_migration() -> None:
@@ -289,10 +310,9 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
 
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_only"
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "1000"
-    assert (
-        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
-        == str(12 * 1024 * 1024)
-    )
+    assert compose.os.environ[
+        "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"
+    ] == str(12 * 1024 * 1024)
     assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
 
 
@@ -327,9 +347,9 @@ def test_load_runtime_env_materializes_explicit_compose_environment(
         name: json.loads(value)
         for name, value in (
             line.split("=", 1)
-            for line in (tmp_path / "compose.env").read_text(
-                encoding="utf-8"
-            ).splitlines()
+            for line in (tmp_path / "compose.env")
+            .read_text(encoding="utf-8")
+            .splitlines()
         )
     }
     assert values["VITALSERVER_ADMIN_PASSWORD"] == 'secret#"value'
@@ -418,8 +438,7 @@ def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(
     compose.load_runtime_env()
 
     assert (
-        compose.os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"]
-        == "110000"
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"] == "110000"
     )
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES"] == str(
         640 * 1024 * 1024
@@ -428,8 +447,7 @@ def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(
         12 * 1024 * 1024
     )
     assert (
-        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS"]
-        == "12000"
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS"] == "12000"
     )
     assert (
         compose.os.environ["RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS"]
@@ -476,7 +494,9 @@ def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(
         == "5"
     )
     assert (
-        compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS"]
+        compose.os.environ[
+            "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS"
+        ]
         == "600000"
     )
 
@@ -673,10 +693,9 @@ def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_observe_only
 
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "observe_only"
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "1000"
-    assert (
-        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
-        == str(20 * 1024 * 1024)
-    )
+    assert compose.os.environ[
+        "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"
+    ] == str(20 * 1024 * 1024)
     assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).read_text(
         encoding="utf-8"
     ) == (
@@ -719,8 +738,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_mode(
         compose.load_runtime_env()
 
     assert (
-        error.value.code
-        == "runtime-settings-recorder-ingress-send-data-mode-invalid"
+        error.value.code == "runtime-settings-recorder-ingress-send-data-mode-invalid"
     )
 
 
@@ -828,8 +846,7 @@ def test_load_runtime_env_rejects_recorder_ingress_concurrency_inversion(
         compose.load_runtime_env()
 
     assert (
-        error.value.code
-        == "runtime-settings-recorder-ingress-"
+        error.value.code == "runtime-settings-recorder-ingress-"
         "sendDataReplayAdaptiveMaxConcurrency-invalid"
     )
 
