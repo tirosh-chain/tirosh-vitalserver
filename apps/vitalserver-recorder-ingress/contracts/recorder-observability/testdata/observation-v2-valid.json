@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "v2",
+  "eventId": "vr-brmh-15:boot-b:1",
+  "deviceId": "vr-brmh-15",
+  "siteId": "brmh",
+  "bootId": "boot-b",
+  "sequence": 1,
+  "kind": "device-health",
+  "collectionState": "ok",
+  "deviceObservedAt": "2026-07-23T01:02:03Z",
+  "uptimeSeconds": {"state": "ok", "value": 82.5},
+  "ntpState": "synchronized",
+  "payload": {
+    "system": {
+      "model": {"state": "ok", "value": "Raspberry Pi 4 Model B Rev 1.2"},
+      "kernelRelease": {"state": "ok", "value": "6.12.25+rpt-rpi-v8"},
+      "loadAverage": {"state": "ok", "value": [0.12, 0.18, 0.21]}
+    },
+    "memory": {
+      "totalBytes": {"state": "ok", "value": 8589934592},
+      "availableBytes": {"state": "ok", "value": 6442450944},
+      "swapTotalBytes": {"state": "ok", "value": 0},
+      "swapFreeBytes": {"state": "ok", "value": 0},
+      "dirtyBytes": {"state": "ok", "value": 4096},
+      "writebackBytes": {"state": "ok", "value": 0},
+      "oomKillCount": {"state": "ok", "value": 0},
+      "pageMajorFaults": {"state": "ok", "value": 12}
+    },
+    "storage": {
+      "root": {
+        "path": "/",
+        "mountPoint": {"state": "ok", "value": "/"},
+        "filesystemType": {"state": "ok", "value": "ext4"},
+        "mountOptions": {"state": "ok", "value": "rw,noatime"},
+        "totalBytes": {"state": "ok", "value": 31914983424},
+        "availableBytes": {"state": "ok", "value": 18790481920},
+        "usedPercent": {"state": "ok", "value": 41.2},
+        "inodesTotal": {"state": "ok", "value": 1921360},
+        "inodesFree": {"state": "ok", "value": 1800000}
+      },
+      "data": {
+        "path": "/data",
+        "mountPoint": {"state": "ok", "value": "/data"},
+        "filesystemType": {"state": "ok", "value": "ext4"},
+        "mountOptions": {"state": "ok", "value": "rw,noatime"},
+        "totalBytes": {"state": "ok", "value": 107374182400},
+        "availableBytes": {"state": "ok", "value": 85899345920},
+        "usedPercent": {"state": "ok", "value": 20.0},
+        "inodesTotal": {"state": "ok", "value": 6553600},
+        "inodesFree": {"state": "ok", "value": 6500000}
+      },
+      "ext4Filesystems": [
+        {
+          "name": "root",
+          "errorsCount": {"state": "ok", "value": 0},
+          "warningCount": {"state": "ok", "value": 0}
+        }
+      ]
+    },
+    "raspberryPi": {
+      "temperatureCelsius": {"state": "ok", "value": 46.2},
+      "throttleFlags": {"state": "ok", "value": "throttled=0x0"},
+      "resetFlags": {"state": "ok", "value": "0x0"}
+    },
+    "network": {
+      "interfaces": [
+        {
+          "name": "eth0",
+          "present": {"state": "ok", "value": true},
+          "ifIndex": {"state": "ok", "value": 2},
+          "driver": {"state": "ok", "value": "bcmgenet"},
+          "devicePath": {"state": "ok", "value": "/sys/class/net/eth0"},
+          "busType": {"state": "ok", "value": "platform"},
+          "operState": {"state": "ok", "value": "up"},
+          "carrier": {"state": "ok", "value": true},
+          "carrierChanges": {"state": "ok", "value": 1},
+          "rxErrors": {"state": "ok", "value": 0},
+          "txErrors": {"state": "ok", "value": 0},
+          "rxDropped": {"state": "ok", "value": 0},
+          "txDropped": {"state": "ok", "value": 0}
+        }
+      ],
+      "ipv4Addresses": {"state": "ok", "value": ["172.31.0.157"]},
+      "defaultRoute": {"state": "ok", "value": "172.31.0.1"}
+    },
+    "vitalRecorder": {
+      "serviceName": "vr.service",
+      "activeState": {"state": "ok", "value": "active"},
+      "subState": {"state": "ok", "value": "running"},
+      "result": {"state": "ok", "value": "success"},
+      "mainExitStatus": {"state": "ok", "value": 0},
+      "restartCount": {"state": "ok", "value": 0}
+    },
+    "publisher": {
+      "serviceName": "vitalrecorder-publisher.service",
+      "activeState": {"state": "ok", "value": "active"},
+      "subState": {"state": "ok", "value": "running"},
+      "result": {"state": "ok", "value": "success"},
+      "restartCount": {"state": "ok", "value": 0},
+      "bufferBytes": {"state": "ok", "value": 2048},
+      "bufferLimitBytes": 8388608
+    },
+    "services": {
+      "systemRunning": {"state": "ok", "value": "running"},
+      "failedUnits": {"state": "ok", "value": ""},
+      "heartbeat": {
+        "serviceName": "vitalrecorder-heartbeat.service",
+        "loadState": {"state": "ok", "value": "loaded"},
+        "activeState": {"state": "ok", "value": "active"},
+        "subState": {"state": "ok", "value": "running"},
+        "result": {"state": "ok", "value": "success"},
+        "mainExitStatus": {"state": "ok", "value": 0},
+        "restartCount": {"state": "ok", "value": 0}
+      },
+      "networkManager": {
+        "serviceName": "NetworkManager.service",
+        "loadState": {"state": "ok", "value": "loaded"},
+        "activeState": {"state": "ok", "value": "active"},
+        "subState": {"state": "ok", "value": "running"},
+        "result": {"state": "ok", "value": "success"},
+        "mainExitStatus": {"state": "ok", "value": 0},
+        "restartCount": {"state": "ok", "value": 0}
+      },
+      "wpaSupplicant": {
+        "serviceName": "wpa_supplicant.service",
+        "loadState": {"state": "ok", "value": "loaded"},
+        "activeState": {"state": "ok", "value": "active"},
+        "subState": {"state": "ok", "value": "running"},
+        "result": {"state": "ok", "value": "success"},
+        "mainExitStatus": {"state": "ok", "value": 0},
+        "restartCount": {"state": "ok", "value": 0}
+      },
+      "observer": {
+        "serviceName": "vitalrecorder-observer.service",
+        "loadState": {"state": "ok", "value": "loaded"},
+        "activeState": {"state": "ok", "value": "active"},
+        "subState": {"state": "ok", "value": "running"},
+        "result": {"state": "ok", "value": "success"},
+        "mainExitStatus": {"state": "ok", "value": 0},
+        "restartCount": {"state": "ok", "value": 0}
+      },
+      "maintenanceTimer": {
+        "serviceName": "vitalrecorder-maintenance.timer",
+        "loadState": {"state": "ok", "value": "loaded"},
+        "activeState": {"state": "ok", "value": "active"},
+        "subState": {"state": "ok", "value": "waiting"},
+        "result": {"state": "ok", "value": "success"},
+        "mainExitStatus": {"state": "ok", "value": 0},
+        "restartCount": {"state": "ok", "value": 0}
+      }
+    },
+    "pstore": {
+      "state": {"state": "ok", "value": "available"},
+      "files": {"state": "ok", "value": []}
+    },
+    "time": {
+      "wallClock": {"state": "ok", "value": "2026-07-23T01:02:03Z"},
+      "chronyLeapState": {"state": "ok", "value": "normal"},
+      "chronyReference": {"state": "ok", "value": "NTP"},
+      "chronyStratum": {"state": "ok", "value": 3},
+      "lastOffsetSeconds": {"state": "ok", "value": 0.001}
+    },
+    "evidenceHealth": {
+      "state": "healthy",
+      "checkedAt": "2026-07-23T01:02:03Z",
+      "checks": {
+        "bootLedger": {"state": "ok"},
+        "pstore": {"state": "ok"}
+      }
+    },
+    "incidentState": {
+      "policyVersion": "recorder-incident/v1",
+      "bootLoopState": "none",
+      "repeatedUndervoltageState": "none",
+      "evidenceState": "healthy",
+      "consecutiveUnexpectedBoots": 0,
+      "undervoltageBootsConsidered": 0
+    }
+  },
+  "readIssues": []
+}

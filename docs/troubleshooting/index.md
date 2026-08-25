@@ -193,6 +193,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-190 | observer 미설치 Recorder의 명시적 `notReported` 문서가 필수 필드를 누락해 Details decode 실패 | Recorder observability / Runtime Control | implemented; package verification pending | [Recorder without observer reports a detail decode failure](190_recorder-without-observer-detail-decode-failure.md) |
 | TS-191 | Beds 탭이 Bed read failure를 숨기고 병상 중심 열을 잘라 표시함 | macOS Helper / VitalDB Beds / Presentation | implemented; package verification pending | [Beds tab hides Bed read state and clips bed-focused columns](191_beds-tab-hides-read-and-clips-bed-state.md) |
 | TS-192 | DMG runtime smoke가 Host Platform Agent 없이 실행되어 Guest NTP 실패를 통과시킴 | Packaging / Runtime health / Network | implemented; package verification passed | [NTP failure passes runtime boot smoke](192_ntp_failure_passes-runtime-boot-smoke.md) |
+| TS-231 | Recorder observability 증명이 service-start connection reset으로 죽음 | TestKit / Runtime health | resolved | [Recorder observability proof crashes on service-start connection reset](231_recorder-observability-proof-service-start-race.md) |
 
 ## Follow-up 규칙
 
