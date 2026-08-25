@@ -1,4 +1,5 @@
 .PHONY: testkit/health testkit/smoke testkit/verify testkit/load testkit/stream testkit/recorder-ingress/replay testkit/recorder-ingress/load testkit/recorder-ingress/runtime-load testkit/recorder-ingress/backpressure
+.PHONY: testkit/recorder-observability/compose-proof
 .PHONY: require-testkit-runtime
 
 require-testkit-runtime:
@@ -88,3 +89,23 @@ testkit/recorder-ingress/backpressure: require-testkit-runtime
 		--min-spooled-events 1 \
 		--min-replayed-events 1 \
 		--min-rejected-events 1
+
+# Mutates dedicated Guest compose PostgreSQL. Operator-approved only.
+# Queries recorder-ingress /runtime/vitaldb paths directly on 127.0.0.1:18083.
+# VM Guest Control :18330 is a separate systemd proxy and stays unproven.
+# Root compose send_data proof has no PostgreSQL and must not be reused.
+# Not wired to updater field_proof_preflight.
+# --postgres-host-port 0 publishes PostgreSQL on an ephemeral Docker host
+# port; the proof does not consume the host-published PostgreSQL port. The
+# Guest production default 15432 stays the compose default via
+# VITALSERVER_POSTGRES_BIND_PORT.
+testkit/recorder-observability/compose-proof:
+	$(PYTHON) scripts/recorder_observability_compose_e2e.py \
+		--compose "$(DOCKER_COMPOSE)" \
+		--compose-file "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml" \
+		--compose-project "vitalserver-recorder-observability-proof" \
+		--postgres-host-port 0 \
+		--bind-host 127.0.0.1 \
+		--http-port 18083 \
+		--query-owner recorder-ingress \
+		--start-compose

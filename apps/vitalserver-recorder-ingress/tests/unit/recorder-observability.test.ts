@@ -27,11 +27,13 @@ test("registry receipts exactly cover the authoritative nine-schema set", () => 
   );
 });
 
-test("Recorder final profile, boot, diagnostic v2, and kernel v2 goldens validate", () => {
+test("Recorder final profile, boot, diagnostic v2, kernel v2, and active-contract goldens validate", () => {
   const fixtures = [
     ["profile-v1-valid.json", "recorderProfile"],
     ["boot-started-v1-valid.json", "bootEvent"],
     ["shutdown-clean-v1-valid.json", "bootEvent"],
+    ["boot-event-v2-valid.json", "bootEvent"],
+    ["observation-v2-valid.json", "observation"],
     ["diagnostic-log-v2-valid.json", "diagnosticEvent"],
     ["kernel-incident-v2-valid.json", "kernelIncident"],
   ];
