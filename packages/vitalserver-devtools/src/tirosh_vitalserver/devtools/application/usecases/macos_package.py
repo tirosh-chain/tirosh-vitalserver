@@ -76,6 +76,7 @@ from tirosh_vitalserver.devtools.config.update_bootstrap_trust_store import (
 )
 from tirosh_vitalserver.devtools.core.guest_services import RootfsInputMetadataPlan
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
+    settings_host_platform_release_slot,
     settings_install_home,
     settings_install_prefix,
 )
@@ -207,9 +208,7 @@ def release_package_preflight_report(
             release_file=input.release_file,
             output=input.output,
             output_kind=output_kind,
-            update_bootstrap_trust_store=(
-                input.update_bootstrap_trust_store
-            ),
+            update_bootstrap_trust_store=(input.update_bootstrap_trust_store),
         )
     )
     rootfs_base = resolve_path(root, input.rootfs_base)
@@ -274,6 +273,11 @@ def release_dmg_artifact_report(
     settings = load_macos_release_settings(input.config, root)
     release_file = resolve_path(root, input.release_file)
     release = load_release_manifest(release_file)
+    release_slot = settings_host_platform_release_slot(
+        settings,
+        f"helper-{release.helper_version}",
+    )
+    nginx_release_path = f"{release_slot}/release/nginx"
     outputs = package_outputs(
         settings=settings,
         release=release,
@@ -300,9 +304,8 @@ def release_dmg_artifact_report(
             installer_pkg_name=settings.outputs.dmg_installer_pkg_name,
             install_home_path=settings_install_home(settings),
             install_product_root_path=settings_install_prefix(settings),
-            update_handoff_supervisor_path=(
-                settings.install.update_handoff_supervisor
-            ),
+            nginx_release_path=nginx_release_path,
+            update_handoff_supervisor_path=(settings.install.update_handoff_supervisor),
             update_handoff_supervisor_plist_path=(
                 f"{settings.install.launch_daemons_dir}/"
                 f"{settings.launchd.update_handoff_supervisor.installed_plist}"
@@ -418,6 +421,7 @@ def inspect_dmg_layout(
     installer_pkg_name: str,
     install_home_path: str,
     install_product_root_path: str,
+    nginx_release_path: str,
     update_handoff_supervisor_path: str,
     update_handoff_supervisor_plist_path: str,
     expected_update_bootstrap_trust_store: Path,
@@ -449,9 +453,8 @@ def inspect_dmg_layout(
                     installer_pkg=installer_pkg,
                     install_home_path=install_home_path,
                     install_product_root_path=install_product_root_path,
-                    update_handoff_supervisor_path=(
-                        update_handoff_supervisor_path
-                    ),
+                    nginx_release_path=nginx_release_path,
+                    update_handoff_supervisor_path=(update_handoff_supervisor_path),
                     update_handoff_supervisor_plist_path=(
                         update_handoff_supervisor_plist_path
                     ),
@@ -475,13 +478,11 @@ def inspect_dmg_layout(
                     "dmg-upstream-redis-backup-command",
                 ),
                 check_required_executable(
-                    tools_dir
-                    / "bin/vitalserver-troubleshooting-reset-for-reinstall",
+                    tools_dir / "bin/vitalserver-troubleshooting-reset-for-reinstall",
                     "dmg-reset-cli",
                 ),
                 check_required_executable(
-                    tools_dir
-                    / "bin/vitalserver-troubleshooting-upstream-redis-save",
+                    tools_dir / "bin/vitalserver-troubleshooting-upstream-redis-save",
                     "dmg-upstream-redis-save-cli",
                 ),
             ]
@@ -506,6 +507,7 @@ def inspect_dmg_installer_pkg_payload(
     installer_pkg: Path,
     install_home_path: str,
     install_product_root_path: str,
+    nginx_release_path: str,
     update_handoff_supervisor_path: str,
     update_handoff_supervisor_plist_path: str,
     expected_update_bootstrap_trust_store: Path,
@@ -527,6 +529,12 @@ def inspect_dmg_installer_pkg_payload(
                 verify_dmg_pkg_rootfs_material(
                     payload=payload,
                     install_home_path=install_home_path,
+                )
+            )
+            checks.extend(
+                verify_dmg_pkg_nginx_runtime_closure(
+                    payload=payload,
+                    nginx_release_path=nginx_release_path,
                 )
             )
             checks.append(
@@ -554,6 +562,32 @@ def inspect_dmg_installer_pkg_payload(
                 detail=f"{installer_pkg}: {error}",
             )
         ]
+
+
+def verify_dmg_pkg_nginx_runtime_closure(
+    *,
+    payload: Path,
+    nginx_release_path: str,
+) -> list[PreflightCheck]:
+    nginx = payload / nginx_release_path.strip("/")
+    return [
+        check_required_executable_file(
+            nginx / "sbin/nginx",
+            "dmg-payload-nginx-executable",
+        ),
+        check_required_payload_file(
+            nginx / "lib/libpcre2-8.0.dylib",
+            "dmg-payload-nginx-libpcre2",
+        ),
+        check_required_payload_file(
+            nginx / "lib/libssl.3.dylib",
+            "dmg-payload-nginx-libssl",
+        ),
+        check_required_payload_file(
+            nginx / "lib/libcrypto.3.dylib",
+            "dmg-payload-nginx-libcrypto",
+        ),
+    ]
 
 
 def verify_dmg_pkg_update_handoff_supervisor(
@@ -1101,8 +1135,7 @@ def install_pkg(input: MacOSPackageInstallInput) -> int:
     target_version = NumericPackageVersion.parse(release.helper_version)
     if target_version is None:
         raise SystemExit(
-            "package install target version is invalid "
-            f"value={release.helper_version}"
+            f"package install target version is invalid value={release.helper_version}"
         )
     receipt = read_package_receipt(settings.package_identifier)
     if isinstance(receipt, PackageReceiptReadFailed):
@@ -1147,8 +1180,7 @@ def install_pkg(input: MacOSPackageInstallInput) -> int:
                 ]
             )
             print(
-                "installed runtime settings: "
-                f"{settings.install.install_settings_json}"
+                f"installed runtime settings: {settings.install.install_settings_json}"
             )
         run(["sudo", "installer", "-pkg", str(pkg_output), "-target", "/"])
     except subprocess.CalledProcessError as error:

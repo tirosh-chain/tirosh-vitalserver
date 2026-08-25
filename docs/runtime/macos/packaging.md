@@ -429,6 +429,14 @@ dist/VitalServerHelper-<version>.dmg
 
 shared/NAT mode에서는 VM IP가 부팅 후에 결정됩니다. 그래서 package는 nginx config에 upstream을 미리 박아두지 않습니다.
 
+Host Platform release의 nginx는 `sbin/nginx`와 실행 시 필요한
+`libpcre2-8.0.dylib`, `libssl.3.dylib`, `libcrypto.3.dylib`를 하나의
+runtime closure로 배포합니다. Build input이 이미 bundle인 경우에도
+`@executable_path/../lib/...` load path를 sibling `lib`의 명시적 파일로
+해석하며, 누락이나 bundle 밖으로 나가는 경로는 packaging failure입니다.
+DMG artifact verification은 설치 payload의 실행 파일과 이 세 dylib를 모두
+검사하므로 빈 `lib` directory를 성공으로 승인하지 않습니다.
+
 ```text
 launchd
   -> ai.tirosh.vitalserver.helper.watchdog

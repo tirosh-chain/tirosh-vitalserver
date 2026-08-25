@@ -2,10 +2,17 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.application.inputs import NginxBundleInput
 from tirosh_vitalserver.devtools.core.host_proxy import NginxBundleConfig
+
+
+@dataclass(frozen=True)
+class NginxDylibDependency:
+    load_path: str
+    source: Path
 
 
 def run_nginx_bundle(input: NginxBundleInput, config: NginxBundleConfig) -> int:
@@ -36,8 +43,8 @@ def run_nginx_bundle(input: NginxBundleInput, config: NginxBundleConfig) -> int:
 
     source_dylibs = non_system_dylibs(binary, dylib_prefixes)
     for dylib in source_dylibs:
-        destination = bundle_lib / dylib.name
-        shutil.copy2(dylib, destination)
+        destination = bundle_lib / dylib.source.name
+        shutil.copy2(dylib.source, destination)
         destination.chmod(0o644)
 
     rewrite_load_paths(
@@ -74,10 +81,7 @@ def resolve_bundle_binary(
     config.binary_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, config.binary_path)
     config.binary_path.chmod(0o755)
-    print(
-        "refreshed nginx artifact cache: "
-        f"{config.binary_path} ({expected_version})"
-    )
+    print(f"refreshed nginx artifact cache: {config.binary_path} ({expected_version})")
     return config.binary_path.resolve()
 
 
@@ -93,8 +97,7 @@ def resolve_cached_binary(value: str | Path | None) -> Path | None:
 def resolve_binary(value: str | Path | None) -> Path:
     if value is None or value == "":
         raise SystemExit(
-            "error: missing nginx binary path in "
-            "[macos.host_proxy.nginx].binary_path"
+            "error: missing nginx binary path in [macos.host_proxy.nginx].binary_path"
         )
     path = Path(value).expanduser()
     if path.is_file() and path.stat().st_mode & 0o111:
@@ -128,13 +131,50 @@ def nginx_version_text(binary: Path) -> str:
     return f"{result.stdout}{result.stderr}".strip()
 
 
-def non_system_dylibs(binary: Path, prefixes: tuple[str, ...]) -> list[Path]:
-    dylibs = []
+def non_system_dylibs(
+    binary: Path,
+    prefixes: tuple[str, ...],
+) -> list[NginxDylibDependency]:
+    dylibs: list[NginxDylibDependency] = []
     for line in otool_load_paths(binary).splitlines()[1:]:
-        path = line.strip().split(maxsplit=1)[0]
-        if path.startswith(prefixes):
-            dylibs.append(Path(path))
-    return sorted(set(dylibs))
+        load_path = line.strip().split(maxsplit=1)[0]
+        source = resolve_dylib_source(
+            binary=binary,
+            load_path=load_path,
+            prefixes=prefixes,
+        )
+        if source is not None:
+            dylibs.append(NginxDylibDependency(load_path=load_path, source=source))
+    return sorted(
+        set(dylibs),
+        key=lambda dylib: (dylib.load_path, str(dylib.source)),
+    )
+
+
+def resolve_dylib_source(
+    *,
+    binary: Path,
+    load_path: str,
+    prefixes: tuple[str, ...],
+) -> Path | None:
+    if load_path.startswith(prefixes):
+        return Path(load_path)
+    executable_prefix = "@executable_path/"
+    if not load_path.startswith(executable_prefix):
+        return None
+    source = (binary.parent / load_path.removeprefix(executable_prefix)).resolve()
+    expected_lib = (binary.parent.parent / "lib").resolve()
+    if source.parent != expected_lib:
+        raise SystemExit(
+            "error: nginx bundled dylib escapes sibling lib directory: "
+            f"binary={binary} loadPath={load_path} resolved={source}"
+        )
+    if not source.is_file():
+        raise SystemExit(
+            "error: nginx bundled dylib is missing: "
+            f"binary={binary} loadPath={load_path} resolved={source}"
+        )
+    return source
 
 
 def otool_load_paths(binary: Path) -> str:
@@ -145,11 +185,11 @@ def rewrite_load_paths(
     *,
     bundled_nginx: Path,
     bundle_lib: Path,
-    source_dylibs: list[Path],
+    source_dylibs: list[NginxDylibDependency],
     dylib_prefixes: tuple[str, ...],
 ) -> None:
     for dylib in source_dylibs:
-        name = dylib.name
+        name = dylib.source.name
         bundled_dylib = bundle_lib / name
         run(
             [
@@ -163,7 +203,7 @@ def rewrite_load_paths(
             [
                 "install_name_tool",
                 "-change",
-                str(dylib),
+                dylib.load_path,
                 f"@executable_path/../lib/{name}",
                 str(bundled_nginx),
             ],
@@ -175,8 +215,8 @@ def rewrite_load_paths(
                 [
                     "install_name_tool",
                     "-change",
-                    str(nested),
-                    f"@executable_path/../lib/{nested.name}",
+                    nested.load_path,
+                    f"@executable_path/../lib/{nested.source.name}",
                     str(bundled_dylib),
                 ],
                 allow_failure=True,
