@@ -296,6 +296,8 @@ help/compose:
 	@printf "  testkit/recorder-ingress/load    Verify recorder-ingress replay under bounded load\n"
 	@printf "  testkit/recorder-ingress/backpressure\n"
 	@printf "                         Verify recorder-ingress explicit rejection under tight spool limit\n"
+	@printf "  testkit/recorder-observability/installed-proof\n"
+	@printf "                         Installed proof: explicit admission + Guest Control URLs, confirmation YES\n"
 	@printf "\n"
 	@printf "TOOL TARGETS\n"
 	@printf "  swagger/up             Start Swagger UI only\n"

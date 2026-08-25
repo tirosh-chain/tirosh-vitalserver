@@ -280,11 +280,16 @@ def main(
     )
     assert_incidents_loaded(incidents, vrcode, query_owner=args.query_owner)
 
+    proof_scope = (
+        "guest-compose-recorder-observability"
+        if args.query_owner == "recorder-ingress"
+        else "guest-control-recorder-observability"
+    )
     print(
         json.dumps(
             {
                 "ok": True,
-                "proofScope": "guest-compose-recorder-observability",
+                "proofScope": proof_scope,
                 "queryOwner": args.query_owner,
                 "queryBaseUrl": args.query_base_url,
                 "vrcode": vrcode,
