@@ -225,6 +225,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-225 | Effect configuration이 v2 schema 검증 없이 서명되고 executor id가 configuration과 불일치함 | Update / Release composition | active | [Effect configuration signed without v2 schema validation](225_effect_configuration_signed_without_v2_validation.md) |
 | TS-231 | Recorder observability 증명이 service-start connection reset으로 죽음 | TestKit / Runtime health | resolved | [Recorder observability proof crashes on service-start connection reset](231_recorder-observability-proof-service-start-race.md) |
 | TS-232 | Runtime Control이 Recorder observability의 명시적 null key를 누락해 PWA 상세가 실패 | Recorder observability / Runtime Control PWA | active | [Runtime Control omits Recorder observability null fields](232_runtime-control-omits-recorder-observability-null-fields.md) |
+| TS-233 | 표준 제거가 Redis backup API 5초 timeout으로 중단됨 | Uninstall / Data store / Runtime Control | active | [Standard uninstall times out while Redis backup completes](233_standard-uninstall-redis-backup-request-timeout.md) |
 
 ## Follow-up 규칙
 

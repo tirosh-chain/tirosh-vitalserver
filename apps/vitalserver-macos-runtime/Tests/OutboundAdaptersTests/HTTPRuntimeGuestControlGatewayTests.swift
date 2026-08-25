@@ -522,6 +522,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
             client.requests.map { $0.url?.absoluteString },
             ["http://127.0.0.1:18330/runtime/maintenance/redis-backup"]
         )
+        XCTAssertEqual(client.requests.first?.timeoutInterval, 900)
     }
 
     func testPostgresBackupPostsMaintenanceEndpointAndDecodesDatabaseProof() throws {
@@ -558,6 +559,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
             client.requests.map { $0.url?.absoluteString },
             ["http://127.0.0.1:18330/runtime/maintenance/postgres-backup"]
         )
+        XCTAssertEqual(client.requests.first?.timeoutInterval, 900)
     }
 
     func testPostgresRestorePostsArchiveToMaintenanceEndpoint() throws {

@@ -127,6 +127,8 @@ Guest Control API `POST /runtime/maintenance/postgres-backup`은 `pg_dump --form
 
 Redis와 PostgreSQL backup operation은 각각 독립적인 receipt를 제공합니다. 현재 product backup은 두 receipt를 순서대로 수집하며, 두 datastore 사이의 distributed transaction 또는 같은 시점의 atomic snapshot을 주장하지 않습니다. 하나라도 실패하면 VitalServer backup은 생성되지 않습니다.
 
+두 backup POST는 Guest가 archive 생성과 operation terminal document 저장을 마친 뒤 응답합니다. Host Guest Control adapter는 일반 상태 조회의 5초 timeout을 이 경계에 재사용하지 않고, Redis/PostgreSQL backup에 각각 명시적인 900초 request timeout을 사용합니다. 이 값은 무기한 대기나 성공 fallback이 아닙니다. 900초 안에 terminal operation document를 받지 못하면 transport failure로 중단하며, archive나 로그 존재로 성공을 추정하지 않습니다.
+
 Host는 두 maintenance archive를 VitalServer backup 안에 복사하고 최종 manifest와 checksum을 검증한 뒤, 이번 통합 backup operation이 만든 원본 archive만 삭제합니다. 최종 backup은 원본 archive cleanup 실패와 관계없이 보존되며, cleanup 실패는 `completedWithCleanupFailure`로 보고합니다. 최종 package 생성 또는 검증이 실패해도 이미 생성된 중간 archive cleanup을 시도하고 원래 실패를 유지합니다.
 
 ### 5-2. Guest-owned coordinated restore
