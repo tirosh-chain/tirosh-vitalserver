@@ -112,3 +112,8 @@ proof는 고정 대체 port를 추측하지 않고 ephemeral Docker host port
 - VM Guest Control API systemd proxy (`:18330`)
 - Helper/PWA 화면
 - capacity, retention, Catalog
+
+설치된 제품에서 Guest Control `:18330`을 명시 endpoint로 검증하려면
+[Installed Recorder observability proof](observability-installed-proof.md)를
+사용합니다. 이 target은 Compose를 기동하지 않고 operator confirmation `YES`를
+요구합니다.

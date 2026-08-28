@@ -1,5 +1,5 @@
 .PHONY: testkit/health testkit/smoke testkit/verify testkit/load testkit/stream testkit/recorder-ingress/replay testkit/recorder-ingress/load testkit/recorder-ingress/runtime-load testkit/recorder-ingress/backpressure
-.PHONY: testkit/recorder-observability/compose-proof
+.PHONY: testkit/recorder-observability/compose-proof testkit/recorder-observability/installed-proof
 .PHONY: require-testkit-runtime
 
 require-testkit-runtime:
@@ -89,6 +89,20 @@ testkit/recorder-ingress/backpressure: require-testkit-runtime
 		--min-spooled-events 1 \
 		--min-replayed-events 1 \
 		--min-rejected-events 1
+
+# Installed Recorder observability proof. Operator-approved only.
+# Requires explicit RECORDER_ADMISSION_BASE_URL and
+# RECORDER_GUEST_CONTROL_BASE_URL named Make/env inputs plus
+# RECORDER_PROOF_CONFIRMATION=YES. No default URLs and no inference from
+# logs, files, or absence. Never starts Compose. Queries installed Guest
+# Control /runtime/vitaldb paths with queryOwner=guest-control. Does not prove
+# Helper/PWA UI or a real Recorder/Observer canary. Not wired to updater
+# field_proof_preflight.
+testkit/recorder-observability/installed-proof:
+	$(PYTHON) -m scripts.recorder_observability_installed_proof \
+		--admission-base-url "$(RECORDER_ADMISSION_BASE_URL)" \
+		--guest-control-base-url "$(RECORDER_GUEST_CONTROL_BASE_URL)" \
+		--confirmation "$(RECORDER_PROOF_CONFIRMATION)"
 
 # Mutates dedicated Guest compose PostgreSQL. Operator-approved only.
 # Queries recorder-ingress /runtime/vitaldb paths directly on 127.0.0.1:18083.

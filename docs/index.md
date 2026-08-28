@@ -106,6 +106,7 @@
 | [Recorder observability 호환성과 배포 순서](recorder/observability-compatibility-and-rollout.md) | Helper 0.2.1과 Recorder 0.2.6 후보의 contract matrix, incident UI, canary와 rollback 기준 |
 | [Recorder observability persistence and API implementation plan](recorder/observability-persistence-and-api-plan.md) | Recorder 관측 JSONB admission, profile, PostgreSQL projection, read API와 단계별 구현 계획 |
 | [Recorder observability Guest compose proof](recorder/observability-compose-proof.md) | certified NDJSON → Guest compose PostgreSQL → recorder-ingress direct query GET 증명의 범위, 상태, unique VRCODE, 운영자 승인 경계 |
+| [Installed Recorder observability proof](recorder/observability-installed-proof.md) | 설치된 admission edge + Guest Control `/runtime/vitaldb`를 명시 endpoint로 검증하는 증명. Compose를 기동하지 않고 operator confirmation `YES`가 필수 |
 | [Recorder observability API and database handoff](recorder/observability-recorder-handoff.md) | Recorder 팀과 합의한 초기 POST/profile/PostgreSQL 설계 기록. 현재 배포 기준은 호환성 문서 사용 |
 | [VitalServer recorder Redis key model](recorder/redis-key-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](api/vitalserver.openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
