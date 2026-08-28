@@ -3,7 +3,7 @@
 > ID: TS-232
 > Category: Recorder observability / Runtime Control PWA
 > Owner: Host Runtime Control response contract
-> Status: active
+> Status: resolved
 
 ## Symptoms
 
@@ -91,3 +91,11 @@ provider state into an explicit `null` state and hide future producer drift.
   `nextCursor`.
 - 2026-08-25: added required-nullable Swift coding and focused contract tests.
   Installed package verification remains pending.
+- 2026-08-28: installed Helper 0.2.2 field proof passed. Certified observation
+  and boot-event admission for `PROOF-20260828T080630Z-17485a8e` completed
+  through the Host edge, and Guest Control returned loaded detail, timeline, and
+  incidents. The installed Runtime Control PWA then rendered online Recorder
+  `06311eba` without observer data as `Support unknown`, `Not evaluated`, and
+  `Not reported`; no `support.source`, `readError`, or `nextCursor` contract
+  error appeared. The Guest owner and Host/PWA encoding boundaries were checked
+  separately.
