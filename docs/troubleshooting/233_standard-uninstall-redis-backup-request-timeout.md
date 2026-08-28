@@ -3,7 +3,7 @@
 > ID: TS-233  
 > Category: Uninstall / Data store / Runtime Control  
 > Owner: macOS Runtime Guest Control adapter  
-> Status: active
+> Status: resolved
 
 ## Symptoms
 
@@ -70,3 +70,7 @@ curl --silent --show-error --max-time 10 \
 ## Follow-up
 
 - 2026-08-25: 표준 제거에서 같은 Redis backup 5초 timeout이 반복 재현됐습니다. 같은 installed Guest API를 120초 관찰 창으로 호출했을 때 operation `op_redis-backup_redis-backup_9476b7c57109424fad42d3cd29afbf83`이 4.160640초에 `completed`로 끝나고 명시적 archive path를 반환했습니다.
+- 2026-08-25: 수정된 Host CLI로 data-preserving 표준 제거를 다시 실행했습니다.
+  Redis와 PostgreSQL archive가 모두 명시적으로 완료된 뒤 통합 backup에 반영되고,
+  launchd stop, 사용자 데이터 보존, package receipt 제거까지 `uninstall completed`로
+  끝났습니다. `--clean`이나 receipt 수동 제거는 사용하지 않았습니다.

@@ -3,7 +3,7 @@
 > ID: TS-234  
 > Category: Packaging / Host proxy  
 > Owner: macOS nginx bundle and DMG artifact verification  
-> Status: active
+> Status: resolved
 
 ## Symptoms
 
@@ -74,3 +74,8 @@ healthy라는 이유로 port 80 실패를 startup delay나 성공으로 바꾸�
 - 2026-08-25: fresh 0.2.2 PKG 설치 후 Guest root와 recorder-ingress는 healthy였지만
   Host proxy가 `libpcre2-8.0.dylib` 누락으로 반복 종료됐습니다. 설치 payload와
   package build root의 nginx `lib` directory가 모두 비어 있음을 확인했습니다.
+- 2026-08-28: 수정된 0.2.2 PKG 설치본에서 PCRE2, OpenSSL, libcrypto 세 dylib와
+  nginx의 `@executable_path/../lib/...` load path를 확인했습니다. Host proxy와
+  Guest root는 HTTP 302, Guest Control readiness는 HTTP 200을 반환했고, 설치된
+  Runtime Control PWA가 실제 Recorder 상세를 정상 렌더링했습니다. 수동 dylib
+  복사는 사용하지 않았습니다.
