@@ -20,12 +20,16 @@ public actor MacRuntimeControlReadWorker {
         workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
             reason: "workflow operation state owner unavailable for default read worker"
         ),
+        stableUpdateJournalReader: any UpdateBootstrapJournalReading = UnavailableUpdateBootstrapJournalReader(
+            reason: "stable update journal owner unavailable for default read worker"
+        ),
         guestAddressProvider: any RuntimeGuestAddressProvider = UnavailableRuntimeGuestAddressProvider(
             reason: "runtime Guest address owner unavailable for default read worker"
         ),
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading = UnavailableRuntimeVMLifecycleResourceReader(
             reason: "runtime VM lifecycle owner unavailable for default read worker"
         ),
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         hostSettingsReader: any RuntimeHostSettingsReading
     ) {
         let fileReader = SystemRuntimeHostFileReader()
@@ -33,11 +37,13 @@ public actor MacRuntimeControlReadWorker {
             releaseInfo: releaseInfo,
             platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
-                vmLifecycleResourceReader: vmLifecycleResourceReader
+                vmLifecycleResourceReader: vmLifecycleResourceReader,
+                installedProductReleaseReader: installedProductReleaseReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader,
-                workflowOperationStateReader: workflowOperationStateReader
+                workflowOperationStateReader: workflowOperationStateReader,
+                stableUpdateJournalReader: stableUpdateJournalReader
             ),
             observabilityReader: SystemRuntimeObservabilityReader.live(
                 paths: RuntimeObservabilityPaths(),
@@ -59,8 +65,12 @@ public actor MacRuntimeControlReadWorker {
         workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
             reason: "workflow operation state owner unavailable for default read worker"
         ),
+        stableUpdateJournalReader: any UpdateBootstrapJournalReading = UnavailableUpdateBootstrapJournalReader(
+            reason: "stable update journal owner unavailable for default read worker"
+        ),
         guestAddressProvider: any RuntimeGuestAddressProvider,
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         settingsReader: any RuntimeSettingsReading
     ) {
         let fileReader = SystemRuntimeHostFileReader()
@@ -68,11 +78,13 @@ public actor MacRuntimeControlReadWorker {
             releaseInfo: releaseInfo,
             platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
-                vmLifecycleResourceReader: vmLifecycleResourceReader
+                vmLifecycleResourceReader: vmLifecycleResourceReader,
+                installedProductReleaseReader: installedProductReleaseReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader,
-                workflowOperationStateReader: workflowOperationStateReader
+                workflowOperationStateReader: workflowOperationStateReader,
+                stableUpdateJournalReader: stableUpdateJournalReader
             ),
             observabilityReader: SystemRuntimeObservabilityReader.live(
                 paths: RuntimeObservabilityPaths(),
@@ -86,9 +98,12 @@ public actor MacRuntimeControlReadWorker {
     public init(
         releaseInfo: RuntimeReleaseInfo,
         platformStateReader: any PlatformStateReading,
-        operationLeaseReader: any RuntimeOperationLeaseReading,
+        operationStateReader: any PlatformOperationStateReading,
         workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
             reason: "workflow operation state owner unavailable for default read worker"
+        ),
+        stableUpdateJournalReader: any UpdateBootstrapJournalReading = UnavailableUpdateBootstrapJournalReader(
+            reason: "stable update journal owner unavailable for default read worker"
         ),
         guestAddressProvider: any RuntimeGuestAddressProvider,
         settingsReader: any RuntimeSettingsReading
@@ -97,10 +112,7 @@ public actor MacRuntimeControlReadWorker {
         self.init(
             releaseInfo: releaseInfo,
             platformStateReader: platformStateReader,
-            operationStateReader: SystemPlatformOperationStateReader.live(
-                operationLeaseReader: operationLeaseReader,
-                workflowOperationStateReader: workflowOperationStateReader
-            ),
+            operationStateReader: operationStateReader,
             observabilityReader: SystemRuntimeObservabilityReader.live(
                 paths: RuntimeObservabilityPaths(),
                 guestAddressProvider: guestAddressProvider
@@ -237,7 +249,7 @@ public actor MacRuntimeControlReadWorker {
     }
 }
 
-protocol PlatformOperationStateReading: Sendable {
+public protocol PlatformOperationStateReading: Sendable {
     func loadOperationState() -> PlatformOperationState
 }
 
@@ -250,6 +262,9 @@ struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unche
         workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
             reason: "workflow operation state owner unavailable for default operation-state reader"
         ),
+        stableUpdateJournalReader: any UpdateBootstrapJournalReading = UnavailableUpdateBootstrapJournalReader(
+            reason: "stable update journal owner unavailable for default operation-state reader"
+        ),
         installStateReader: @escaping @Sendable () -> RuntimeInstallStateRead = {
             RuntimeInstallStateRead.unavailable()
         },
@@ -259,6 +274,7 @@ struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unche
             resourceReader: HostPlatformOperationStateResourceReader(
                 operationLeaseReader: operationLeaseReader,
                 workflowOperationStateReader: workflowOperationStateReader,
+                stableUpdateJournalReader: stableUpdateJournalReader,
                 installStateReader: installStateReader
             ),
             now: now
@@ -285,12 +301,16 @@ struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unche
         operationLeaseReader: any RuntimeOperationLeaseReading,
         workflowOperationStateReader: any RuntimeWorkflowOperationStateReading = UnavailableRuntimeWorkflowOperationStateReader(
             reason: "workflow operation state owner unavailable for default operation-state reader"
+        ),
+        stableUpdateJournalReader: any UpdateBootstrapJournalReading = UnavailableUpdateBootstrapJournalReader(
+            reason: "stable update journal owner unavailable for default operation-state reader"
         )
     ) -> Self {
         return Self(
             resourceReader: HostPlatformOperationStateResourceReader.live(
                 operationLeaseReader: operationLeaseReader,
-                workflowOperationStateReader: workflowOperationStateReader
+                workflowOperationStateReader: workflowOperationStateReader,
+                stableUpdateJournalReader: stableUpdateJournalReader
             )
         )
     }
@@ -301,8 +321,22 @@ struct SystemPlatformOperationStateReader: PlatformOperationStateReading, @unche
             activeOperation: nil,
             install: RuntimeInstallOperationState.fromInstallStateRead(snapshot.install),
             lease: leaseState(from: snapshot.lease, now: now()),
-            workflow: workflowState(from: snapshot.workflow)
+            workflow: workflowState(from: snapshot.workflow),
+            stableUpdate: stableUpdateState(from: snapshot.stableUpdate)
         )
+    }
+
+    private func stableUpdateState(
+        from readResult: UpdateBootstrapJournalReadResult
+    ) -> RuntimeStableUpdateJournalResource {
+        switch readResult {
+        case .missing:
+            return .missing()
+        case .failed(let reason):
+            return .failed(readError: reason)
+        case .loaded(let journal):
+            return .loaded(journal)
+        }
     }
 
     private func workflowState(

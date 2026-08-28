@@ -15,12 +15,16 @@ def load_release_manifest(path: Path) -> ReleaseManifest:
         raise SystemExit(f"error: invalid release manifest {path}: {exc}") from exc
     if not isinstance(release, dict):
         raise SystemExit(f"error: release manifest must be a JSON object: {path}")
+    if "minUpdaterVersion" in release:
+        raise SystemExit(
+            "error: unsupported release field: minUpdaterVersion; "
+            "stable bootstrap compatibility is structural"
+        )
     validate_runtime_product_services(release)
     return ReleaseManifest(
         channel=required_release_string(release, "channel"),
         helper_version=required_release_string(release, "helperVersion"),
         release_label=required_release_string(release, "releaseLabel"),
-        minimum_updater_version=required_release_string(release, "minUpdaterVersion"),
         vitalserver_version=required_release_string(release, "vitalServerVersion"),
         target_platform=required_release_string(release, "targetPlatform"),
         host_proxy_image=optional_service_string(release, "hostProxy", "image"),

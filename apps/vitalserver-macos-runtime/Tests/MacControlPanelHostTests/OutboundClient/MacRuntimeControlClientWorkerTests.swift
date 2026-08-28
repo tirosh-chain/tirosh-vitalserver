@@ -18,7 +18,6 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let worker = MacRuntimeControlReadWorker(
             releaseInfo: RuntimeReleaseInfo(
                 helperVersion: "helper",
-                minimumUpdaterVersion: "1",
                 vitalServerVersion: "runtime",
                 services: []
             ),
@@ -74,11 +73,11 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             logExporter: exporter,
             guestMaintenanceController: AdapterFakeGuestMaintenanceController(),
             guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
-            guestControlBaseURLOverride: "http://127.0.0.1:18330"
+            guestControlBaseURLOverride: "http://127.0.0.1:18330",
+            updateRequestID: { "request-1" }
         )
         let releaseInfo = RuntimeReleaseInfo(
             helperVersion: "helper",
-            minimumUpdaterVersion: "1",
             vitalServerVersion: "runtime",
             services: []
         )
@@ -96,7 +95,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let export = try await client.exportLogs(to: URL(fileURLWithPath: "/tmp/logs.zip"))
         let loadedReleaseInfo = try await client.loadReleaseInfo()
 
-        XCTAssertFalse(client.capabilities.canApplyBundle)
+        XCTAssertTrue(client.capabilities.canApplyBundle)
         XCTAssertEqual(client.loadSettings().proxyPort, 19080)
         XCTAssertEqual(client.loadPlatformState(settings: RuntimeSettings()).installedVersion, "status")
         XCTAssertEqual(healthStatus.installedVersion, "health")
@@ -150,9 +149,261 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertFalse(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
         let applyCommand = try XCTUnwrap(
-            runner.shellCommands.first { $0.contains("apply-bundle") }
+            runner.shellCommands.first { $0.contains("apply-update-bootstrap") }
         )
-        XCTAssertFalse(applyCommand.contains("--allow-unsigned-dev-bundle"))
+        XCTAssertTrue(applyCommand.contains("'--request-id' 'request-1'"))
+        XCTAssertFalse(runner.shellCommands.contains { $0.contains("'apply-bundle'") })
+        XCTAssertEqual(
+            RuntimeControlClientConstants.RuntimeCommand.verifyUpdateBootstrap,
+            "verify-update-bootstrap"
+        )
+        XCTAssertEqual(environment.verificationInvocationIds, [nil])
+    }
+
+    func testCommandWorkerDoesNotMintPlatformAgentIdentityWithoutInvoker() async throws {
+        let environment = AdapterFakeActionEnvironment()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: environment,
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded
+        )
+
+        _ = try await worker.verifyUpdateBundle(
+            url: URL(fileURLWithPath: "/bundle")
+        )
+
+        XCTAssertEqual(environment.verificationInvocationIds, [nil])
+    }
+
+    func testCommandWorkerPassesInvokerOwnedCorrelationAcrossTheProcessBoundary()
+        async throws
+    {
+        let environment = AdapterFakeActionEnvironment()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: environment,
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            platformAgentVerificationInvoker: AdapterFakePlatformAgentInvoker(
+                invocationId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            )
+        )
+
+        _ = try await worker.verifyUpdateBundle(
+            url: URL(fileURLWithPath: "/bundle")
+        )
+
+        XCTAssertEqual(
+            environment.verificationInvocationIds,
+            ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
+        )
+    }
+
+    func testCommandWorkerApplyWithoutSelectionOwnerDoesNotClaimPlatformAgentSelection()
+        async throws
+    {
+        let runner = AdapterFakePrivilegedCommandRunner()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            updateRequestID: { "request-1" }
+        )
+
+        _ = try await worker.applyUpdateBundle(
+            url: URL(fileURLWithPath: "/bundle")
+        )
+
+        XCTAssertTrue(
+            runner.shellCommands.contains { $0.contains("'--request-id' 'request-1'") }
+        )
+        XCTAssertFalse(
+            runner.shellCommands.contains {
+                $0.contains("--require-platform-agent-selection")
+            }
+        )
+    }
+
+    func testCommandWorkerApplyConsumesPlatformAgentSelectionBeforeSpawn()
+        async throws
+    {
+        let runner = AdapterFakePrivilegedCommandRunner()
+        let owner = AdapterFakePlatformAgentSelectionOwner()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            updateRequestID: { "request-1" },
+            platformAgentSelectionOwner: owner
+        )
+
+        _ = try await worker.applyUpdateBundle(
+            url: URL(fileURLWithPath: "/tmp/update.tar.gz")
+        )
+
+        XCTAssertEqual(owner.consumedPaths, ["/tmp/update.tar.gz"])
+        XCTAssertEqual(owner.consumedRequestIds, ["request-1"])
+        XCTAssertTrue(
+            runner.shellCommands.contains { $0.contains("apply-update-bootstrap") }
+        )
+        XCTAssertTrue(
+            runner.shellCommands.contains {
+                $0.contains("'--require-platform-agent-selection'")
+            }
+        )
+        XCTAssertEqual(owner.spentRequestIds, ["request-1"])
+    }
+
+    func testCommandWorkerApplyDoesNotSpawnWhenVerifiedSelectionIsMissing()
+        async throws
+    {
+        let runner = AdapterFakePrivilegedCommandRunner()
+        let owner = AdapterFakePlatformAgentSelectionOwner(
+            bindError: .missing(path: "/tmp/current.json")
+        )
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            updateRequestID: { "request-1" },
+            platformAgentSelectionOwner: owner
+        )
+
+        let result = try await worker.applyUpdateBundle(
+            url: URL(fileURLWithPath: "/tmp/update.tar.gz")
+        )
+
+        XCTAssertEqual(result.exitCode, 1)
+        XCTAssertTrue(result.stderr.contains("platform-agent verified selection missing"))
+        XCTAssertEqual(runner.shellCommands, [])
+    }
+
+    func testCommandWorkerRejectsReentrantApplyAndVerifyDoesNotOverwriteCommittedSelection()
+        async throws
+    {
+        let gate = ApplyGate()
+        let runner = GatedPrivilegedCommandRunner(gate: gate)
+        let owner = AdapterFakePlatformAgentSelectionOwner()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            updateRequestID: { "request-1" },
+            platformAgentSelectionOwner: owner
+        )
+
+        let applyTask = Task {
+            try await worker.applyUpdateBundle(
+                url: URL(fileURLWithPath: "/tmp/update.tar.gz")
+            )
+        }
+        await gate.waitUntilStarted()
+
+        let reentrant = try await worker.applyUpdateBundle(
+            url: URL(fileURLWithPath: "/tmp/update.tar.gz")
+        )
+        XCTAssertEqual(reentrant.exitCode, 1)
+        XCTAssertTrue(
+            reentrant.stderr.contains(
+                "platform-agent apply in flight requestId=request-1"
+            )
+        )
+        XCTAssertEqual(runner.shellCommands.count, 1)
+
+        await gate.release()
+        let finished = try await applyTask.value
+        XCTAssertEqual(finished.exitCode, 0)
+        XCTAssertEqual(owner.spentRequestIds, ["request-1"])
+    }
+
+    func testPlatformAgentApplyFailsBeforeBindWhileVerifyIsInFlight()
+        async throws
+    {
+        let gate = ApplyGate()
+        let invoker = GatedPlatformAgentInvoker(gate: gate)
+        let runner = AdapterFakePrivilegedCommandRunner()
+        let owner = AdapterFakePlatformAgentSelectionOwner()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            updateRequestID: { "request-1" },
+            platformAgentVerificationInvoker: invoker,
+            platformAgentSelectionOwner: owner
+        )
+
+        let verifyTask = Task {
+            try await worker.verifyUpdateBundle(
+                url: URL(fileURLWithPath: "/tmp/update.tar.gz")
+            )
+        }
+        await gate.waitUntilStarted()
+
+        let apply = try await worker.applyUpdateBundle(
+            url: URL(fileURLWithPath: "/tmp/update.tar.gz")
+        )
+        XCTAssertEqual(apply.exitCode, 1)
+        XCTAssertTrue(apply.stderr.contains("platform-agent verify in flight"))
+        XCTAssertEqual(owner.consumedRequestIds, [])
+        XCTAssertEqual(owner.recordCount, 0)
+        XCTAssertFalse(
+            runner.shellCommands.contains { $0.contains("apply-update-bootstrap") }
+        )
+
+        await gate.release()
+        let verified = try await verifyTask.value
+        XCTAssertEqual(verified.exitCode, 0)
+        XCTAssertEqual(invoker.invokeCount, 1)
+    }
+
+    func testPlatformAgentVerifyFailsBeforeInvokeWhileApplyIsInFlight()
+        async throws
+    {
+        let gate = ApplyGate()
+        let runner = GatedPrivilegedCommandRunner(gate: gate)
+        let invoker = CountingPlatformAgentInvoker()
+        let owner = AdapterFakePlatformAgentSelectionOwner()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter(),
+            guestAddressProvider: AdapterStubGuestAddressProvider.loaded,
+            updateRequestID: { "request-1" },
+            platformAgentVerificationInvoker: invoker,
+            platformAgentSelectionOwner: owner
+        )
+
+        let applyTask = Task {
+            try await worker.applyUpdateBundle(
+                url: URL(fileURLWithPath: "/tmp/update.tar.gz")
+            )
+        }
+        await gate.waitUntilStarted()
+
+        let verify = try await worker.verifyUpdateBundle(
+            url: URL(fileURLWithPath: "/tmp/other.tar.gz")
+        )
+        XCTAssertEqual(verify.exitCode, 1)
+        XCTAssertTrue(
+            verify.stderr.contains(
+                "platform-agent apply in flight requestId=request-1"
+            )
+        )
+        XCTAssertEqual(invoker.invokeCount, 0)
+        XCTAssertEqual(owner.recordCount, 0)
+        XCTAssertEqual(owner.consumedRequestIds, ["request-1"])
+        XCTAssertEqual(runner.shellCommands.count, 1)
+
+        await gate.release()
+        let applied = try await applyTask.value
+        XCTAssertEqual(applied.exitCode, 0)
+        XCTAssertEqual(invoker.invokeCount, 0)
     }
 
     func testCommandWorkerPreservesFailedGuestDatastoreRepairOperation() async throws {
@@ -307,6 +558,23 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(loaded.workflow.document?.revision, 9)
         XCTAssertEqual(failed.workflow.state, .failed)
         XCTAssertEqual(failed.workflow.readError, "database denied")
+    }
+
+    func testOperationStateReaderPreservesStableUpdateJournalMissingAndFailure() {
+        let missing = SystemPlatformOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
+            stableUpdateJournalReader: AdapterStubUpdateBootstrapJournalReader(result: .missing)
+        ).loadOperationState()
+        let failed = SystemPlatformOperationStateReader(
+            operationLeaseReader: AdapterStubOperationLeaseReader(loadResult: .missing),
+            stableUpdateJournalReader: AdapterStubUpdateBootstrapJournalReader(
+                result: .failed(reason: "journal database denied")
+            )
+        ).loadOperationState()
+
+        XCTAssertEqual(missing.stableUpdate, .missing())
+        XCTAssertEqual(failed.stableUpdate.state, .failed)
+        XCTAssertEqual(failed.stableUpdate.readError, "journal database denied")
     }
 
     func testApplySettingsReportsAdminPasswordCleanupFailureAsOutputIssue() async throws {
@@ -572,6 +840,18 @@ private struct AdapterStubWorkflowOperationStateReader: RuntimeWorkflowOperation
     }
 }
 
+private struct AdapterStubUpdateBootstrapJournalReader: UpdateBootstrapJournalReading {
+    let result: UpdateBootstrapJournalReadResult
+
+    func loadUpdateBootstrapJournal(id _: String) -> UpdateBootstrapJournalReadResult {
+        result
+    }
+
+    func loadLatestUpdateBootstrapJournal() -> UpdateBootstrapJournalReadResult {
+        result
+    }
+}
+
 private final class AdapterStubObservabilityReader: RuntimeObservabilityReading {
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
         RuntimeEventHistory(events: [], matchingCount: limit)
@@ -636,6 +916,65 @@ private final class AdapterStubSettingsReader: RuntimeSettingsReading {
     }
 }
 
+private actor ApplyGate {
+    private var started: CheckedContinuation<Void, Never>?
+    private var released: CheckedContinuation<Void, Never>?
+    private var isStarted = false
+    private var isReleased = false
+
+    func waitUntilStarted() async {
+        if isStarted {
+            return
+        }
+        await withCheckedContinuation { started = $0 }
+    }
+
+    func markStarted() {
+        isStarted = true
+        started?.resume()
+        started = nil
+    }
+
+    func waitUntilReleased() async {
+        if isReleased {
+            return
+        }
+        await withCheckedContinuation { released = $0 }
+    }
+
+    func release() {
+        isReleased = true
+        released?.resume()
+        released = nil
+    }
+}
+
+private final class GatedPrivilegedCommandRunner:
+    PrivilegedCommandRunning,
+    @unchecked Sendable
+{
+    private let lock = NSLock()
+    private var protectedShellCommands: [String] = []
+    let gate: ApplyGate
+
+    init(gate: ApplyGate) {
+        self.gate = gate
+    }
+
+    var shellCommands: [String] {
+        lock.withLock { protectedShellCommands }
+    }
+
+    func run(shellCommand: String) async -> RuntimeCommandResult {
+        lock.withLock {
+            protectedShellCommands.append(shellCommand)
+        }
+        await gate.markStarted()
+        await gate.waitUntilReleased()
+        return RuntimeCommandResult(exitCode: 0, stdout: "ran", stderr: "")
+    }
+}
+
 private final class AdapterFakePrivilegedCommandRunner: PrivilegedCommandRunning, @unchecked Sendable {
     private let lock = NSLock()
     private var protectedShellCommands: [String] = []
@@ -659,6 +998,7 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
     private let lock = NSLock()
     private var protectedRemovedTemporaryFiles: [URL] = []
     private var protectedWrittenRecorderIngressSettings: [RuntimeRecorderIngressSettings] = []
+    private var protectedVerificationInvocationIds: [String?] = []
 
     init(executableStates: [String: RuntimeFileState] = [
         RuntimeControlClientConstants.Paths.launcher: .executable,
@@ -699,12 +1039,127 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
         }
     }
 
-    func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
-        RuntimeCommandResult(
+    var verificationInvocationIds: [String?] {
+        lock.withLock { protectedVerificationInvocationIds }
+    }
+
+    func verifyBundle(
+        launcher: String,
+        bundleURL: URL,
+        verificationInvocationId: String?
+    ) async -> RuntimeCommandResult {
+        lock.withLock {
+            protectedVerificationInvocationIds.append(verificationInvocationId)
+        }
+        return RuntimeCommandResult(
             exitCode: 0,
             stdout: "integrity-checked publisher-authenticity-unverified:\(bundleURL.path)",
             stderr: ""
         )
+    }
+}
+
+private final class AdapterFakePlatformAgentSelectionOwner:
+    PlatformAgentUpdateBootstrapSelectionOwning,
+    @unchecked Sendable
+{
+    var consumedPaths: [String] = []
+    var consumedRequestIds: [String] = []
+    var spentRequestIds: [String] = []
+    var recordCount = 0
+    let bindError: BindPlatformAgentUpdateBootstrapApplyError?
+
+    init(
+        bindError: BindPlatformAgentUpdateBootstrapApplyError? = nil
+    ) {
+        self.bindError = bindError
+    }
+
+    func recordVerifiedSelection(
+        verificationInvocationId _: String,
+        updateId _: String,
+        canonicalPayloadSHA256 _: String,
+        observedBundlePath _: String,
+        observedAt _: String
+    ) throws {
+        recordCount += 1
+    }
+
+    func bindApply(
+        observedBundlePath: String,
+        mintRequestId: @Sendable () -> String
+    ) throws -> String {
+        consumedPaths.append(observedBundlePath)
+        if let bindError {
+            throw bindError
+        }
+        let requestId = mintRequestId()
+        consumedRequestIds.append(requestId)
+        return requestId
+    }
+
+    func spendApply(requestId: String) throws {
+        spentRequestIds.append(requestId)
+    }
+}
+
+private struct AdapterFakePlatformAgentInvoker:
+    PlatformAgentUpdateBootstrapVerificationInvoking
+{
+    let invocationId: String
+
+    func invoke(
+        bundleURL: URL,
+        spawn: @escaping @Sendable (String) async -> RuntimeCommandResult
+    ) async -> RuntimeCommandResult {
+        await spawn(invocationId)
+    }
+}
+
+private final class CountingPlatformAgentInvoker:
+    PlatformAgentUpdateBootstrapVerificationInvoking,
+    @unchecked Sendable
+{
+    private let lock = NSLock()
+    private var protectedInvokeCount = 0
+
+    var invokeCount: Int {
+        lock.withLock { protectedInvokeCount }
+    }
+
+    func invoke(
+        bundleURL _: URL,
+        spawn: @escaping @Sendable (String) async -> RuntimeCommandResult
+    ) async -> RuntimeCommandResult {
+        lock.withLock { protectedInvokeCount += 1 }
+        return await spawn("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+    }
+}
+
+private final class GatedPlatformAgentInvoker:
+    PlatformAgentUpdateBootstrapVerificationInvoking,
+    @unchecked Sendable
+{
+    let gate: ApplyGate
+    private let lock = NSLock()
+    private var protectedInvokeCount = 0
+
+    init(gate: ApplyGate) {
+        self.gate = gate
+    }
+
+    var invokeCount: Int {
+        lock.withLock { protectedInvokeCount }
+    }
+
+    func invoke(
+        bundleURL _: URL,
+        spawn: @escaping @Sendable (String) async -> RuntimeCommandResult
+    ) async -> RuntimeCommandResult {
+        lock.withLock { protectedInvokeCount += 1 }
+        await gate.markStarted()
+        await gate.waitUntilReleased()
+        return await spawn("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
     }
 }
 

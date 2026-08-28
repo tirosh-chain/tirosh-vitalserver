@@ -17,9 +17,16 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.hostRunDirectory.path, "/Library/Application Support/VitalServerHelper/vm/run")
         XCTAssertEqual(paths.guestRunDirectory.path, "/Library/Application Support/VitalServerHelper/vm/data/run")
         XCTAssertEqual(paths.pidFile.path, "/Library/Application Support/VitalServerHelper/vm/run/vitalserver-vm.pid")
+        XCTAssertEqual(
+            paths.hostPlatformCurrentRelease.path,
+            "/Library/Application Support/VitalServerHelper/host-platform/current"
+        )
         XCTAssertEqual(paths.nginxDirectory.path, "/Library/Application Support/VitalServerHelper/nginx")
         XCTAssertEqual(paths.nginxLogsDirectory.path, "/Library/Application Support/VitalServerHelper/nginx/logs")
-        XCTAssertEqual(paths.nginxExecutable.path, "/Library/Application Support/VitalServerHelper/nginx/sbin/nginx")
+        XCTAssertEqual(
+            paths.nginxExecutable.path,
+            "/Library/Application Support/VitalServerHelper/host-platform/current/nginx/sbin/nginx"
+        )
         XCTAssertEqual(paths.productLogsDirectory.path, "/Library/Application Support/VitalServerHelper/logs")
         XCTAssertEqual(paths.centralRuntimeLogsDirectory.path, "/Library/Application Support/VitalServerHelper/logs/runtime")
         XCTAssertEqual(paths.proxyNginxAccessLog.path, "/Library/Application Support/VitalServerHelper/logs/runtime/proxy-nginx.access.log")
@@ -40,6 +47,38 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.centralCommandLog.path, "/Library/Application Support/VitalServerHelper/logs/command.log")
         XCTAssertEqual(paths.guestRuntimeSettings.path, "/Library/Application Support/VitalServerHelper/vm/data/deploy/runtime-settings.json")
         XCTAssertEqual(
+            paths.updateBootstrapTrustStore.path,
+            "/Library/Application Support/VitalServerHelper/config/update-bootstrap-trust-store.json"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapStagingDirectory.path,
+            "/Library/Application Support/VitalServerHelper/update-bootstrap"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapVerificationDirectory.path,
+            "/Library/Application Support/VitalServerHelper/update-bootstrap-verification"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapVerificationReceipt(updateId: "update-42").path,
+            "/Library/Application Support/VitalServerHelper/update-bootstrap-verification/update-42.json"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapVerificationInvocationBinding(
+                verificationInvocationId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            ).path,
+            "/Library/Application Support/VitalServerHelper/update-bootstrap-verification/invocations/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+        )
+        XCTAssertEqual(
+            paths.platformAgentUpdateBootstrapVerificationEvidence(
+                verificationInvocationId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            ).path,
+            "/Library/Application Support/VitalServerHelper/platform-agent-update-bootstrap-verification/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+        )
+        XCTAssertEqual(
+            paths.platformAgentUpdateBootstrapVerifiedSelection.path,
+            "/Library/Application Support/VitalServerHelper/platform-agent-update-bootstrap-selection/current.json"
+        )
+        XCTAssertEqual(
             paths.standardUninstallRetainedDataRoot.path,
             "/Library/Application Support/VitalServerHelper-retained-uninstall-data"
         )
@@ -56,6 +95,22 @@ final class InstalledRuntimePathsTests: XCTestCase {
         XCTAssertEqual(paths.runtimeHome.path, "/tmp/product/vm")
         XCTAssertEqual(paths.backupsDirectory.path, "/tmp/product/backups")
         XCTAssertEqual(paths.runtimeStatus.path, "/tmp/product/status/runtime-status.json")
+        XCTAssertEqual(
+            paths.updateBootstrapTrustStore.path,
+            "/tmp/product/config/update-bootstrap-trust-store.json"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapStagingDirectory.path,
+            "/tmp/product/update-bootstrap"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapVerificationDirectory.path,
+            "/tmp/product/update-bootstrap-verification"
+        )
+        XCTAssertEqual(
+            paths.updateBootstrapVerificationReceipt(updateId: "update-42").path,
+            "/tmp/product/update-bootstrap-verification/update-42.json"
+        )
         XCTAssertEqual(
             paths.standardUninstallRetainedDataRoot.path,
             "/tmp/product-retained-uninstall-data"

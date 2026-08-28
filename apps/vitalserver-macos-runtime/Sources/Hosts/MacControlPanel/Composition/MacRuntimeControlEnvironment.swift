@@ -18,7 +18,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         let readWorker = MacRuntimeControlReadWorker(
             releaseInfo: .generated,
             platformStateReader: apiDependencies.platformStateReader,
-            operationLeaseReader: apiDependencies.operationLeaseReader,
+            operationStateReader: apiDependencies.operationStateReader,
             guestAddressProvider: apiDependencies.guestAddressProvider,
             settingsReader: apiDependencies.settingsReader
         )
@@ -30,7 +30,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         let client = MacRuntimeControlClient(
             releaseInfo: .generated,
             platformStateReader: apiDependencies.platformStateReader,
-            operationLeaseReader: apiDependencies.operationLeaseReader,
+            operationStateReader: apiDependencies.operationStateReader,
             guestAddressProvider: apiDependencies.guestAddressProvider,
             settingsReader: apiDependencies.settingsReader,
             commandWorker: commandWorker
@@ -71,8 +71,13 @@ final class MacRuntimeControlEnvironment: ObservableObject {
                 baseURL: baseURL,
                 httpClient: httpClient
             )
+            let operationStateReader = try RuntimeControlAPIOperationStateReader(
+                baseURL: baseURL,
+                httpClient: httpClient
+            )
             return LocalPlatformAPIDependencies(
                 platformStateReader: platformStateReader,
+                operationStateReader: operationStateReader,
                 operationLeaseReader: operationLeaseReader,
                 guestAddressProvider: guestAddressProvider,
                 settingsReader: settingsReader
@@ -81,6 +86,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             let reason = "Platform Agent API dependency initialization failed: \(error)"
             return LocalPlatformAPIDependencies(
                 platformStateReader: FailedPlatformStateReader(reason: reason),
+                operationStateReader: FailedPlatformOperationStateReader(reason: reason),
                 operationLeaseReader: FailedOperationLeaseReader(reason: reason),
                 guestAddressProvider: UnavailableRuntimeGuestAddressProvider(reason: reason),
                 settingsReader: FailedRuntimeSettingsReader(reason: reason)
@@ -99,9 +105,24 @@ final class MacRuntimeControlEnvironment: ObservableObject {
 
 private struct LocalPlatformAPIDependencies {
     let platformStateReader: any PlatformStateReading
+    let operationStateReader: any PlatformOperationStateReading
     let operationLeaseReader: any RuntimeOperationLeaseReading
     let guestAddressProvider: any RuntimeGuestAddressProvider
     let settingsReader: any RuntimeSettingsReading
+}
+
+private struct FailedPlatformOperationStateReader: PlatformOperationStateReading {
+    let reason: String
+
+    func loadOperationState() -> PlatformOperationState {
+        PlatformOperationState(
+            activeOperation: nil,
+            install: .unavailable(readError: reason),
+            lease: .unavailable(readError: reason),
+            workflow: .unavailable(readError: reason),
+            stableUpdate: .unavailable(readError: reason)
+        )
+    }
 }
 
 private struct FailedPlatformStateReader: PlatformStateReading {

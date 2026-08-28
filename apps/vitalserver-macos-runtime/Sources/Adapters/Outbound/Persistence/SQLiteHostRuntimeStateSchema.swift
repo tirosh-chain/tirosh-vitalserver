@@ -1,14 +1,17 @@
 import Application
+import Contracts
 import Errors
+import Foundation
 import SQLite3
 
 enum SQLiteHostRuntimeStateSchema {
-    static let supportedVersion = 7
+    static let supportedVersion = 11
 
     static func migrate(
         _ db: OpaquePointer,
         connection: SQLiteHostRuntimeStateConnection,
         databaseID: () -> String,
+        migratedInstallationID: () -> String,
         timestamp: () -> String
     ) throws -> RuntimeHostStateStoreMetadata {
         try connection.withImmediateTransaction(db) {
@@ -57,6 +60,22 @@ enum SQLiteHostRuntimeStateSchema {
             if currentVersion < 7 {
                 try applyVersion7(db, appliedAt: timestamp())
             }
+            if currentVersion < 8 {
+                try applyVersion8(db, appliedAt: timestamp())
+            }
+            if currentVersion < 9 {
+                try applyVersion9(db, appliedAt: timestamp())
+            }
+            if currentVersion < 10 {
+                try applyVersion10(
+                    db,
+                    migratedInstallationID: migratedInstallationID,
+                    appliedAt: timestamp()
+                )
+            }
+            if currentVersion < 11 {
+                try applyVersion11(db, appliedAt: timestamp())
+            }
 
             return try loadMetadata(db)
         }
@@ -84,6 +103,8 @@ enum SQLiteHostRuntimeStateSchema {
             "vm_lifecycle",
             "runtime_endpoint",
             "host_runtime_settings",
+            "update_bootstrap_journals",
+            "installed_product_release",
         ] {
             let count = try SQLiteHostRuntimeStateStatement.scalarInt(
                 db,
@@ -126,6 +147,23 @@ enum SQLiteHostRuntimeStateSchema {
                 "applied_vm_config_json",
                 "applied_guest_runtime_config_json",
                 "applied_guest_runtime_settings_json",
+            ]
+        )
+        try requireColumns(
+            db,
+            table: "installed_product_release",
+            columns: [
+                "installation_id",
+                "installation_revision",
+                "release_revision",
+            ]
+        )
+        try requireColumns(
+            db,
+            table: "runtime_operation_lease",
+            columns: [
+                "target_installation_id",
+                "expected_installation_revision",
             ]
         )
 
@@ -549,6 +587,430 @@ enum SQLiteHostRuntimeStateSchema {
         )
     }
 
+    private static func applyVersion8(
+        _ db: OpaquePointer,
+        appliedAt: String
+    ) throws {
+        guard !appliedAt.isEmpty else {
+            throw SQLiteHostRuntimeStateDatabaseError.metadataInvalid(
+                field: "appliedAt",
+                value: appliedAt
+            )
+        }
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            CREATE TABLE update_bootstrap_journals (
+              journal_id TEXT PRIMARY KEY CHECK(length(journal_id) > 0),
+              journal_revision INTEGER NOT NULL CHECK(journal_revision > 0),
+              state TEXT NOT NULL CHECK(length(state) > 0),
+              document_json TEXT NOT NULL CHECK(length(document_json) > 0),
+              updated_at TEXT NOT NULL CHECK(length(updated_at) > 0)
+            )
+            """
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            CREATE INDEX idx_update_bootstrap_journals_latest
+              ON update_bootstrap_journals(updated_at DESC, journal_revision DESC)
+            """
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            UPDATE runtime_metadata
+            SET schema_version = 8, updated_at = ?
+            WHERE singleton_id = 1
+            """,
+            bindings: [.text(appliedAt)]
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            bindings: [.int(8), .text(appliedAt)]
+        )
+    }
+
+    private static func applyVersion9(
+        _ db: OpaquePointer,
+        appliedAt: String
+    ) throws {
+        guard !appliedAt.isEmpty else {
+            throw SQLiteHostRuntimeStateDatabaseError.metadataInvalid(
+                field: "appliedAt",
+                value: appliedAt
+            )
+        }
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            CREATE TABLE installed_product_release (
+              singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+              release_revision INTEGER NOT NULL CHECK(release_revision > 0),
+              source TEXT NOT NULL CHECK(source IN ('package-install', 'update')),
+              document_json TEXT NOT NULL CHECK(length(document_json) > 0),
+              settled_at TEXT NOT NULL CHECK(length(settled_at) > 0)
+            )
+            """
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            UPDATE runtime_metadata
+            SET schema_version = 9, updated_at = ?
+            WHERE singleton_id = 1
+            """,
+            bindings: [.text(appliedAt)]
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            bindings: [.int(9), .text(appliedAt)]
+        )
+    }
+
+    private static func applyVersion10(
+        _ db: OpaquePointer,
+        migratedInstallationID: () -> String,
+        appliedAt: String
+    ) throws {
+        guard !appliedAt.isEmpty else {
+            throw SQLiteHostRuntimeStateDatabaseError.metadataInvalid(
+                field: "appliedAt",
+                value: appliedAt
+            )
+        }
+
+        let migratedRelease = try loadVersion9InstalledRelease(
+            db,
+            migratedInstallationID: migratedInstallationID
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            CREATE TABLE installed_product_release_v10 (
+              singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+              installation_id TEXT NOT NULL CHECK(length(installation_id) > 0),
+              installation_revision INTEGER NOT NULL CHECK(installation_revision > 0),
+              release_revision INTEGER NOT NULL CHECK(release_revision > 0),
+              source TEXT NOT NULL CHECK(source IN ('package-install', 'update')),
+              document_json TEXT NOT NULL CHECK(length(document_json) > 0),
+              settled_at TEXT NOT NULL CHECK(length(settled_at) > 0)
+            )
+            """
+        )
+        if let migratedRelease {
+            let document: String
+            do {
+                document = String(
+                    decoding: try JSONEncoder().encode(migratedRelease),
+                    as: UTF8.self
+                )
+            } catch {
+                throw SQLiteHostRuntimeStateDatabaseError
+                    .installedProductReleaseMigrationDocumentInvalid(
+                        reason: "v2 encode failed: \(error)"
+                    )
+            }
+            try SQLiteHostRuntimeStateStatement.execute(
+                db,
+                sql: """
+                INSERT INTO installed_product_release_v10(
+                  singleton_id,
+                  installation_id,
+                  installation_revision,
+                  release_revision,
+                  source,
+                  document_json,
+                  settled_at
+                ) VALUES (1, ?, ?, ?, ?, ?, ?)
+                """,
+                bindings: [
+                    .text(migratedRelease.installationId),
+                    .int(migratedRelease.installationRevision),
+                    .int(migratedRelease.releaseRevision),
+                    .text(migratedRelease.source.rawValue),
+                    .text(document),
+                    .text(migratedRelease.settledAt),
+                ]
+            )
+        }
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "DROP TABLE installed_product_release"
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            ALTER TABLE installed_product_release_v10
+            RENAME TO installed_product_release
+            """
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            UPDATE runtime_metadata
+            SET schema_version = 10, updated_at = ?
+            WHERE singleton_id = 1
+            """,
+            bindings: [.text(appliedAt)]
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            bindings: [.int(10), .text(appliedAt)]
+        )
+    }
+
+    private static func applyVersion11(
+        _ db: OpaquePointer,
+        appliedAt: String
+    ) throws {
+        guard !appliedAt.isEmpty else {
+            throw SQLiteHostRuntimeStateDatabaseError.metadataInvalid(
+                field: "appliedAt",
+                value: appliedAt
+            )
+        }
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "ALTER TABLE runtime_operation_lease ADD COLUMN target_installation_id TEXT"
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "ALTER TABLE runtime_operation_lease ADD COLUMN expected_installation_revision INTEGER"
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: """
+            UPDATE runtime_metadata
+            SET schema_version = 11, updated_at = ?
+            WHERE singleton_id = 1
+            """,
+            bindings: [.text(appliedAt)]
+        )
+        try SQLiteHostRuntimeStateStatement.execute(
+            db,
+            sql: "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            bindings: [.int(11), .text(appliedAt)]
+        )
+    }
+
+    private static func loadVersion9InstalledRelease(
+        _ db: OpaquePointer,
+        migratedInstallationID: () -> String
+    ) throws -> InstalledProductRelease? {
+        guard let row = try SQLiteHostRuntimeStateStatement.stringRow(
+            db,
+            sql: """
+            SELECT release_revision, source, document_json, settled_at
+            FROM installed_product_release
+            WHERE singleton_id = 1
+            """,
+            columnCount: 4
+        ) else {
+            return nil
+        }
+        let rowReleaseRevision = try requiredMigrationInt(
+            row[0],
+            field: "release_revision"
+        )
+        let rowSource = try requiredMigrationText(
+            row[1],
+            field: "source"
+        )
+        let document = try requiredMigrationText(
+            row[2],
+            field: "document_json"
+        )
+        let rowSettledAt = try requiredMigrationText(
+            row[3],
+            field: "settled_at"
+        )
+
+        let legacy: Version9InstalledProductReleaseDocument
+        do {
+            legacy = try JSONDecoder().decode(
+                Version9InstalledProductReleaseDocument.self,
+                from: Data(document.utf8)
+            )
+        } catch {
+            throw SQLiteHostRuntimeStateDatabaseError
+                .installedProductReleaseMigrationDocumentInvalid(
+                    reason: "v1 decode failed: \(error)"
+                )
+        }
+        try validateVersion9InstalledRelease(
+            legacy,
+            rowReleaseRevision: rowReleaseRevision,
+            rowSource: rowSource,
+            rowSettledAt: rowSettledAt
+        )
+
+        let installationID = migratedInstallationID()
+        guard isMigrationIdentifier(installationID) else {
+            throw SQLiteHostRuntimeStateDatabaseError
+                .installedProductReleaseMigrationInputInvalid(
+                    field: "installationId",
+                    value: installationID
+                )
+        }
+        return InstalledProductRelease(
+            schemaVersion: "v2",
+            installationId: installationID,
+            installationRevision: legacy.releaseRevision,
+            productId: legacy.productId,
+            productVersion: legacy.productVersion,
+            runtimeVersion: legacy.runtimeVersion,
+            releaseRevision: legacy.releaseRevision,
+            source: legacy.source,
+            installOperationId: legacy.installOperationId,
+            updateId: legacy.updateId,
+            journalId: legacy.journalId,
+            journalRevision: legacy.journalRevision,
+            reportRelativePath: legacy.reportRelativePath,
+            reportSHA256: legacy.reportSHA256,
+            settledAt: legacy.settledAt
+        )
+    }
+
+    private static func validateVersion9InstalledRelease(
+        _ release: Version9InstalledProductReleaseDocument,
+        rowReleaseRevision: Int,
+        rowSource: String,
+        rowSettledAt: String
+    ) throws {
+        guard release.schemaVersion == "v1" else {
+            throw migrationDocumentInvalid(
+                "schemaVersion=\(release.schemaVersion)"
+            )
+        }
+        guard isMigrationIdentifier(release.productId),
+              isMigrationVersion(release.productVersion),
+              isMigrationVersion(release.runtimeVersion),
+              release.releaseRevision > 0,
+              isMigrationTimestamp(release.settledAt) else {
+            throw migrationDocumentInvalid("required field is invalid")
+        }
+        guard release.releaseRevision == rowReleaseRevision,
+              release.source.rawValue == rowSource,
+              release.settledAt == rowSettledAt else {
+            throw migrationDocumentInvalid(
+                "row metadata does not match document"
+            )
+        }
+        switch release.source {
+        case .packageInstall:
+            guard release.releaseRevision == 1,
+                  release.installOperationId.map(isMigrationIdentifier) == true,
+                  release.updateId == nil,
+                  release.journalId == nil,
+                  release.journalRevision == nil,
+                  release.reportRelativePath == nil,
+                  release.reportSHA256 == nil else {
+                throw migrationDocumentInvalid(
+                    "package-install evidence is invalid"
+                )
+            }
+        case .update:
+            guard release.installOperationId == nil,
+                  release.releaseRevision > 1,
+                  release.updateId.map(isMigrationIdentifier) == true,
+                  release.journalId.map(isMigrationIdentifier) == true,
+                  release.journalRevision.map({ $0 > 0 }) == true,
+                  release.reportRelativePath
+                    .map(isMigrationSafeRelativePath) == true,
+                  release.reportSHA256.map(isMigrationSHA256) == true else {
+                throw migrationDocumentInvalid("update evidence is invalid")
+            }
+        }
+    }
+
+    private static func requiredMigrationText(
+        _ value: String?,
+        field: String
+    ) throws -> String {
+        guard let value, !value.isEmpty else {
+            throw migrationDocumentInvalid(
+                "row field \(field) is NULL or empty"
+            )
+        }
+        return value
+    }
+
+    private static func requiredMigrationInt(
+        _ value: String?,
+        field: String
+    ) throws -> Int {
+        guard let value, let parsed = Int(value) else {
+            throw migrationDocumentInvalid(
+                "row field \(field) is not an integer"
+            )
+        }
+        return parsed
+    }
+
+    private static func isMigrationIdentifier(_ value: String) -> Bool {
+        !value.isEmpty
+            && value.count <= 128
+            && value.unicodeScalars.allSatisfy { scalar in
+                let code = scalar.value
+                return (65...90).contains(code)
+                    || (97...122).contains(code)
+                    || (48...57).contains(code)
+                    || "-._".unicodeScalars.contains(scalar)
+            }
+    }
+
+    private static func isMigrationVersion(_ value: String) -> Bool {
+        !value.isEmpty
+            && value.count <= 128
+            && value.unicodeScalars.allSatisfy { scalar in
+                let code = scalar.value
+                return (65...90).contains(code)
+                    || (97...122).contains(code)
+                    || (48...57).contains(code)
+                    || ".+-_".unicodeScalars.contains(scalar)
+            }
+    }
+
+    private static func isMigrationTimestamp(_ value: String) -> Bool {
+        guard value.count == 20, value.hasSuffix("Z") else {
+            return false
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value) != nil
+    }
+
+    private static func isMigrationSafeRelativePath(
+        _ value: String
+    ) -> Bool {
+        let parts = value.split(
+            separator: "/",
+            omittingEmptySubsequences: false
+        )
+        return !value.isEmpty
+            && !value.hasPrefix("/")
+            && !value.contains("\\")
+            && !parts.contains {
+                $0.isEmpty || $0 == "." || $0 == ".."
+            }
+    }
+
+    private static func isMigrationSHA256(_ value: String) -> Bool {
+        value.count == 64 && value.allSatisfy {
+            $0.isNumber || ("a"..."f").contains(String($0))
+        }
+    }
+
+    private static func migrationDocumentInvalid(
+        _ reason: String
+    ) -> SQLiteHostRuntimeStateDatabaseError {
+        .installedProductReleaseMigrationDocumentInvalid(reason: reason)
+    }
+
     private static func validateMigrationSequence(_ versions: [Int]) throws {
         for (offset, version) in versions.enumerated() {
             let expected = offset + 1
@@ -606,5 +1068,116 @@ enum SQLiteHostRuntimeStateSchema {
             )
         }
         return value
+    }
+}
+
+private struct Version9InstalledProductReleaseDocument: Decodable {
+    let schemaVersion: String
+    let productId: String
+    let productVersion: String
+    let runtimeVersion: String
+    let releaseRevision: Int
+    let source: InstalledProductReleaseSource
+    let installOperationId: String?
+    let updateId: String?
+    let journalId: String?
+    let journalRevision: Int?
+    let reportRelativePath: String?
+    let reportSHA256: String?
+    let settledAt: String
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion
+        case productId
+        case productVersion
+        case runtimeVersion
+        case releaseRevision
+        case source
+        case installOperationId
+        case updateId
+        case journalId
+        case journalRevision
+        case reportRelativePath
+        case reportSHA256
+        case settledAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let allKeys = try decoder
+            .container(keyedBy: Version9InstalledProductReleaseDynamicKey.self)
+            .allKeys
+            .map(\.stringValue)
+        let allowed = Set(CodingKeys.allCases.map(\.rawValue))
+        let unknown = allKeys.filter { !allowed.contains($0) }.sorted()
+        guard unknown.isEmpty else {
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: decoder.codingPath,
+                debugDescription:
+                    "Version9InstalledProductReleaseDocument contains unknown keys: \(unknown.joined(separator: ","))"
+            ))
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(
+            String.self,
+            forKey: .schemaVersion
+        )
+        productId = try container.decode(String.self, forKey: .productId)
+        productVersion = try container.decode(
+            String.self,
+            forKey: .productVersion
+        )
+        runtimeVersion = try container.decode(
+            String.self,
+            forKey: .runtimeVersion
+        )
+        releaseRevision = try container.decode(
+            Int.self,
+            forKey: .releaseRevision
+        )
+        source = try container.decode(
+            InstalledProductReleaseSource.self,
+            forKey: .source
+        )
+        installOperationId = try container.decodeIfPresent(
+            String.self,
+            forKey: .installOperationId
+        )
+        updateId = try container.decodeIfPresent(
+            String.self,
+            forKey: .updateId
+        )
+        journalId = try container.decodeIfPresent(
+            String.self,
+            forKey: .journalId
+        )
+        journalRevision = try container.decodeIfPresent(
+            Int.self,
+            forKey: .journalRevision
+        )
+        reportRelativePath = try container.decodeIfPresent(
+            String.self,
+            forKey: .reportRelativePath
+        )
+        reportSHA256 = try container.decodeIfPresent(
+            String.self,
+            forKey: .reportSHA256
+        )
+        settledAt = try container.decode(String.self, forKey: .settledAt)
+    }
+}
+
+private struct Version9InstalledProductReleaseDynamicKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
     }
 }

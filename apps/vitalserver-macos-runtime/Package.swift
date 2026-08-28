@@ -25,6 +25,30 @@ let package = Package(
             targets: ["MacPlatformAgentService"]
         ),
         .executable(
+            name: "vitalserver-update-runner",
+            targets: ["UpdateRunnerHost"]
+        ),
+        .executable(
+            name: "vitalserver-update-handoff-supervisor",
+            targets: ["UpdateHandoffSupervisorHost"]
+        ),
+        .executable(
+            name: "vitalserver-container-layer-effect-executor",
+            targets: ["ContainerLayerEffectExecutorHost"]
+        ),
+        .executable(
+            name: "vitalserver-guest-runtime-layer-effect-executor",
+            targets: ["GuestRuntimeLayerEffectExecutorHost"]
+        ),
+        .executable(
+            name: "vitalserver-host-installation-manager",
+            targets: ["HostInstallationManagerHost"]
+        ),
+        .executable(
+            name: "vitalserver-host-platform-layer-effect-executor",
+            targets: ["HostPlatformLayerEffectExecutorHost"]
+        ),
+        .executable(
             name: "vitalserver-troubleshooting-reset-for-reinstall",
             targets: ["TroubleshootingResetForReinstall"]
         ),
@@ -119,6 +143,57 @@ let package = Package(
             path: "Sources/Hosts/MacPlatformAgentService"
         ),
         .executableTarget(
+            name: "UpdateRunnerHost",
+            dependencies: [
+                "Contracts",
+                "Application",
+                "Workflow",
+                "OutboundAdapters",
+            ],
+            path: "Sources/Hosts/UpdateRunner"
+        ),
+        .executableTarget(
+            name: "UpdateHandoffSupervisorHost",
+            dependencies: [
+                "Contracts",
+                "Application",
+                "Workflow",
+                "OutboundAdapters",
+            ],
+            path: "Sources/Hosts/UpdateHandoffSupervisor"
+        ),
+        .target(
+            name: "UpdateLayerEffectExecutor",
+            dependencies: ["Contracts", "Domain"],
+            path: "Sources/Hosts/UpdateLayerEffectExecutor"
+        ),
+        .executableTarget(
+            name: "ContainerLayerEffectExecutorHost",
+            dependencies: ["UpdateLayerEffectExecutor"],
+            path: "Sources/Hosts/ContainerLayerEffectExecutor"
+        ),
+        .executableTarget(
+            name: "GuestRuntimeLayerEffectExecutorHost",
+            dependencies: ["UpdateLayerEffectExecutor"],
+            path: "Sources/Hosts/GuestRuntimeLayerEffectExecutor"
+        ),
+        .executableTarget(
+            name: "HostInstallationManagerHost",
+            dependencies: [
+                "Contracts",
+                "Domain",
+                "Application",
+                "Workflow",
+                "OutboundAdapters",
+            ],
+            path: "Sources/Hosts/HostInstallationManager"
+        ),
+        .executableTarget(
+            name: "HostPlatformLayerEffectExecutorHost",
+            dependencies: ["Contracts", "Domain"],
+            path: "Sources/Hosts/HostPlatformLayerEffectExecutor"
+        ),
+        .executableTarget(
             name: "TroubleshootingResetForReinstall",
             path: "Sources/Hosts/Troubleshooting/ResetForReinstall"
         ),
@@ -198,12 +273,36 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "UpdateRunnerHostTests",
+            dependencies: ["UpdateRunnerHost"]
+        ),
+        .testTarget(
+            name: "UpdateHandoffSupervisorHostTests",
+            dependencies: [
+                "Contracts",
+                "Workflow",
+                "OutboundAdapters",
+                "UpdateHandoffSupervisorHost",
+            ]
+        ),
+        .testTarget(
+            name: "UpdateLayerEffectExecutorTests",
+            dependencies: ["Contracts", "UpdateLayerEffectExecutor"]
+        ),
+        .testTarget(
+            name: "HostPlatformLayerEffectExecutorHostTests",
+            dependencies: [
+                "Contracts",
+                "HostPlatformLayerEffectExecutorHost",
+            ]
+        ),
+        .testTarget(
             name: "MacControlPanelHostTests",
-            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters", "MacPlatformAgent", "MacControlPanelHost"]
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl", "InboundAdapters", "OutboundAdapters", "MacPlatformAgent", "MacControlPanelHost"]
         ),
         .testTarget(
             name: "MacPlatformAgentTests",
-            dependencies: ["RuntimeControl", "OutboundAdapters", "MacPlatformAgent"]
+            dependencies: ["Application", "RuntimeControl", "OutboundAdapters", "MacPlatformAgent"]
         )
     ]
 )

@@ -96,6 +96,20 @@ struct RuntimeUpdatePanel: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 applyBundleActionRow
+                if let stateMessage = viewModel.presentationFormatter.updateOperationDisplayMessage(
+                    viewModel.status,
+                    operationState: viewModel.operationState
+                ) {
+                    Text(stateMessage)
+                        .font(.caption)
+                        .foregroundStyle(
+                            viewModel.operationState.stableUpdate.state == .failed
+                                || viewModel.operationState.stableUpdate.state == .unavailable
+                                ? .red
+                                : .secondary
+                        )
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if viewModel.shouldShowUpdateProgress {
                     Text(AppConstants.Labels.updateProgressLog)
                         .font(.caption)
@@ -115,7 +129,8 @@ struct RuntimeUpdatePanel: View {
                 !actionAvailabilityPolicy.canApplyUpdate(
                     status: viewModel.status,
                     capabilities: viewModel.capabilities,
-                    updateInProgress: viewModel.shouldShowUpdateProgress,
+                    stableUpdate: viewModel.operationState.stableUpdate,
+                    isBusy: viewModel.isBusy,
                     hasSelectedBundle: viewModel.hasSelectedBundle,
                     selectedBundleVerified: viewModel.selectedBundleVerified
                 )

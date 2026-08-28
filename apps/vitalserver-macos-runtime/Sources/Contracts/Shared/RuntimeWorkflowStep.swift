@@ -13,6 +13,7 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
     case startInstalledServices
     case applyStartOnBootPolicy
     case waitInstallRuntimeHealth
+    case settleInstalledProductRelease
     case cleanupInstallSettings
     case uninstallCreateVitalServerBackup
     case uninstallStopRuntimeServices
@@ -66,6 +67,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             self = .applyStartOnBootPolicy
         case "wait-install-runtime-health":
             self = .waitInstallRuntimeHealth
+        case "settle-installed-product-release":
+            self = .settleInstalledProductRelease
         case "cleanup-install-settings":
             self = .cleanupInstallSettings
         case "uninstall-create-vitalserver-backup":
@@ -143,6 +146,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             return "apply-start-on-boot-policy"
         case .waitInstallRuntimeHealth:
             return "wait-install-runtime-health"
+        case .settleInstalledProductRelease:
+            return "settle-installed-product-release"
         case .cleanupInstallSettings:
             return "cleanup-install-settings"
         case .uninstallCreateVitalServerBackup:
@@ -206,6 +211,7 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
              .startInstalledServices,
              .applyStartOnBootPolicy,
              .waitInstallRuntimeHealth,
+             .settleInstalledProductRelease,
              .cleanupInstallSettings:
             return .install
         case .uninstallCreateVitalServerBackup,

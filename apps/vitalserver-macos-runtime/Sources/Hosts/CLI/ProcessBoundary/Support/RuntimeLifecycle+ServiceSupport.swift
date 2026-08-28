@@ -38,7 +38,7 @@ extension RuntimeLifecycle {
     }
 
     private func guestControlAPIBaseURL(vmIP: String) -> String {
-        "http://\(vmIP):18330"
+        RuntimeGuestControlEndpointContract.baseURL(host: vmIP)
     }
 
     func isLaunchdLoaded(_ service: RuntimeManagedService) -> Bool {

@@ -1,3 +1,15 @@
+/// Host-owned Guest Control HTTP endpoint. Consumers receive this contract
+/// explicitly; they must not infer scheme or port from reachability or from
+/// URL defaults.
+public enum RuntimeGuestControlEndpointContract {
+    public static let scheme = "http"
+    public static let port = 18330
+
+    public static func baseURL(host: String) -> String {
+        "\(scheme)://\(host):\(port)"
+    }
+}
+
 public struct RuntimeGuestControlReadiness: Codable, Equatable, Sendable {
     public let status: String
     public let dependencies: [RuntimeGuestControlReadinessDependency]

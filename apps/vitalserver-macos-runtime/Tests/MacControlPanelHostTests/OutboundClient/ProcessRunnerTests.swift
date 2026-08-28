@@ -6,6 +6,26 @@ import Errors
 @testable import InboundAdapters
 
 final class ProcessRunnerTests: XCTestCase {
+    func testRunSyncAppliesExplicitEnvironmentWithoutDroppingProcessEnvironment() {
+        let result = ProcessRunner.runSync(
+            "/bin/sh",
+            arguments: [
+                "-c",
+                "printf '%s|%s' \"$VITALSERVER_VM_HOME\" \"$PATH\"",
+            ],
+            environment: [
+                "VITALSERVER_VM_HOME": "/Library/Application Support/VitalServerHelper/vm",
+            ]
+        )
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertTrue(
+            result.stdout.hasPrefix(
+                "/Library/Application Support/VitalServerHelper/vm|/"
+            )
+        )
+    }
+
     func testRunSyncReportsInvalidUTF8OutputIssues() {
         let result = ProcessRunner.runSync(
             "/bin/sh",

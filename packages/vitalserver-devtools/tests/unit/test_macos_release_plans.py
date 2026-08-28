@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import signal
 import subprocess
 from dataclasses import replace
@@ -31,6 +32,9 @@ from tirosh_vitalserver.devtools.application.inputs import (
 from tirosh_vitalserver.devtools.application.usecases import macos_package
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
+)
+from tirosh_vitalserver.devtools.config.update_bootstrap_trust_store import (
+    UpdateBootstrapTrustStoreReadError,
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.guest_image import (
@@ -68,7 +72,6 @@ def test_package_clean_plan_allows_managed_build_paths() -> None:
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -88,7 +91,6 @@ def test_package_clean_plan_rejects_workspace_root() -> None:
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -105,7 +107,6 @@ def test_default_troubleshooting_tools_output_uses_release_label() -> None:
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -124,7 +125,6 @@ def test_package_outputs_include_pkg_and_dmg_outputs() -> None:
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -161,7 +161,6 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -229,6 +228,9 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
         rootfs_base=tmp_path / "rootfs-base.raw.gz",
         golden_runtime_dir=tmp_path / "golden",
         guest_deploy_source=tmp_path / "compiled-deploy",
+        update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+            tmp_path / "update-bootstrap-trust-store.json"
+        ),
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=tmp_path / "deploy",
             base_url="https://example.invalid/noble",
@@ -253,8 +255,7 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
         encoding="utf-8"
     ) == "installer"
     assert (
-        staging
-        / "Troubleshooting Tools/Reset VitalServer Helper for Reinstall.command"
+        staging / "Troubleshooting Tools/Reset VitalServer Helper for Reinstall.command"
     ).read_text(encoding="utf-8") == "reset-command"
     assert (
         staging / "Troubleshooting Tools/bin/vitalserver-vm-reset-installer"
@@ -569,12 +570,10 @@ def test_stage_troubleshooting_tools_stages_reset_and_redis_commands(
         in redis_command_text
     )
     assert "dump.rdb" in redis_command_text
-    assert 'COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 \\' in (
+    assert "COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 \\" in (
         redis_command_text
     )
-    assert '/usr/bin/tar -czf "${archive}" -C "${source_dir}" .' in (
-        redis_command_text
-    )
+    assert '/usr/bin/tar -czf "${archive}" -C "${source_dir}" .' in (redis_command_text)
 
 
 def test_troubleshooting_tools_verify_accepts_staged_commands(
@@ -683,13 +682,26 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
     )
     app_bundle = tmp_path / "VitalServer Helper.app"
     app_bundle.mkdir()
-    (app_bundle / "Contents").mkdir()
+    app_executable = app_bundle / "Contents/MacOS/VitalServer Helper"
+    app_executable.parent.mkdir(parents=True)
+    app_executable.write_text("helper", encoding="utf-8")
+    app_executable.chmod(0o755)
     nginx_bundle = tmp_path / "nginx"
     nginx_bundle.mkdir()
     (nginx_bundle / "nginx").write_text("nginx", encoding="utf-8")
     runtime_cli = tmp_path / "vitalserver-vm"
     runtime_cli.write_text("vm", encoding="utf-8")
     runtime_cli.chmod(0o755)
+    update_handoff_supervisor = tmp_path / "vitalserver-update-handoff-supervisor"
+    update_handoff_supervisor.write_text("supervisor", encoding="utf-8")
+    update_handoff_supervisor.chmod(0o755)
+    for name in [
+        "vitalserver-host-installation-manager",
+        "vitalserver-host-platform-layer-effect-executor",
+    ]:
+        executable = tmp_path / name
+        executable.write_text(name, encoding="utf-8")
+        executable.chmod(0o755)
     rootfs_base = tmp_path / "rootfs-base.raw.gz"
     rootfs_base.write_text("rootfs", encoding="utf-8")
     rootfs_manifest = rootfs_artifact_manifest_path(rootfs_base)
@@ -735,7 +747,6 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -749,6 +760,9 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
         rootfs_base=rootfs_base,
         golden_runtime_dir=golden,
         guest_deploy_source=compiled_deploy,
+        update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+            tmp_path / "update-bootstrap-trust-store.json"
+        ),
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=package_vm_home / "data/deploy",
             base_url="https://example.invalid/noble",
@@ -777,11 +791,38 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
         "assert_virtualization_entitlement",
         lambda _: None,
     )
-    monkeypatch.setattr(installer_package, "render_launchd_templates", lambda _: None)
+
+    def render_test_launchd(package_context: PackageContext) -> None:
+        launchd_root = (
+            package_context.pkg_root
+            / package_context.settings.install.launch_daemons_dir.strip("/")
+        )
+        launchd_root.mkdir(parents=True, exist_ok=True)
+        for template in [
+            package_context.settings.launchd.platform_agent,
+            package_context.settings.launchd.update_handoff_supervisor,
+            package_context.settings.launchd.vm,
+            package_context.settings.launchd.proxy,
+            package_context.settings.launchd.guest_log_sync,
+            package_context.settings.launchd.sleep_prevention,
+            package_context.settings.launchd.watchdog,
+            package_context.settings.launchd.automatic_backup,
+        ]:
+            with (launchd_root / template.installed_plist).open("wb") as stream:
+                plistlib.dump(
+                    {"Label": template.installed_plist.removesuffix(".plist")},
+                    stream,
+                )
+
+    monkeypatch.setattr(
+        installer_package,
+        "render_launchd_templates",
+        render_test_launchd,
+    )
     monkeypatch.setattr(
         installer_package,
         "render_packaging_executable",
-        lambda _settings, _template, destination: destination.write_text(
+        lambda _settings, _template, destination, *_: destination.write_text(
             "#!/bin/sh\n",
             encoding="utf-8",
         ),
@@ -805,17 +846,82 @@ def test_build_pkg_materializes_compiled_guest_deploy_for_installed_bootstrap(
     assert document["dockerImages"]["platform"] == "linux/arm64"
     assert document["ubuntu"]["aptSnapshot"] == "20250515T000000Z"
     assert "runId" not in document
-    assert (
-        package_vm_home / "data/deploy/bootstrap.sh"
-    ).read_text(encoding="utf-8") == "#!/bin/sh\ncompiled deploy\n"
+    assert (package_vm_home / "data/deploy/bootstrap.sh").read_text(
+        encoding="utf-8"
+    ) == "#!/bin/sh\ncompiled deploy\n"
     assert not (package_vm_home / "data/deploy/host-time.json").exists()
+    assert (package_vm_home / "runtime" / rootfs_manifest.name).read_text(
+        encoding="utf-8"
+    ) == rootfs_manifest.read_text(encoding="utf-8")
+    installed_trust_store = (
+        package_vm_home.parent / "config" / "update-bootstrap-trust-store.json"
+    )
     assert (
-        package_vm_home / "runtime" / rootfs_manifest.name
-    ).read_text(encoding="utf-8") == rootfs_manifest.read_text(encoding="utf-8")
+        installed_trust_store.read_bytes()
+        == context.update_bootstrap_trust_store.read_bytes()
+    )
+    installation_root = (
+        settings.pkg_root
+        / "Library/Application Support/VitalServerHelper/host-platform"
+    )
+    current = installation_root / "current"
+    assert current.is_symlink()
+    assert os.readlink(current) == (
+        "/Library/Application Support/VitalServerHelper/host-platform/"
+        "releases/helper-1.2.3/release"
+    )
+    stable_app = settings.pkg_root / "Applications/VitalServer Helper.app"
+    assert stable_app.is_dir()
+    assert not stable_app.is_symlink()
+    assert (stable_app / "Contents/MacOS/VitalServer Helper").read_bytes() == (
+        installation_root
+        / "releases/helper-1.2.3/release/app/VitalServer Helper.app"
+        / "Contents/MacOS/VitalServer Helper"
+    ).read_bytes()
+    release_root = installation_root / "releases/helper-1.2.3/release"
+    release_manifest = json.loads(
+        (release_root / "installation-manifest.json").read_text(encoding="utf-8")
+    )
+    assert release_manifest["release"] == {
+        "id": "helper-1.2.3",
+        "version": "1.2.3",
+    }
+    assert {service["role"] for service in release_manifest["replaceableServices"]} == {
+        "platform-agent",
+        "vm",
+        "proxy",
+        "guest-log-sync",
+        "sleep-prevention",
+        "watchdog",
+        "automatic-backup",
+    }
+    initial_slot = installation_root / "releases/helper-1.2.3"
+    assert (
+        initial_slot / "operator-interface/runtime-console-bootstrap.json"
+    ).is_file()
+    for role in {
+        service["role"] for service in release_manifest["replaceableServices"]
+    }:
+        assert (initial_slot / f"service-definitions/{role}.plist").is_file()
+    initial_installation = json.loads(
+        (settings.pkg_scripts / "initial-host-platform-installation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert initial_installation["installationRevision"] == 1
+    assert initial_installation["activeRelease"]["id"] == "helper-1.2.3"
+    assert len(initial_installation["activeRelease"]["sha256"]) == 64
+    for executable in [
+        settings.install.host_installation_manager,
+        settings.install.host_platform_effect_executor,
+        settings.install.update_handoff_supervisor,
+    ]:
+        assert (settings.pkg_root / executable.strip("/")).is_file()
     pkgbuild_command = next(command for command in commands if command[0] == "pkgbuild")
-    assert pkgbuild_command[
-        pkgbuild_command.index("--identifier") + 1
-    ] == "ai.tirosh.vitalserver.helper"
+    assert (
+        pkgbuild_command[pkgbuild_command.index("--identifier") + 1]
+        == "ai.tirosh.vitalserver.helper"
+    )
     assert pkgbuild_command[pkgbuild_command.index("--version") + 1] == "1.2.3"
 
     commands.clear()
@@ -1012,12 +1118,32 @@ def write_rootfs_artifact_receipt(rootfs: Path, deploy: Path) -> None:
     )
 
 
+def write_update_bootstrap_trust_store(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": "v2",
+                "keys": [
+                    {
+                        "id": "release-key-1",
+                        "algorithm": "ed25519",
+                        "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+                        "state": "active",
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def write_expanded_dmg_pkg_payload(destination: Path) -> Path:
     assert not destination.exists()
     payload = destination / "Payload"
-    installed_home = (
-        payload / "Library/Application Support/VitalServerHelper/vm"
-    )
+    installed_home = payload / "Library/Application Support/VitalServerHelper/vm"
     rootfs = installed_home / "runtime" / "rootfs-base.raw.gz"
     rootfs.parent.mkdir(parents=True)
     rootfs.write_bytes(b"rootfs")
@@ -1033,6 +1159,54 @@ def write_expanded_dmg_pkg_payload(destination: Path) -> Path:
     )
     (deploy / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
     write_rootfs_artifact_receipt(rootfs, deploy)
+    write_update_bootstrap_trust_store(
+        payload
+        / "Library/Application Support/VitalServerHelper/config"
+        / "update-bootstrap-trust-store.json"
+    )
+    supervisor = payload / "usr/local/bin/vitalserver-update-handoff-supervisor"
+    supervisor.parent.mkdir(parents=True, exist_ok=True)
+    supervisor.write_text("#!/bin/sh\n", encoding="utf-8")
+    supervisor.chmod(0o755)
+    supervisor_plist = (
+        payload / "Library/LaunchDaemons/"
+        "ai.tirosh.vitalserver.helper.update-handoff-supervisor.plist"
+    )
+    supervisor_plist.parent.mkdir(parents=True, exist_ok=True)
+    supervisor_plist.write_text(
+        """
+<plist>
+<dict>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/vitalserver-update-handoff-supervisor</string>
+    <string>run</string>
+    <string>--jobs-root</string>
+    <string>/Library/Application Support/VitalServerHelper/update-handoff/jobs</string>
+  </array>
+  <key>KeepAlive</key>
+  <true/>
+</dict>
+</plist>
+""".lstrip(),
+        encoding="utf-8",
+    )
+    nginx = (
+        payload / "Library/Application Support/VitalServerHelper/host-platform/"
+        "releases/helper-1.2.3/release/nginx"
+    )
+    executable = nginx / "sbin/nginx"
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    library = nginx / "lib"
+    library.mkdir(parents=True, exist_ok=True)
+    for name in [
+        "libpcre2-8.0.dylib",
+        "libssl.3.dylib",
+        "libcrypto.3.dylib",
+    ]:
+        (library / name).write_bytes(name.encode("utf-8"))
     return payload
 
 
@@ -1069,7 +1243,6 @@ def test_release_dmg_artifact_verify_accepts_expected_layout(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -1095,6 +1268,9 @@ def test_release_dmg_artifact_verify_accepts_expected_layout(
             config=root / "config/vm-build.toml",
             release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
             output=dmg_output,
+            update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+                tmp_path / "update-bootstrap-trust-store.json"
+            ),
         )
     )
 
@@ -1108,10 +1284,7 @@ def test_verify_dmg_pkg_rootfs_material_rejects_guest_deploy_digest_mismatch(
     tmp_path: Path,
 ) -> None:
     payload = write_expanded_dmg_pkg_payload(tmp_path / "expanded")
-    deploy = (
-        payload
-        / "Library/Application Support/VitalServerHelper/vm/data/deploy"
-    )
+    deploy = payload / "Library/Application Support/VitalServerHelper/vm/data/deploy"
     (deploy / "bootstrap.sh").write_text("tampered\n", encoding="utf-8")
 
     checks = macos_package.verify_dmg_pkg_rootfs_material(
@@ -1125,6 +1298,28 @@ def test_verify_dmg_pkg_rootfs_material_rejects_guest_deploy_digest_mismatch(
         if check.name == "dmg-payload-guest-deploy-material-sha256"
     )
     assert material.status == PreflightStatus.FAILED
+
+
+def test_verify_dmg_pkg_nginx_runtime_closure_rejects_missing_library(
+    tmp_path: Path,
+) -> None:
+    payload = write_expanded_dmg_pkg_payload(tmp_path / "expanded")
+    nginx_release_path = (
+        "/Library/Application Support/VitalServerHelper/host-platform/"
+        "releases/helper-1.2.3/release/nginx"
+    )
+    (payload / nginx_release_path.strip("/") / "lib/libpcre2-8.0.dylib").unlink()
+
+    checks = macos_package.verify_dmg_pkg_nginx_runtime_closure(
+        payload=payload,
+        nginx_release_path=nginx_release_path,
+    )
+
+    pcre2 = next(
+        check for check in checks if check.name == "dmg-payload-nginx-libpcre2"
+    )
+    assert pcre2.status == PreflightStatus.MISSING
+    assert pcre2.blocks
 
 
 def test_verify_dmg_pkg_rootfs_material_rejects_missing_compile_proof(
@@ -1152,6 +1347,31 @@ def test_verify_dmg_pkg_rootfs_material_rejects_missing_compile_proof(
         and check.status == PreflightStatus.INVALID
     )
     assert proof.message == "packaged rootfs receipt is invalid"
+
+
+def test_verify_dmg_pkg_update_trust_store_rejects_release_input_mismatch(
+    tmp_path: Path,
+) -> None:
+    payload = write_expanded_dmg_pkg_payload(tmp_path / "expanded")
+    expected = write_update_bootstrap_trust_store(
+        tmp_path / "expected-update-bootstrap-trust-store.json"
+    )
+    expected.write_text(
+        expected.read_text(encoding="utf-8").replace(
+            "release-key-1",
+            "replacement-release-key",
+        ),
+        encoding="utf-8",
+    )
+
+    check = macos_package.verify_dmg_pkg_update_bootstrap_trust_store(
+        payload=payload,
+        install_product_root_path=("/Library/Application Support/VitalServerHelper"),
+        expected=expected,
+    )
+
+    assert check.status == PreflightStatus.FAILED
+    assert "differs from release input" in check.message
 
 
 def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
@@ -1185,7 +1405,6 @@ def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -1211,6 +1430,9 @@ def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
             config=root / "config/vm-build.toml",
             release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
             output=dmg_output,
+            update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+                tmp_path / "update-bootstrap-trust-store.json"
+            ),
         )
     )
 
@@ -1255,7 +1477,6 @@ def test_release_dmg_artifact_verify_reports_detach_failure(
             channel="dev",
             helper_version="1.2.3",
             release_label="1.2.3-dev",
-            minimum_updater_version="1.0.0",
             vitalserver_version="2.3.4",
             target_platform="macos-arm64",
         ),
@@ -1285,6 +1506,9 @@ def test_release_dmg_artifact_verify_reports_detach_failure(
             config=root / "config/vm-build.toml",
             release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
             output=dmg_output,
+            update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+                tmp_path / "update-bootstrap-trust-store.json"
+            ),
         )
     )
 
@@ -1298,12 +1522,12 @@ def test_install_pkg_blocks_present_receipt_before_settings_or_installer_effects
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = repo_root()
-    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output = tmp_path / "VitalServerHelper-0.2.2-dev.pkg"
     pkg_output.write_text("pkg", encoding="utf-8")
     install_settings = tmp_path / "install-settings.json"
     install_settings.write_text("{}", encoding="utf-8")
     events: list[str] = []
-    installed_version = NumericPackageVersion.parse("0.2.1")
+    installed_version = NumericPackageVersion.parse("0.2.2")
     assert installed_version is not None
 
     monkeypatch.setattr(
@@ -1330,8 +1554,7 @@ def test_install_pkg_blocks_present_receipt_before_settings_or_installer_effects
         macos_package.install_pkg(
             MacOSPackageInstallInput(
                 config=root / "config/vm-build.toml",
-                release_file=root
-                / "apps/vitalserver-macos-runtime/release-dev.json",
+                release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
                 install_settings=str(install_settings),
             )
         )
@@ -1344,7 +1567,7 @@ def test_install_pkg_blocks_receipt_read_failure_before_effects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = repo_root()
-    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output = tmp_path / "VitalServerHelper-0.2.2-dev.pkg"
     pkg_output.write_text("pkg", encoding="utf-8")
     effects: list[list[str]] = []
     monkeypatch.setattr(
@@ -1367,8 +1590,7 @@ def test_install_pkg_blocks_receipt_read_failure_before_effects(
         macos_package.install_pkg(
             MacOSPackageInstallInput(
                 config=root / "config/vm-build.toml",
-                release_file=root
-                / "apps/vitalserver-macos-runtime/release-dev.json",
+                release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
                 install_settings=None,
             )
         )
@@ -1381,7 +1603,7 @@ def test_install_pkg_observes_absent_receipt_before_settings_write_and_installer
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = repo_root()
-    pkg_output = tmp_path / "VitalServerHelper-0.2.1-dev.pkg"
+    pkg_output = tmp_path / "VitalServerHelper-0.2.2-dev.pkg"
     pkg_output.write_text("pkg", encoding="utf-8")
     install_settings = tmp_path / "install-settings.json"
     install_settings.write_text("{}", encoding="utf-8")
@@ -1407,8 +1629,7 @@ def test_install_pkg_observes_absent_receipt_before_settings_write_and_installer
         macos_package.install_pkg(
             MacOSPackageInstallInput(
                 config=root / "config/vm-build.toml",
-                release_file=root
-                / "apps/vitalserver-macos-runtime/release-dev.json",
+                release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
                 install_settings=str(install_settings),
             )
         )
@@ -1417,9 +1638,7 @@ def test_install_pkg_observes_absent_receipt_before_settings_write_and_installer
 
     assert events[0] == "receipt:ai.tirosh.vitalserver.helper"
     assert events[1].startswith("effect:sudo install -m 0600 ")
-    assert events[2] == (
-        f"effect:sudo installer -pkg {pkg_output} -target /"
-    )
+    assert events[2] == (f"effect:sudo installer -pkg {pkg_output} -target /")
 
 
 def test_install_pkg_reports_sudo_failure_without_traceback(
@@ -1430,25 +1649,24 @@ def test_install_pkg_reports_sudo_failure_without_traceback(
     release_file = tmp_path / "release-dev.json"
     release_file.write_text(
         json.dumps(
-                {
-                    "channel": "dev",
-                    "helperVersion": "1.2.3",
-                    "releaseLabel": "1.2.3-dev",
-                    "minUpdaterVersion": "1.0.0",
-                    "vitalServerVersion": "2.3.4",
-                    "targetPlatform": "macos-arm64",
-                    "services": {
-                        "lab": {
-                            "image": "vitalserver-lab:0.2.0",
-                        },
-                        "postgres": {
-                            "image": "postgres:16-alpine",
-                        },
+            {
+                "channel": "dev",
+                "helperVersion": "1.2.3",
+                "releaseLabel": "1.2.3-dev",
+                "vitalServerVersion": "2.3.4",
+                "targetPlatform": "macos-arm64",
+                "services": {
+                    "lab": {
+                        "image": "vitalserver-lab:0.2.0",
                     },
-                }
-            ),
-            encoding="utf-8",
-        )
+                    "postgres": {
+                        "image": "postgres:16-alpine",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     pkg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.pkg"
     pkg_output.parent.mkdir(exist_ok=True)
     pkg_output.write_text("pkg", encoding="utf-8")
@@ -1526,11 +1744,42 @@ def test_release_package_environment_preflight_does_not_require_rootfs(
             / "apps/vitalserver-macos-runtime/release-dev.json",
             output=tmp_path / "dist/VitalServerHelper.dmg",
             output_kind="dmg",
+            update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+                tmp_path / "update-bootstrap-trust-store.json"
+            ),
         )
     )
 
     assert report.passed
     assert all("rootfs" not in check.name for check in report.checks)
+
+
+def test_update_bootstrap_trust_store_preflight_preserves_failure_meanings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing = macos_package.check_update_bootstrap_trust_store(
+        tmp_path / "missing.json"
+    )
+    invalid_path = tmp_path / "invalid.json"
+    invalid_path.write_text("{", encoding="utf-8")
+    invalid = macos_package.check_update_bootstrap_trust_store(invalid_path)
+
+    def fail_read(_: Path) -> Path:
+        raise UpdateBootstrapTrustStoreReadError("permission denied")
+
+    monkeypatch.setattr(
+        macos_package,
+        "load_update_bootstrap_trust_store",
+        fail_read,
+    )
+    failed = macos_package.check_update_bootstrap_trust_store(
+        tmp_path / "unreadable.json"
+    )
+
+    assert missing.status == PreflightStatus.MISSING
+    assert invalid.status == PreflightStatus.INVALID
+    assert failed.status == PreflightStatus.FAILED
 
 
 def test_release_package_preflight_reuses_compiled_guest_material_without_docker(
@@ -1579,7 +1828,6 @@ def test_release_dmg_preflight_blocks_mounted_output(
         channel="dev",
         helper_version="1.2.3",
         release_label="1.2.3-dev",
-        minimum_updater_version="1.0.0",
         vitalserver_version="2.3.4",
         target_platform="macos-arm64",
     )
@@ -1698,6 +1946,9 @@ def release_package_input(
         nginx_expected_version=None,
         docker_platform=None,
         guest_deploy_source=compiled_deploy,
+        update_bootstrap_trust_store=write_update_bootstrap_trust_store(
+            tmp_path / "update-bootstrap-trust-store.json"
+        ),
     )
 
 

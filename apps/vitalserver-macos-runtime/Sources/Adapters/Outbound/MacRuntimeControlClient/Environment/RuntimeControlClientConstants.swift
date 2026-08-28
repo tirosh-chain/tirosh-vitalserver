@@ -26,7 +26,7 @@ enum RuntimeControlClientConstants {
         }
 
         static func guestControlAPIBaseURL(vmIP: String) -> String {
-            "http://\(vmIP):18330"
+            RuntimeGuestControlEndpointContract.baseURL(host: vmIP)
         }
 
         static func guestControlAPIBaseURL(
@@ -59,6 +59,13 @@ enum RuntimeControlClientConstants {
         static let configure = "configure"
         static let applyBundle = "apply-bundle"
         static let verifyBundle = "verify-bundle"
+        static let applyUpdateBootstrap = "apply-update-bootstrap"
+        static let verifyUpdateBootstrap = "verify-update-bootstrap"
+        static let optionRequestID = "--request-id"
+        static let optionVerificationInvocationID =
+            "--verification-invocation-id"
+        static let optionRequirePlatformAgentSelection =
+            "--require-platform-agent-selection"
         static let rollback = "rollback"
         static let redisBackup = "redis-backup"
         static let redisRestore = "redis-restore"

@@ -20,6 +20,7 @@ from tirosh_guest_tools.adapters.inbound.guest_control_api import (
 from tirosh_guest_tools.adapters.inbound.observability_daemon import (
     run_observability_daemon,
 )
+from tirosh_guest_tools.adapters.outbound.compose import ComposeGuestControlAdapter
 from tirosh_guest_tools.adapters.outbound.maintenance.postgres_backup import (
     create_postgres_backup_archive,
 )
@@ -34,8 +35,24 @@ from tirosh_guest_tools.adapters.outbound.runtime.health import check_runtime_he
 from tirosh_guest_tools.adapters.outbound.runtime.observation_writer import (
     write_runtime_observation,
 )
+from tirosh_guest_tools.adapters.outbound.sqlite_control import (
+    SQLiteControlRepository,
+)
+from tirosh_guest_tools.adapters.outbound.update_artifacts import (
+    AtomicGuestRuntimeReleaseEffect,
+    DockerComposeContainerImageSetEffect,
+    GuestRuntimeServiceReconciler,
+    ImmutableUpdateArtifactStore,
+)
 from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
 from tirosh_guest_tools.application.compose import run_compose_action
+from tirosh_guest_tools.application.guest_control.runtime import SystemClock
+from tirosh_guest_tools.application.guest_control.update_owner_worker import (
+    GuestUpdateOwnerWorker,
+)
+from tirosh_guest_tools.application.initial_release_artifacts import (
+    compose_initial_update_owner_artifacts,
+)
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
 )
@@ -93,6 +110,53 @@ from tirosh_guest_tools.infrastructure.system_install import (
     install_guest_tools_runtime,
 )
 from tirosh_guest_tools.infrastructure.time_authority import apply_time_authority
+
+
+def vitalserver_update_owner_worker() -> int:
+    owner = SQLiteControlRepository(SETTINGS.paths.control_state_dir / "control.sqlite")
+    owner.check_ready()
+    compose = ComposeGuestControlAdapter()
+    runtime_reconciler = GuestRuntimeServiceReconciler(
+        compose_reconcile=compose.reconcile_services
+    )
+    worker = GuestUpdateOwnerWorker(
+        container_owner=owner,
+        guest_runtime_owner=owner,
+        artifacts=ImmutableUpdateArtifactStore(
+            SETTINGS.paths.control_state_dir / "update-artifacts"
+        ),
+        container_effect=DockerComposeContainerImageSetEffect(
+            compose.reconcile_services
+        ),
+        guest_runtime_effect=AtomicGuestRuntimeReleaseEffect(
+            releases_root=(
+                SETTINGS.paths.guest_tools_home.parent / "guest-runtime-releases"
+            ),
+            active_link=SETTINGS.paths.guest_tools_home,
+            reconcile=runtime_reconciler.reconcile,
+        ),
+        clock=SystemClock(),
+    )
+    worker.recover_and_run_pending()
+    return 0
+
+
+def compose_initial_update_owner_state() -> int:
+    parser = argparse.ArgumentParser(
+        description="Compose explicit fresh-install update owner artifacts."
+    )
+    parser.add_argument("--release-identity", type=Path, required=True)
+    parser.add_argument("--deploy-dir", type=Path, required=True)
+    parser.add_argument("--container-archive", type=Path, required=True)
+    parser.add_argument("--guest-tools-home", type=Path, required=True)
+    args = parser.parse_args()
+    compose_initial_update_owner_artifacts(
+        release_identity_path=args.release_identity,
+        deploy_dir=args.deploy_dir,
+        container_archive=args.container_archive,
+        guest_tools_home=args.guest_tools_home,
+    )
+    return 0
 
 
 def guest_observed() -> int:

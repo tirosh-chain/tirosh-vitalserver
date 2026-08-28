@@ -65,7 +65,15 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
                     events.append("prepare-host-settings")
                 },
                 workflowOperationStateRepository: stateRepository,
-                operationID: { "install-operation-1" }
+                operationID: { "install-operation-1" },
+                installationID: { "installation-1" },
+                settleInstalledProductRelease: {
+                    operationID,
+                    installationID in
+                    events.append(
+                        "settle-release:\(operationID):\(installationID)"
+                    )
+                }
             )
         )
 
@@ -74,6 +82,11 @@ final class RuntimeInstallCompositionSQLiteStateTests: XCTestCase {
         XCTAssertEqual(Array(events.prefix(2)), ["preflight", "initialize-state-store"])
         XCTAssertEqual(events.filter { $0 == "initialize-state-store" }.count, 1)
         XCTAssertEqual(events.filter { $0 == "prepare-host-settings" }.count, 1)
+        XCTAssertTrue(
+            events.contains(
+                "settle-release:install-operation-1:installation-1"
+            )
+        )
         let state = try XCTUnwrap(stateRepository.states["install-operation-1"])
         XCTAssertEqual(state.operation, .install)
         XCTAssertEqual(state.phase, .completed)

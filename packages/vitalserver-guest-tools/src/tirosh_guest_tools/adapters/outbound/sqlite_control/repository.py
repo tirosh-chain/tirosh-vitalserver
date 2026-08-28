@@ -29,12 +29,31 @@ from tirosh_guest_tools.adapters.outbound.sqlite_control.migrations import (
     validate_control_schema,
 )
 from tirosh_guest_tools.adapters.outbound.sqlite_control.records import (
+    ActiveGuestRuntimeReleaseRecord,
     ActiveOperationLeaseRecord,
+    ContainerImageSetOperationRecord,
+    ContainerImageSetRecord,
+    CurrentContainerImageSetRecord,
+    GuestRuntimeReleaseOperationRecord,
+    GuestRuntimeReleaseRecord,
     GuestServiceResourceRecord,
+    InitialUpdateOwnerProvisioningRecord,
     OperationEventRecord,
     RedisRelayStatusRecord,
     ServiceOperationRecord,
     ServiceStatusSnapshotRecord,
+)
+from tirosh_guest_tools.domain.container_image_set import (
+    TERMINAL_CONTAINER_IMAGE_SET_OPERATION_STATES,
+    ContainerImageSet,
+    ContainerImageSetCommand,
+    ContainerImageSetConflictError,
+    ContainerImageSetContractError,
+    ContainerImageSetDependencyError,
+    ContainerImageSetFailure,
+    ContainerImageSetOperation,
+    ContainerImageSetOperationState,
+    transition_container_image_set_operation,
 )
 from tirosh_guest_tools.domain.guest_control.models import (
     GUEST_CONTROL_OPERATION_LEASE_RESOURCE_KEY,
@@ -55,6 +74,18 @@ from tirosh_guest_tools.domain.guest_control.models import (
 )
 from tirosh_guest_tools.domain.guest_control.operation_policy import (
     ensure_valid_operation_transition,
+)
+from tirosh_guest_tools.domain.guest_runtime_release import (
+    TERMINAL_GUEST_RUNTIME_RELEASE_OPERATION_STATES,
+    GuestRuntimeRelease,
+    GuestRuntimeReleaseCommand,
+    GuestRuntimeReleaseConflictError,
+    GuestRuntimeReleaseContractError,
+    GuestRuntimeReleaseDependencyError,
+    GuestRuntimeReleaseFailure,
+    GuestRuntimeReleaseOperation,
+    GuestRuntimeReleaseOperationState,
+    transition_guest_runtime_release_operation,
 )
 
 SQLITE_BUSY_TIMEOUT_MILLISECONDS = 5_000
@@ -99,8 +130,7 @@ class SQLiteControlRepository:
             ) from error
         if not stat.S_ISREG(file_mode):
             raise GuestControlDependencyError(
-                "control SQLite database is not a regular file: "
-                f"{self._database_path}",
+                f"control SQLite database is not a regular file: {self._database_path}",
                 kind="controlStoreUnavailable",
             )
         try:
@@ -434,6 +464,844 @@ class SQLiteControlRepository:
             "readError": None,
         }
 
+    def provision_current_container_image_set(
+        self,
+        image_set: ContainerImageSet,
+        *,
+        observed_at: datetime,
+    ) -> None:
+        """Persist an installer-observed initial current image-set explicitly."""
+
+        def write(session: Session) -> None:
+            self._require_immutable_image_set(session, image_set, observed_at)
+            current = session.get(CurrentContainerImageSetRecord, "current")
+            if current is not None:
+                raise ContainerImageSetConflictError(
+                    "Current container image-set is already provisioned: "
+                    f"identity={current.identity}.",
+                    kind="containerImageSetAlreadyProvisioned",
+                )
+            session.add(
+                CurrentContainerImageSetRecord(
+                    owner_key="current",
+                    identity=image_set.identity,
+                    updated_at=observed_at,
+                )
+            )
+
+        self._container_image_set_write("container image-set provision", write)
+
+    def provision_initial_update_owner_state(
+        self,
+        *,
+        container_image_set: ContainerImageSet,
+        contract_digest: str,
+        container_archive: str,
+        guest_runtime_release: GuestRuntimeRelease,
+        observed_at: datetime,
+    ) -> None:
+        """Persist both fresh-install update owners in one transaction."""
+
+        def write(session: Session) -> None:
+            receipt = session.get(
+                InitialUpdateOwnerProvisioningRecord,
+                "initial",
+            )
+            expected_receipt = (
+                contract_digest,
+                container_image_set.identity,
+                container_image_set.digest,
+                container_archive,
+                guest_runtime_release.identity,
+                guest_runtime_release.digest,
+                guest_runtime_release.archive,
+            )
+            if receipt is not None:
+                actual_receipt = (
+                    receipt.contract_digest,
+                    receipt.container_identity,
+                    receipt.container_digest,
+                    receipt.container_archive,
+                    receipt.guest_runtime_identity,
+                    receipt.guest_runtime_digest,
+                    receipt.guest_runtime_archive,
+                )
+                if actual_receipt == expected_receipt:
+                    return
+                raise ContainerImageSetConflictError(
+                    "Initial update owner provisioning receipt disagrees with "
+                    "the installed release contract.",
+                    kind="initialUpdateOwnerProvisioningReceiptMismatch",
+                )
+            current = session.get(CurrentContainerImageSetRecord, "current")
+            active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+            if current is not None or active is not None:
+                raise ContainerImageSetConflictError(
+                    "Initial update owner state exists without its provisioning "
+                    "receipt: "
+                    f"container={current.identity if current else 'missing'} "
+                    f"guestRuntime={active.identity if active else 'missing'}.",
+                    kind="initialUpdateOwnerProvisioningPartialState",
+                )
+            self._require_immutable_image_set(
+                session,
+                container_image_set,
+                observed_at,
+            )
+            self._require_immutable_guest_runtime_release(
+                session,
+                guest_runtime_release,
+                observed_at,
+            )
+            session.add(
+                CurrentContainerImageSetRecord(
+                    owner_key="current",
+                    identity=container_image_set.identity,
+                    updated_at=observed_at,
+                )
+            )
+            session.add(
+                ActiveGuestRuntimeReleaseRecord(
+                    owner_key="active",
+                    identity=guest_runtime_release.identity,
+                    updated_at=observed_at,
+                )
+            )
+            session.add(
+                InitialUpdateOwnerProvisioningRecord(
+                    owner_key="initial",
+                    contract_digest=contract_digest,
+                    container_identity=container_image_set.identity,
+                    container_digest=container_image_set.digest,
+                    container_archive=container_archive,
+                    guest_runtime_identity=guest_runtime_release.identity,
+                    guest_runtime_digest=guest_runtime_release.digest,
+                    guest_runtime_archive=guest_runtime_release.archive,
+                    completed_at=observed_at,
+                )
+            )
+
+        try:
+            self._write("initial update owner state provision", write)
+        except (
+            ContainerImageSetConflictError,
+            ContainerImageSetContractError,
+            GuestRuntimeReleaseConflictError,
+            GuestRuntimeReleaseContractError,
+        ):
+            raise
+        except GuestControlDependencyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                error.message,
+                kind="initialUpdateOwnerStateUnavailable",
+            ) from error
+
+    def initial_update_owner_state_is_provisioned(
+        self,
+        *,
+        contract_digest: str,
+        container_image_set: ContainerImageSet,
+        container_archive: str,
+        guest_runtime_release: GuestRuntimeRelease,
+    ) -> bool:
+        """Read the explicit installer receipt without consulting filesystem state."""
+
+        def read(session: Session) -> bool:
+            receipt = session.get(
+                InitialUpdateOwnerProvisioningRecord,
+                "initial",
+            )
+            if receipt is not None:
+                actual = (
+                    receipt.contract_digest,
+                    receipt.container_identity,
+                    receipt.container_digest,
+                    receipt.container_archive,
+                    receipt.guest_runtime_identity,
+                    receipt.guest_runtime_digest,
+                    receipt.guest_runtime_archive,
+                )
+                expected = (
+                    contract_digest,
+                    container_image_set.identity,
+                    container_image_set.digest,
+                    container_archive,
+                    guest_runtime_release.identity,
+                    guest_runtime_release.digest,
+                    guest_runtime_release.archive,
+                )
+                if actual == expected:
+                    current = session.get(
+                        CurrentContainerImageSetRecord,
+                        "current",
+                    )
+                    active = session.get(
+                        ActiveGuestRuntimeReleaseRecord,
+                        "active",
+                    )
+                    if current is None or active is None:
+                        raise ContainerImageSetDependencyError(
+                            "Initial update owner receipt exists but current "
+                            "owner pointers are missing.",
+                            kind="initialUpdateOwnerCurrentStateInvalid",
+                        )
+                    current_value = session.get(
+                        ContainerImageSetRecord,
+                        current.identity,
+                    )
+                    active_value = session.get(
+                        GuestRuntimeReleaseRecord,
+                        active.identity,
+                    )
+                    if current_value is None or active_value is None:
+                        raise ContainerImageSetDependencyError(
+                            "Initial update owner receipt exists but an owner "
+                            "pointer has no immutable record.",
+                            kind="initialUpdateOwnerCurrentStateInvalid",
+                        )
+                    ContainerImageSet.validated(
+                        current_value.identity,
+                        current_value.digest,
+                    )
+                    GuestRuntimeRelease.validated(
+                        active_value.identity,
+                        active_value.archive,
+                        active_value.digest,
+                    )
+                    return True
+                raise ContainerImageSetConflictError(
+                    "Initial update owner provisioning receipt disagrees with "
+                    "the installed release contract.",
+                    kind="initialUpdateOwnerProvisioningReceiptMismatch",
+                )
+            current = session.get(CurrentContainerImageSetRecord, "current")
+            active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+            if current is None and active is None:
+                return False
+            raise ContainerImageSetConflictError(
+                "Initial update owner state exists without its provisioning "
+                "receipt.",
+                kind="initialUpdateOwnerProvisioningPartialState",
+            )
+
+        try:
+            with Session(self._engine) as session:
+                return read(session)
+        except (
+            ContainerImageSetConflictError,
+            ContainerImageSetContractError,
+            GuestRuntimeReleaseConflictError,
+            GuestRuntimeReleaseContractError,
+        ):
+            raise
+        except SQLAlchemyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                control_store_error(
+                    error,
+                    stage="initial update owner provisioning receipt read",
+                ).message,
+                kind="initialUpdateOwnerStateUnavailable",
+            ) from error
+
+    def read_current(self) -> ContainerImageSet:
+        try:
+            with Session(self._engine) as session:
+                current = session.get(CurrentContainerImageSetRecord, "current")
+                if current is None:
+                    raise ContainerImageSetDependencyError(
+                        "Current container image-set state is not provisioned.",
+                        kind="containerImageSetCurrentMissing",
+                    )
+                image_set = session.get(ContainerImageSetRecord, current.identity)
+                if image_set is None:
+                    raise ContainerImageSetDependencyError(
+                        "Current container image-set identity has no immutable digest: "
+                        f"identity={current.identity}.",
+                        kind="containerImageSetStateInvalid",
+                    )
+                return ContainerImageSet.validated(
+                    image_set.identity,
+                    image_set.digest,
+                )
+        except (ContainerImageSetDependencyError, ContainerImageSetContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise ContainerImageSetDependencyError(
+                f"Container image-set current-state read failed: {error}",
+                kind="containerImageSetStateUnavailable",
+            ) from error
+
+    def accept(self, operation: ContainerImageSetOperation) -> None:
+        if operation.state != ContainerImageSetOperationState.PENDING:
+            raise ContainerImageSetDependencyError(
+                "Container image-set command must enter the owner as pending.",
+                kind="containerImageSetOperationAcceptanceInvalid",
+            )
+
+        def write(session: Session) -> None:
+            current = session.get(CurrentContainerImageSetRecord, "current")
+            if current is None:
+                raise ContainerImageSetDependencyError(
+                    "Current container image-set state is not provisioned.",
+                    kind="containerImageSetCurrentMissing",
+                )
+            if current.identity != operation.expected_current_identity:
+                raise ContainerImageSetConflictError(
+                    "Container image-set compare-and-swap rejected the command: "
+                    f"expected={operation.expected_current_identity} "
+                    f"actual={current.identity}.",
+                    kind="containerImageSetRevisionConflict",
+                )
+            existing_operation = session.get(
+                ContainerImageSetOperationRecord,
+                operation.operation_id,
+            )
+            if existing_operation is not None:
+                raise ContainerImageSetConflictError(
+                    "Container image-set operation already exists: "
+                    f"operationId={operation.operation_id}.",
+                    kind="containerImageSetOperationAlreadyExists",
+                )
+            active = session.scalar(
+                select(ContainerImageSetOperationRecord).where(
+                    ContainerImageSetOperationRecord.state.not_in(
+                        tuple(
+                            state.value
+                            for state in TERMINAL_CONTAINER_IMAGE_SET_OPERATION_STATES
+                        )
+                    )
+                )
+            )
+            if active is not None:
+                raise ContainerImageSetConflictError(
+                    "A container image-set operation is already active: "
+                    f"operationId={active.operation_id}.",
+                    kind="containerImageSetOperationInProgress",
+                )
+            self._require_immutable_image_set(
+                session,
+                operation.target,
+                operation.created_at,
+            )
+            session.add(_container_image_set_operation_record(operation))
+
+        self._container_image_set_write("container image-set acceptance", write)
+
+    def get_operation(
+        self,
+        operation_id: str,
+    ) -> ContainerImageSetOperation | None:
+        try:
+            with Session(self._engine) as session:
+                record = session.get(ContainerImageSetOperationRecord, operation_id)
+                if record is None:
+                    return None
+                target = session.get(ContainerImageSetRecord, record.target_identity)
+                if target is None:
+                    raise ContainerImageSetDependencyError(
+                        "Container image-set operation target is missing: "
+                        f"operationId={record.operation_id}.",
+                        kind="containerImageSetOperationInvalid",
+                    )
+                return _container_image_set_operation_from_record(
+                    record,
+                    target_digest=target.digest,
+                )
+        except (ContainerImageSetDependencyError, ContainerImageSetContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise ContainerImageSetDependencyError(
+                f"Container image-set operation read failed: {error}",
+                kind="containerImageSetOperationUnavailable",
+            ) from error
+
+    def list_container_image_set_operations(
+        self,
+        states: frozenset[ContainerImageSetOperationState],
+    ) -> list[ContainerImageSetOperation]:
+        if not states:
+            return []
+        try:
+            with Session(self._engine) as session:
+                records = session.scalars(
+                    select(ContainerImageSetOperationRecord)
+                    .where(
+                        ContainerImageSetOperationRecord.state.in_(
+                            tuple(state.value for state in states)
+                        )
+                    )
+                    .order_by(
+                        ContainerImageSetOperationRecord.created_at,
+                        ContainerImageSetOperationRecord.operation_id,
+                    )
+                ).all()
+                operations: list[ContainerImageSetOperation] = []
+                for record in records:
+                    target = session.get(
+                        ContainerImageSetRecord,
+                        record.target_identity,
+                    )
+                    if target is None:
+                        raise ContainerImageSetDependencyError(
+                            "Container image-set operation target is missing: "
+                            f"operationId={record.operation_id}.",
+                            kind="containerImageSetOperationInvalid",
+                        )
+                    operations.append(
+                        _container_image_set_operation_from_record(
+                            record,
+                            target_digest=target.digest,
+                        )
+                    )
+                return operations
+        except (ContainerImageSetDependencyError, ContainerImageSetContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise ContainerImageSetDependencyError(
+                f"Container image-set operation list failed: {error}",
+                kind="containerImageSetOperationUnavailable",
+            ) from error
+
+    def record_container_image_set_transition(
+        self,
+        operation: ContainerImageSetOperation,
+    ) -> None:
+        def write(session: Session) -> None:
+            record = session.get(
+                ContainerImageSetOperationRecord,
+                operation.operation_id,
+            )
+            if record is None:
+                raise ContainerImageSetDependencyError(
+                    "Container image-set operation is missing: "
+                    f"operationId={operation.operation_id}.",
+                    kind="containerImageSetOperationMissing",
+                )
+            target = session.get(ContainerImageSetRecord, record.target_identity)
+            if target is None:
+                raise ContainerImageSetDependencyError(
+                    "Container image-set operation target is missing: "
+                    f"operationId={record.operation_id}.",
+                    kind="containerImageSetOperationInvalid",
+                )
+            persisted = _container_image_set_operation_from_record(
+                record,
+                target_digest=target.digest,
+            )
+            expected = transition_container_image_set_operation(
+                persisted,
+                state=operation.state,
+                updated_at=operation.updated_at,
+                failure=operation.failure,
+            )
+            if expected != operation:
+                raise ContainerImageSetDependencyError(
+                    "Container image-set operation immutable fields changed.",
+                    kind="containerImageSetOperationInvalid",
+                )
+            if operation.state == ContainerImageSetOperationState.SUCCEEDED:
+                current = session.get(CurrentContainerImageSetRecord, "current")
+                if current is None:
+                    raise ContainerImageSetDependencyError(
+                        "Current container image-set state is not provisioned.",
+                        kind="containerImageSetCurrentMissing",
+                    )
+                if current.identity != operation.expected_current_identity:
+                    raise ContainerImageSetConflictError(
+                        "Container image-set changed before operation settlement: "
+                        f"expected={operation.expected_current_identity} "
+                        f"actual={current.identity}.",
+                        kind="containerImageSetRevisionConflict",
+                    )
+                current.identity = operation.target.identity
+                current.updated_at = operation.updated_at
+            record.state = operation.state.value
+            record.document = canonical_json(operation.as_json())
+            record.updated_at = sqlite_utc_naive_timestamp(
+                operation.updated_at,
+                kind="containerImageSetOperationInvalid",
+                field="updatedAt",
+            )
+
+        self._container_image_set_write("container image-set transition", write)
+
+    def _require_immutable_image_set(
+        self,
+        session: Session,
+        image_set: ContainerImageSet,
+        observed_at: datetime,
+    ) -> None:
+        existing = session.get(ContainerImageSetRecord, image_set.identity)
+        if existing is not None:
+            if existing.digest != image_set.digest:
+                raise ContainerImageSetConflictError(
+                    "Container image-set identity already has a different digest: "
+                    f"identity={image_set.identity}.",
+                    kind="containerImageSetIdentityDigestConflict",
+                )
+            return
+        session.add(
+            ContainerImageSetRecord(
+                identity=image_set.identity,
+                digest=image_set.digest,
+                created_at=observed_at,
+            )
+        )
+        session.flush()
+
+    def _container_image_set_write(
+        self,
+        stage: str,
+        action: Callable[[Session], T],
+    ) -> T:
+        try:
+            return self._write(stage, action)
+        except (
+            ContainerImageSetConflictError,
+            ContainerImageSetContractError,
+            ContainerImageSetDependencyError,
+        ):
+            raise
+        except GuestControlDependencyError as error:
+            raise ContainerImageSetDependencyError(
+                error.message,
+                kind="containerImageSetStateUnavailable",
+            ) from error
+
+    def provision_active_guest_runtime_release(
+        self,
+        release: GuestRuntimeRelease,
+        *,
+        observed_at: datetime,
+    ) -> None:
+        """Persist installer-authored initial active Guest Runtime release."""
+
+        def write(session: Session) -> None:
+            self._require_immutable_guest_runtime_release(
+                session,
+                release,
+                observed_at,
+            )
+            active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+            if active is not None:
+                raise GuestRuntimeReleaseConflictError(
+                    "Active Guest Runtime release is already provisioned: "
+                    f"identity={active.identity}.",
+                    kind="guestRuntimeReleaseAlreadyProvisioned",
+                )
+            session.add(
+                ActiveGuestRuntimeReleaseRecord(
+                    owner_key="active",
+                    identity=release.identity,
+                    updated_at=observed_at,
+                )
+            )
+
+        self._guest_runtime_release_write("Guest Runtime release provision", write)
+
+    def read_active_guest_runtime_release(self) -> GuestRuntimeRelease:
+        try:
+            with Session(self._engine) as session:
+                active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+                if active is None:
+                    raise GuestRuntimeReleaseDependencyError(
+                        "Active Guest Runtime release is not provisioned.",
+                        kind="guestRuntimeReleaseActiveMissing",
+                    )
+                release = session.get(GuestRuntimeReleaseRecord, active.identity)
+                if release is None:
+                    raise GuestRuntimeReleaseDependencyError(
+                        "Active Guest Runtime release has no immutable archive: "
+                        f"identity={active.identity}.",
+                        kind="guestRuntimeReleaseStateInvalid",
+                    )
+                return GuestRuntimeRelease.validated(
+                    release.identity,
+                    release.archive,
+                    release.digest,
+                )
+        except (GuestRuntimeReleaseDependencyError, GuestRuntimeReleaseContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                f"Active Guest Runtime release read failed: {error}",
+                kind="guestRuntimeReleaseStateUnavailable",
+            ) from error
+
+    def accept_guest_runtime_release_operation(
+        self,
+        operation: GuestRuntimeReleaseOperation,
+    ) -> None:
+        if operation.state != GuestRuntimeReleaseOperationState.PENDING:
+            raise GuestRuntimeReleaseDependencyError(
+                "Guest Runtime release command must enter the owner as pending.",
+                kind="guestRuntimeReleaseOperationAcceptanceInvalid",
+            )
+
+        def write(session: Session) -> None:
+            active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+            if active is None:
+                raise GuestRuntimeReleaseDependencyError(
+                    "Active Guest Runtime release is not provisioned.",
+                    kind="guestRuntimeReleaseActiveMissing",
+                )
+            if active.identity != operation.expected_active_identity:
+                raise GuestRuntimeReleaseConflictError(
+                    "Guest Runtime release compare-and-swap rejected the command: "
+                    f"expected={operation.expected_active_identity} "
+                    f"actual={active.identity}.",
+                    kind="guestRuntimeReleaseRevisionConflict",
+                )
+            if (
+                session.get(
+                    GuestRuntimeReleaseOperationRecord,
+                    operation.operation_id,
+                )
+                is not None
+            ):
+                raise GuestRuntimeReleaseConflictError(
+                    "Guest Runtime release operation already exists: "
+                    f"operationId={operation.operation_id}.",
+                    kind="guestRuntimeReleaseOperationAlreadyExists",
+                )
+            active_operation = session.scalar(
+                select(GuestRuntimeReleaseOperationRecord).where(
+                    GuestRuntimeReleaseOperationRecord.state.not_in(
+                        tuple(
+                            state.value
+                            for state in (
+                                TERMINAL_GUEST_RUNTIME_RELEASE_OPERATION_STATES
+                            )
+                        )
+                    )
+                )
+            )
+            if active_operation is not None:
+                raise GuestRuntimeReleaseConflictError(
+                    "A Guest Runtime release operation is already active: "
+                    f"operationId={active_operation.operation_id}.",
+                    kind="guestRuntimeReleaseOperationInProgress",
+                )
+            self._require_immutable_guest_runtime_release(
+                session,
+                operation.target,
+                operation.created_at,
+            )
+            session.add(_guest_runtime_release_operation_record(operation))
+
+        self._guest_runtime_release_write(
+            "Guest Runtime release acceptance",
+            write,
+        )
+
+    def get_guest_runtime_release_operation(
+        self,
+        operation_id: str,
+    ) -> GuestRuntimeReleaseOperation | None:
+        try:
+            with Session(self._engine) as session:
+                record = session.get(
+                    GuestRuntimeReleaseOperationRecord,
+                    operation_id,
+                )
+                if record is None:
+                    return None
+                target = session.get(
+                    GuestRuntimeReleaseRecord,
+                    record.target_identity,
+                )
+                if target is None:
+                    raise GuestRuntimeReleaseDependencyError(
+                        "Guest Runtime release operation target is missing: "
+                        f"operationId={record.operation_id}.",
+                        kind="guestRuntimeReleaseOperationInvalid",
+                    )
+                return _guest_runtime_release_operation_from_record(
+                    record,
+                    target_archive=target.archive,
+                    target_digest=target.digest,
+                )
+        except (GuestRuntimeReleaseDependencyError, GuestRuntimeReleaseContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                f"Guest Runtime release operation read failed: {error}",
+                kind="guestRuntimeReleaseOperationUnavailable",
+            ) from error
+
+    def list_guest_runtime_release_operations(
+        self,
+        states: frozenset[GuestRuntimeReleaseOperationState],
+    ) -> list[GuestRuntimeReleaseOperation]:
+        if not states:
+            return []
+        try:
+            with Session(self._engine) as session:
+                records = session.scalars(
+                    select(GuestRuntimeReleaseOperationRecord)
+                    .where(
+                        GuestRuntimeReleaseOperationRecord.state.in_(
+                            tuple(state.value for state in states)
+                        )
+                    )
+                    .order_by(
+                        GuestRuntimeReleaseOperationRecord.created_at,
+                        GuestRuntimeReleaseOperationRecord.operation_id,
+                    )
+                ).all()
+                operations: list[GuestRuntimeReleaseOperation] = []
+                for record in records:
+                    target = session.get(
+                        GuestRuntimeReleaseRecord,
+                        record.target_identity,
+                    )
+                    if target is None:
+                        raise GuestRuntimeReleaseDependencyError(
+                            "Guest Runtime release operation target is missing: "
+                            f"operationId={record.operation_id}.",
+                            kind="guestRuntimeReleaseOperationInvalid",
+                        )
+                    operations.append(
+                        _guest_runtime_release_operation_from_record(
+                            record,
+                            target_archive=target.archive,
+                            target_digest=target.digest,
+                        )
+                    )
+                return operations
+        except (GuestRuntimeReleaseDependencyError, GuestRuntimeReleaseContractError):
+            raise
+        except SQLAlchemyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                f"Guest Runtime release operation list failed: {error}",
+                kind="guestRuntimeReleaseOperationUnavailable",
+            ) from error
+
+    def record_guest_runtime_release_transition(
+        self,
+        operation: GuestRuntimeReleaseOperation,
+    ) -> None:
+        def write(session: Session) -> None:
+            record = session.get(
+                GuestRuntimeReleaseOperationRecord,
+                operation.operation_id,
+            )
+            if record is None:
+                raise GuestRuntimeReleaseDependencyError(
+                    "Guest Runtime release operation is missing: "
+                    f"operationId={operation.operation_id}.",
+                    kind="guestRuntimeReleaseOperationMissing",
+                )
+            target = session.get(
+                GuestRuntimeReleaseRecord,
+                record.target_identity,
+            )
+            if target is None:
+                raise GuestRuntimeReleaseDependencyError(
+                    "Guest Runtime release operation target is missing: "
+                    f"operationId={record.operation_id}.",
+                    kind="guestRuntimeReleaseOperationInvalid",
+                )
+            persisted = _guest_runtime_release_operation_from_record(
+                record,
+                target_archive=target.archive,
+                target_digest=target.digest,
+            )
+            expected = transition_guest_runtime_release_operation(
+                persisted,
+                state=operation.state,
+                updated_at=operation.updated_at,
+                failure=operation.failure,
+            )
+            if expected != operation:
+                raise GuestRuntimeReleaseDependencyError(
+                    "Guest Runtime release operation immutable fields changed.",
+                    kind="guestRuntimeReleaseOperationInvalid",
+                )
+            if operation.state == GuestRuntimeReleaseOperationState.SUCCEEDED:
+                active = session.get(ActiveGuestRuntimeReleaseRecord, "active")
+                if active is None:
+                    raise GuestRuntimeReleaseDependencyError(
+                        "Active Guest Runtime release is not provisioned.",
+                        kind="guestRuntimeReleaseActiveMissing",
+                    )
+                if active.identity != operation.expected_active_identity:
+                    raise GuestRuntimeReleaseConflictError(
+                        "Guest Runtime release changed before operation settlement: "
+                        f"expected={operation.expected_active_identity} "
+                        f"actual={active.identity}.",
+                        kind="guestRuntimeReleaseRevisionConflict",
+                    )
+                active.identity = operation.target.identity
+                active.updated_at = operation.updated_at
+            record.state = operation.state.value
+            record.document = canonical_json(operation.as_json())
+            record.updated_at = sqlite_utc_naive_timestamp(
+                operation.updated_at,
+                kind="guestRuntimeReleaseOperationInvalid",
+                field="updatedAt",
+            )
+
+        self._guest_runtime_release_write(
+            "Guest Runtime release transition",
+            write,
+        )
+
+    def _require_immutable_guest_runtime_release(
+        self,
+        session: Session,
+        release: GuestRuntimeRelease,
+        observed_at: datetime,
+    ) -> None:
+        existing = session.get(GuestRuntimeReleaseRecord, release.identity)
+        if existing is not None:
+            if existing.archive != release.archive or existing.digest != release.digest:
+                raise GuestRuntimeReleaseConflictError(
+                    "Guest Runtime release identity already names another archive: "
+                    f"identity={release.identity}.",
+                    kind="guestRuntimeReleaseIdentityConflict",
+                )
+            return
+        archive_owner = session.scalar(
+            select(GuestRuntimeReleaseRecord).where(
+                GuestRuntimeReleaseRecord.archive == release.archive
+            )
+        )
+        if archive_owner is not None:
+            raise GuestRuntimeReleaseConflictError(
+                "Guest Runtime release archive already belongs to another identity: "
+                f"archive={release.archive}.",
+                kind="guestRuntimeReleaseArchiveConflict",
+            )
+        session.add(
+            GuestRuntimeReleaseRecord(
+                identity=release.identity,
+                archive=release.archive,
+                digest=release.digest,
+                created_at=observed_at,
+            )
+        )
+        session.flush()
+
+    def _guest_runtime_release_write(
+        self,
+        stage: str,
+        action: Callable[[Session], T],
+    ) -> T:
+        try:
+            return self._write(stage, action)
+        except (
+            GuestRuntimeReleaseConflictError,
+            GuestRuntimeReleaseContractError,
+            GuestRuntimeReleaseDependencyError,
+        ):
+            raise
+        except GuestControlDependencyError as error:
+            raise GuestRuntimeReleaseDependencyError(
+                error.message,
+                kind="guestRuntimeReleaseStateUnavailable",
+            ) from error
+
     def _write(self, stage: str, action: Callable[[Session], T]) -> T:
         return self._write_connection(
             stage,
@@ -523,10 +1391,210 @@ def _require_wal_mode(connection: Connection) -> None:
     journal_mode = connection.exec_driver_sql("PRAGMA journal_mode").scalar_one()
     if str(journal_mode).lower() != "wal":
         raise GuestControlDependencyError(
-            "control SQLite journal mode is not WAL: "
-            f"actual={journal_mode!r}",
+            f"control SQLite journal mode is not WAL: actual={journal_mode!r}",
             kind="controlStoreJournalModeInvalid",
         )
+
+
+def _container_image_set_operation_record(
+    operation: ContainerImageSetOperation,
+) -> ContainerImageSetOperationRecord:
+    return ContainerImageSetOperationRecord(
+        operation_id=operation.operation_id,
+        command=operation.command.value,
+        expected_current_identity=operation.expected_current_identity,
+        target_identity=operation.target.identity,
+        state=operation.state.value,
+        document=canonical_json(operation.as_json()),
+        created_at=sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="containerImageSetOperationInvalid",
+            field="createdAt",
+        ),
+        updated_at=sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="containerImageSetOperationInvalid",
+            field="updatedAt",
+        ),
+    )
+
+
+def _container_image_set_operation_from_record(
+    record: ContainerImageSetOperationRecord,
+    *,
+    target_digest: str,
+) -> ContainerImageSetOperation:
+    document = parse_document(
+        record.document,
+        kind="containerImageSetOperationInvalid",
+    )
+    try:
+        target = document["target"]
+        failure_document = document.get("failure")
+        operation = ContainerImageSetOperation(
+            operation_id=str(document["operationId"]),
+            command=ContainerImageSetCommand(str(document["command"])),
+            expected_current_identity=str(document["expectedCurrentIdentity"]),
+            target=ContainerImageSet.validated(
+                target["identity"],
+                target["digest"],
+            ),
+            state=ContainerImageSetOperationState(str(document["state"])),
+            created_at=datetime.fromisoformat(str(document["createdAt"])),
+            updated_at=datetime.fromisoformat(str(document["updatedAt"])),
+            failure=(
+                ContainerImageSetFailure(
+                    kind=str(failure_document["kind"]),
+                    message=str(failure_document["message"]),
+                )
+                if isinstance(failure_document, dict)
+                else None
+            ),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise ContainerImageSetDependencyError(
+            "Container image-set operation document is invalid: "
+            f"operationId={record.operation_id}.",
+            kind="containerImageSetOperationInvalid",
+        ) from error
+    if (
+        operation.operation_id != record.operation_id
+        or operation.command.value != record.command
+        or operation.expected_current_identity != record.expected_current_identity
+        or operation.target.identity != record.target_identity
+        or operation.target.digest != target_digest
+        or operation.state.value != record.state
+        or record.created_at
+        != sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="containerImageSetOperationInvalid",
+            field="createdAt",
+        )
+        or record.updated_at
+        != sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="containerImageSetOperationInvalid",
+            field="updatedAt",
+        )
+    ):
+        raise ContainerImageSetDependencyError(
+            "Container image-set operation index and document disagree: "
+            f"operationId={record.operation_id}.",
+            kind="containerImageSetOperationInvalid",
+        )
+    failure_required = operation.state in {
+        ContainerImageSetOperationState.FAILED,
+        ContainerImageSetOperationState.UNAVAILABLE,
+    }
+    if failure_required != (operation.failure is not None):
+        raise ContainerImageSetDependencyError(
+            "Container image-set operation state and failure disagree: "
+            f"operationId={record.operation_id}.",
+            kind="containerImageSetOperationInvalid",
+        )
+    return operation
+
+
+def _guest_runtime_release_operation_record(
+    operation: GuestRuntimeReleaseOperation,
+) -> GuestRuntimeReleaseOperationRecord:
+    return GuestRuntimeReleaseOperationRecord(
+        operation_id=operation.operation_id,
+        command=operation.command.value,
+        expected_active_identity=operation.expected_active_identity,
+        target_identity=operation.target.identity,
+        state=operation.state.value,
+        document=canonical_json(operation.as_json()),
+        created_at=sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="guestRuntimeReleaseOperationInvalid",
+            field="createdAt",
+        ),
+        updated_at=sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="guestRuntimeReleaseOperationInvalid",
+            field="updatedAt",
+        ),
+    )
+
+
+def _guest_runtime_release_operation_from_record(
+    record: GuestRuntimeReleaseOperationRecord,
+    *,
+    target_archive: str,
+    target_digest: str,
+) -> GuestRuntimeReleaseOperation:
+    document = parse_document(
+        record.document,
+        kind="guestRuntimeReleaseOperationInvalid",
+    )
+    try:
+        target = document["target"]
+        failure_document = document.get("failure")
+        operation = GuestRuntimeReleaseOperation(
+            operation_id=str(document["operationId"]),
+            command=GuestRuntimeReleaseCommand(str(document["command"])),
+            expected_active_identity=str(document["expectedActiveIdentity"]),
+            target=GuestRuntimeRelease.validated(
+                target["identity"],
+                target["archive"],
+                target["digest"],
+            ),
+            state=GuestRuntimeReleaseOperationState(str(document["state"])),
+            created_at=datetime.fromisoformat(str(document["createdAt"])),
+            updated_at=datetime.fromisoformat(str(document["updatedAt"])),
+            failure=(
+                GuestRuntimeReleaseFailure(
+                    kind=str(failure_document["kind"]),
+                    message=str(failure_document["message"]),
+                )
+                if isinstance(failure_document, dict)
+                else None
+            ),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise GuestRuntimeReleaseDependencyError(
+            "Guest Runtime release operation document is invalid: "
+            f"operationId={record.operation_id}.",
+            kind="guestRuntimeReleaseOperationInvalid",
+        ) from error
+    if (
+        operation.operation_id != record.operation_id
+        or operation.command.value != record.command
+        or operation.expected_active_identity != record.expected_active_identity
+        or operation.target.identity != record.target_identity
+        or operation.target.archive != target_archive
+        or operation.target.digest != target_digest
+        or operation.state.value != record.state
+        or record.created_at
+        != sqlite_utc_naive_timestamp(
+            operation.created_at,
+            kind="guestRuntimeReleaseOperationInvalid",
+            field="createdAt",
+        )
+        or record.updated_at
+        != sqlite_utc_naive_timestamp(
+            operation.updated_at,
+            kind="guestRuntimeReleaseOperationInvalid",
+            field="updatedAt",
+        )
+    ):
+        raise GuestRuntimeReleaseDependencyError(
+            "Guest Runtime release operation index and document disagree: "
+            f"operationId={record.operation_id}.",
+            kind="guestRuntimeReleaseOperationInvalid",
+        )
+    failure_required = operation.state in {
+        GuestRuntimeReleaseOperationState.FAILED,
+        GuestRuntimeReleaseOperationState.UNAVAILABLE,
+    }
+    if failure_required != (operation.failure is not None):
+        raise GuestRuntimeReleaseDependencyError(
+            "Guest Runtime release operation state and failure disagree: "
+            f"operationId={record.operation_id}.",
+            kind="guestRuntimeReleaseOperationInvalid",
+        )
+    return operation
 
 
 def event_record_from_operation(operation: ServiceOperation) -> OperationEventRecord:

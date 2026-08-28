@@ -2,6 +2,8 @@ public struct RuntimeOperationLeaseDocument: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let operationId: String
     public let operation: RuntimeOperation
+    public let targetInstallationId: String?
+    public let expectedInstallationRevision: Int?
     public let ownerPID: Int?
     public let startedAt: String
     public let heartbeatAt: String
@@ -9,9 +11,11 @@ public struct RuntimeOperationLeaseDocument: Codable, Equatable, Sendable {
     public let message: String?
 
     public init(
-        schemaVersion: Int = 1,
+        schemaVersion: Int = 2,
         operationId: String,
         operation: RuntimeOperation,
+        targetInstallationId: String? = nil,
+        expectedInstallationRevision: Int? = nil,
         ownerPID: Int?,
         startedAt: String,
         heartbeatAt: String,
@@ -21,6 +25,8 @@ public struct RuntimeOperationLeaseDocument: Codable, Equatable, Sendable {
         self.schemaVersion = schemaVersion
         self.operationId = operationId
         self.operation = operation
+        self.targetInstallationId = targetInstallationId
+        self.expectedInstallationRevision = expectedInstallationRevision
         self.ownerPID = ownerPID
         self.startedAt = startedAt
         self.heartbeatAt = heartbeatAt
@@ -32,6 +38,8 @@ public struct RuntimeOperationLeaseDocument: Codable, Equatable, Sendable {
         case schemaVersion
         case operationId
         case operation
+        case targetInstallationId
+        case expectedInstallationRevision
         case ownerPID
         case startedAt
         case heartbeatAt
@@ -41,9 +49,31 @@ public struct RuntimeOperationLeaseDocument: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        self.schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         self.operationId = try container.decode(String.self, forKey: .operationId)
         self.operation = try container.decode(RuntimeOperation.self, forKey: .operation)
+        switch schemaVersion {
+        case 1:
+            self.targetInstallationId = nil
+            self.expectedInstallationRevision = nil
+        case 2:
+            guard container.contains(.targetInstallationId),
+                  container.contains(.expectedInstallationRevision) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .targetInstallationId,
+                    in: container,
+                    debugDescription: "schemaVersion 2 operation lease requires explicit installation target keys"
+                )
+            }
+            self.targetInstallationId = try container.decodeIfPresent(String.self, forKey: .targetInstallationId)
+            self.expectedInstallationRevision = try container.decodeIfPresent(Int.self, forKey: .expectedInstallationRevision)
+        default:
+            throw DecodingError.dataCorruptedError(
+                forKey: .schemaVersion,
+                in: container,
+                debugDescription: "unsupported operation lease schemaVersion \(schemaVersion)"
+            )
+        }
         self.ownerPID = try container.decodeIfPresent(Int.self, forKey: .ownerPID)
         self.startedAt = try container.decode(String.self, forKey: .startedAt)
         self.heartbeatAt = try container.decode(String.self, forKey: .heartbeatAt)
@@ -56,6 +86,10 @@ public struct RuntimeOperationLeaseDocument: Codable, Equatable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(operationId, forKey: .operationId)
         try container.encode(operation, forKey: .operation)
+        if schemaVersion >= 2 {
+            try container.encode(targetInstallationId, forKey: .targetInstallationId)
+            try container.encode(expectedInstallationRevision, forKey: .expectedInstallationRevision)
+        }
         if let ownerPID {
             try container.encode(ownerPID, forKey: .ownerPID)
         } else {

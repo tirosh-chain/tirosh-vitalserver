@@ -4,16 +4,47 @@ import RuntimeControl
 import Errors
 
 enum ProcessRunner {
-    static func run(_ executable: String, arguments: [String]) async -> RuntimeCommandResult {
+    static func run(
+        _ executable: String,
+        arguments: [String]
+    ) async -> RuntimeCommandResult {
+        await run(executable, arguments: arguments, environment: [:])
+    }
+
+    static func run(
+        _ executable: String,
+        arguments: [String],
+        environment: [String: String]
+    ) async -> RuntimeCommandResult {
         await Task.detached {
-            runSync(executable, arguments: arguments)
+            runSync(
+                executable,
+                arguments: arguments,
+                environment: environment
+            )
         }.value
     }
 
-    static func runSync(_ executable: String, arguments: [String]) -> RuntimeCommandResult {
+    static func runSync(
+        _ executable: String,
+        arguments: [String]
+    ) -> RuntimeCommandResult {
+        runSync(executable, arguments: arguments, environment: [:])
+    }
+
+    static func runSync(
+        _ executable: String,
+        arguments: [String],
+        environment: [String: String]
+    ) -> RuntimeCommandResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.environment = ProcessInfo.processInfo.environment.merging(
+            environment
+        ) { _, explicit in
+            explicit
+        }
 
         let stdout = Pipe()
         let stderr = Pipe()

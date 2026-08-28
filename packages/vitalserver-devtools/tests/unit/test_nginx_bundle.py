@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tirosh_vitalserver.devtools.adapters.host_proxy.nginx_bundle import (
     resolve_bundle_binary,
+    resolve_dylib_source,
 )
 from tirosh_vitalserver.devtools.core.host_proxy import NginxBundleConfig
 
@@ -27,6 +30,58 @@ def test_resolve_bundle_binary_refreshes_stale_cache(tmp_path: Path) -> None:
 
     assert resolved == cache.resolve()
     assert cache.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+
+
+def test_resolve_dylib_source_accepts_bundled_sibling_library(
+    tmp_path: Path,
+) -> None:
+    binary = tmp_path / "nginx/sbin/nginx"
+    source = tmp_path / "nginx/lib/libpcre2-8.0.dylib"
+    binary.parent.mkdir(parents=True)
+    source.parent.mkdir(parents=True)
+    binary.write_bytes(b"nginx")
+    source.write_bytes(b"pcre2")
+
+    resolved = resolve_dylib_source(
+        binary=binary,
+        load_path="@executable_path/../lib/libpcre2-8.0.dylib",
+        prefixes=("/opt/homebrew/",),
+    )
+
+    assert resolved == source.resolve()
+
+
+def test_resolve_dylib_source_rejects_missing_bundled_library(
+    tmp_path: Path,
+) -> None:
+    binary = tmp_path / "nginx/sbin/nginx"
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"nginx")
+
+    with pytest.raises(SystemExit, match="nginx bundled dylib is missing"):
+        resolve_dylib_source(
+            binary=binary,
+            load_path="@executable_path/../lib/libpcre2-8.0.dylib",
+            prefixes=("/opt/homebrew/",),
+        )
+
+
+def test_resolve_dylib_source_rejects_path_outside_sibling_library_directory(
+    tmp_path: Path,
+) -> None:
+    binary = tmp_path / "nginx/sbin/nginx"
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"nginx")
+
+    with pytest.raises(
+        SystemExit,
+        match="nginx bundled dylib escapes sibling lib directory",
+    ):
+        resolve_dylib_source(
+            binary=binary,
+            load_path="@executable_path/../../outside.dylib",
+            prefixes=("/opt/homebrew/",),
+        )
 
 
 def write_fake_nginx(path: Path, version: str) -> None:

@@ -194,6 +194,30 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             .verifyBundle(bundleURL)
         )
         XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "verify-update-bootstrap",
+                bundleURL.path,
+            ]),
+            .verifyUpdateBootstrap(
+                RuntimeVerifyUpdateBootstrapCommand(bundleURL: bundleURL)
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "verify-update-bootstrap",
+                bundleURL.path,
+                "--verification-invocation-id",
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            ]),
+            .verifyUpdateBootstrap(
+                RuntimeVerifyUpdateBootstrapCommand(
+                    bundleURL: bundleURL,
+                    verificationInvocationId:
+                        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+                )
+            )
+        )
+        XCTAssertEqual(
             try RuntimeLifecycleCommand.parse(["stage-bundle", bundleURL.path]),
             .stageBundle(bundleURL)
         )
@@ -215,6 +239,32 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 trustIntent: .allowUnsignedDevelopmentBundle
             ))
         )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "apply-update-bootstrap",
+                bundleURL.path,
+                "--request-id",
+                "request-1",
+            ]),
+            .applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand(
+                bundleURL: bundleURL,
+                requestId: "request-1"
+            ))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "apply-update-bootstrap",
+                bundleURL.path,
+                "--request-id",
+                "request-1",
+                "--require-platform-agent-selection",
+            ]),
+            .applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand(
+                bundleURL: bundleURL,
+                requestId: "request-1",
+                requirePlatformAgentSelection: true
+            ))
+        )
     }
 
     func testApplyBundleRejectsUnknownOrMisplacedUnsignedDevelopmentIntent() {
@@ -234,6 +284,156 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             ]),
             expectedMessage: "usage: vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]"
         )
+    }
+
+    func testApplyUpdateBootstrapRequiresExactlyOneExplicitRequestID() {
+        let usage = "usage: vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id> [--require-platform-agent-selection]"
+        for arguments in [
+            ["apply-update-bootstrap"],
+            ["apply-update-bootstrap", ""],
+            ["apply-update-bootstrap", "--request-id", "request-1"],
+            ["apply-update-bootstrap", "/tmp/update.tar.gz"],
+            ["apply-update-bootstrap", "/tmp/update.tar.gz", "--request-id"],
+            ["apply-update-bootstrap", "/tmp/update.tar.gz", "--request-id", ""],
+            ["apply-update-bootstrap", "/tmp/update.tar.gz", "--unknown", "request-1"],
+            [
+                "apply-update-bootstrap",
+                "/tmp/update.tar.gz",
+                "--request-id",
+                "request-1",
+                "--request-id",
+                "request-2",
+            ],
+        ] {
+            assertMissingArgument(
+                try RuntimeLifecycleCommand.parse(arguments),
+                expectedMessage: usage
+            )
+        }
+    }
+
+    func testParsesExplicitUpdateBootstrapRecoveryCommands() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "prove-update-bootstrap",
+                "update-42",
+                "--expect",
+                "failed-rolled-back",
+                "--timeout-seconds",
+                "600",
+                "--poll-interval-milliseconds",
+                "500",
+            ]),
+            .proveUpdateBootstrap(
+                RuntimeProveUpdateBootstrapCommand(
+                    updateId: "update-42",
+                    expectation: .failedRolledBack,
+                    timeoutMilliseconds: 600_000,
+                    pollIntervalMilliseconds: 500
+                )
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "prove-update-bootstrap",
+                "update-42",
+                "--expect",
+                "succeeded",
+                "--timeout-seconds",
+                "30",
+                "--poll-interval-milliseconds",
+                "250",
+                "--require-platform-agent-verification",
+            ]),
+            .proveUpdateBootstrap(
+                RuntimeProveUpdateBootstrapCommand(
+                    updateId: "update-42",
+                    expectation: .succeeded,
+                    timeoutMilliseconds: 30_000,
+                    pollIntervalMilliseconds: 250,
+                    requirePlatformAgentVerification: true
+                )
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "resume-update-bootstrap-handoff",
+                "update-42",
+            ]),
+            .resumeUpdateBootstrapHandoff(
+                RuntimeUpdateBootstrapRecoveryCommand(
+                    updateId: "update-42"
+                )
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "settle-update-bootstrap-handoff",
+                "update-42",
+            ]),
+            .settleUpdateBootstrapHandoff(
+                RuntimeUpdateBootstrapRecoveryCommand(
+                    updateId: "update-42"
+                )
+            )
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse([
+                "fail-update-bootstrap",
+                "update-42",
+                "--reason",
+                "operator abandoned interrupted admission",
+            ]),
+            .failUpdateBootstrap(
+                RuntimeFailUpdateBootstrapCommand(
+                    updateId: "update-42",
+                    reason: "operator abandoned interrupted admission"
+                )
+            )
+        )
+    }
+
+    func testUpdateBootstrapRecoveryCommandsRequireExactlyOneUpdateID() {
+        for arguments in [
+            ["resume-update-bootstrap-handoff"],
+            ["resume-update-bootstrap-handoff", ""],
+            ["resume-update-bootstrap-handoff", "update-42", "extra"],
+            ["settle-update-bootstrap-handoff"],
+            ["settle-update-bootstrap-handoff", ""],
+            ["settle-update-bootstrap-handoff", "update-42", "extra"],
+            ["prove-update-bootstrap"],
+            ["prove-update-bootstrap", "update-42"],
+            ["prove-update-bootstrap", "update-42", "--expect", "unknown"],
+            ["prove-update-bootstrap", "update-42", "--unknown", "succeeded"],
+            [
+                "prove-update-bootstrap",
+                "update-42",
+                "--expect",
+                "succeeded",
+                "--timeout-seconds",
+                "0",
+                "--poll-interval-milliseconds",
+                "500",
+            ],
+            [
+                "prove-update-bootstrap",
+                "update-42",
+                "--expect",
+                "succeeded",
+                "--timeout-seconds",
+                "600",
+                "--poll-interval-milliseconds",
+                "0",
+            ],
+            ["fail-update-bootstrap"],
+            ["fail-update-bootstrap", "update-42"],
+            ["fail-update-bootstrap", "update-42", "--reason", ""],
+            ["fail-update-bootstrap", "update-42", "--unknown", "reason"],
+        ] {
+            XCTAssertThrowsError(
+                try RuntimeLifecycleCommand.parse(arguments)
+            )
+        }
     }
 
     func testParsesOptionalRollbackPath() throws {
@@ -429,6 +629,10 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["verify-bundle"]),
             expectedMessage: "usage: vitalserver-vm runtime verify-bundle <bundle.tar.gz>"
+        )
+        assertMissingArgument(
+            try RuntimeLifecycleCommand.parse(["verify-update-bootstrap"]),
+            expectedMessage: "usage: vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz> [--verification-invocation-id <id>]"
         )
         assertMissingArgument(
             try RuntimeLifecycleCommand.parse(["stage-bundle"]),

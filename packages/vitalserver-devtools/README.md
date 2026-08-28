@@ -165,6 +165,14 @@ release hardening, not an active cryptographic verification step. The
 structure, sizes, and checksums only; their success means integrity checked,
 publisher authenticity unverified.
 
+For the stable bootstrap bundle, `update-bootstrap-bundle` requires a
+`--payload-root`. The release-owned Product Update Specification must declare
+every layer artifact, effect executor, executor configuration, and rollback
+artifact below that root with an exact relative path, size, media type, and
+SHA-256. The composer copies only that declared closure and rejects missing,
+symlinked, duplicate, or mismatched members. The verifier derives the expected
+closure from the authenticated specification and rejects extra files.
+
 VitalServer Helper 0.2.1 contains update apply fail closed:
 
 - Stable and unknown installed launcher channels reject apply before lease

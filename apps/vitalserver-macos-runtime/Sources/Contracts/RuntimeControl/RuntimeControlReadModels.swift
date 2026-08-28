@@ -596,17 +596,88 @@ public struct RuntimeWorkflowOperationStateResource: Codable, Equatable, Sendabl
     }
 }
 
+public struct RuntimeStableUpdateJournalResource: Codable, Equatable, Sendable {
+    public let state: RuntimeHostResourceReadState
+    public let document: UpdateBootstrapJournal?
+    public let readError: String?
+
+    public init(
+        state: RuntimeHostResourceReadState,
+        document: UpdateBootstrapJournal? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.document = document
+        self.readError = readError
+    }
+
+    public static func loaded(_ document: UpdateBootstrapJournal) -> Self {
+        Self(state: .loaded, document: document)
+    }
+
+    public static func missing() -> Self {
+        Self(state: .missing)
+    }
+
+    public static func unavailable(readError: String) -> Self {
+        Self(state: .unavailable, readError: readError)
+    }
+
+    public static func failed(readError: String) -> Self {
+        Self(state: .failed, readError: readError)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case document
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(RuntimeHostResourceReadState.self, forKey: .state)
+        document = try container.decodeRequiredNullable(
+            UpdateBootstrapJournal.self,
+            forKey: .document
+        )
+        readError = try container.decodeRequiredNullable(String.self, forKey: .readError)
+        if state == .loaded && document == nil {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "loaded stable update journal resource must include document"
+            ))
+        }
+        if (state == .failed || state == .unavailable) && readError.isBlankOrMissing {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: decoder.codingPath,
+                debugDescription: "\(state.rawValue) stable update journal resource must include readError"
+            ))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encodeExplicitOptional(document, forKey: .document)
+        try container.encodeExplicitOptional(readError, forKey: .readError)
+    }
+}
+
 public struct PlatformOperationState: Codable, Equatable, Sendable {
     public let activeOperation: RuntimeOperation?
     public let install: RuntimeInstallOperationState
     public let lease: RuntimeOperationLeaseState
     public let workflow: RuntimeWorkflowOperationStateResource
+    public let stableUpdate: RuntimeStableUpdateJournalResource
 
     public init(
         activeOperation: RuntimeOperation?,
         install: RuntimeInstallOperationState,
         lease: RuntimeOperationLeaseState = .unavailable(),
-        workflow: RuntimeWorkflowOperationStateResource = .unavailable()
+        workflow: RuntimeWorkflowOperationStateResource = .unavailable(),
+        stableUpdate: RuntimeStableUpdateJournalResource = .unavailable(
+            readError: "stable update journal owner was not provided"
+        )
     ) {
         self.activeOperation = activeOperation ?? Self.resolvedActiveOperation(
             lease: lease,
@@ -615,6 +686,7 @@ public struct PlatformOperationState: Codable, Equatable, Sendable {
         self.install = install
         self.lease = lease
         self.workflow = workflow
+        self.stableUpdate = stableUpdate
     }
 
     public var operationForPresentation: RuntimeOperation? {
@@ -648,6 +720,7 @@ public struct PlatformOperationState: Codable, Equatable, Sendable {
         case install
         case lease
         case workflow
+        case stableUpdate
     }
 
     public init(from decoder: Decoder) throws {
@@ -656,11 +729,16 @@ public struct PlatformOperationState: Codable, Equatable, Sendable {
         let install = try container.decode(RuntimeInstallOperationState.self, forKey: .install)
         let lease = try container.decode(RuntimeOperationLeaseState.self, forKey: .lease)
         let workflow = try container.decode(RuntimeWorkflowOperationStateResource.self, forKey: .workflow)
+        let stableUpdate = try container.decode(
+            RuntimeStableUpdateJournalResource.self,
+            forKey: .stableUpdate
+        )
         self.init(
             activeOperation: activeOperation,
             install: install,
             lease: lease,
-            workflow: workflow
+            workflow: workflow,
+            stableUpdate: stableUpdate
         )
     }
 
@@ -674,6 +752,7 @@ public struct PlatformOperationState: Codable, Equatable, Sendable {
         try container.encode(install, forKey: .install)
         try container.encode(lease, forKey: .lease)
         try container.encode(workflow, forKey: .workflow)
+        try container.encode(stableUpdate, forKey: .stableUpdate)
     }
 }
 
@@ -744,18 +823,15 @@ public struct RuntimeLogExportResult: Codable, Equatable, Sendable {
 
 public struct RuntimeReleaseInfo: Codable, Equatable, Sendable {
     public let helperVersion: String
-    public let minimumUpdaterVersion: String
     public let vitalServerVersion: String
     public let services: [RuntimeBundledServiceInfo]
 
     public init(
         helperVersion: String,
-        minimumUpdaterVersion: String,
         vitalServerVersion: String,
         services: [RuntimeBundledServiceInfo]
     ) {
         self.helperVersion = helperVersion
-        self.minimumUpdaterVersion = minimumUpdaterVersion
         self.vitalServerVersion = vitalServerVersion
         self.services = services
     }

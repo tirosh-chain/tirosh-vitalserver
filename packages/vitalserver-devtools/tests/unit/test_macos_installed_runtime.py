@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import plistlib
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
@@ -59,12 +60,22 @@ def stage_installed_files(settings) -> None:
         Path(settings.install.vm_cli),
         Path(settings.install.proxy_runner),
         Path(settings.install.uninstaller),
-        Path(settings.install.product_root) / "nginx/sbin/nginx",
+        Path(settings.install.product_root) / "host-platform/current/nginx/sbin/nginx",
     ]
     for path in executable_paths:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("#!/bin/sh\n", encoding="utf-8")
         path.chmod(0o755)
+    info_plist = helper_app / "Contents/Info.plist"
+    with info_plist.open("wb") as file:
+        plistlib.dump(
+            {
+                "CFBundleExecutable": settings.app_name,
+                "CFBundleIdentifier": settings.package_identifier,
+                "CFBundlePackageType": "APPL",
+            },
+            file,
+        )
     vm_ip_file = Path(settings.install.product_root) / "vm/data/run/vm-ip"
     vm_ip_file.parent.mkdir(parents=True, exist_ok=True)
     vm_ip_file.write_text("192.0.2.10\n", encoding="utf-8")
@@ -140,6 +151,7 @@ def test_installed_status_fails_when_helper_app_is_missing(
     helper_executable = helper_app / "Contents/MacOS" / settings.app_name
     helper_executable.unlink()
     helper_executable.parent.rmdir()
+    (helper_app / "Contents/Info.plist").unlink()
     helper_executable.parent.parent.rmdir()
     helper_app.rmdir()
     run_process, _ = launchd_runner()
@@ -150,6 +162,28 @@ def test_installed_status_fails_when_helper_app_is_missing(
     )
 
     assert result == 1
+
+
+def test_installed_status_rejects_helper_app_symlink(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = installed_settings(tmp_path)
+    stage_installed_files(settings)
+    helper_app = Path(settings.install.applications_dir) / f"{settings.app_name}.app"
+    release_app = tmp_path / "release/VitalServer Helper.app"
+    release_app.parent.mkdir(parents=True)
+    helper_app.rename(release_app)
+    helper_app.symlink_to(release_app)
+    run_process, _ = launchd_runner()
+
+    result = installed_runtime.installed_status(
+        settings,
+        run_process=run_process,
+    )
+
+    assert result == 1
+    assert "helper app is a symbolic link" in capsys.readouterr().out
 
 
 def test_installed_status_fails_when_helper_main_executable_is_missing(
@@ -172,6 +206,161 @@ def test_installed_status_fails_when_helper_main_executable_is_missing(
     )
 
     assert result == 1
+
+
+def test_installed_status_reports_missing_helper_app_info_plist(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = installed_settings(tmp_path)
+    stage_installed_files(settings)
+    info_plist = (
+        Path(settings.install.applications_dir)
+        / f"{settings.app_name}.app"
+        / "Contents/Info.plist"
+    )
+    info_plist.unlink()
+    run_process, _ = launchd_runner()
+
+    result = installed_runtime.installed_status(
+        settings,
+        run_process=run_process,
+    )
+
+    assert result == 1
+    assert "Info.plist: missing" in capsys.readouterr().out
+
+
+def test_installed_status_reports_helper_app_info_plist_decode_failure(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = installed_settings(tmp_path)
+    stage_installed_files(settings)
+    info_plist = (
+        Path(settings.install.applications_dir)
+        / f"{settings.app_name}.app"
+        / "Contents/Info.plist"
+    )
+    info_plist.write_text("not a plist", encoding="utf-8")
+    run_process, _ = launchd_runner()
+
+    result = installed_runtime.installed_status(
+        settings,
+        run_process=run_process,
+    )
+
+    assert result == 1
+    assert "Info.plist: decode failed" in capsys.readouterr().out
+
+
+def test_installed_status_reports_helper_app_identity_mismatch(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = installed_settings(tmp_path)
+    stage_installed_files(settings)
+    info_plist = (
+        Path(settings.install.applications_dir)
+        / f"{settings.app_name}.app"
+        / "Contents/Info.plist"
+    )
+    with info_plist.open("wb") as file:
+        plistlib.dump({"CFBundleExecutable": "Something Else"}, file)
+    run_process, _ = launchd_runner()
+
+    result = installed_runtime.installed_status(
+        settings,
+        run_process=run_process,
+    )
+
+    assert result == 1
+    assert "CFBundleExecutable mismatch" in capsys.readouterr().out
+
+
+def test_installed_status_reports_missing_helper_app_bundle_identifier(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = installed_settings(tmp_path)
+    stage_installed_files(settings)
+    info_plist = (
+        Path(settings.install.applications_dir)
+        / f"{settings.app_name}.app"
+        / "Contents/Info.plist"
+    )
+    with info_plist.open("wb") as file:
+        plistlib.dump({"CFBundleExecutable": settings.app_name}, file)
+    run_process, _ = launchd_runner()
+
+    result = installed_runtime.installed_status(
+        settings,
+        run_process=run_process,
+    )
+
+    assert result == 1
+    assert "CFBundleIdentifier missing" in capsys.readouterr().out
+
+
+def test_installed_status_reports_helper_app_bundle_identifier_mismatch(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = installed_settings(tmp_path)
+    stage_installed_files(settings)
+    info_plist = (
+        Path(settings.install.applications_dir)
+        / f"{settings.app_name}.app"
+        / "Contents/Info.plist"
+    )
+    with info_plist.open("wb") as file:
+        plistlib.dump(
+            {
+                "CFBundleExecutable": settings.app_name,
+                "CFBundleIdentifier": "com.other.app",
+            },
+            file,
+        )
+    run_process, _ = launchd_runner()
+
+    result = installed_runtime.installed_status(
+        settings,
+        run_process=run_process,
+    )
+
+    assert result == 1
+    assert "CFBundleIdentifier mismatch" in capsys.readouterr().out
+
+
+def test_installed_status_reports_helper_app_package_type_mismatch(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = installed_settings(tmp_path)
+    stage_installed_files(settings)
+    info_plist = (
+        Path(settings.install.applications_dir)
+        / f"{settings.app_name}.app"
+        / "Contents/Info.plist"
+    )
+    with info_plist.open("wb") as file:
+        plistlib.dump(
+            {
+                "CFBundleExecutable": settings.app_name,
+                "CFBundleIdentifier": settings.package_identifier,
+                "CFBundlePackageType": "XPC!",
+            },
+            file,
+        )
+    run_process, _ = launchd_runner()
+
+    result = installed_runtime.installed_status(
+        settings,
+        run_process=run_process,
+    )
+
+    assert result == 1
+    assert "CFBundlePackageType mismatch" in capsys.readouterr().out
 
 
 def test_installed_status_fails_when_platform_agent_is_not_loaded(

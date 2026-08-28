@@ -3748,7 +3748,6 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
         RuntimeReleaseInfo(
             helperVersion: "0.1.0",
-            minimumUpdaterVersion: "0.1.0",
             vitalServerVersion: "1.0.0",
             services: []
         )
@@ -4402,7 +4401,6 @@ private final class FakeRuntimeControlClient:
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
         RuntimeReleaseInfo(
             helperVersion: "0.2.0",
-            minimumUpdaterVersion: "0.1.0",
             vitalServerVersion: "1.1.0",
             services: []
         )

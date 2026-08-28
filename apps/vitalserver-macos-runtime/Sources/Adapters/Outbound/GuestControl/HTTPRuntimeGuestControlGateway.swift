@@ -367,6 +367,8 @@ private struct RuntimeGuestControlUpdateShutdownRequest: Encodable {
 }
 
 public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
+    RuntimeContainerImageSetGateway,
+    RuntimeGuestReleaseGateway,
     RuntimeGuestProductLabGateway,
     RuntimeVitalDBGuestControlGateway
 {
@@ -375,11 +377,13 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private let timeout: TimeInterval
+    private let backupTimeout: TimeInterval
 
     public init(
         baseURL: String,
         httpClient: any RuntimeGuestControlHTTPClient = URLSessionRuntimeGuestControlHTTPClient(),
-        timeout: TimeInterval = 5
+        timeout: TimeInterval = 5,
+        backupTimeout: TimeInterval = 900
     ) throws {
         guard let url = URL(string: baseURL), url.scheme != nil, url.host != nil else {
             throw RuntimeGuestControlHTTPGatewayError.invalidBaseURL(baseURL)
@@ -389,6 +393,7 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
         self.timeout = timeout
+        self.backupTimeout = backupTimeout
     }
 
     public func ready() throws -> RuntimeGuestControlReadiness {
@@ -499,6 +504,100 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         try decode(RuntimeGuestControlStackStatus.self, method: "GET", path: "/runtime/stack")
     }
 
+    public func currentContainerImageSet() throws -> RuntimeContainerImageSetRead {
+        let response = try httpClient.send(
+            request(method: "GET", path: "/runtime/container-image-set", body: nil),
+            bodyFileURL: nil
+        )
+        if response.statusCode == 503 {
+            do {
+                return try decoder.decode(RuntimeContainerImageSetRead.self, from: response.data)
+            } catch {
+                throw requestFailed(response)
+            }
+        }
+        return try decode(RuntimeContainerImageSetRead.self, from: response)
+    }
+
+    public func applyContainerImageSet(
+        _ request: RuntimeContainerImageSetMutationRequest
+    ) throws -> RuntimeContainerImageSetOperation {
+        try decode(
+            RuntimeContainerImageSetOperation.self,
+            method: "POST",
+            path: "/runtime/container-image-set/apply",
+            body: request
+        )
+    }
+
+    public func rollbackContainerImageSet(
+        _ request: RuntimeContainerImageSetMutationRequest
+    ) throws -> RuntimeContainerImageSetOperation {
+        try decode(
+            RuntimeContainerImageSetOperation.self,
+            method: "POST",
+            path: "/runtime/container-image-set/rollback",
+            body: request
+        )
+    }
+
+    public func containerImageSetOperation(
+        _ operationId: String
+    ) throws -> RuntimeContainerImageSetOperation {
+        try decode(
+            RuntimeContainerImageSetOperation.self,
+            method: "GET",
+            path: "/runtime/container-image-set/operations/\(pathSegment(operationId))"
+        )
+    }
+
+    public func activeGuestRelease() throws -> RuntimeGuestReleaseRead {
+        let response = try httpClient.send(
+            request(method: "GET", path: "/runtime/guest-runtime-release", body: nil),
+            bodyFileURL: nil
+        )
+        if response.statusCode == 503 {
+            do {
+                return try decoder.decode(RuntimeGuestReleaseRead.self, from: response.data)
+            } catch {
+                throw requestFailed(response)
+            }
+        }
+        return try decode(RuntimeGuestReleaseRead.self, from: response)
+    }
+
+    public func applyGuestRelease(
+        _ request: RuntimeGuestReleaseMutationRequest
+    ) throws -> RuntimeGuestReleaseOperation {
+        try decode(
+            RuntimeGuestReleaseOperation.self,
+            method: "POST",
+            path: "/runtime/guest-runtime-release/apply",
+            body: request
+        )
+    }
+
+    public func rollbackGuestRelease(
+        _ request: RuntimeGuestReleaseMutationRequest
+    ) throws -> RuntimeGuestReleaseOperation {
+        try decode(
+            RuntimeGuestReleaseOperation.self,
+            method: "POST",
+            path: "/runtime/guest-runtime-release/rollback",
+            body: request
+        )
+    }
+
+    public func guestReleaseOperation(
+        _ operationId: String
+    ) throws -> RuntimeGuestReleaseOperation {
+        try decode(
+            RuntimeGuestReleaseOperation.self,
+            method: "GET",
+            path: "/runtime/guest-runtime-release/operations/\(pathSegment(operationId))"
+        )
+    }
+
     public func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {
         try decode(RuntimeGuestControlServiceStatus.self, method: "GET", path: "/runtime/services/\(pathSegment(service))/status")
     }
@@ -527,7 +626,8 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
-            path: "/runtime/maintenance/redis-backup"
+            path: "/runtime/maintenance/redis-backup",
+            timeoutInterval: backupTimeout
         )
     }
 
@@ -535,7 +635,8 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
         try decode(
             RuntimeGuestControlServiceOperation.self,
             method: "POST",
-            path: "/runtime/maintenance/postgres-backup"
+            path: "/runtime/maintenance/postgres-backup",
+            timeoutInterval: backupTimeout
         )
     }
 
@@ -1006,6 +1107,18 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway,
             request(method: method, path: path, body: nil),
             bodyFileURL: nil
         )
+        return try decode(type, from: response)
+    }
+
+    private func decode<T: Decodable>(
+        _ type: T.Type,
+        method: String,
+        path: String,
+        timeoutInterval: TimeInterval
+    ) throws -> T {
+        var request = try request(method: method, path: path, body: nil)
+        request.timeoutInterval = timeoutInterval
+        let response = try httpClient.send(request, bodyFileURL: nil)
         return try decode(type, from: response)
     }
 

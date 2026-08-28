@@ -6,10 +6,10 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 
 | 질문 | 답 |
 |---|---|
-| update 입력 단위는? | `dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball |
-| 현장 적용 UI는? | 0.2.1 UI는 integrity 확인만 제공하고 apply는 `canApplyBundle=false`로 차단한다 |
-| CLI backend는? | 0.2.1에서는 installed `dev` launcher와 명시적 `--allow-unsigned-dev-bundle` intent만 `/usr/local/bin/vitalserver-vm runtime apply-bundle`을 실행할 수 있다 |
-| 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size로 integrity를 확인한다. publisher authenticity는 검증하지 않는다 |
+| update 입력 단위는? | signed stable Product Update는 `dist/update-bundles/<update-id>.tar.gz`, legacy VM Image Update는 기존 schema-3 tarball |
+| 현장 적용 UI는? | 0.2.2 installed macOS Host는 stable bootstrap verify/apply capability를 제공한다 |
+| CLI backend는? | Runtime Control worker가 `verify-update-bootstrap`과 `apply-update-bootstrap --request-id`를 실행한다 |
+| 검증 기준은? | publisher signature, target, bundle-owned next updater, specification digest, payload closure를 인증한다 |
 | Product Update bundle에 rootfs가 들어가나? | 아니다. `make dist/update/release`는 rootfs를 제외한다 |
 | rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make dist/image-update/release`를 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
@@ -17,11 +17,31 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | Docker image bundle만 바꾸면 container가 자동 갱신되나? | update 단계에서 guest-side activation을 실행해야 한다 |
 | `bootstrap.sh` 수정은 update bundle로 반영되나? | 된다. `guest-deploy.tar.gz`에 포함되고 기본 migration/activation 경로로 반영된다 |
 | 실패 시 자동 rollback하나? | apply 중 health check 실패 시 managed backup으로 rollback을 시도한다 |
-| update 중 watchdog이 복구를 시도하나? | 안 한다. `apply-bundle`, `activate-guest-update`, `rollback` 진행 중에는 watchdog auto-recovery를 suppress한다 |
+| update 중 watchdog이 복구를 시도하나? | 안 한다. stable update operation lease가 활성인 동안 watchdog auto-recovery를 suppress한다 |
 
-## 0.2.1 Update Apply 제한
+설치된 launcher를 사용자 shell에서 직접 실행할 때는 installed Host 경계를
+명시해야 합니다.
 
-0.2.1 bundle의 `signature` 파일은 `unsigned` placeholder이고 trusted publisher verification 구현과 trust root/config 계약이 없습니다. 따라서 integrity 확인 성공을 publisher 인증 성공으로 취급하면 안 됩니다.
+```sh
+VITALSERVER_VM_HOME="/Library/Application Support/VitalServerHelper/vm" \
+  /usr/local/bin/vitalserver-vm runtime verify-update-bootstrap \
+  /path/to/update.tar.gz
+```
+
+Runtime Control Platform Agent도 같은 값을 명시적으로 worker environment에
+전달합니다. 이 값이 없으면 root service는 `/var/root/.tirosh`를 개발 기본값으로
+선택하므로 installed trust store나 journal을 읽은 것으로 인정할 수 없습니다.
+
+Fresh install은 release manifest의 `releaseLabel`과 실제 rootfs staging
+archive 바이트로 초기 Container Image-Set 및 Guest Runtime Release 계약을
+만든다. Guest bootstrap은 control-store migration 뒤 이 계약을 검증하고,
+두 immutable owner와 initial provisioning receipt를 Guest SQLite에 함께
+기록한다. 이후 boot는 receipt와 현재 owner 무결성만 검증하며, update로
+변경된 current/active identity를 package baseline으로 되돌리지 않는다.
+
+## Historical: 0.2.1 Update Apply 제한
+
+아래는 이전 0.2.1 설치본의 containment 계약입니다. 0.2.2 stable bootstrap의 현재 동작이 아닙니다. 0.2.1 bundle의 `signature` 파일은 `unsigned` placeholder이고 trusted publisher verification 구현과 trust root/config 계약이 없었습니다.
 
 | 진입점 | 0.2.1 계약 |
 |---|---|
@@ -55,7 +75,7 @@ bundle kind는 의도적으로 두 개만 둡니다.
 | `product-update` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
-Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 않고 `product-update`의 channel, changed components, `requiresTwoPhaseUpdate` 같은 metadata로 표현합니다.
+Hotfix와 service-only update는 별도 kind를 만들지 않고 `product-update`의 signed specification layer plan으로 표현합니다. Updater bridge와 `requiresTwoPhaseUpdate`는 legacy schema-3 경로에만 남아 있으며 stable bootstrap은 매 release의 signed next updater를 사용합니다.
 
 ### Layer And Version Model
 
@@ -67,7 +87,7 @@ Hotfix, service-only update, updater bridge update는 별도 kind를 만들지 �
 | Helper UI | cross-platform Web/PWA primary | iPhone/Android/iPad/desktop browser와 native shell wrapper에서 쓰는 product UI | `components.helperUI` |
 | Native Shell | platform-specific | install/bootstrap/pairing/recovery/native picker/tray/menu | `components.nativeShell` |
 | Runtime Control API | common API contract, platform-specific host implementation | auth/session/pairing, capability, status/log/update/settings/admin endpoint, progress/log streaming | `components.runtimeControl` |
-| Updater | host/platform-specific | product update bundle 검증/적용/rollback, manifest compatibility gate | `components.updater`, `minUpdaterVersion` |
+| Updater | host/platform-specific | signed bootstrap 검증, bundle-owned next updater handoff, 적용/rollback | bootstrap envelope, Product Update Specification |
 | Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, auto-recovery suppression | `components.supervisor` |
 | VM Driver | platform-specific | macOS Apple Virtualization, Windows provider 등 VM lifecycle provider | `components.vmDriver` |
 | Service Stack | mostly guest/service-specific | guest deploy assets, compose, container image bundle, service activation 단위 | `components.serviceStack` |
@@ -121,9 +141,57 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 | result에 `requestId` 없음 | baseline 계약 위반으로 stale/failed 처리 |
 | result status가 `failed` | 즉시 실패 처리하고 message를 Helper UI와 command log에 노출 |
 
-### Manifest Compatibility
+### Stable Bootstrap Compatibility
 
-update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니다.
+현재 stable update에는 minimum updater version이나 updater bridge gate가 없습니다.
+설치된 Host는 고정된 signed envelope에서 publisher, target, next updater
+artifact, specification artifact, 그리고 envelope가 직접 소유하는 exact
+`payloadArtifacts` closure를 검증합니다. 검증된 next updater만 변경되는
+Product Update Specification을 decode합니다. 따라서 `release.json`,
+`release-dev.json`, Runtime Control release read model은 minimum updater
+version을 소유하거나 노출하지 않습니다.
+
+Bootstrap envelope은 schema `v2`이며 `payloadArtifacts` exact closure를
+직접 소유합니다. 설치 Host는 이 고정 계약만으로 모든 파일의 digest/size와
+no-extra file closure를 검증하고, specification은 opaque bytes로만 취급해
+next updater에 handoff합니다. 설치 Host는 인증된 specification을 decode하지
+않으므로, 미래 specification schema에 새 필드가 추가되어도 기존 Host의
+bootstrap admission이 막히지 않습니다. v1 envelope는 unsupported schema로
+거부되며, v1 Host는 v2 envelope를 수락하지 않습니다. 두 schema를 모두
+수락하는 fallback은 없습니다.
+
+검증 순서는 소유 계약 순서를 지킵니다. 먼저 archive path, entry kind,
+duplicate와 envelope/next updater/specification/payloadArtifacts 존재 여부만
+구조적으로 검사합니다. 이어 publisher signature를 검증하고, envelope이 선언한
+next updater/specification/payloadArtifacts 각각의 digest와 size를 확인한 뒤
+exact file closure(추가 파일 없음)를 검증합니다. 이 과정에서 specification을
+decode하지 않습니다. staging 후에도 같은 envelope-owned closure를 다시
+검증합니다.
+
+검증된 next updater만 specification을 decode하고, specification이 선언한
+apply/executor/configuration/rollback artifact가 signed `payloadArtifacts`
+closure와 정확히 일치하는지 교차 검증합니다. 선언 누락, 추가 artifact, digest
+또는 size 불일치는 next updater가 admission을 거부합니다.
+
+필드나 specification이 바뀌어도 기존 Host가 새 specification을 추측하거나
+fallback으로 해석하지 않습니다. 기존 Host는 고정 bootstrap 계약만 검증하고,
+bundle이 제공한 next updater에 인증된 입력을 그대로 handoff합니다.
+
+`issuedAt`은 단순 `YYYY-MM-DDTHH:MM:SSZ` 문자열 패턴이 아니라 실제로 존재하는
+UTC 순간이어야 합니다. publisher(builder/verifier)와 설치 Host의 Swift verifier
+가 동일한 canonical UTC 순간을 검증하므로, 존재하지 않는 날짜(예: 2월 30일,
+13월, 24시)는 publisher와 verifier 양쪽에서 거부됩니다.
+식별자(`id`, `productId`, `signature.keyId`, artifact id, effect executor id)는
+ASCII `[A-Za-z0-9._-]{1,128}` 계약을 공유합니다. publisher, bootstrap envelope,
+effect configuration, Product Update Specification planner가 동일한 계약을
+적용하므로 leading `._-`은 허용되고 `:`와 비-ASCII 문자는 거부됩니다.
+
+### Legacy schema-3 Manifest Compatibility
+
+아래 계약은 전환 기간 동안 남아 있는 legacy publisher/engine에만 적용됩니다.
+현재 stable Product Update나 release source of truth 계약이 아닙니다.
+`make dist/update/*`는 이 legacy publisher를 사용하지 않습니다. 이 계약은
+`make dist/image-update/*`의 VM Image Update에만 남아 있습니다.
 
 ```json
 {
@@ -134,7 +202,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
   "helperVersion": "0.2.0",
   "releaseLabel": "0.2.0",
   "targetPlatform": "macos-arm64",
-  "minUpdaterVersion": "0.1.6",
+  "minUpdaterVersion": "0.0.0",
   "components": {
     "helperUI": "0.2.0+macos.1",
     "nativeShell": "0.2.0+macos.1",
@@ -166,7 +234,7 @@ update bundle manifest에는 updater 호환성 판단을 위한 필드를 둡니
 | `requiresGuestActivation` | `guest-deploy` 교체 후 VM 내부 activation이 필요한지 |
 | `requiresTwoPhaseUpdate` | updater 자체를 먼저 갱신해야 하는 bridge update가 필요한지 |
 
-Reader는 required contract field 누락을 실패로 처리합니다. 새 필드는 가능한 optional metadata로 추가하고, required field/schema major version을 바꾸는 경우에는 기존 Updater가 읽을 수 있는 bridge/two-phase Product Update를 먼저 제공해야 합니다. Stable/dev artifact identity와 optional container 포함 정책은 `apps/vitalserver-macos-runtime/release.json` 및 `release-dev.json`을 SoT로 삼고, build tool이 manifest로 변환합니다.
+Legacy reader는 required contract field 누락을 실패로 처리합니다. 이 serializer가 요구하는 `minUpdaterVersion`은 explicit no-gate 값으로만 기록하며 stable/dev release source of truth에는 저장하지 않습니다. Stable/dev artifact identity와 optional container 포함 정책은 `apps/vitalserver-macos-runtime/release.json` 및 `release-dev.json`을 SoT로 삼습니다.
 
 `requiresTwoPhaseUpdate`의 owner 경계는 아래처럼 고정합니다.
 
@@ -250,8 +318,8 @@ Build에서도 bridge 여부를 별도로 선언합니다.
 # 일반 VM Image Update: requiresTwoPhaseUpdate=false
 make dist/image-update/dev
 
-# 기존 Updater를 먼저 교체해야 하는 명시적 bridge Product Update
-make dist/update/dev VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE=true
+# legacy VM Image publisher에서 bridge가 실제로 필요한 경우에만 명시
+make dist/image-update/dev VM_IMAGE_UPDATE_REQUIRES_TWO_PHASE_UPDATE=true
 ```
 
 ### Idempotency 기준
@@ -370,40 +438,179 @@ Release gate를 통과하지 못한 bundle은 현장 전달 대상이 아닙니�
 
 ## Update Bundle 구조
 
-Product Update bundle은 설치 파일 전체가 아니라 교체 가능한 artifact 묶음입니다.
+현재 stable Product Update는 publisher가 명시적으로 받은 세 layer의 current와
+rollback artifact를 하나의 signed closure로 묶습니다.
 
 ```text
-dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
+dist/update-bundles/<update-id>.tar.gz
 ```
 
-tarball 내부 구조:
+인증된 specification의 적용 순서는 고정입니다.
 
 ```text
-update-bundle-<channel>-<kind>-<releaseLabel>/
-  manifest.json
-  checksums.txt
-  signature
-  app-bundle.tar.gz
-  runtime-tools.tar.gz
-  nginx-bundle.tar.gz
-  guest-deploy.tar.gz
-  migrations/
+Container -> Guest Runtime -> Helper Host Platform
 ```
 
-`rootfs-base.raw.gz`는 Product Update bundle에 포함하지 않습니다. VM Image/rootfs를 바꾸는 경우에만 `make dist/image-update/release`로 별도 bundle을 만들며, 이때 manifest에 `rootfs-base` artifact가 추가됩니다.
+각 layer는 immutable current artifact, immutable rollback artifact, effect
+executor와 effect configuration을 가집니다. Helper Host Platform archive는
+Helper app과 교체 가능한 Host service를 포함하지만 다음 stable owner는
+포함하거나 교체할 수 없습니다.
 
-각 artifact의 의미는 아래와 같습니다.
+Guest Control endpoint는 signed effect configuration의 일부가 아닙니다.
+Platform Agent가 Host-owned Guest address provider에서 현재 주소를 읽고,
+`update-bootstrap-handoff/v2`와
+`product-update-layer-effect-invocation/v2`를 통해 next updater와
+Guest-owned layer executor에 명시적으로 전달합니다. 주소가 missing,
+invalid, stale, 또는 read-failed이면 apply를 진행하지 않으며 loopback이나
+이전 관측값으로 보정하지 않습니다.
 
-| artifact | 대상 | 적용 결과 |
-|---|---|---|
-| `app-bundle.tar.gz` | `/Applications/VitalServer Helper.app` | Helper UI 교체. 적용 중 실행 중인 app과 충돌할 수 있어 재실행이 필요 |
-| `runtime-tools.tar.gz` | `/usr/local/bin` | Updater/Supervisor/VM Driver tools, `vitalserver-proxy-run`, uninstall CLI 교체 |
-| `nginx-bundle.tar.gz` | `/Library/Application Support/VitalServerHelper/nginx` | macOS host proxy binary/config asset 교체 |
-| `guest-deploy.tar.gz` | `/Library/Application Support/VitalServerHelper/vm/data/deploy` | VM 안에서 참조하는 Compose, guest bin/systemd, nginx config, Docker image bundle 교체 |
-| `rootfs-base.raw.gz` | `/Library/Application Support/VitalServerHelper/vm/runtime/rootfs-base.raw.gz` | `vm-image-update` bundle에만 포함. 이후 provisioning 기준 base artifact 교체. 기존 `vm-disk.img`에는 자동 전개하지 않음 |
-| `migrations/*` | host runtime command | 설치된 runtime 상태를 바꾸는 executable migration. 기본 bundle에는 cloud-init seed refresh migration이 포함됨 |
+- `/usr/local/bin/vitalserver-host-installation-manager`
+- `/usr/local/bin/vitalserver-update-handoff-supervisor`
 
-중요한 구분은 `rootfs-base.raw.gz`와 `vm-disk.img`입니다.
+Host Platform 적용이 실패하면 Host Platform durable compensation이 먼저
+이전 Host release를 되돌립니다. 이 보상은 Host Platform apply receipt의
+실패와 Host Platform phase journal로 남으며, product-update rollback
+receipt의 `host-platform` 항목이 아닙니다. 이미 성공한 product layer는
+역순으로 되돌립니다: Guest Runtime 다음 Container. execution report는
+전체 ordered apply/rollback receipt를 보존하며, 누락되거나 순서가 다른
+receipt는 성공 증거가 아닙니다. `prove-update-bootstrap --expect
+failed-rolled-back`은 apply receipts `container, guest-runtime,
+host-platform`(마지막 실패)와 rollback receipts `guest-runtime,
+container`(모두 성공)를 요구합니다.
+
+Host release service 전환은 `launchctl bootout` 명령의 성공만으로 종료를
+간주하지 않습니다. 각 service를 내린 뒤 launchd가 명시적으로 `notLoaded`를
+보고할 때까지 기다리고, 특히 VM에는 graceful shutdown을 포함한 장기 stop
+window를 적용합니다. target service 시작이 중간에 실패하면 이미 시작된
+target service만 역순으로 내리고 settlement를 확인한 뒤, 실제 unload가
+요청된 previous service만 manifest 순서로 복구합니다. launchctl read 실패,
+권한 실패, unknown state, settlement timeout은 모두 서로 다른 실패로
+보존하며 성공이나 `notLoaded`로 보정하지 않습니다.
+
+Guest content-addressed artifact store는 같은 digest가 이미 존재해도 incoming
+request body를 declared Content-Length까지 소비하고 SHA-256을 검증합니다.
+기존 artifact 존재를 이유로 body를 읽지 않고 성공 응답을 반환하면 Host upload
+task에는 connection-lost로 관측되므로 idempotent import가 아닙니다.
+
+`rootfs-base.raw.gz`는 stable Product Update에 포함하지 않습니다. VM
+Image/rootfs를 바꾸는 경우에만 `make dist/image-update/release`의 별도 legacy
+bundle을 사용합니다.
+
+### Installed field proof
+
+설치/서명/적용 전에 명령 표면과 이름 붙은 입력만 검사하려면 아래
+non-mutating preflight를 먼저 실행합니다. 이 단계는 VM/rootfs를 만들지
+않고, sudo를 쓰지 않으며, secret 값을 출력하지 않습니다.
+
+```sh
+make dist/update/field-proof-preflight
+```
+
+`apply-update-bootstrap`의 성공 종료는 durable handoff admission과 launch
+성공을 뜻하며 전체 layer 적용 완료를 뜻하지 않습니다. 따라서 field smoke는
+고정 sleep이나 apply exit code로 최종 결과를 추측하지 않습니다.
+`make dist/update/dev/apply-smoke`는 설치된 Helper가 서명된 bundle을
+terminal `succeeded` journal까지 적용했는지를 증명합니다. 설치된
+`helperVersion`과 envelope `targetRelease.productVersion`의 later-than
+비교는 없으므로, 이 smoke만으로 Helper 0.2.2에서 이후 product version으로의
+upgrade를 증명하지 않습니다. 그 관계는 운영자가 명시한 두 identity를
+기록하는 것이고, preflight는 같음/다름만 보고합니다.
+
+```sh
+make dist/update/dev/apply-smoke \
+  VM_UPDATE_APPLY_SMOKE_CONFIRM=YES \
+  VM_UPDATE_APPLY_REQUEST_ID=<unique-request-id>
+
+make dist/update/dev/rollback-smoke \
+  VM_UPDATE_APPLY_SMOKE_CONFIRM=YES \
+  VM_UPDATE_ROLLBACK_PROOF_BUNDLE=/path/to/separately-signed-fault-bundle.tar.gz \
+  VM_UPDATE_ROLLBACK_PROOF_ID=<fault-update-id> \
+  VM_UPDATE_ROLLBACK_PROOF_REQUEST_ID=<unique-request-id>
+```
+
+proof command는 명시된 timeout과 poll interval 동안 Host owner SQLite journal의
+terminal state를 기다립니다. 이후 digest로 고정된 execution report와 signed
+specification을 검증하고, Runtime Control `/platform/operations`가 제공한
+stable update journal이 Host owner journal과 동일한지 확인합니다. 이어서
+`verify-update-bootstrap`이 성공 후에 남긴 verification receipt를 현재
+update identity와 상관합니다. proof는 `InstalledRuntimePaths.defaultInstalled`의 runtime home과 trust
+store, canonical `observedAt`, 그리고 root `uid=0`/`euid=0`을 요구합니다.
+receipt는 그 product-installed path에서 읽습니다. proof process의
+`VITALSERVER_VM_HOME`으로 기댓값을 바꾸지 않습니다. 이것은 그 bundle에
+대한 root `verify-update-bootstrap`가 product-installed VM home에서 실행된
+증거입니다. MacPlatformAgent caller 증거가 아니며, public CLI나 apply-smoke가
+같은 receipt를 만들 수 있습니다. Platform Agent 증명은
+`--require-platform-agent-verification`이 있을 때만 receipt, verifier binding,
+MacPlatformAgent evidence를 상관합니다. receipt path는
+`/Library/Application Support/VitalServerHelper/update-bootstrap-verification/<update-id>.json`
+입니다. staging directory와 분리되어 있으므로 apply가 bundle을 교체해도
+receipt를 지우지 않습니다. digest는 같은 `updateId`로 payload가 바뀐
+bundle의 이전 receipt를 거부합니다. 같은 updateId와 digest의 이전 root
+verify는 현재 apply의 새 invocation을 증명하지 않습니다. missing,
+unreadable, permission failure, decode failure, identity/digest mismatch,
+wrong runtime home, uid/euid mismatch, invalid contract는 서로 다른
+오류입니다. 그 다음 staged `handoff/invocation.json`의 required
+`guestControlBaseURL`을 현재 Host-owned Guest address observation과
+상관합니다. Host endpoint 계약은 HTTP와 port `18330`입니다. omitted/wrong
+port는 host mismatch와 다른 오류입니다. signed Host Platform effect
+configuration이 가리키는 Host Platform SQLite journal에서
+`<update-id>.host-platform.apply` operation과 active installation identity를
+읽습니다. `--expect succeeded`는 phase `completed`와 target release로의
+settlement를 요구합니다. `--expect failed-rolled-back`은 `failed` 또는
+`compensated`를 서로 다른 terminal로 허용하고, active installation이
+`previousRelease`와 원래 installation revision에 남아 있으며
+`activationOperationId`가 이 operation이 아닌지로 복원을 증명합니다.
+missing, invalid, failed, stale, mismatch, compensated, completed는 서로
+다른 오류입니다.
+
+`verify-update-bootstrap`은 성공한 검증 뒤에 verification receipt를
+원자적으로 기록합니다. 문서는 `schemaVersion`, `command=verify-update-bootstrap`,
+`updateId`, `canonicalPayloadSHA256`, `resolvedRuntimeHome`, `trustStorePath`,
+canonical UTC `observedAt`, `uid`, `euid`를 갖습니다. `uid`/`euid`는
+process identity adapter가 제공하며 Domain은 완전한 기댓값만 비교합니다.
+installed proof는 root identity `uid=0`/`euid=0`과 product-installed VM home
+`/Library/Application Support/VitalServerHelper/vm`을 요구합니다. verify는
+자신이 해석한 `InstalledRuntimePaths`에 receipt를 씁니다. 잘못된
+`VITALSERVER_VM_HOME`으로 실행된 verify는 canonical installed receipt 위치가
+아닌 곳에 쓰거나 다른 home을 기록하므로 installed proof를 통과할 수
+없습니다. apply-smoke의 `runtime verify-update-bootstrap`은 prove가 필수
+receipt를 갖도록 두는 root installed-CLI 단계이며,
+`VM_UPDATE_INSTALLED_RUNTIME_HOME`은 그 product-installed path와 같아야
+합니다. caller가 다른 home을 지정하면 field-proof preflight는 INVALID입니다.
+Platform Agent 증거가 아니며 성공을 추론하는 workaround도 아닙니다.
+MacPlatformAgent 증명은 `prove-update-bootstrap ... --require-platform-agent-verification`
+이 있을 때만 두 독립 owner를 상관합니다. MacPlatformAgentService가 spawn 전에
+unique verification invocation ID를 만들고 `--verification-invocation-id`로
+CLI에 넘기며, caller-owned evidence를
+`/Library/Application Support/VitalServerHelper/platform-agent-update-bootstrap-verification/<invocation-id>.json`
+에 기록합니다. caller evidence의 `state`가 discriminator이며
+bindingMissing/inspection/permission/read/decode/unexpectedPathState/invalid/
+identityMismatch는 서로 다른 값입니다. path와 reason은 detail입니다.
+evidence persist 실패를 child-process spawn 실패로 기록하지 않습니다.
+child verify가 exit 0이어도 terminal caller evidence persist가 실패하면
+outer Platform Agent verify는 nonzero로 실패하며 `isVerified`가 되지 않습니다.
+public CLI는 이 identity를 만들지 않습니다. 공유
+`MacRuntimeControlCommandWorker`는 MacPlatformAgent와 native Control Panel이
+모두 조립하므로 worker 자체가 Platform Agent identity가 아닙니다. native
+Control Panel verify는 이 invoker 없이 실행되므로 MacPlatformAgent 증거가
+아닙니다. PWA verify는 launchd Platform Agent API를 통과합니다. MacPlatformAgent
+verify 성공은 current verified-selection 문서를 남기고, 같은 host의 apply는
+그 store를 `applyCommitted`로 원자 교체한 뒤
+`--require-platform-agent-selection`으로 child에 요구합니다. public CLI는
+selection identity argument를 받지 않으며, native Control Panel apply는 이
+owner를 주입받지 않고 requirement flag도 붙이지 않습니다. `--require-platform-agent-verification`
+은 journal selection identity를 세 verify owner와 상관합니다. ordinary
+apply-smoke는 그 flag를 쓰지 않습니다. 설치된 MacPlatformAgent verify-then-apply
+field run은 실제 설치본 실행이 있기 전에는 proven이 아닙니다.
+성공한 trust-store 읽기, `/var/root/.tirosh` 부재, 현재 launchd 환경,
+또는 process 종료 후 environment로는 추론하지 않습니다.
+
+rollback smoke의 fault bundle은 일반 bundle에서 만들어내거나 암묵적으로
+변형하지 않습니다. Host Platform effect가 의도적으로 실패하도록 별도로
+구성하고 동일 publisher로 서명한 bundle이어야 하며, proof는
+Container와 Guest Runtime 적용 성공, Host Platform 적용 실패,
+Guest Runtime 다음 Container의 owner-safe rollback 성공 receipt를 모두
+요구합니다.
 
 ```text
 rootfs-base.raw.gz = immutable base artifact
@@ -485,16 +692,16 @@ VM Image Update bundle은 `rootfs-base.raw.gz`를 교체하지만, 이미 설치
 | managed backups | `backups/<timestamp>-before-<version>` | 생성/보존 |
 | Helper app | `/Applications/VitalServer Helper.app` | 교체 |
 | runtime CLI | `/usr/local/bin/*` | 교체 |
-| host nginx bundle | product `nginx/` | 교체 |
+| host nginx bundle | host-platform/current release nginx | 교체 |
 | guest deploy bundle | `vm/data/deploy/` | 교체 |
 
 `guest-deploy.tar.gz` 안에 Docker image bundle이 포함되어도, 그것은 “host shared directory에 새 image tar가 놓였다”는 뜻입니다. VM 안의 Docker daemon에 image가 실제로 load되고, 기존 container가 새 image로 recreate되는 것은 별도의 guest-side activation입니다.
 
-따라서 `apps/vitalserver-macos-runtime/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 0.2.1에서는 Helper Update 탭과 stable CLI apply가 차단되므로 실제 반영은 installed dev launcher의 명시적 개발 apply에만 허용됩니다.
+따라서 `apps/vitalserver-macos-runtime/Support/Guest/bootstrap.sh` 같은 guest deploy 파일을 수정했다면, 새 update bundle을 만들면 그 수정은 `guest-deploy.tar.gz`에 들어갑니다. 0.2.2 stable Product Update에서는 Guest Runtime layer owner가 signed specification과 authenticated artifact를 적용합니다. 아래 legacy apply 설명은 0.2.1과 schema-3 진단을 위해서만 남깁니다.
 
-## Apply 과정
+## Historical: Legacy schema-3 Apply 과정
 
-아래 lifecycle은 publisher trust gate를 통과한 apply에만 실행됩니다. 0.2.1에서는 installed dev launcher가 명시적 개발 intent를 받은 경우뿐입니다. Helper Update 탭과 Runtime Control API는 이 lifecycle을 시작하지 않습니다.
+아래 lifecycle은 stable bootstrap 이전의 schema-3 apply 흐름입니다. 0.2.1에서는 installed dev launcher가 명시적 개발 intent를 받은 경우에만 실행됐고, Helper Update 탭과 Runtime Control API는 이 lifecycle을 시작하지 않았습니다. 0.2.2의 현재 Product Update 흐름은 앞의 `Installed field proof`와 signed three-layer specification을 기준으로 합니다.
 
 ```text
 1. check bundle integrity; publisher authenticity remains unverified

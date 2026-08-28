@@ -6,7 +6,7 @@ import Errors
 
 @MainActor
 public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
-    public let capabilities = RuntimeControlCapabilities(canApplyBundle: false)
+    public let capabilities = RuntimeControlCapabilities(canApplyBundle: true)
 
     private let releaseInfo: RuntimeReleaseInfo
     private let platformStateReader: PlatformStateReading
@@ -21,6 +21,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         operationLeaseReader: any RuntimeOperationLeaseReading,
         guestAddressProvider: any RuntimeGuestAddressProvider,
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         hostSettingsReader: any RuntimeHostSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker
     ) {
@@ -28,7 +29,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
             releaseInfo: releaseInfo,
             platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
-                vmLifecycleResourceReader: vmLifecycleResourceReader
+                vmLifecycleResourceReader: vmLifecycleResourceReader,
+                installedProductReleaseReader: installedProductReleaseReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader
@@ -53,6 +55,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         operationLeaseReader: any RuntimeOperationLeaseReading,
         guestAddressProvider: any RuntimeGuestAddressProvider,
         vmLifecycleResourceReader: any RuntimeVMLifecycleResourceReading,
+        installedProductReleaseReader: (any InstalledProductReleaseReading)? = nil,
         settingsReader: any RuntimeSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker
     ) {
@@ -60,7 +63,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
             releaseInfo: releaseInfo,
             platformStateReader: SystemPlatformStateReader(
                 guestAddressProvider: guestAddressProvider,
-                vmLifecycleResourceReader: vmLifecycleResourceReader
+                vmLifecycleResourceReader: vmLifecycleResourceReader,
+                installedProductReleaseReader: installedProductReleaseReader
             ),
             operationStateReader: SystemPlatformOperationStateReader.live(
                 operationLeaseReader: operationLeaseReader
@@ -78,7 +82,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     public init(
         releaseInfo: RuntimeReleaseInfo,
         platformStateReader: any PlatformStateReading,
-        operationLeaseReader: any RuntimeOperationLeaseReading,
+        operationStateReader: any PlatformOperationStateReading,
         guestAddressProvider: any RuntimeGuestAddressProvider,
         settingsReader: any RuntimeSettingsReading,
         commandWorker: MacRuntimeControlCommandWorker
@@ -86,9 +90,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         self.init(
             releaseInfo: releaseInfo,
             platformStateReader: platformStateReader,
-            operationStateReader: SystemPlatformOperationStateReader.live(
-                operationLeaseReader: operationLeaseReader
-            ),
+            operationStateReader: operationStateReader,
             observabilityReader: SystemRuntimeObservabilityReader.live(
                 paths: RuntimeObservabilityPaths(),
                 guestAddressProvider: guestAddressProvider

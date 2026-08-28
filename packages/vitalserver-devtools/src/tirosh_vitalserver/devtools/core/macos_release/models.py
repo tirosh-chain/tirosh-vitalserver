@@ -23,6 +23,7 @@ class PackageContext:
     rootfs_base: Path
     golden_runtime_dir: Path
     guest_deploy_source: Path
+    update_bootstrap_trust_store: Path
     rootfs_input_metadata_plan: RootfsInputMetadataPlan
     proxy_port: str
     settings: MacOSReleaseSettings

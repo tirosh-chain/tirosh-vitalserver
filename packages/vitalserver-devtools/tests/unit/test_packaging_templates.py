@@ -12,11 +12,17 @@ from tirosh_vitalserver.devtools.adapters.macos_release.installer_templates impo
     render_packaging_template,
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
+from tirosh_vitalserver.devtools.application.usecases.macos_package import (
+    verify_dmg_pkg_update_handoff_supervisor,
+)
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
+    settings_current_release_binary,
+    settings_host_platform_current_release,
     settings_install_app_bundle,
+    settings_install_platform_agent,
 )
 
 PROXY_EVENT_TIMEOUT_SECONDS = 10
@@ -71,11 +77,32 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         root / "config/vm-build.toml",
         root,
     )
+    assert settings_host_platform_current_release(settings) == (
+        "/Library/Application Support/VitalServerHelper/"
+        "host-platform/current"
+    )
+    assert settings_current_release_binary(
+        settings,
+        "vitalserver-vm",
+    ) == (
+        "/Library/Application Support/VitalServerHelper/"
+        "host-platform/current/bin/vitalserver-vm"
+    )
+    assert settings_install_platform_agent(settings) == (
+        "/Library/Application Support/VitalServerHelper/host-platform/"
+        "current/app/VitalServer Helper.app/Contents/MacOS/"
+        "vitalserver-platform-agent"
+    )
     packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"
     platform_agent_launchd_template = (
         root
         / "apps/vitalserver-macos-runtime/launchd"
         / settings.launchd.platform_agent.template_file
+    )
+    update_handoff_supervisor_launchd_template = (
+        root
+        / "apps/vitalserver-macos-runtime/launchd"
+        / settings.launchd.update_handoff_supervisor.template_file
     )
     proxy_config_template = root / "infra/macos-nginx/vitalserver.conf.template"
     proxy_config_template_text = proxy_config_template.read_text(encoding="utf-8")
@@ -113,6 +140,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         settings,
         packaging / "postinstall.template",
         postinstall,
+        {
+            "INITIAL_RELEASE_ROOT":
+                "/Library/Application Support/VitalServerHelper/"
+                "host-platform/releases/helper-0.2.2/release",
+        },
     )
     render_packaging_executable(
         settings,
@@ -230,6 +262,35 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert 'manager_app="/Applications/VitalServer Helper.app"' in postinstall_text
     assert '"${manager_app}"' in postinstall_text
     assert '"${vm_bin}"' in postinstall_text
+    assert (
+        'host_installation_manager="/usr/local/bin/'
+        'vitalserver-host-installation-manager"'
+        in postinstall_text
+    )
+    assert (
+        'host_installation_database="/Library/Application Support/'
+        'VitalServerHelper/update-manager/state.sqlite"'
+        in postinstall_text
+    )
+    assert '"${host_installation_manager}" initialize \\' in postinstall_text
+    assert '--manifest "${initial_host_installation_manifest}" \\' in postinstall_text
+    assert '--database "${host_installation_database}"' in postinstall_text
+    assert (
+        '[ ! -L "${host_platform_installation_root}/current" ]'
+        in postinstall_text
+    )
+    assert (
+        'readlink "${host_platform_installation_root}/current"'
+        in postinstall_text
+    )
+    assert '[ -L "${manager_app}" ]' in postinstall_text
+    assert '[ ! -d "${manager_app}" ]' in postinstall_text
+    assert '[ ! -f "${manager_app}/Contents/Info.plist" ]' in postinstall_text
+    assert (
+        '[ ! -x "${manager_app}/Contents/MacOS/VitalServer Helper" ]'
+        in postinstall_text
+    )
+    assert 'readlink "${manager_app}"' not in postinstall_text
     assert "VitalServer Helper postinstall started" in postinstall_text
     assert "VitalServer Helper postinstall completed" in postinstall_text
     platform_agent_launchd_text = platform_agent_launchd_template.read_text(
@@ -238,6 +299,27 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "ai.tirosh.vitalserver.helper.platform-agent" in platform_agent_launchd_text
     assert "${VITALSERVER_PLATFORM_AGENT_BIN}" in platform_agent_launchd_text
     assert "<key>KeepAlive</key>\n  <true/>" in platform_agent_launchd_text
+    update_handoff_supervisor_launchd_text = (
+        update_handoff_supervisor_launchd_template.read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        "ai.tirosh.vitalserver.helper.update-handoff-supervisor"
+        in update_handoff_supervisor_launchd_text
+    )
+    assert (
+        "${VITALSERVER_UPDATE_HANDOFF_SUPERVISOR_BIN}"
+        in update_handoff_supervisor_launchd_text
+    )
+    assert (
+        "${VITALSERVER_UPDATE_HANDOFF_JOBS}"
+        in update_handoff_supervisor_launchd_text
+    )
+    assert (
+        "<key>KeepAlive</key>\n  <true/>"
+        in update_handoff_supervisor_launchd_text
+    )
     assert "pkgutil --forget" not in postinstall_text
     assert "rm -rf" not in postinstall_text
     assert "runtime install progress status=" not in postinstall_text
@@ -246,6 +328,15 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert (
         'runtime_logs="${VITALSERVER_RUNTIME_LOGS:-${product_root}/logs/runtime}"'
         in proxy_run_text
+    )
+    assert (
+        'nginx_prefix="${VITALSERVER_NGINX_PREFIX:-'
+        '/Library/Application Support/VitalServerHelper/nginx}"' in proxy_run_text
+    )
+    assert (
+        'nginx_bin="${VITALSERVER_NGINX_BIN:-'
+        "/Library/Application Support/VitalServerHelper/"
+        'host-platform/current/nginx/sbin/nginx}"' in proxy_run_text
     )
     assert "runtime-endpoint.json" not in proxy_run_text
     assert 'state_file="${vm_home}/data/run/runtime-observation.json"' not in proxy_run_text
@@ -389,6 +480,46 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert os.access(uninstall, os.X_OK)
     assert os.access(reset_for_reinstall_command, os.X_OK)
     assert os.access(upstream_redis_backup_command, os.X_OK)
+
+
+def test_dmg_payload_requires_durable_update_handoff_owner(
+    tmp_path: Path,
+) -> None:
+    executable_path = "/usr/local/bin/vitalserver-update-handoff-supervisor"
+    plist_path = (
+        "/Library/LaunchDaemons/"
+        "ai.tirosh.vitalserver.helper.update-handoff-supervisor.plist"
+    )
+    jobs_path = (
+        "/Library/Application Support/VitalServerHelper/update-handoff/jobs"
+    )
+    executable = tmp_path / executable_path.strip("/")
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable.chmod(0o755)
+    plist = tmp_path / plist_path.strip("/")
+    plist.parent.mkdir(parents=True)
+    plist.write_text(
+        "\n".join(
+            [
+                f"<string>{executable_path}</string>",
+                f"<string>{jobs_path}</string>",
+                "<key>KeepAlive</key>",
+                "  <true/>",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    checks = verify_dmg_pkg_update_handoff_supervisor(
+        payload=tmp_path,
+        executable_path=executable_path,
+        plist_path=plist_path,
+        jobs_path=jobs_path,
+    )
+
+    assert checks
+    assert not any(check.blocks for check in checks)
 
 
 def test_proxy_run_does_not_report_started_when_proxy_readiness_fails(

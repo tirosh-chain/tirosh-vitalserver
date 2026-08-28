@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tirosh.internal/schemas/vitalserver/guest-runtime-layer-effect-configuration-v2.json",
+  "title": "VitalServer Guest Runtime Release Layer Effect Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "layer",
+    "effectExecutorId",
+    "requestTimeoutSeconds",
+    "operationTimeoutSeconds",
+    "pollIntervalMilliseconds",
+    "apply",
+    "rollback"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "vitalserver.guest-owner-layer-effect-configuration/v2"
+    },
+    "layer": {
+      "const": "guest-runtime"
+    },
+    "effectExecutorId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestTimeoutSeconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 900
+    },
+    "operationTimeoutSeconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 3600
+    },
+    "pollIntervalMilliseconds": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 5000
+    },
+    "apply": {
+      "$ref": "#/$defs/identityTransition"
+    },
+    "rollback": {
+      "$ref": "#/$defs/identityTransition"
+    }
+  },
+  "$defs": {
+    "identityTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedIdentity",
+        "targetIdentity"
+      ],
+      "properties": {
+        "expectedIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetIdentity": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

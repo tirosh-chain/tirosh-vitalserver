@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "v2",
+  "id": "helper-release-bootstrap-022",
+  "productId": "ai.tirosh.vitalserver.helper",
+  "target": {
+    "platform": "macos",
+    "architecture": "arm64"
+  },
+  "targetRelease": {
+    "productVersion": "0.2.2",
+    "runtimeVersion": "0.2.2"
+  },
+  "layerOrder": [
+    "guest-runtime",
+    "container",
+    "host-platform"
+  ],
+  "nextUpdaterArtifact": {
+    "id": "helper-next-updater-022",
+    "relativePath": "payload/vitalserver-next-updater",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sizeBytes": 42,
+    "mediaType": "application/vnd.tirosh.vitalserver.helper-next-updater"
+  },
+  "specification": {
+    "id": "helper-product-update-specification-022",
+    "relativePath": "payload/product-update.json",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "sizeBytes": 91,
+    "mediaType": "application/json"
+  },
+  "payloadArtifacts": [
+    {
+      "id": "host-platform-apply",
+      "relativePath": "payload/layers/host-platform/apply.bin",
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sizeBytes": 7,
+      "mediaType": "application/octet-stream"
+    }
+  ],
+  "signature": {
+    "algorithm": "ed25519",
+    "keyId": "helper-release-key-2026",
+    "signedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "value": "base64-ed25519-signature"
+  },
+  "issuedAt": "2026-07-27T00:00:00Z"
+}

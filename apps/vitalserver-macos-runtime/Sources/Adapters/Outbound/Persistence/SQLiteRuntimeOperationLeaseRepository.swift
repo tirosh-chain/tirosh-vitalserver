@@ -107,6 +107,8 @@ public struct SQLiteRuntimeOperationLeaseRepository:
                 schemaVersion: existing.schemaVersion,
                 operationId: existing.operationId,
                 operation: existing.operation,
+                targetInstallationId: existing.targetInstallationId,
+                expectedInstallationRevision: existing.expectedInstallationRevision,
                 ownerPID: existing.ownerPID,
                 startedAt: existing.startedAt,
                 heartbeatAt: heartbeatAt,
@@ -323,11 +325,13 @@ public struct SQLiteRuntimeOperationLeaseRepository:
               started_at,
               heartbeat_at,
               expires_at,
-              message
+              message,
+              target_installation_id,
+              expected_installation_revision
             FROM runtime_operation_lease
             WHERE singleton_id = 1
             """,
-            columnCount: 10
+            columnCount: 12
         ) else {
             return .missing
         }
@@ -338,6 +342,11 @@ public struct SQLiteRuntimeOperationLeaseRepository:
             schemaVersion: try requiredInt(row[2], field: "document_schema_version"),
             operationId: try requiredText(row[3], field: "operation_id"),
             operation: RuntimeOperation(rawValue: try requiredText(row[4], field: "operation")),
+            targetInstallationId: row[10],
+            expectedInstallationRevision: try optionalInt(
+                row[11],
+                field: "expected_installation_revision"
+            ),
             ownerPID: try optionalInt(row[5], field: "owner_pid"),
             startedAt: try requiredText(row[6], field: "started_at"),
             heartbeatAt: try requiredText(row[7], field: "heartbeat_at"),
@@ -374,8 +383,10 @@ public struct SQLiteRuntimeOperationLeaseRepository:
               heartbeat_at,
               expires_at,
               message,
+              target_installation_id,
+              expected_installation_revision,
               updated_at
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(singleton_id) DO UPDATE SET
               revision = excluded.revision,
               state = excluded.state,
@@ -387,6 +398,8 @@ public struct SQLiteRuntimeOperationLeaseRepository:
               heartbeat_at = excluded.heartbeat_at,
               expires_at = excluded.expires_at,
               message = excluded.message,
+              target_installation_id = excluded.target_installation_id,
+              expected_installation_revision = excluded.expected_installation_revision,
               updated_at = excluded.updated_at
             """,
             bindings: [
@@ -400,6 +413,8 @@ public struct SQLiteRuntimeOperationLeaseRepository:
                 .text(document.heartbeatAt),
                 .optionalText(document.expiresAt),
                 .optionalText(document.message),
+                .optionalText(document.targetInstallationId),
+                .optionalInt(document.expectedInstallationRevision),
                 .text(updatedAt),
             ]
         )

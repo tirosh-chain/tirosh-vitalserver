@@ -159,10 +159,22 @@ struct RuntimeLifecycle {
             try configure(command)
         case .verifyBundle(let bundleURL):
             try verifyBundle(bundleURL)
+        case .verifyUpdateBootstrap(let command):
+            try verifyUpdateBootstrap(command)
         case .stageBundle(let bundleURL):
             _ = try stageBundle(bundleURL)
         case .applyBundle(let command):
             try applyBundle(command)
+        case .applyUpdateBootstrap(let command):
+            try applyUpdateBootstrap(command)
+        case .resumeUpdateBootstrapHandoff(let command):
+            try resumeUpdateBootstrapHandoff(command)
+        case .settleUpdateBootstrapHandoff(let command):
+            try settleUpdateBootstrapHandoff(command)
+        case .proveUpdateBootstrap(let command):
+            try proveUpdateBootstrap(command)
+        case .failUpdateBootstrap(let command):
+            try failUpdateBootstrap(command)
         case .rollback(let command):
             try rollback(command)
         case .redisBackup:

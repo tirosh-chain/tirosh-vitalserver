@@ -57,11 +57,11 @@ Runtime capability identifier `services:start`, `services:stop`,
 `lab:scenarios`, `lab:sessions:list`, `lab:recorders:start`,
 `lab:recorders:stop` 등 Runtime Controller가 보고한 Lab capability를 사용합니다.
 
-0.2.1 Platform Agent는 `canApplyBundle=false`를 명시합니다. 이 값은
-trusted publisher verification이 구현되지 않은 제품 제한이며, 운영자가 trust
-설정을 추가하면 바뀌는 설정 상태가 아닙니다. Bundle summary와 integrity 확인은
-`canOpenLocalFiles`로 계속 사용할 수 있지만 publisher authenticity를 인증하지
-않습니다.
+0.2.2 installed macOS Platform Agent는 `canApplyBundle=true`를 명시하고
+stable bootstrap verifier/apply worker를 제공합니다. Verify는 publisher
+signature, target, bundle-owned next updater, specification, payload closure를
+인증합니다. 해당 Host worker가 없는 build는 `canApplyBundle=false`를 명시하며,
+UI나 API가 이 상태를 성공으로 추론하지 않습니다.
 
 | Method | Path |
 |---|---|
@@ -403,8 +403,8 @@ credential로 recorder-ingress를 호출합니다. recorder-ingress가
 | `GET` | `/platform/logs/stream` | SSE host log text snapshot subscription |
 | `POST` | `/platform/logs/export` | export local logs |
 | `POST` | `/platform/update-bundles/summary` | inspect selected update bundle |
-| `POST` | `/platform/update-bundles/verify` | check selected bundle manifest/size/checksum integrity; publisher authenticity remains unverified |
-| `POST` | `/platform/update-bundles/apply` | 0.2.1 always returns `501 updateApplyUnavailable` before invoking Host apply |
+| `POST` | `/platform/update-bundles/verify` | start durable stable-bootstrap publisher/payload verification |
+| `POST` | `/platform/update-bundles/apply` | start durable authenticated stable-bootstrap apply when `canApplyBundle=true` |
 | `POST` | `/platform/operations/lease/acquire` | acquire Host operation lease through `RuntimeOperationLeaseOwner` |
 | `POST` | `/platform/operations/lease/heartbeat` | heartbeat Host operation lease through `RuntimeOperationLeaseOwner` |
 | `POST` | `/platform/operations/lease/release` | release Host operation lease through `RuntimeOperationLeaseOwner` |
@@ -424,10 +424,11 @@ path state is not an empty backup list; it must surface as a typed host
 affordance read failure. An empty list is reserved for a readable managed
 backup directory that contains no matching backup artifacts.
 
-### 0.2.1 update apply containment
+### Stable update capability boundary
 
-The apply route enforces the capability again inside the API handler. A client
-cannot bypass the disabled PWA/native button by sending the POST directly:
+The apply route enforces the capability again inside the API handler. A build
+without the stable Host worker returns the following response without calling
+a native command:
 
 ```http
 HTTP/1.1 501 Not Implemented
@@ -435,7 +436,7 @@ Content-Type: application/json
 
 {
   "code": "updateApplyUnavailable",
-  "message": "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
+  "message": "Stable product update apply is unavailable in this installed build."
 }
 ```
 

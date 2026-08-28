@@ -42,6 +42,7 @@ public struct InstallRuntimeEffects<Settings> {
     public var startInstalledServices: (Settings) throws -> Void
     public var applyStartOnBootPolicy: (Settings) throws -> Void
     public var waitInstallRuntimeHealth: (Settings) throws -> Void
+    public var settleInstalledProductRelease: () throws -> Void
     public var cleanupInstallSettings: () throws -> Void
     public var describeError: (Error) -> String
     public var prepareHostStateStore: (Settings) throws -> Void
@@ -62,7 +63,8 @@ public struct InstallRuntimeEffects<Settings> {
         waitInstallRuntimeHealth: @escaping (Settings) throws -> Void,
         cleanupInstallSettings: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
-        prepareHostStateStore: @escaping (Settings) throws -> Void = { _ in }
+        prepareHostStateStore: @escaping (Settings) throws -> Void = { _ in },
+        settleInstalledProductRelease: @escaping () throws -> Void = {}
     ) {
         self.log = log
         self.prepareInstallDirectories = prepareInstallDirectories
@@ -77,6 +79,7 @@ public struct InstallRuntimeEffects<Settings> {
         self.startInstalledServices = startInstalledServices
         self.applyStartOnBootPolicy = applyStartOnBootPolicy
         self.waitInstallRuntimeHealth = waitInstallRuntimeHealth
+        self.settleInstalledProductRelease = settleInstalledProductRelease
         self.cleanupInstallSettings = cleanupInstallSettings
         self.describeError = describeError
         self.prepareHostStateStore = prepareHostStateStore
@@ -368,6 +371,8 @@ public struct RuntimeInstallWorkflow {
             try effects.applyStartOnBootPolicy(settings)
         case .waitInstallRuntimeHealth:
             try effects.waitInstallRuntimeHealth(settings)
+        case .settleInstalledProductRelease:
+            try effects.settleInstalledProductRelease()
         case .cleanupInstallSettings:
             try effects.cleanupInstallSettings()
         case .unsupported(let message):

@@ -4,6 +4,15 @@ import argparse
 import sys
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.adapters.macos_release import (
+    helper_host_platform_installation,
+    helper_host_platform_release_archive,
+    helper_update_layer_artifacts,
+)
+from tirosh_vitalserver.devtools.adapters.update_bundle import (
+    bootstrap_bundle_service,
+    trust_store_service,
+)
 from tirosh_vitalserver.devtools.application import inputs as usecase_inputs
 from tirosh_vitalserver.devtools.application.usecases import (
     build_config as build_config_usecases,
@@ -12,10 +21,22 @@ from tirosh_vitalserver.devtools.application.usecases import (
     environment as environment_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
+    field_proof_preflight as field_proof_preflight_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
     guest_image as guest_image_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_services as guest_services_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    helper_host_platform_effect_configuration as host_effect_config_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    helper_host_platform_release as helper_host_platform_release_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    helper_stable_update_release as helper_stable_update_release_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
     host_proxy as host_proxy_usecases,
@@ -39,6 +60,12 @@ from tirosh_vitalserver.devtools.application.usecases import (
     toolchain as toolchain_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
+    update_bootstrap_bundle as update_bootstrap_bundle_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
+    update_bootstrap_trust_store as update_bootstrap_trust_store_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
     update_bundle as update_bundle_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
@@ -51,6 +78,9 @@ from tirosh_vitalserver.devtools.config.build_toml import (
     default_config_path,
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
+from tirosh_vitalserver.devtools.core.helper_stable_update_release_models import (
+    HelperStableUpdateLayer,
+)
 
 
 def main() -> int:
@@ -164,9 +194,7 @@ def main() -> int:
     nginx_bundle.add_argument("--expected-version")
     nginx_bundle.add_argument("--release-file", type=Path)
     nginx_bundle.set_defaults(
-        handler=lambda args: host_proxy_usecases.build_nginx(
-            nginx_bundle_input(args)
-        )
+        handler=lambda args: host_proxy_usecases.build_nginx(nginx_bundle_input(args))
     )
 
     cloud_init = subparsers.add_parser(
@@ -211,6 +239,7 @@ def main() -> int:
     )
     guest_deploy.add_argument("--vm-home", type=Path, required=True)
     guest_deploy.add_argument("--runtime-dir", type=Path, required=True)
+    guest_deploy.add_argument("--release-file", type=Path, required=True)
     guest_deploy.add_argument("--deploy-dir", type=Path)
     guest_deploy.add_argument("--docker-bundle", type=Path)
     guest_deploy.add_argument("--rootfs-run-id")
@@ -232,6 +261,7 @@ def main() -> int:
         handler=lambda args: guest_services_usecases.stage_guest_deployment(
             usecase_inputs.GuestDeploymentInput(
                 config=args.config,
+                release_file=args.release_file,
                 vm_home=args.vm_home,
                 runtime_dir=args.runtime_dir,
                 deploy_dir=args.deploy_dir,
@@ -289,9 +319,7 @@ def main() -> int:
     macos_app.add_argument("--clang-module-cache")
     macos_app.add_argument("--codesign-identity", default="-")
     macos_app.set_defaults(
-        handler=lambda args: macos_app_usecases.build_helper(
-            macos_app_input(args)
-        )
+        handler=lambda args: macos_app_usecases.build_helper(macos_app_input(args))
     )
 
     installed_status = subparsers.add_parser(
@@ -592,9 +620,7 @@ def main() -> int:
     runtime_wait_ip.add_argument("--vm-home", type=Path, required=True)
     runtime_wait_ip.add_argument("--timeout", type=int, required=True)
     runtime_wait_ip.set_defaults(
-        handler=lambda args: macos_runtime_usecases.wait_ip(
-            runtime_wait_input(args)
-        )
+        handler=lambda args: macos_runtime_usecases.wait_ip(runtime_wait_input(args))
     )
 
     runtime_wait_http = subparsers.add_parser(
@@ -604,9 +630,7 @@ def main() -> int:
     runtime_wait_http.add_argument("--vm-home", type=Path, required=True)
     runtime_wait_http.add_argument("--timeout", type=int, required=True)
     runtime_wait_http.set_defaults(
-        handler=lambda args: macos_runtime_usecases.wait_http(
-            runtime_wait_input(args)
-        )
+        handler=lambda args: macos_runtime_usecases.wait_http(runtime_wait_input(args))
     )
 
     runtime_wait_rootfs = subparsers.add_parser(
@@ -706,6 +730,322 @@ def main() -> int:
     update_bundle.set_defaults(
         handler=lambda args: update_bundle_usecases.build_update_bundle(
             update_bundle_input(args)
+        )
+    )
+
+    update_bootstrap_bundle = subparsers.add_parser(
+        "update-bootstrap-bundle",
+        help="build a signed stable bootstrap bundle for Helper 0.2.2+",
+    )
+    update_bootstrap_bundle.add_argument("--update-id", required=True)
+    update_bootstrap_bundle.add_argument("--product-version", required=True)
+    update_bootstrap_bundle.add_argument("--runtime-version", required=True)
+    update_bootstrap_bundle.add_argument(
+        "--target-platform",
+        choices=["macos", "windows", "linux"],
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--target-architecture",
+        choices=["arm64", "amd64"],
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--layer",
+        choices=["container", "guest-runtime", "host-platform"],
+        action="append",
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--next-updater",
+        type=Path,
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--specification",
+        type=Path,
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--payload-root",
+        type=Path,
+        required=True,
+        help=(
+            "directory containing every artifact, executor, configuration, "
+            "and rollback path declared by the update specification"
+        ),
+    )
+    update_bootstrap_bundle.add_argument("--publisher-key-id", required=True)
+    update_bootstrap_bundle.add_argument(
+        "--publisher-private-key",
+        type=Path,
+        required=True,
+    )
+    update_bootstrap_bundle.add_argument(
+        "--issued-at",
+        required=True,
+        help="canonical UTC timestamp, for example 2026-07-27T00:00:00Z",
+    )
+    update_bootstrap_bundle.add_argument("--output", type=Path, required=True)
+    update_bootstrap_bundle.set_defaults(
+        handler=lambda args: update_bootstrap_bundle_usecases.build(
+            usecase_inputs.BuildUpdateBootstrapBundleInput(
+                update_id=args.update_id,
+                product_version=args.product_version,
+                runtime_version=args.runtime_version,
+                target_platform=args.target_platform,
+                target_architecture=args.target_architecture,
+                layer_order=args.layer,
+                next_updater=args.next_updater,
+                specification=args.specification,
+                payload_root=args.payload_root,
+                publisher_key_id=args.publisher_key_id,
+                publisher_private_key=args.publisher_private_key,
+                issued_at=args.issued_at,
+                output=args.output,
+            ),
+            update_bootstrap_bundle_operations(),
+        )
+    )
+
+    helper_stable_update_release = subparsers.add_parser(
+        "helper-stable-update-release",
+        help=(
+            "compose the complete three-layer Helper 0.2.2+ release and build "
+            "its signed stable bootstrap bundle"
+        ),
+    )
+    helper_stable_update_release.add_argument("--update-id", required=True)
+    helper_stable_update_release.add_argument("--specification-id", required=True)
+    helper_stable_update_release.add_argument("--product-version", required=True)
+    helper_stable_update_release.add_argument("--runtime-version", required=True)
+    helper_stable_update_release.add_argument(
+        "--target-platform",
+        choices=["macos", "windows", "linux"],
+        required=True,
+    )
+    helper_stable_update_release.add_argument(
+        "--target-architecture",
+        choices=["arm64", "amd64"],
+        required=True,
+    )
+    for layer in HelperStableUpdateLayer:
+        add_helper_stable_update_layer_arguments(
+            helper_stable_update_release,
+            layer,
+        )
+    helper_stable_update_release.add_argument(
+        "--next-updater",
+        type=Path,
+        required=True,
+    )
+    helper_stable_update_release.add_argument("--publisher-key-id", required=True)
+    helper_stable_update_release.add_argument(
+        "--publisher-private-key",
+        type=Path,
+        required=True,
+    )
+    helper_stable_update_release.add_argument(
+        "--publisher-trust-store",
+        type=Path,
+        required=True,
+    )
+    helper_stable_update_release.add_argument(
+        "--issued-at",
+        required=True,
+        help="canonical UTC timestamp, for example 2026-07-29T00:00:00Z",
+    )
+    helper_stable_update_release.add_argument("--output", type=Path, required=True)
+    helper_stable_update_release.set_defaults(
+        handler=lambda args: helper_stable_update_release_usecases.compose(
+            helper_stable_update_release_input(args),
+            helper_stable_update_release_operations(),
+        )
+    )
+
+    helper_host_platform_release = subparsers.add_parser(
+        "helper-host-platform-release-archive",
+        help=(
+            "compose a deterministic Helper Host Platform replacement archive "
+            "without its stable update owners"
+        ),
+    )
+    helper_host_platform_release.add_argument(
+        "--composition",
+        type=Path,
+        required=True,
+    )
+    helper_host_platform_release.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+    )
+    helper_host_platform_release.set_defaults(
+        handler=lambda args: helper_host_platform_release_usecases.compose(
+            args.composition,
+            args.output,
+            helper_host_platform_release_usecases.HelperHostPlatformReleaseOperations(
+                compose_archive=(
+                    helper_host_platform_release_archive.compose_helper_host_platform_release_archive
+                ),
+            ),
+        )
+    )
+
+    helper_host_platform_effect_configuration = subparsers.add_parser(
+        "helper-host-platform-layer-effect-configuration",
+        help=(
+            "compose the explicit Helper Host Platform apply and rollback "
+            "owner configuration"
+        ),
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--effect-executor-id",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--manager-executable-path",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--database-path",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--installation-root",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--exchange-root",
+        required=True,
+    )
+    helper_host_platform_effect_configuration.add_argument(
+        "--installation-id",
+        required=True,
+    )
+    for operation in ("apply", "rollback"):
+        helper_host_platform_effect_configuration.add_argument(
+            f"--{operation}-revision",
+            type=int,
+            required=True,
+        )
+        helper_host_platform_effect_configuration.add_argument(
+            f"--{operation}-release-id",
+            required=True,
+        )
+        helper_host_platform_effect_configuration.add_argument(
+            f"--{operation}-release-version",
+            required=True,
+        )
+        helper_host_platform_effect_configuration.add_argument(
+            f"--{operation}-slot-relative-path",
+            required=True,
+        )
+    helper_host_platform_effect_configuration.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+    )
+    helper_host_platform_effect_configuration.set_defaults(
+        handler=lambda args: host_effect_config_usecases.compose(
+            host_effect_config_usecases.HelperHostPlatformEffectConfigurationInput(
+                effect_executor_id=args.effect_executor_id,
+                manager_executable_path=args.manager_executable_path,
+                database_path=args.database_path,
+                installation_root=args.installation_root,
+                exchange_root=args.exchange_root,
+                installation_id=args.installation_id,
+                apply_revision=args.apply_revision,
+                apply_release_id=args.apply_release_id,
+                apply_release_version=args.apply_release_version,
+                apply_slot_relative_path=args.apply_slot_relative_path,
+                rollback_revision=args.rollback_revision,
+                rollback_release_id=args.rollback_release_id,
+                rollback_release_version=args.rollback_release_version,
+                rollback_slot_relative_path=args.rollback_slot_relative_path,
+                output=args.output,
+            ),
+            host_effect_config_usecases.HelperHostPlatformEffectConfigurationOperations(
+                write_document=(helper_host_platform_installation.write_json_document),
+            ),
+        )
+    )
+
+    verify_update_bootstrap_bundle = subparsers.add_parser(
+        "verify-update-bootstrap-bundle",
+        help="verify a signed stable bootstrap bundle and its artifact closure",
+    )
+    verify_update_bootstrap_bundle.add_argument("--bundle", type=Path, required=True)
+    verify_update_bootstrap_bundle.add_argument(
+        "--publisher-trust-store",
+        type=Path,
+        required=True,
+    )
+    verify_update_bootstrap_bundle.set_defaults(
+        handler=lambda args: update_bootstrap_bundle_usecases.verify(
+            usecase_inputs.VerifyUpdateBootstrapBundleInput(
+                bundle=args.bundle,
+                publisher_trust_store=args.publisher_trust_store,
+            ),
+            update_bootstrap_bundle_operations(),
+        )
+    )
+
+    create_bootstrap_trust_store = subparsers.add_parser(
+        "update-bootstrap-trust-store-create",
+        help="create a public-only stable update publisher trust store",
+    )
+    create_bootstrap_trust_store.add_argument("--publisher-key-id", required=True)
+    create_bootstrap_trust_store.add_argument(
+        "--publisher-public-key",
+        type=Path,
+        required=True,
+    )
+    create_bootstrap_trust_store.add_argument("--output", type=Path, required=True)
+    create_bootstrap_trust_store.set_defaults(
+        handler=lambda args: update_bootstrap_trust_store_usecases.create(
+            publisher_key_id=args.publisher_key_id,
+            publisher_public_key=args.publisher_public_key,
+            output=args.output,
+            operations=update_bootstrap_trust_store_operations(),
+        )
+    )
+
+    rotate_bootstrap_trust_store = subparsers.add_parser(
+        "update-bootstrap-trust-store-rotate",
+        help="add a new active publisher key without removing prior trust evidence",
+    )
+    rotate_bootstrap_trust_store.add_argument("--trust-store", type=Path, required=True)
+    rotate_bootstrap_trust_store.add_argument("--publisher-key-id", required=True)
+    rotate_bootstrap_trust_store.add_argument(
+        "--publisher-public-key",
+        type=Path,
+        required=True,
+    )
+    rotate_bootstrap_trust_store.add_argument("--output", type=Path, required=True)
+    rotate_bootstrap_trust_store.set_defaults(
+        handler=lambda args: update_bootstrap_trust_store_usecases.rotate(
+            trust_store=args.trust_store,
+            publisher_key_id=args.publisher_key_id,
+            publisher_public_key=args.publisher_public_key,
+            output=args.output,
+            operations=update_bootstrap_trust_store_operations(),
+        )
+    )
+
+    revoke_bootstrap_trust_store = subparsers.add_parser(
+        "update-bootstrap-trust-store-revoke",
+        help="mark one known publisher key revoked while preserving its identity",
+    )
+    revoke_bootstrap_trust_store.add_argument("--trust-store", type=Path, required=True)
+    revoke_bootstrap_trust_store.add_argument("--publisher-key-id", required=True)
+    revoke_bootstrap_trust_store.add_argument("--output", type=Path, required=True)
+    revoke_bootstrap_trust_store.set_defaults(
+        handler=lambda args: update_bootstrap_trust_store_usecases.revoke(
+            trust_store=args.trust_store,
+            publisher_key_id=args.publisher_key_id,
+            output=args.output,
+            operations=update_bootstrap_trust_store_operations(),
         )
     )
 
@@ -847,6 +1187,11 @@ def main() -> int:
         choices=["pkg", "dmg"],
         required=True,
     )
+    release_package_environment_preflight.add_argument(
+        "--update-bootstrap-trust-store",
+        type=Path,
+        required=True,
+    )
     release_package_environment_preflight.set_defaults(
         handler=(
             lambda args: macos_package_usecases.preflight_release_package_environment(
@@ -861,12 +1206,18 @@ def main() -> int:
     )
     release_dmg_verify.add_argument("--release-file", type=Path, required=True)
     release_dmg_verify.add_argument("--output", type=Path)
+    release_dmg_verify.add_argument(
+        "--update-bootstrap-trust-store",
+        type=Path,
+        required=True,
+    )
     release_dmg_verify.set_defaults(
         handler=lambda args: macos_package_usecases.verify_dmg_artifact(
             usecase_inputs.ReleaseDmgArtifactVerifyInput(
                 config=args.config,
                 release_file=args.release_file,
                 output=args.output,
+                update_bootstrap_trust_store=(args.update_bootstrap_trust_store),
             )
         )
     )
@@ -1025,9 +1376,7 @@ def main() -> int:
     proxy_plist = subparsers.add_parser("proxy-plist")
     add_proxy_arguments(proxy_plist)
     proxy_plist.set_defaults(
-        handler=lambda args: host_proxy_usecases.render_launchd_plist(
-            proxy_input(args)
-        )
+        handler=lambda args: host_proxy_usecases.render_launchd_plist(proxy_input(args))
     )
 
     env_bootstrap = subparsers.add_parser("env-bootstrap")
@@ -1049,9 +1398,7 @@ def main() -> int:
     require_uv = subparsers.add_parser("require-uv")
     add_environment_arguments(require_uv)
     require_uv.set_defaults(
-        handler=lambda args: environment_usecases.require_uv(
-            environment_input(args)
-        )
+        handler=lambda args: environment_usecases.require_uv(environment_input(args))
     )
 
     compose = subparsers.add_parser("compose")
@@ -1091,6 +1438,29 @@ def main() -> int:
         )
     )
 
+    field_proof_preflight = subparsers.add_parser(
+        "field-proof-preflight",
+        help=(
+            "validate Helper 0.2.2 field-proof command surface and named "
+            "inputs without installing, signing, or printing secrets"
+        ),
+        description=(
+            "Validate Helper 0.2.2 field-proof command surface and named "
+            "inputs without installing, signing, or printing secrets."
+        ),
+    )
+    field_proof_preflight.add_argument(
+        "--update-bootstrap-trust-store",
+        type=Path,
+    )
+    field_proof_preflight.set_defaults(
+        handler=lambda args: field_proof_preflight_usecases.run_field_proof_preflight(
+            usecase_inputs.FieldProofPreflightInput(
+                update_bootstrap_trust_store=args.update_bootstrap_trust_store,
+            )
+        )
+    )
+
     args = parser.parse_args()
 
     try:
@@ -1118,6 +1488,121 @@ def proxy_input(args: argparse.Namespace) -> usecase_inputs.HostProxyInput:
         nginx_bin=args.nginx_bin,
         nginx_conf=args.nginx_conf,
         nginx_prefix=args.nginx_prefix,
+    )
+
+
+def update_bootstrap_bundle_operations() -> (
+    update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations
+):
+    return update_bootstrap_bundle_usecases.UpdateBootstrapBundleOperations(
+        build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
+        verify_bundle=(
+            bootstrap_bundle_service.verify_bootstrap_bundle_with_trust_store
+        ),
+    )
+
+
+def update_bootstrap_trust_store_operations() -> (
+    update_bootstrap_trust_store_usecases.UpdateBootstrapTrustStoreOperations
+):
+    return update_bootstrap_trust_store_usecases.UpdateBootstrapTrustStoreOperations(
+        read_store=trust_store_service.read_trust_store,
+        read_ed25519_public_key=trust_store_service.read_ed25519_public_key,
+        write_new_store=trust_store_service.write_new_store,
+    )
+
+
+def add_helper_stable_update_layer_arguments(
+    parser: argparse.ArgumentParser,
+    layer: HelperStableUpdateLayer,
+) -> None:
+    prefix = layer.value
+    parser.add_argument(
+        f"--{prefix}-artifact",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-artifact-media-type",
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-effect-executor",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-effect-configuration",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-rollback-artifact",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        f"--{prefix}-rollback-media-type",
+        required=True,
+    )
+
+
+def helper_stable_update_release_input(
+    args: argparse.Namespace,
+) -> usecase_inputs.ComposeHelperStableUpdateReleaseInput:
+    layers = tuple(
+        usecase_inputs.HelperStableUpdateLayerArtifactInput(
+            layer=layer,
+            artifact=getattr(args, f"{layer.value.replace('-', '_')}_artifact"),
+            artifact_media_type=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_artifact_media_type",
+            ),
+            effect_executor=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_effect_executor",
+            ),
+            effect_configuration=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_effect_configuration",
+            ),
+            rollback_artifact=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_rollback_artifact",
+            ),
+            rollback_media_type=getattr(
+                args,
+                f"{layer.value.replace('-', '_')}_rollback_media_type",
+            ),
+        )
+        for layer in HelperStableUpdateLayer
+    )
+    return usecase_inputs.ComposeHelperStableUpdateReleaseInput(
+        update_id=args.update_id,
+        specification_id=args.specification_id,
+        product_version=args.product_version,
+        runtime_version=args.runtime_version,
+        target_platform=args.target_platform,
+        target_architecture=args.target_architecture,
+        layers=layers,
+        next_updater=args.next_updater,
+        publisher_key_id=args.publisher_key_id,
+        publisher_private_key=args.publisher_private_key,
+        publisher_trust_store=args.publisher_trust_store,
+        issued_at=args.issued_at,
+        output=args.output,
+    )
+
+
+def helper_stable_update_release_operations() -> (
+    helper_stable_update_release_usecases.HelperStableUpdateReleaseOperations
+):
+    return helper_stable_update_release_usecases.HelperStableUpdateReleaseOperations(
+        materialize_payload=(
+            helper_update_layer_artifacts.materialized_helper_update_payload
+        ),
+        build_bundle=bootstrap_bundle_service.build_bootstrap_bundle,
+        require_active_publisher_key=trust_store_service.read_active_publisher_key,
     )
 
 
@@ -1241,6 +1726,7 @@ def release_package_input(
         nginx_expected_version=args.nginx_expected_version,
         docker_platform=args.docker_platform,
         guest_deploy_source=args.guest_deploy_source,
+        update_bootstrap_trust_store=args.update_bootstrap_trust_store,
     )
 
 
@@ -1265,6 +1751,7 @@ def release_package_environment_preflight_input(
         release_file=args.release_file,
         output=args.output,
         output_kind=args.output_kind,
+        update_bootstrap_trust_store=args.update_bootstrap_trust_store,
     )
 
 
@@ -1287,6 +1774,12 @@ def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
         type=Path,
         required=True,
         help="exact Guest deploy bundle exercised by the rootfs compile",
+    )
+    parser.add_argument(
+        "--update-bootstrap-trust-store",
+        type=Path,
+        required=True,
+        help="release-owned Ed25519 public-key trust store installed with the Host",
     )
 
 

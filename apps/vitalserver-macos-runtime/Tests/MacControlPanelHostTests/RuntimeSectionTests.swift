@@ -314,7 +314,6 @@ final class RuntimeSectionTests: XCTestCase {
             readWorker: MacRuntimeControlReadWorker(
                 releaseInfo: RuntimeReleaseInfo(
                     helperVersion: "helper",
-                    minimumUpdaterVersion: "1",
                     vitalServerVersion: "runtime",
                     services: []
                 ),
@@ -398,7 +397,11 @@ private final class HostFakeRuntimeControlClient:
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
-        RuntimeReleaseInfo(helperVersion: "helper", minimumUpdaterVersion: "1", vitalServerVersion: "runtime", services: [])
+        RuntimeReleaseInfo(
+            helperVersion: "helper",
+            vitalServerVersion: "runtime",
+            services: []
+        )
     }
     func loadInstallInfo() -> RuntimeInstallInfo { RuntimeInstallInfo() }
     func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] { [] }

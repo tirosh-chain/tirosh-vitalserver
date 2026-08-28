@@ -202,7 +202,7 @@ make runtime/down
 | Helper UI | cross-platform Web/PWA primary | iPhone/Android/iPad/desktop browser와 native shell wrapper에서 쓰는 product UI | `components.helperUI` |
 | Native Shell | platform-specific | install/bootstrap/pairing/recovery/native picker/tray/menu | `components.nativeShell` |
 | Runtime Control API | host/platform-specific implementation, common API contract | auth/session/pairing, capability, status/log/update/settings/admin endpoint, progress/log streaming | `components.runtimeControl` |
-| Updater | host/platform-specific | product update bundle 검증/적용/rollback, manifest compatibility gate | `components.updater`, `minUpdaterVersion` |
+| Updater | host/platform-specific | signed bootstrap 검증, bundle-owned next updater handoff, 적용/rollback | bootstrap envelope, Product Update Specification |
 | Supervisor | host/platform-aware | health/watchdog/recovery, service state loop, auto-recovery suppression | `components.supervisor` |
 | VM Driver | platform-specific | macOS Apple Virtualization, Windows provider 등 VM lifecycle provider | `components.vmDriver` |
 | Service Stack | mostly guest/service-specific | guest deploy assets, compose, container image bundle, service activation 단위 | `components.serviceStack` |
@@ -235,7 +235,7 @@ Update bundle kind는 의도적으로 두 개만 둡니다.
 | `product-update` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
-Hotfix, service-only update, updater bridge update는 별도 bundle kind를 만들지 않고 `product-update`의 channel, changed components, `requiresTwoPhaseUpdate` 같은 metadata로 표현합니다.
+Hotfix와 service-only update는 별도 bundle kind를 만들지 않고 `product-update`의 signed specification layer plan으로 표현합니다. Updater bridge와 `requiresTwoPhaseUpdate`는 legacy schema-3 경로에만 남아 있으며 stable bootstrap은 매 release의 signed next updater를 사용합니다.
 
 ## 8. 산출물 기준
 

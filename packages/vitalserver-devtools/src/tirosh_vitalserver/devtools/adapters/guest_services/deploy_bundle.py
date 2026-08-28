@@ -28,6 +28,12 @@ from tirosh_vitalserver.devtools.core.guest_services import (
 
 GUEST_DEPLOY_MATERIAL_DIGEST_VERSION = 2
 ROOTFS_INPUT_METADATA_RELATIVE_PATH = "build-metadata/rootfs-input.json"
+FRESH_INSTALL_RELEASE_IDENTITY_RELATIVE_PATH = (
+    "build-metadata/fresh-install-release.json"
+)
+FRESH_INSTALL_RELEASE_IDENTITY_SCHEMA_VERSION = (
+    "vitalserver.fresh-install-release-identity/v1"
+)
 GUEST_LOCAL_RUNTIME_DEPENDENCIES = {
     "tirosh-vitalserver-core": Path("../vitalserver-core"),
 }
@@ -37,7 +43,7 @@ GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS = frozenset(
     }
 )
 GUEST_DEPLOY_MATERIAL_REGENERATED_PATHS = GUEST_DEPLOY_MATERIAL_EXCLUDED_PATHS | {
-    ROOTFS_INPUT_METADATA_RELATIVE_PATH
+    ROOTFS_INPUT_METADATA_RELATIVE_PATH,
 }
 
 
@@ -45,7 +51,8 @@ def stage_materialized_guest_deploy(source: Path, destination: Path) -> None:
     """Stage the exact deploy material compiled into a golden rootfs.
 
     Host time and rootfs input metadata are intentionally not carried forward.
-    The caller owns fresh contracts for its own run.
+    The caller owns fresh contracts for its own run. The release identity is
+    static compiled material and must be preserved exactly.
     """
 
     guest_deploy_material_sha256(source)
@@ -317,6 +324,27 @@ def stage_rootfs_input_metadata(plan: RootfsInputMetadataPlan) -> None:
     metadata.parent.mkdir(parents=True, exist_ok=True)
     metadata.write_text(
         json.dumps(rootfs_input_metadata_document(plan), indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def stage_fresh_install_release_identity(
+    *,
+    deploy_dir: Path,
+    release_label: str,
+) -> None:
+    destination = deploy_dir / FRESH_INSTALL_RELEASE_IDENTITY_RELATIVE_PATH
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(
+            {
+                "schemaVersion": FRESH_INSTALL_RELEASE_IDENTITY_SCHEMA_VERSION,
+                "releaseLabel": release_label,
+            },
+            indent=2,
+            sort_keys=True,
+        )
         + "\n",
         encoding="utf-8",
     )

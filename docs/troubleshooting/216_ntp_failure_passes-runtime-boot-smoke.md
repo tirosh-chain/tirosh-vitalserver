@@ -1,4 +1,4 @@
-# TS-192 NTP 실패가 runtime boot smoke를 통과함
+# TS-216 NTP 실패가 runtime boot smoke를 통과함
 
 ## Symptom
 
@@ -71,4 +71,3 @@ jq '.stages[] | select(.name == "clock-quality")' \
 - GitHub issue: #75
 - 최초 확인 runId: `433b4fd7-40f4-4aca-96e1-f6ba99dcb675`
 - 최초 실패: `chronyc tracking exited with 1: 506 Cannot talk to daemon`
-

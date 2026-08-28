@@ -68,7 +68,7 @@ describe("runtime control error summaries", () => {
     });
   });
 
-  it("explains the 0.2.1 update apply product limitation without suggesting a retry", () => {
+  it("explains an explicit update apply capability failure without suggesting a blind retry", () => {
     expect(
       summarizeRuntimeControlError(
         new RuntimeControlAPIError(
@@ -77,16 +77,16 @@ describe("runtime control error summaries", () => {
           JSON.stringify({
             code: "updateApplyUnavailable",
             message:
-              "This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable."
+              "Stable product update apply is unavailable in this installed build."
           })
         )
       )
     ).toMatchObject({
       kind: "api",
       detail:
-        "updateApplyUnavailable: This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable.",
+        "updateApplyUnavailable: Stable product update apply is unavailable in this installed build.",
       recovery:
-        "This 0.2.1 build does not support update apply. Check bundle integrity only; do not retry the apply request."
+        "This installed Helper cannot enter the stable product update workflow. Export logs and confirm the installed build exposes update apply capability."
     });
   });
 

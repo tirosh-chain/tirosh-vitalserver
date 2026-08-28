@@ -1,6 +1,6 @@
 # Beds tab hides Bed read state and clips bed-focused columns
 
-> ID: TS-191
+> ID: TS-215
 > Category: macOS Helper / VitalDB Beds / Presentation
 > Owner: Bed read model and macOS presentation
 > Status: implemented; package verification pending
@@ -69,4 +69,4 @@ values 22 points, and selected identities 24 points.
 ## Related cases
 
 - [TS-176: Swift Beds tab becomes slow after remaining open](176_swift_beds_tab_relationship_history_growth.md)
-- [TS-190: Recorder without observer reports a detail decode failure](190_recorder-without-observer-detail-decode-failure.md)
+- [TS-214: Recorder without observer reports a detail decode failure](214_recorder-without-observer-detail-decode-failure.md)

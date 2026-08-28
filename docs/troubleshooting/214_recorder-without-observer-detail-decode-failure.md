@@ -1,6 +1,6 @@
 # Recorder without observer reports a detail decode failure
 
-> ID: TS-190
+> ID: TS-214
 > Category: Recorder observability / Runtime Control
 > Owner: Guest Control recorder observability contract
 > Status: implemented; package verification pending

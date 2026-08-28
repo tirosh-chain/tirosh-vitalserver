@@ -1,0 +1,14 @@
+[Unit]
+Description=VitalServer Guest Update Owner Worker
+After=docker.service
+Requires=docker.service
+RequiresMountsFor=/mnt/runtime
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tirosh-vitalserver-update-owner-worker
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

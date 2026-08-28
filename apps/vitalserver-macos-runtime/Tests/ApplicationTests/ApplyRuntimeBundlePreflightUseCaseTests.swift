@@ -105,7 +105,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     func testPrepareRejectsIncompatibleManifestBeforeReadingStorageOrCreatingBackup() {
         var events: [String] = []
         let operations = operations(
-            manifest: manifest(version: "2.0.0", minUpdaterVersion: "9.0.0"),
+            manifest: manifest(version: "2.0.0", channel: .dev),
             observeRootfsStorage: { _, _ in
                 XCTFail("rootfs storage should not be observed after compatibility failure")
                 return missingRootfsObservation()
@@ -129,12 +129,12 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
-            input: input(currentUpdaterVersion: "1.0.0"),
+            input: input(),
             operations: operations
         )) { error in
             XCTAssertEqual(
                 String(describing: error),
-                "update bundle requires updater 9.0.0 or newer; current updater is 1.0.0"
+                "update bundle channel dev is not compatible with installed channel stable"
             )
         }
 
@@ -173,7 +173,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
         XCTAssertEqual(requiredSpace, 10 + updateFreeSpaceMarginBytes)
     }
 
-    func testPrepareAcceptsVMImageUpdateWithRootfsWhenUpdaterBridgeIsNotRequired() throws {
+    func testPrepareAcceptsCompatibleVMImageUpdateWithRootfs() throws {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
         let stagedRootfs = stagedBundle.appendingPathComponent(RuntimePackageArtifactFileNames.rootfsBase)
@@ -189,8 +189,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                         sha256: "abc",
                         size: 20
                     ),
-                ],
-                requiresTwoPhaseUpdate: false
+                ]
             ),
             observeRootfsStorage: { observedStagedRootfs, observedRootfsBase in
                 XCTAssertEqual(observedStagedRootfs, stagedRootfs)
@@ -211,28 +210,8 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
         )
 
         XCTAssertEqual(context.manifest.bundleKind, .vmImageUpdate)
-        XCTAssertFalse(context.manifest.requiresTwoPhaseUpdate)
         XCTAssertEqual(context.stagedRootfs, stagedRootfs)
         XCTAssertTrue(context.updatesRootfsBase)
-    }
-
-    func testPrepareStillRejectsExplicitUpdaterBridgeDuringNormalApply() {
-        let operations = operations(
-            manifest: manifest(
-                version: "1.2.3",
-                requiresTwoPhaseUpdate: true
-            )
-        )
-
-        XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
-            input: input(),
-            operations: operations
-        )) { error in
-            XCTAssertEqual(
-                String(describing: error),
-                "update bundle requires a bridge/two-phase update"
-            )
-        }
     }
 
     func testPrepareFailsWhenStagedRootfsIsExplicitlyMissing() {
@@ -400,15 +379,13 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     }
 
     private func input(
-        rootfsBase: URL = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
-        currentUpdaterVersion: String = "1.2.3"
+        rootfsBase: URL = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
     ) -> ApplyRuntimeBundlePreflightInput {
         ApplyRuntimeBundlePreflightInput(
             bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
             backupsDirectory: URL(fileURLWithPath: "/product/backups"),
             rootfsBase: rootfsBase,
             updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
-            currentUpdaterVersion: currentUpdaterVersion,
             currentChannel: .stable,
             currentPlatform: "macos-arm64"
         )
@@ -457,22 +434,20 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     private func manifest(
         version: String,
         bundleKind: UpdateBundleKind = .productUpdate,
+        channel: UpdateBundleChannel = .stable,
         artifacts: [UpdateBundleArtifact] = [],
-        minUpdaterVersion: String? = nil,
-        requiresGuestActivation: Bool = false,
-        requiresTwoPhaseUpdate: Bool = false
+        requiresGuestActivation: Bool = false
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
             product: "ai.tirosh.vitalserver.helper",
             bundleKind: bundleKind,
+            channel: channel,
             helperVersion: version,
             releaseLabel: version,
             targetPlatform: "macos-arm64",
             components: ["updater": version],
-            minUpdaterVersion: minUpdaterVersion,
             requiresGuestActivation: requiresGuestActivation,
-            requiresTwoPhaseUpdate: requiresTwoPhaseUpdate,
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: artifacts,
             migrations: []

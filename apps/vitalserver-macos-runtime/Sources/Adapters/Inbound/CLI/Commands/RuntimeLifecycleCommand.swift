@@ -13,8 +13,18 @@ public enum RuntimeLifecycleCommand: Equatable {
     case watchdog
     case configure(RuntimeConfigureCommand)
     case verifyBundle(URL)
+    case verifyUpdateBootstrap(RuntimeVerifyUpdateBootstrapCommand)
     case stageBundle(URL)
     case applyBundle(RuntimeApplyBundleCommand)
+    case applyUpdateBootstrap(RuntimeApplyUpdateBootstrapCommand)
+    case resumeUpdateBootstrapHandoff(
+        RuntimeUpdateBootstrapRecoveryCommand
+    )
+    case settleUpdateBootstrapHandoff(
+        RuntimeUpdateBootstrapRecoveryCommand
+    )
+    case proveUpdateBootstrap(RuntimeProveUpdateBootstrapCommand)
+    case failUpdateBootstrap(RuntimeFailUpdateBootstrapCommand)
     case rollback(RuntimeRollbackCommand)
     case redisBackup
     case redisRestore(URL)
@@ -67,6 +77,10 @@ extension RuntimeLifecycleCommand {
                 in: remaining,
                 usage: "usage: vitalserver-vm runtime verify-bundle <bundle.tar.gz>"
             ))
+        case "verify-update-bootstrap":
+            return .verifyUpdateBootstrap(
+                try parseVerifyUpdateBootstrapCommand(remaining)
+            )
         case "stage-bundle":
             return .stageBundle(try requiredBundleURL(
                 in: remaining,
@@ -74,6 +88,34 @@ extension RuntimeLifecycleCommand {
             ))
         case "apply-bundle":
             return .applyBundle(try parseApplyBundleCommand(remaining))
+        case "apply-update-bootstrap":
+            return .applyUpdateBootstrap(
+                try parseApplyUpdateBootstrapCommand(remaining)
+            )
+        case "resume-update-bootstrap-handoff":
+            return .resumeUpdateBootstrapHandoff(
+                try parseUpdateBootstrapRecoveryCommand(
+                    remaining,
+                    usage:
+                        "usage: vitalserver-vm runtime resume-update-bootstrap-handoff <update-id>"
+                )
+            )
+        case "settle-update-bootstrap-handoff":
+            return .settleUpdateBootstrapHandoff(
+                try parseUpdateBootstrapRecoveryCommand(
+                    remaining,
+                    usage:
+                        "usage: vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>"
+                )
+            )
+        case "prove-update-bootstrap":
+            return .proveUpdateBootstrap(
+                try parseProveUpdateBootstrapCommand(remaining)
+            )
+        case "fail-update-bootstrap":
+            return .failUpdateBootstrap(
+                try parseFailUpdateBootstrapCommand(remaining)
+            )
         case "rollback":
             return .rollback(parseRollbackCommand(remaining))
         case "redis-backup":
@@ -191,8 +233,14 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--runtime-control-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|observe_only|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-max-mib-per-second <count>] [--container-memory-limits true|false] [--vitalserver-container-memory-limit-mib <mib>] [--recorder-ingress-container-memory-limit-mib <mib>] [--redis-container-memory-limit-mib <mib>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--restart|--restart-vm-runtime]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart|--restart-vm-runtime]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
+      vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz> [--verification-invocation-id <id>]
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
       vitalserver-vm runtime apply-bundle <bundle.tar.gz> [--allow-unsigned-dev-bundle]
+      vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id> [--require-platform-agent-selection]
+      vitalserver-vm runtime resume-update-bootstrap-handoff <update-id>
+      vitalserver-vm runtime settle-update-bootstrap-handoff <update-id>
+      vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds> [--require-platform-agent-verification]
+      vitalserver-vm runtime fail-update-bootstrap <update-id> --reason <reason>
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime redis-restore <archive.tar.gz>
@@ -257,6 +305,143 @@ extension RuntimeLifecycleCommand {
         return RuntimeApplyBundleCommand(
             bundleURL: URL(fileURLWithPath: bundlePath),
             trustIntent: intent
+        )
+    }
+
+    private static func parseApplyUpdateBootstrapCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeApplyUpdateBootstrapCommand {
+        let usage = "usage: vitalserver-vm runtime apply-update-bootstrap <bundle.tar.gz> --request-id <id> [--require-platform-agent-selection]"
+        guard let bundlePath = arguments.first,
+              !bundlePath.isEmpty,
+              bundlePath != "--request-id",
+              bundlePath != "--require-platform-agent-selection" else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        var requestId: String?
+        var requirePlatformAgentSelection = false
+        var index = 1
+        while index < arguments.count {
+            let argument = arguments[index]
+            switch argument {
+            case "--request-id":
+                guard index + 1 < arguments.count,
+                      requestId == nil else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+                }
+                requestId = arguments[index + 1]
+                index += 2
+            case "--require-platform-agent-selection":
+                guard !requirePlatformAgentSelection else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+                }
+                requirePlatformAgentSelection = true
+                index += 1
+            default:
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+        }
+        guard let requestId, !requestId.isEmpty else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return RuntimeApplyUpdateBootstrapCommand(
+            bundleURL: URL(fileURLWithPath: bundlePath),
+            requestId: requestId,
+            requirePlatformAgentSelection: requirePlatformAgentSelection
+        )
+    }
+
+    private static func parseUpdateBootstrapRecoveryCommand(
+        _ arguments: [String],
+        usage: String
+    ) throws -> RuntimeUpdateBootstrapRecoveryCommand {
+        guard arguments.count == 1,
+              let updateId = arguments.first,
+              !updateId.isEmpty else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return RuntimeUpdateBootstrapRecoveryCommand(updateId: updateId)
+    }
+
+    private static func parseProveUpdateBootstrapCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeProveUpdateBootstrapCommand {
+        let usage =
+            "usage: vitalserver-vm runtime prove-update-bootstrap <update-id> --expect succeeded|failed-rolled-back --timeout-seconds <seconds> --poll-interval-milliseconds <milliseconds> [--require-platform-agent-verification]"
+        guard arguments.count == 7 || arguments.count == 8,
+              !arguments[0].isEmpty,
+              arguments[1] == "--expect",
+              let expectation = UpdateBootstrapLifecycleProofExpectation(
+                rawValue: arguments[2]
+              ),
+              arguments[3] == "--timeout-seconds",
+              let timeoutSeconds = UInt64(arguments[4]),
+              timeoutSeconds > 0,
+              timeoutSeconds <= UInt64.max / 1_000,
+              arguments[5] == "--poll-interval-milliseconds",
+              let pollIntervalMilliseconds = UInt64(arguments[6]),
+              pollIntervalMilliseconds > 0 else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        var requirePlatformAgentVerification = false
+        if arguments.count == 8 {
+            guard arguments[7] == "--require-platform-agent-verification" else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+            requirePlatformAgentVerification = true
+        }
+        return RuntimeProveUpdateBootstrapCommand(
+            updateId: arguments[0],
+            expectation: expectation,
+            timeoutMilliseconds: timeoutSeconds * 1_000,
+            pollIntervalMilliseconds: pollIntervalMilliseconds,
+            requirePlatformAgentVerification: requirePlatformAgentVerification
+        )
+    }
+
+    private static func parseVerifyUpdateBootstrapCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeVerifyUpdateBootstrapCommand {
+        let usage =
+            "usage: vitalserver-vm runtime verify-update-bootstrap <bundle.tar.gz> [--verification-invocation-id <id>]"
+        guard let bundlePath = arguments.first,
+              !bundlePath.isEmpty,
+              bundlePath != "--verification-invocation-id" else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        var verificationInvocationId: String?
+        var index = 1
+        while index < arguments.count {
+            let argument = arguments[index]
+            guard argument == "--verification-invocation-id",
+                  index + 1 < arguments.count,
+                  verificationInvocationId == nil,
+                  !arguments[index + 1].isEmpty else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+            verificationInvocationId = arguments[index + 1]
+            index += 2
+        }
+        return RuntimeVerifyUpdateBootstrapCommand(
+            bundleURL: URL(fileURLWithPath: bundlePath),
+            verificationInvocationId: verificationInvocationId
+        )
+    }
+
+    private static func parseFailUpdateBootstrapCommand(
+        _ arguments: [String]
+    ) throws -> RuntimeFailUpdateBootstrapCommand {
+        let usage =
+            "usage: vitalserver-vm runtime fail-update-bootstrap <update-id> --reason <reason>"
+        guard arguments.count == 3,
+              !arguments[0].isEmpty,
+              arguments[1] == "--reason",
+              !arguments[2].isEmpty else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        return RuntimeFailUpdateBootstrapCommand(
+            updateId: arguments[0],
+            reason: arguments[2]
         )
     }
 

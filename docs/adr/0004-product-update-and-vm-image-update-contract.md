@@ -2,7 +2,12 @@
 
 ## 상태
 
-Accepted, implementation in progress
+Partially superseded by ADR 0007
+
+The Product Update and VM Image Update distinction remains accepted. ADR 0007
+supersedes the `minUpdaterVersion`, `requiresTwoPhaseUpdate`, and installed
+updater compatibility-gate decision for the 0.2.2 clean-install baseline and
+later releases.
 
 ## 배경
 

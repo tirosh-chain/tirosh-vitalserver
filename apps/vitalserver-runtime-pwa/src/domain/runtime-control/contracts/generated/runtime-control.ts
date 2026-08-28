@@ -957,8 +957,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Check selected update bundle integrity
-         * @description Checks manifest, size, and checksum integrity. VitalServer Helper 0.2.1 does not authenticate the bundle publisher.
+         * Authenticate and verify selected product update
+         * @description Starts durable stable-bootstrap verification of the publisher signature, target, bundle-owned next updater, Product Update Specification, and complete payload closure.
          */
         post: operations["verifyHostUpdateBundle"];
         delete?: never;
@@ -978,7 +978,7 @@ export interface paths {
         put?: never;
         /**
          * Apply selected update bundle
-         * @description VitalServer Helper 0.2.1 does not implement trusted publisher verification. The Platform capability is canApplyBundle=false and this route returns 501 with code updateApplyUnavailable without invoking the Host apply command.
+         * @description Starts the durable stable-bootstrap apply workflow for an authenticated product update. A build that does not expose canApplyBundle returns 501 with code updateApplyUnavailable without invoking a Host effect.
          */
         post: operations["applyHostUpdateBundle"];
         delete?: never;
@@ -3137,7 +3137,6 @@ export interface components {
         };
         RuntimeReleaseInfo: {
             helperVersion?: string;
-            minimumUpdaterVersion?: string;
             vitalServerVersion?: string;
             services?: components["schemas"]["RuntimeBundledServiceInfo"][];
         };

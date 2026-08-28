@@ -49,15 +49,34 @@ from tirosh_guest_tools.adapters.outbound.runtime_settings import (
     FileRuntimeSettingsRepository,
 )
 from tirosh_guest_tools.adapters.outbound.sqlite_control import SQLiteControlRepository
+from tirosh_guest_tools.adapters.outbound.update_artifacts import (
+    ImmutableUpdateArtifactStore,
+    SystemdUpdateOwnerWorkerDispatcher,
+    UpdateStoredArtifactCorrupt,
+)
 from tirosh_guest_tools.adapters.outbound.vital_files import (
     VitalServerVitalFileLibrary,
+)
+from tirosh_guest_tools.application.guest_control.container_image_set import (
+    ContainerImageSetUseCases,
+)
+from tirosh_guest_tools.application.guest_control.guest_runtime_release import (
+    GuestRuntimeReleaseUseCases,
 )
 from tirosh_guest_tools.application.guest_control.ports import VitalFileUploadSource
 from tirosh_guest_tools.application.guest_control.runtime import (
     SystemClock,
     UUIDOperationIdFactory,
 )
+from tirosh_guest_tools.application.guest_control.update_owner_worker import (
+    UpdateArtifactUnavailable,
+)
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
+from tirosh_guest_tools.domain.container_image_set import (
+    ContainerImageSetConflictError,
+    ContainerImageSetContractError,
+    ContainerImageSetDependencyError,
+)
 from tirosh_guest_tools.domain.guest_control.models import (
     RUNTIME_OPERATION_EVENT_TYPES,
     GuestControlDependencyError,
@@ -65,6 +84,11 @@ from tirosh_guest_tools.domain.guest_control.models import (
     RedisRelayStatusContractError,
     ServiceNotFoundError,
     VitalDBReadModelDependencyError,
+)
+from tirosh_guest_tools.domain.guest_runtime_release import (
+    GuestRuntimeReleaseConflictError,
+    GuestRuntimeReleaseContractError,
+    GuestRuntimeReleaseDependencyError,
 )
 from tirosh_guest_tools.domain.redis_relay_settings import (
     RedisRelaySettingsContractError,
@@ -173,6 +197,20 @@ def build_default_usecases() -> GuestControlUseCases:
             guest_mount=SETTINGS.shares.vital_files_mount,
             runtime_config=lambda: load_config(SETTINGS.paths.runtime_config_file),
         ),
+        container_image_sets=ContainerImageSetUseCases(
+            state_owner=operations,
+            operation_ids=UUIDOperationIdFactory(),
+            clock=SystemClock(),
+        ),
+        guest_runtime_releases=GuestRuntimeReleaseUseCases(
+            state_owner=operations,
+            operation_ids=UUIDOperationIdFactory(),
+            clock=SystemClock(),
+        ),
+        update_artifacts=ImmutableUpdateArtifactStore(
+            SETTINGS.paths.control_state_dir / "update-artifacts"
+        ),
+        update_worker=SystemdUpdateOwnerWorkerDispatcher(),
     )
     usecases.recover_interrupted_operations()
     usecases.initialize_guest_service_specs(DEFAULT_GUEST_SERVICE_SPECS)
@@ -221,7 +259,38 @@ def make_handler(
                     "headers": headers,
                     "usecases": usecases,
                 }
-                if method == "POST" and parsed.path == VITAL_FILE_UPLOAD_PATH:
+                request_parts = [
+                    unquote(part) for part in parsed.path.split("/") if part
+                ]
+                if (
+                    method == "PUT"
+                    and len(request_parts) == 4
+                    and request_parts[:2] == ["runtime", "update-artifacts"]
+                ):
+                    content_length = _required_update_artifact_content_length(
+                        headers
+                    )
+                    try:
+                        document = usecases.import_update_artifact_stream(
+                            kind=request_parts[2],
+                            digest=request_parts[3],
+                            stream=self.rfile,
+                            size_bytes=content_length,
+                        )
+                    except UpdateStoredArtifactCorrupt as error:
+                        raise GuestControlAPIError(
+                            HTTPStatus.INTERNAL_SERVER_ERROR,
+                            detail=str(error),
+                            code="updateStoredArtifactCorrupt",
+                        ) from error
+                    except UpdateArtifactUnavailable as error:
+                        raise GuestControlAPIError(
+                            HTTPStatus.BAD_REQUEST,
+                            detail=str(error),
+                            code="updateArtifactImportInvalid",
+                        ) from error
+                    status = HTTPStatus.CREATED
+                elif method == "POST" and parsed.path == VITAL_FILE_UPLOAD_PATH:
                     content_length = _required_upload_content_length(headers)
                     content_type = headers.get("content-type")
                     if content_type is None:
@@ -319,6 +388,42 @@ def make_handler(
                         "detail": error.message,
                         "code": error.kind,
                     },
+                )
+                return
+            except ContainerImageSetContractError as error:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except ContainerImageSetConflictError as error:
+                self._write_json(
+                    HTTPStatus.CONFLICT,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except ContainerImageSetDependencyError as error:
+                self._write_json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except GuestRuntimeReleaseContractError as error:
+                self._write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except GuestRuntimeReleaseConflictError as error:
+                self._write_json(
+                    HTTPStatus.CONFLICT,
+                    {"detail": error.message, "code": error.kind},
+                )
+                return
+            except GuestRuntimeReleaseDependencyError as error:
+                self._write_json(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"detail": error.message, "code": error.kind},
                 )
                 return
             except VitalDBReadModelDependencyError as error:
@@ -446,6 +551,105 @@ def route_request(
 
     if method == "GET" and parts == ["runtime", "stack"]:
         return HTTPStatus.OK, usecases.get_stack_status().as_json()
+
+    if (
+        method == "PUT"
+        and len(parts) == 4
+        and parts[:2] == ["runtime", "update-artifacts"]
+    ):
+        try:
+            imported = usecases.import_update_artifact(
+                kind=parts[2],
+                digest=parts[3],
+                content=body,
+            )
+        except UpdateStoredArtifactCorrupt as error:
+            raise GuestControlAPIError(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=str(error),
+                code="updateStoredArtifactCorrupt",
+            ) from error
+        except UpdateArtifactUnavailable as error:
+            raise GuestControlAPIError(
+                HTTPStatus.BAD_REQUEST,
+                detail=str(error),
+                code="updateArtifactImportInvalid",
+            ) from error
+        return HTTPStatus.CREATED, imported
+
+    if method == "GET" and parts == ["runtime", "container-image-set"]:
+        read = usecases.get_current_container_image_set()
+        status = (
+            HTTPStatus.OK
+            if read.state == "available"
+            else HTTPStatus.SERVICE_UNAVAILABLE
+        )
+        return status, read.as_json()
+
+    if method == "POST" and parts == ["runtime", "container-image-set", "apply"]:
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.apply_container_image_set(_json_body(body)).as_json(),
+        )
+
+    if method == "POST" and parts == ["runtime", "container-image-set", "rollback"]:
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.rollback_container_image_set(_json_body(body)).as_json(),
+        )
+
+    if (
+        method == "GET"
+        and len(parts) == 4
+        and parts[:3] == ["runtime", "container-image-set", "operations"]
+    ):
+        operation = usecases.get_container_image_set_operation(parts[3])
+        if operation is None:
+            raise GuestControlAPIError(
+                HTTPStatus.NOT_FOUND,
+                detail=f"Container image-set operation is not available: {parts[3]}",
+                code="containerImageSetOperationNotFound",
+            )
+        return HTTPStatus.OK, operation.as_json()
+
+    if method == "GET" and parts == ["runtime", "guest-runtime-release"]:
+        read = usecases.get_active_guest_runtime_release()
+        status = (
+            HTTPStatus.OK
+            if read.state == "available"
+            else HTTPStatus.SERVICE_UNAVAILABLE
+        )
+        return status, read.as_json()
+
+    if method == "POST" and parts == ["runtime", "guest-runtime-release", "apply"]:
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.apply_guest_runtime_release(_json_body(body)).as_json(),
+        )
+
+    if method == "POST" and parts == [
+        "runtime",
+        "guest-runtime-release",
+        "rollback",
+    ]:
+        return (
+            HTTPStatus.ACCEPTED,
+            usecases.rollback_guest_runtime_release(_json_body(body)).as_json(),
+        )
+
+    if (
+        method == "GET"
+        and len(parts) == 4
+        and parts[:3] == ["runtime", "guest-runtime-release", "operations"]
+    ):
+        operation = usecases.get_guest_runtime_release_operation(parts[3])
+        if operation is None:
+            raise GuestControlAPIError(
+                HTTPStatus.NOT_FOUND,
+                detail=f"Guest Runtime release operation is unavailable: {parts[3]}",
+                code="guestRuntimeReleaseOperationNotFound",
+            )
+        return HTTPStatus.OK, operation.as_json()
 
     if (
         method == "GET"
@@ -960,6 +1164,31 @@ def _required_upload_content_length(headers: dict[str, str]) -> int:
             HTTPStatus.BAD_REQUEST,
             detail="Vital Files upload Content-Length must be positive.",
             code="vitalFileUploadInvalid",
+        )
+    return content_length
+
+
+def _required_update_artifact_content_length(headers: dict[str, str]) -> int:
+    length_text = headers.get("content-length")
+    if length_text is None:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Update artifact import requires a Content-Length header.",
+            code="updateArtifactImportInvalid",
+        )
+    try:
+        content_length = int(length_text)
+    except ValueError as error:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Update artifact Content-Length must be an integer.",
+            code="updateArtifactImportInvalid",
+        ) from error
+    if content_length <= 0:
+        raise GuestControlAPIError(
+            HTTPStatus.BAD_REQUEST,
+            detail="Update artifact Content-Length must be positive.",
+            code="updateArtifactImportInvalid",
         )
     return content_length
 

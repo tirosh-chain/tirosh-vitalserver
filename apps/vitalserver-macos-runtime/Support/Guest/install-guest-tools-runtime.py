@@ -63,7 +63,14 @@ def install_guest_tools_runtime(
     remove_directory(next_venv, label="pending Guest Tools venv")
     try:
         subprocess.run(
-            [sys.executable, "-m", "venv", "--clear", str(next_venv)],
+            [
+                sys.executable,
+                "-m",
+                "venv",
+                "--clear",
+                "--copies",
+                str(next_venv),
+            ],
             check=True,
         )
         pip = next_venv / "bin" / "pip"
@@ -91,6 +98,7 @@ def install_guest_tools_runtime(
             next_venv=next_venv,
             current_venv=current_venv,
         )
+        remove_redundant_venv_library_alias(next_venv)
     except (subprocess.CalledProcessError, GuestToolsInstallError) as error:
         remove_directory(next_venv, label="failed Guest Tools venv")
         if isinstance(error, subprocess.CalledProcessError):
@@ -158,6 +166,33 @@ def rewrite_entrypoint_shebangs(
             "Guest Tools next venv has no relocatable entrypoints: "
             f"{bin_dir}"
         )
+
+
+def remove_redundant_venv_library_alias(next_venv: Path) -> None:
+    """Remove CPython's redundant lib64 -> lib alias from the release unit."""
+
+    alias = next_venv / "lib64"
+    if not alias.is_symlink():
+        raise GuestToolsInstallError(
+            f"Guest Tools venv library alias is not a symlink: {alias}"
+        )
+    try:
+        target = os.readlink(alias)
+    except OSError as error:
+        raise GuestToolsInstallError(
+            f"Guest Tools venv library alias read failed: {alias}: {error}"
+        ) from error
+    if target != "lib":
+        raise GuestToolsInstallError(
+            "Guest Tools venv library alias target is invalid: "
+            f"path={alias} target={target}"
+        )
+    try:
+        alias.unlink()
+    except OSError as error:
+        raise GuestToolsInstallError(
+            f"Guest Tools venv library alias removal failed: {alias}: {error}"
+        ) from error
 
 
 def read_manifest(wheel_dir: Path) -> dict[str, Any]:

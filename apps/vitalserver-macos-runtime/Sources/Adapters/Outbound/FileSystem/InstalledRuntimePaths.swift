@@ -24,6 +24,33 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         URL(fileURLWithPath: "/usr/local/bin/vitalserver-vm")
     }
 
+    public var updateHandoffSupervisorExecutable: URL {
+        URL(
+            fileURLWithPath:
+                "/usr/local/bin/vitalserver-update-handoff-supervisor"
+        )
+    }
+
+    public var hostInstallationManagerExecutable: URL {
+        URL(
+            fileURLWithPath:
+                "/usr/local/bin/vitalserver-host-installation-manager"
+        )
+    }
+
+    public var hostPlatformEffectExecutorExecutable: URL {
+        URL(
+            fileURLWithPath:
+                "/usr/local/bin/vitalserver-host-platform-layer-effect-executor"
+        )
+    }
+
+    public var updateHandoffJobsDirectory: URL {
+        productRoot
+            .appendingPathComponent("update-handoff", isDirectory: true)
+            .appendingPathComponent("jobs", isDirectory: true)
+    }
+
     public var uninstaller: URL {
         URL(fileURLWithPath: "/usr/local/bin/tirosh-vitalserver-uninstall")
     }
@@ -144,6 +171,91 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         productRoot.appendingPathComponent("bundles")
     }
 
+    public var updateBootstrapTrustStore: URL {
+        productRoot
+            .appendingPathComponent("config", isDirectory: true)
+            .appendingPathComponent("update-bootstrap-trust-store.json")
+    }
+
+    public var updateBootstrapStagingDirectory: URL {
+        productRoot.appendingPathComponent(
+            "update-bootstrap",
+            isDirectory: true
+        )
+    }
+
+    public var updateBootstrapVerificationDirectory: URL {
+        productRoot.appendingPathComponent(
+            UpdateBootstrapVerificationReceiptContract.directoryName,
+            isDirectory: true
+        )
+    }
+
+    public func updateBootstrapVerificationReceipt(
+        updateId: String
+    ) -> URL {
+        updateBootstrapVerificationDirectory.appendingPathComponent(
+            UpdateBootstrapVerificationReceiptContract.fileName(
+                updateId: updateId
+            )
+        )
+    }
+
+    public var updateBootstrapVerificationInvocationDirectory: URL {
+        updateBootstrapVerificationDirectory.appendingPathComponent(
+            UpdateBootstrapVerificationInvocationBindingContract.directoryName,
+            isDirectory: true
+        )
+    }
+
+    public func updateBootstrapVerificationInvocationBinding(
+        verificationInvocationId: String
+    ) -> URL {
+        updateBootstrapVerificationInvocationDirectory.appendingPathComponent(
+            UpdateBootstrapVerificationInvocationBindingContract.fileName(
+                verificationInvocationId: verificationInvocationId
+            )
+        )
+    }
+
+    public var platformAgentUpdateBootstrapVerificationDirectory: URL {
+        productRoot.appendingPathComponent(
+            PlatformAgentUpdateBootstrapVerificationContract.directoryName,
+            isDirectory: true
+        )
+    }
+
+    public func platformAgentUpdateBootstrapVerificationEvidence(
+        verificationInvocationId: String
+    ) -> URL {
+        platformAgentUpdateBootstrapVerificationDirectory.appendingPathComponent(
+            PlatformAgentUpdateBootstrapVerificationContract.fileName(
+                verificationInvocationId: verificationInvocationId
+            )
+        )
+    }
+
+    public var platformAgentUpdateBootstrapVerifiedSelectionDirectory: URL {
+        productRoot.appendingPathComponent(
+            PlatformAgentUpdateBootstrapVerifiedSelectionContract.directoryName,
+            isDirectory: true
+        )
+    }
+
+    public var platformAgentUpdateBootstrapVerifiedSelection: URL {
+        platformAgentUpdateBootstrapVerifiedSelectionDirectory
+            .appendingPathComponent(
+                PlatformAgentUpdateBootstrapVerifiedSelectionContract.fileName
+            )
+    }
+
+    public var hostPlatformCurrentRelease: URL {
+        productRoot
+            .appendingPathComponent("host-platform", isDirectory: true)
+            .appendingPathComponent("current", isDirectory: true)
+    }
+
+    /// Mutable nginx working directory owned by the Host runtime.
     public var nginxDirectory: URL {
         productRoot.appendingPathComponent("nginx")
     }
@@ -152,8 +264,9 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         nginxDirectory.appendingPathComponent("logs")
     }
 
+    /// Immutable nginx executable supplied by the active Host release.
     public var nginxExecutable: URL {
-        nginxDirectory.appendingPathComponent("sbin/nginx")
+        hostPlatformCurrentRelease.appendingPathComponent("nginx/sbin/nginx")
     }
 
     public var vitalFilesDirectory: URL {
@@ -338,6 +451,13 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var proxyLaunchDaemon: URL {
         URL(fileURLWithPath: "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist")
+    }
+
+    public var updateHandoffSupervisorLaunchDaemon: URL {
+        URL(
+            fileURLWithPath:
+                "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.update-handoff-supervisor.plist"
+        )
     }
 
     public var automaticBackupLaunchDaemon: URL {

@@ -1816,8 +1816,8 @@
     "/platform/update-bundles/verify": {
       "post": {
         "operationId": "verifyHostUpdateBundle",
-        "summary": "Check selected update bundle integrity",
-        "description": "Checks manifest, size, and checksum integrity. VitalServer Helper 0.2.1 does not authenticate the bundle publisher.",
+        "summary": "Authenticate and verify selected product update",
+        "description": "Starts durable stable-bootstrap verification of the publisher signature, target, bundle-owned next updater, Product Update Specification, and complete payload closure.",
         "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -1852,7 +1852,7 @@
       "post": {
         "operationId": "applyHostUpdateBundle",
         "summary": "Apply selected update bundle",
-        "description": "VitalServer Helper 0.2.1 does not implement trusted publisher verification. The Platform capability is canApplyBundle=false and this route returns 501 with code updateApplyUnavailable without invoking the Host apply command.",
+        "description": "Starts the durable stable-bootstrap apply workflow for an authenticated product update. A build that does not expose canApplyBundle returns 501 with code updateApplyUnavailable without invoking a Host effect.",
         "x-runtime-control-scope": "platformAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -9393,9 +9393,6 @@
         "additionalProperties": false,
         "properties": {
           "helperVersion": {
-            "type": "string"
-          },
-          "minimumUpdaterVersion": {
             "type": "string"
           },
           "vitalServerVersion": {

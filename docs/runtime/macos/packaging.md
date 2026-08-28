@@ -15,6 +15,52 @@
 | Shell script 역할은? | `postinstall`, launchd, uninstall wrapper |
 | update bundle은 누가 검증/적용하나? | Swift `RuntimeLifecycle` |
 
+## Helper Host 불변 설치 레이아웃
+
+신규 PKG와 이후 Host Platform update는 동일한 release slot 계약을 사용합니다.
+
+```text
+/Library/Application Support/VitalServerHelper/
+  host-platform/
+    releases/helper-<version>/release/
+      installation-manifest.json
+      app/VitalServer Helper.app
+      bin/vitalserver-vm
+      bin/vitalserver-proxy-run
+      nginx/...
+    current -> .../releases/helper-<version>/release
+  update-manager/
+    state.sqlite
+    exchange/
+
+/Applications/VitalServer Helper.app
+  Contents/...
+
+/usr/local/bin/
+  vitalserver-host-installation-manager
+  vitalserver-host-platform-layer-effect-executor
+  vitalserver-update-handoff-supervisor
+```
+
+`current`는 교체 가능한 service와 CLI가 active release를 참조하는 symlink입니다.
+반면 `/Applications/VitalServer Helper.app`은 LaunchServices, Finder, Launchpad가
+application bundle로 식별할 수 있는 materialized directory입니다. release slot의
+app은 배포 source이고, PKG 설치와 Host Platform reconcile은 그 app을
+`/Applications`에 복사해 게시합니다. `/Applications` app을 `current` 아래 app의
+symlink로 만들지 않습니다.
+
+postinstall은 패키지에 포함된 initial installation manifest로 SQLite owner를
+초기화하고, `/Applications` app이 symlink가 아니며 `Info.plist`와 executable을
+가졌는지 검증합니다. 누락된 manifest나 manager를 package receipt, 파일 검색,
+launchd 상태로 보정하지 않습니다.
+
+VM, proxy, platform agent 등 교체 가능한 launchd service의 실행 경로는
+`host-platform/current` 아래를 가리킵니다. 반대로 installation manager와 update
+handoff supervisor는 자신이 교체하는 release 바깥의 fixed path에 남습니다.
+clean uninstall은 `current`, 모든 release slot, SQLite DB, published app/CLI link,
+manager/executor/supervisor 및 launchd definition을 명시된 uninstall closure로
+삭제합니다.
+
 ## 배포 시나리오
 
 | 시나리오 | 산출물 | 생성 명령 | 현장 적용 |
@@ -24,13 +70,14 @@
 | 신규 설치 release 검증 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/release` | release.json 기반 release 검증 |
 | 개발용 `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/dev` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/dev`가 소유 |
 | release `.pkg` artifact 생성 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/release` | 직접 설치 전 artifact packaging. 현장 전달 proof는 `dist/dmg/release`가 소유 |
-| air-gapped Product Update | `dist/update-bundles/update-bundle-<channel>-product-update-<releaseLabel>.tar.gz` | `make dist/update/release` | 0.2.1은 integrity 확인만 지원. stable/UI/API apply는 차단하고, 설치 channel이 `dev`인 로컬 CLI에서 명시적 개발 flag로만 apply 가능 |
+| air-gapped Product Update | `dist/update-bundles/<update-id>.tar.gz` | `make dist/update/release` | publisher-signed Container, Guest Runtime, Helper Host Platform closure |
 | VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make dist/image-update/release` | rootfs-base 교체가 필요한 경우에만 사용 |
-| Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | 전달 전 manifest/checksum 검증 |
+| Product Update field-proof preflight | command surface + named inputs | `make dist/update/field-proof-preflight` | envelope v2/handoff v2 명령 표면과 입력 존재 검사. 설치/서명/sudo 없음. later-version upgrade는 증명하지 않음 |
+| Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | publisher trust, target, next updater, specification digest와 payload closure 검증 |
 | VM Image Update bundle 검증 | VM image update tarball | `make dist/image-update/verify/release` | 전달 전 manifest/checksum 검증 |
 | 개발 설치 테스트 | installed runtime | `make dist/install/dev` | 현재 repo가 있는 개발 Mac에 설치 후 `make dist/installed/health` |
 
-사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball입니다. air-gapped 환경에서는 이 파일을 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
+사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 Product Update는 `<update-id>.tar.gz` tarball입니다. air-gapped 환경에서는 이 파일을 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
 
 ## 버전 source of truth
 
@@ -79,6 +126,99 @@ Runtime Control PWA와 headless `vitalserver-platform-agent`는 Helper app bundl
 `make dist/pkg/*`, `make dist/dmg/*`, `make dist/update/*`는 `make pwa/build`를 먼저
 실행합니다. 빌드 머신에서는 packaging 전에 한 번 `make pwa/install`을 실행해야
 하며, 현장 Mac에는 npm/Vite나 registry 접근이 필요하지 않습니다.
+
+### Stable updater trust-store release input
+
+0.2.2 stable bootstrap을 포함하는 PKG/DMG build는 release publisher가 소유하는
+Ed25519 **공개키** trust store를 명시적으로 받아야 합니다. repository는 production
+기본 키, test key, private-key 검색, public-key 파생 fallback을 제공하지 않습니다.
+
+```sh
+export VM_UPDATE_BOOTSTRAP_TRUST_STORE=/secure/release/update-bootstrap-trust-store.json
+make dist/dmg/dev
+```
+
+입력은 다음 strict v2 계약을 따릅니다. `keys`는 비어 있을 수 없고, key ID는
+중복될 수 없으며, `publicKey`는 정확히 32 byte Ed25519 public key의 base64
+표현이어야 합니다. `state`는 `active` 또는 `revoked`이며 알 수 없는 필드는
+거부됩니다.
+
+```json
+{
+  "schemaVersion": "v2",
+  "keys": [
+    {
+      "id": "helper-release-key-2026",
+      "algorithm": "ed25519",
+      "publicKey": "<base64-encoded-32-byte-public-key>",
+      "state": "active"
+    }
+  ]
+}
+```
+
+누락, symlink, read/decode 실패, invalid key는 package environment preflight에서
+VM/rootfs compile 전에 실패합니다. PKG에는 입력 파일의 exact bytes를 아래 경로로
+설치하고, DMG artifact verify는 expanded PKG에서 이 파일을 다시 읽어 strict
+contract와 원본 byte equality를 모두 검증합니다.
+
+```text
+/Library/Application Support/VitalServerHelper/
+  config/
+    update-bootstrap-trust-store.json
+```
+
+서명용 private key는 이 파일이나 PKG에 포함하지 않습니다. bundle envelope의
+`publisherKeyId`는 이 trust store의 `active` 공개키 ID를 가리켜야 합니다.
+`revoked` key ID는 unknown key와 구분해서 거부됩니다.
+
+공개 trust store는 release workspace 밖의 공개키 PEM에서 재현 가능하게 생성합니다.
+명령은 기존 파일을 덮어쓰지 않으므로 review된 산출물을 실수로 변경하지 않습니다.
+
+```sh
+.venv/bin/vitalserver-devtools \
+  update-bootstrap-trust-store-create \
+  --publisher-key-id helper-release-key-2026-a \
+  --publisher-public-key /secure/release/helper-release-key-2026-a.public.pem \
+  --output /secure/release/update-bootstrap-trust-store-01.json
+```
+
+회전은 새 public key를 active로 추가하고 기존 active key를 유지하여 배포 overlap
+기간을 만듭니다.
+
+```sh
+.venv/bin/vitalserver-devtools \
+  update-bootstrap-trust-store-rotate \
+  --trust-store /secure/release/update-bootstrap-trust-store-01.json \
+  --publisher-key-id helper-release-key-2026-b \
+  --publisher-public-key /secure/release/helper-release-key-2026-b.public.pem \
+  --output /secure/release/update-bootstrap-trust-store-02.json
+```
+
+새 trust store가 설치된 제품만 새 key로 서명한 bundle을 받을 수 있습니다. overlap
+배포를 확인한 뒤 이전 key를 삭제하지 않고 revoked로 전환합니다.
+
+```sh
+.venv/bin/vitalserver-devtools \
+  update-bootstrap-trust-store-revoke \
+  --trust-store /secure/release/update-bootstrap-trust-store-02.json \
+  --publisher-key-id helper-release-key-2026-a \
+  --output /secure/release/update-bootstrap-trust-store-03.json
+```
+
+release bundle signing은 별도 보안 경계에 있는 private key path와 그 key ID를 항상
+명시합니다. 둘 중 하나라도 없으면 CLI parsing 단계에서 실패합니다.
+
+```sh
+.venv/bin/vitalserver-devtools \
+  helper-stable-update-release \
+  ... \
+  --publisher-key-id helper-release-key-2026-b \
+  --publisher-private-key /secure/release/helper-release-key-2026-b.private.pem
+```
+
+private key는 repository, trust-store JSON, PKG/DMG staging root, 설치된 Host 어느
+곳에도 복사하지 않습니다.
 
 ## Build and Runtime Validation Contracts
 
@@ -151,11 +291,18 @@ Release package와 DMG build는 expensive host packaging 전에 preflight를 통
 
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-`make devtools/build`는 manifest metadata를 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. Artifact identity, 표시명, update compatibility, optional container service 정책은 manifest가 소유합니다. Guest image 변경은 manifest와 immutable Compose/VM Docker plan을 함께 변경하고 release-contract로 대조합니다.
+`make devtools/build`는 manifest metadata를 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. Artifact identity, 표시명, optional container service 정책은 manifest가 소유합니다. Guest image 변경은 manifest와 immutable Compose/VM Docker plan을 함께 변경하고 release-contract로 대조합니다.
 
-Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatform`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatform`과 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
+현재 stable update compatibility는 release manifest의 version gate가 아니라 signed bootstrap envelope의 고정 계약과 bundle-owned next updater로 유지합니다. `release.json`과 `release-dev.json`은 `minUpdaterVersion`을 소유하지 않습니다. Bootstrap은 publisher, target, next updater, specification digest, payload closure만 검증하고, 변경되는 specification은 인증된 next updater가 해석합니다.
 
-Layer별 platform dependency도 manifest 설계 기준입니다. Helper UI와 VM Driver는 platform-specific이고, Updater는 host/platform-specific compatibility gate이며, Supervisor는 host/platform-aware health/recovery loop입니다. Service Stack은 guest/service-specific 실행 세트이고, VM Image는 Linux guest OS image artifact입니다.
+`schemaVersion: 3`, `minUpdaterVersion`, `requiresTwoPhaseUpdate`를 사용하는 manifest는 전환 중인 legacy publisher/engine 계약입니다. 이 legacy serializer가 요구하는 값은 현재 product release source of truth나 Runtime Control read model로 올리지 않습니다.
+
+현재 `make dist/update/*`는 real Container, Guest Runtime, Helper Host Platform
+artifact와 각 rollback artifact/effect executor/configuration을 명시적으로
+입력받아 signed specification과 payload closure를 만듭니다. legacy schema-3
+publisher는 `make dist/image-update/*`에만 남아 있습니다.
+
+Layer별 platform dependency도 update specification 설계 기준입니다. Helper UI와 VM Driver는 platform-specific이고, Updater는 host/platform-specific bootstrap 검증과 signed next-updater handoff를 소유하며, Supervisor는 host/platform-aware health/recovery loop입니다. Service Stack은 guest/service-specific 실행 세트이고, VM Image는 Linux guest OS image artifact입니다.
 
 Update bundle kind는 두 개로 제한합니다.
 
@@ -164,7 +311,7 @@ Update bundle kind는 두 개로 제한합니다.
 | `product-update` | `make dist/update/release` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | `make dist/image-update/release` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
-Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `product-update` metadata로 표현합니다.
+Hotfix와 service-only update는 별도 kind가 아니라 `product-update`의 signed specification layer plan으로 표현합니다. Updater bridge는 legacy schema-3 경로에만 남아 있으며 stable bootstrap은 매 release의 signed next updater를 사용합니다.
 
 ## Bundled observer services
 
@@ -246,6 +393,8 @@ dist/VitalServerHelper-<version>.dmg
 /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist
 /Library/Application Support/VitalServerHelper/
   backups/
+  config/
+    update-bootstrap-trust-store.json # release-owned Ed25519 public keys
   logs/
     install.log
   status/
@@ -279,6 +428,14 @@ dist/VitalServerHelper-<version>.dmg
 ```
 
 shared/NAT mode에서는 VM IP가 부팅 후에 결정됩니다. 그래서 package는 nginx config에 upstream을 미리 박아두지 않습니다.
+
+Host Platform release의 nginx는 `sbin/nginx`와 실행 시 필요한
+`libpcre2-8.0.dylib`, `libssl.3.dylib`, `libcrypto.3.dylib`를 하나의
+runtime closure로 배포합니다. Build input이 이미 bundle인 경우에도
+`@executable_path/../lib/...` load path를 sibling `lib`의 명시적 파일로
+해석하며, 누락이나 bundle 밖으로 나가는 경로는 packaging failure입니다.
+DMG artifact verification은 설치 payload의 실행 파일과 이 세 dylib를 모두
+검사하므로 빈 `lib` directory를 성공으로 승인하지 않습니다.
 
 ```text
 launchd
@@ -446,13 +603,14 @@ Install VitalServer Helper.pkg
     -> /usr/local/bin/vitalserver-proxy-run
     -> /Library/Application Support/VitalServerHelper/vm/runtime/rootfs-base.raw.gz
     -> /Library/Application Support/VitalServerHelper/vm/data/deploy/*
-    -> /Library/Application Support/VitalServerHelper/nginx/*
+    -> /Library/Application Support/VitalServerHelper/host-platform/releases/<release>/release/nginx/*
+    -> /Library/Application Support/VitalServerHelper/host-platform/current
     -> /Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist
   -> rendered postinstall from Support/Packaging/postinstall.template
     -> vitalserver-vm runtime install-provision
       -> schema/packageIdentifier/targetVersion/intent contract validation
       -> read /private/tmp/tirosh-vitalserver-install.json if present
-      -> create runtime/data/log directories
+      -> create runtime/data/log directories, including mutable nginx config/log/temp root
       -> write deploy/runtime-config.json
       -> gunzip rootfs-base.raw.gz into runtime/vm-disk.img if missing
       -> truncate vm-disk.img to configured diskGiB
@@ -644,31 +802,32 @@ install settings JSON
 
 ### Update Bundle 계약
 
-`make dist/update/release`는 현재 아래 artifact를 만들 수 있습니다.
+`make dist/update/release`는 아래 세 layer를 모두 명시적으로 요구합니다.
 
-| artifact type | 생성 여부 | Swift verify | Swift apply |
-|---|---:|---:|---:|
-| `rootfs-base` | `make dist/image-update/release`에서만 포함 | 예 | `rootfs-base.raw.gz` 교체 |
-| `app-bundle` | 기본 포함 | 예 | `/Applications/VitalServer Helper.app` 교체 |
-| `runtime-tools` | 기본 포함 | 예 | `/usr/local/bin` Updater/Supervisor/VM Driver tools 교체 |
-| `nginx-bundle` | 기본 포함 | 예 | host nginx bundle 교체 |
-| `guest-deploy` | 기본 포함 | 예 | VM shared deploy bundle 교체 |
-| `migration` | optional | 예 | executable이면 순차 실행 |
+| layer | current/rollback artifact | effect owner |
+|---|---|---|
+| Container | immutable image-set archives | Guest container owner |
+| Guest Runtime | immutable Guest runtime release archives | Guest runtime owner |
+| Helper Host Platform | Helper-specific Host release archives | stable Host installation manager |
 
-따라서 현재 update apply의 실제 효과는 아래입니다.
+Helper Host archive는 Helper app과 교체 가능한 Host services를 담습니다.
+Host installation manager와 update handoff supervisor는 update 도중에도 살아
+있어야 하므로 archive의 file/service 목록에 포함할 수 없습니다. composer는
+app tree digest, manifest/files closure, executable entrypoint, mutable-store
+경계와 stable owner 제외를 검증합니다.
 
 ```text
-verify bundle
-stage bundle
-backup managed artifacts/runtime-version
-stop services
-replace app/runtime-tools/nginx/guest-deploy artifacts
-replace rootfs-base only when the bundle includes rootfs-base
-run executable migrations
-write runtime-version.json
-restart services if previously running
-health check
-rollback on failure
+verify publisher and signed closure
+stage immutable artifacts
+apply Container
+apply Guest Runtime
+apply Helper Host Platform
+commit installed release
+
+Host Platform failure:
+rollback Guest Runtime
+rollback Container
+persist ordered receipts and terminal journal
 ```
 
 중요한 제약은 `rootfs-base.raw.gz`와 `vm-disk.img`의 역할 차이입니다.
@@ -810,6 +969,7 @@ VM compile 여부는 profile target이 소유합니다. 동일 의미의 긴 `VA
 온라인/오프라인 업데이트는 같은 bundle tarball을 입력으로 사용합니다.
 
 ```sh
+make dist/update/field-proof-preflight
 make dist/update/release
 make dist/update/verify/release
 ```
@@ -821,25 +981,42 @@ make dist/image-update/release
 make dist/image-update/verify/release
 ```
 
-`make dist/update/release`는 Product Update artifact staging을 `packages/vitalserver-devtools` CLI에서 수행하고 `app-bundle.tar.gz`, `runtime-tools.tar.gz`, `nginx-bundle.tar.gz`, `guest-deploy.tar.gz`를 기본 포함합니다. `app-bundle.tar.gz`에는 Swift Helper app과 Runtime Control PWA static assets (`Contents/Resources/runtime-control-pwa`)가 함께 들어갑니다. 따라서 Helper UI, PWA UI, Native Shell, Runtime Control API, Updater/Supervisor/VM Driver tools, host nginx, Service Stack/guest deploy bundle까지 같은 online/offline Product Update 계약으로 배포할 수 있습니다.
+`make dist/update/release`는 입력 artifact를 추측하거나 현재 설치 상태에서
+합성하지 않습니다. update/specification identity, 발행 시각, publisher key와
+trust store, Container/Guest Runtime의 current·rollback archive와 effect
+configuration, Helper Host Platform composition·rollback archive·effect
+configuration을 모두 명시해야 합니다. next updater와 세 effect executor는
+현재 source에서 release build합니다.
 
 update bundle도 압축이 필요합니다. 다만 압축 대상은 update artifact 단위입니다. 일반적인 현장 업데이트는 작은 `.tar.gz` artifact를 교체하는 흐름이고, 무거운 `rootfs-base.raw.gz`를 매번 다시 압축하거나 배포하는 흐름이 아닙니다.
 
-| artifact | 압축 파일 | Product Update 포함 여부 | 비고 |
-|---|---|---|---|
-| Helper UI + Runtime Control PWA | `app-bundle.tar.gz` | 기본 포함 | `/Applications/VitalServer Helper.app` 교체. PWA는 app resource static asset으로 포함 |
-| Updater/Supervisor/VM Driver tools | `runtime-tools.tar.gz` | 기본 포함 | `/usr/local/bin` local control tools 교체 |
-| host nginx bundle | `nginx-bundle.tar.gz` | 기본 포함 | host proxy binary/dylib 교체 |
-| Service Stack / guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config, compose, container image bundle 교체 |
-| migration | executable files | 기본 포함 | cloud-init seed refresh 등 설치된 VM/runtime 상태 변경 |
-| Docker images | `vitalserver-images.tar.gz` | 필요 시 포함 | container image 갱신이 있을 때만 무겁게 포함 |
-| VM Image / rootfs base | `rootfs-base.raw.gz` | `make dist/image-update/release`에서만 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
+| artifact | Product Update 포함 여부 | 비고 |
+|---|---|---|
+| Container current/rollback | 필수 | immutable image-set owner 계약 |
+| Guest Runtime current/rollback | 필수 | immutable Guest release owner 계약 |
+| Helper Host Platform current/rollback | 필수 | app/교체 가능 service; stable update owners 제외 |
+| next updater | 필수 | signed specification을 해석하는 bundle-owned 실행 파일 |
+| layer effect executors/configurations | layer마다 필수 | typed receipt를 반환하며 실패를 성공으로 바꾸지 않음 |
+| VM Image / rootfs base | 제외 | `make dist/image-update/release`만 사용 |
 
-따라서 “bundle을 만든다”는 것은 보통 작은 product artifact를 압축해 묶는다는 뜻입니다. rootfs나 Docker image 갱신이 없는 Product Update bundle은 package build보다 훨씬 가벼워야 합니다.
+따라서 “bundle을 만든다”는 것은 교체 가능한 세 layer의 현재/rollback
+artifact와 실행 계약 전체를 인증해 묶는다는 뜻입니다.
 
-기본 update bundle에는 `apps/vitalserver-macos-runtime/Support/Build/migrations` 아래의 기본 migration들이 포함됩니다. 구버전 Helper가 bundle을 적용해도 이 migration은 실행되므로, 새 `guest-deploy/bootstrap.sh`가 다음 VM 부팅에서 실행될 수 있습니다.
+Helper Host Platform reconcile은 target release의 service definition, operator
+bootstrap, app bundle을 각각 declared destination에 게시한 뒤 `current`를
+원자적으로 target release로 전환합니다. app 게시 후 activation 또는 service
+start가 실패하면 previous release의 app도 `/Applications`에 다시 materialize하는
+보상 effect를 수행합니다. 과거 설치본의 `/Applications` app이 release app
+symlink인 경우에도 target app 게시가 그 링크를 명시적으로 대체합니다.
 
-추가 마이그레이션 실행 파일을 bundle에 포함하려면 build CLI를 직접 호출합니다.
+### Historical: schema-3와 0.2.1
+
+아래 `release-update-bundle`, `manifest.json`, `checksums.txt`, `signature:
+unsigned`, `app-bundle.tar.gz` 구조와 `apply-bundle` 명령은 stable Product
+Update 계약이 아닙니다. 0.2.1 진단과 현재 legacy VM Image Update를 이해할
+때만 사용합니다.
+
+legacy bundle에 추가 migration을 포함하던 명령은 다음과 같습니다.
 
 ```sh
 uv run --project packages/vitalserver-devtools vitalserver-devtools \

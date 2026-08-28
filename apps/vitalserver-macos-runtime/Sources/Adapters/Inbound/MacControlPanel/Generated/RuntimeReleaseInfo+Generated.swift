@@ -71,7 +71,6 @@ public extension RuntimeReleaseInfo {
         ]
         return RuntimeReleaseInfo(
             helperVersion: GeneratedRelease.helperVersion,
-            minimumUpdaterVersion: GeneratedRelease.minUpdaterVersion,
             vitalServerVersion: GeneratedRelease.vitalServerVersion,
             services: services
         )

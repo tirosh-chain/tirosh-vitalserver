@@ -18,6 +18,12 @@ public actor MacRuntimeControlCommandWorker {
     private let guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling
     private let guestAddressProvider: any RuntimeGuestAddressProvider
     private let guestControlBaseURLOverride: String?
+    private let updateRequestID: @Sendable () -> String
+    private let platformAgentVerificationInvoker:
+        (any PlatformAgentUpdateBootstrapVerificationInvoking)?
+    private let platformAgentSelectionOwner:
+        (any PlatformAgentUpdateBootstrapSelectionOwning)?
+    private var platformAgentUpdateInFlight: PlatformAgentUpdateInFlight?
 
     public init() {
         self.init(
@@ -36,7 +42,11 @@ public actor MacRuntimeControlCommandWorker {
         guestProductServiceController: any RuntimeGuestProductServiceCommandControlling,
         guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling,
         guestAddressProvider: any RuntimeGuestAddressProvider,
-        guestControlBaseURLOverride: String? = nil
+        guestControlBaseURLOverride: String? = nil,
+        platformAgentVerificationInvoker:
+            (any PlatformAgentUpdateBootstrapVerificationInvoking)? = nil,
+        platformAgentSelectionOwner:
+            (any PlatformAgentUpdateBootstrapSelectionOwning)? = nil
     ) {
         self.init(
             privilegedCommandRunner: SystemPrivilegedCommandRunner(),
@@ -45,7 +55,9 @@ public actor MacRuntimeControlCommandWorker {
             guestProductServiceController: guestProductServiceController,
             guestMaintenanceController: guestMaintenanceController,
             guestAddressProvider: guestAddressProvider,
-            guestControlBaseURLOverride: guestControlBaseURLOverride
+            guestControlBaseURLOverride: guestControlBaseURLOverride,
+            platformAgentVerificationInvoker: platformAgentVerificationInvoker,
+            platformAgentSelectionOwner: platformAgentSelectionOwner
         )
     }
 
@@ -56,7 +68,14 @@ public actor MacRuntimeControlCommandWorker {
         guestProductServiceController: any RuntimeGuestProductServiceCommandControlling = UnavailableRuntimeGuestProductServiceController(),
         guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling = UnavailableRuntimeGuestMaintenanceController(),
         guestAddressProvider: any RuntimeGuestAddressProvider,
-        guestControlBaseURLOverride: String? = nil
+        guestControlBaseURLOverride: String? = nil,
+        updateRequestID: @escaping @Sendable () -> String = {
+            UUID().uuidString.lowercased()
+        },
+        platformAgentVerificationInvoker:
+            (any PlatformAgentUpdateBootstrapVerificationInvoking)? = nil,
+        platformAgentSelectionOwner:
+            (any PlatformAgentUpdateBootstrapSelectionOwning)? = nil
     ) {
         self.privilegedCommandRunner = privilegedCommandRunner
         self.actionEnvironment = actionEnvironment
@@ -65,11 +84,36 @@ public actor MacRuntimeControlCommandWorker {
         self.guestMaintenanceController = guestMaintenanceController
         self.guestAddressProvider = guestAddressProvider
         self.guestControlBaseURLOverride = guestControlBaseURLOverride
+        self.updateRequestID = updateRequestID
+        self.platformAgentVerificationInvoker = platformAgentVerificationInvoker
+        self.platformAgentSelectionOwner = platformAgentSelectionOwner
     }
 
     public func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
         try ensureExecutable(.launcher)
-        return await actionEnvironment.verifyBundle(launcher: RuntimeControlClientConstants.Paths.launcher, bundleURL: url)
+        let launcher = RuntimeControlClientConstants.Paths.launcher
+        let environment = actionEnvironment
+        guard let invoker = platformAgentVerificationInvoker else {
+            return await environment.verifyBundle(
+                launcher: launcher,
+                bundleURL: url,
+                verificationInvocationId: nil
+            )
+        }
+        if let inFlight = platformAgentUpdateInFlight {
+            return PlatformAgentVerifiedSelectionConsumeMapping.commandResult(
+                error: PlatformAgentUpdateInFlightError(inFlight)
+            )
+        }
+        platformAgentUpdateInFlight = .verify
+        defer { platformAgentUpdateInFlight = nil }
+        return await invoker.invoke(bundleURL: url) { invocationId in
+            await environment.verifyBundle(
+                launcher: launcher,
+                bundleURL: url,
+                verificationInvocationId: invocationId
+            )
+        }
     }
 
     public func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult {
@@ -135,14 +179,62 @@ public actor MacRuntimeControlCommandWorker {
 
     public func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
         try ensureExecutable(.launcher)
-        return await runPrivileged(RuntimeCommandFactory.shellCommand(
+        guard let owner = platformAgentSelectionOwner else {
+            return await runPrivileged(RuntimeCommandFactory.shellCommand(
+                executable: RuntimeControlClientConstants.Paths.launcher,
+                arguments: [
+                    RuntimeControlClientConstants.RuntimeCommand.runtime,
+                    RuntimeControlClientConstants.RuntimeCommand.applyUpdateBootstrap,
+                    url.path,
+                    RuntimeControlClientConstants.RuntimeCommand.optionRequestID,
+                    updateRequestID(),
+                ]
+            ))
+        }
+        if let inFlight = platformAgentUpdateInFlight {
+            return PlatformAgentVerifiedSelectionConsumeMapping.commandResult(
+                error: PlatformAgentUpdateInFlightError(inFlight)
+            )
+        }
+        platformAgentUpdateInFlight = .apply(requestId: nil)
+        defer { platformAgentUpdateInFlight = nil }
+        let requestId: String
+        do {
+            requestId = try owner.bindApply(
+                observedBundlePath: url.path,
+                mintRequestId: updateRequestID
+            )
+        } catch {
+            return PlatformAgentVerifiedSelectionConsumeMapping
+                .commandResult(error: error)
+        }
+        platformAgentUpdateInFlight = .apply(requestId: requestId)
+        let result = await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
                 RuntimeControlClientConstants.RuntimeCommand.runtime,
-                RuntimeControlClientConstants.RuntimeCommand.applyBundle,
+                RuntimeControlClientConstants.RuntimeCommand.applyUpdateBootstrap,
                 url.path,
+                RuntimeControlClientConstants.RuntimeCommand.optionRequestID,
+                requestId,
+                RuntimeControlClientConstants.RuntimeCommand
+                    .optionRequirePlatformAgentSelection,
             ]
         ))
+        if result.exitCode == 0 {
+            do {
+                try owner.spendApply(requestId: requestId)
+            } catch {
+                return result.appendingOutputIssue(
+                    RuntimeCommandOutputIssue(
+                        stream: .stderr,
+                        message: PlatformAgentVerifiedSelectionConsumeMapping
+                            .message(error)
+                    )
+                ).failingIfSuccessful()
+            }
+        }
+        return result
     }
 
     public func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
@@ -788,5 +880,156 @@ private extension RuntimeCommandResult {
             outputIssues: outputIssues + [issue],
             executionIssue: executionIssue
         )
+    }
+}
+
+private extension RuntimeCommandResult {
+    func failingIfSuccessful() -> RuntimeCommandResult {
+        RuntimeCommandResult(
+            exitCode: exitCode == 0 ? 1 : exitCode,
+            stdout: stdout,
+            stderr: stderr,
+            outputIssues: outputIssues,
+            executionIssue: executionIssue
+        )
+    }
+}
+
+enum PlatformAgentUpdateInFlight: Equatable, Sendable {
+    case verify
+    case apply(requestId: String?)
+}
+
+enum PlatformAgentUpdateInFlightError: Error, Equatable, Sendable {
+    case verifyInFlight
+    case applyInFlight(requestId: String?)
+
+    init(_ inFlight: PlatformAgentUpdateInFlight) {
+        switch inFlight {
+        case .verify:
+            self = .verifyInFlight
+        case .apply(let requestId):
+            self = .applyInFlight(requestId: requestId)
+        }
+    }
+}
+
+enum PlatformAgentVerifiedSelectionConsumeMapping {
+    static func commandResult(error: Error) -> RuntimeCommandResult {
+        RuntimeCommandResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: message(error),
+            executionIssue: nil
+        )
+    }
+
+    static func message(_ error: Error) -> String {
+        if let error = error as? PlatformAgentUpdateInFlightError {
+            return inFlightMessage(error)
+        }
+        if let error = error as? BindPlatformAgentUpdateBootstrapApplyError {
+            return bindMessage(error)
+        }
+        if let error = error as? SpendPlatformAgentUpdateBootstrapApplyError {
+            return spendMessage(error)
+        }
+        if let error = error as? RecordPlatformAgentUpdateBootstrapVerifiedSelectionError
+        {
+            return recordMessage(error)
+        }
+        return "platform-agent verified selection failed: \(error)"
+    }
+
+    private static func inFlightMessage(
+        _ error: PlatformAgentUpdateInFlightError
+    ) -> String {
+        switch error {
+        case .verifyInFlight:
+            return "platform-agent verify in flight"
+        case .applyInFlight(let requestId):
+            if let requestId {
+                return "platform-agent apply in flight requestId=\(requestId)"
+            }
+            return "platform-agent apply in flight"
+        }
+    }
+
+    private static func bindMessage(
+        _ error: BindPlatformAgentUpdateBootstrapApplyError
+    ) -> String {
+        switch error {
+        case .missing(let path):
+            return "platform-agent verified selection missing: \(path)"
+        case .stale:
+            return "platform-agent verified selection stale"
+        case .conflict(let expectedPath, let actualPath):
+            return
+                "platform-agent verified selection conflict expectedPath=\(expectedPath) actualPath=\(actualPath)"
+        case .invalid(let reason):
+            return "platform-agent verified selection invalid: \(reason)"
+        case .inspectionFailed(let path, let reason):
+            return
+                "platform-agent verified selection inspection failed path=\(path) reason=\(reason)"
+        case .permissionDenied(let path, let reason):
+            return
+                "platform-agent verified selection permission denied path=\(path) reason=\(reason)"
+        case .readFailed(let path, let reason):
+            return
+                "platform-agent verified selection read failed path=\(path) reason=\(reason)"
+        case .decodeFailed(let path, let reason):
+            return
+                "platform-agent verified selection decode failed path=\(path) reason=\(reason)"
+        case .unexpectedPathState(let path, let state):
+            return
+                "platform-agent verified selection unexpected path state path=\(path) state=\(state)"
+        case .persistFailed(let reason):
+            return "platform-agent verified selection persist failed: \(reason)"
+        }
+    }
+
+    private static func spendMessage(
+        _ error: SpendPlatformAgentUpdateBootstrapApplyError
+    ) -> String {
+        switch error {
+        case .missing(let path):
+            return "platform-agent verified selection missing: \(path)"
+        case .invalid(let reason):
+            return "platform-agent verified selection invalid: \(reason)"
+        case .requestMismatch(let expected, let actual):
+            return
+                "platform-agent verified selection request mismatch expected=\(expected) actual=\(actual)"
+        case .inspectionFailed(let path, let reason):
+            return
+                "platform-agent verified selection inspection failed path=\(path) reason=\(reason)"
+        case .permissionDenied(let path, let reason):
+            return
+                "platform-agent verified selection permission denied path=\(path) reason=\(reason)"
+        case .readFailed(let path, let reason):
+            return
+                "platform-agent verified selection read failed path=\(path) reason=\(reason)"
+        case .decodeFailed(let path, let reason):
+            return
+                "platform-agent verified selection decode failed path=\(path) reason=\(reason)"
+        case .unexpectedPathState(let path, let state):
+            return
+                "platform-agent verified selection unexpected path state path=\(path) state=\(state)"
+        case .persistFailed(let reason):
+            return "platform-agent verified selection persist failed: \(reason)"
+        }
+    }
+
+    private static func recordMessage(
+        _ error: RecordPlatformAgentUpdateBootstrapVerifiedSelectionError
+    ) -> String {
+        switch error {
+        case .inFlight(let requestId):
+            return
+                "platform-agent verified selection in flight requestId=\(requestId)"
+        case .persistFailed(let reason):
+            return "platform-agent verified selection persist failed: \(reason)"
+        default:
+            return "platform-agent verified selection invalid: \(error)"
+        }
     }
 }

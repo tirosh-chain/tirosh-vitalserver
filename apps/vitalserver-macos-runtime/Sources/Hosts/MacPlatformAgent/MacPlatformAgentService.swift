@@ -1,5 +1,6 @@
 import Application
 import Darwin
+import Domain
 import Foundation
 import InboundAdapters
 import OutboundAdapters
@@ -93,24 +94,47 @@ public final class MacPlatformAgentService {
             databaseURL: installedPaths.runtimeStateDatabase,
             transitionDecider: RuntimeHostSettingsActivationUseCase()
         )
+        let installedProductReleaseReader = SQLiteInstalledProductReleaseReader(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            validate: ValidateInstalledProductReleaseUseCase().validate
+        )
+        let stableUpdateJournalReader = SQLiteUpdateBootstrapJournalRepository(
+            databaseURL: installedPaths.runtimeStateDatabase,
+            validate: ValidateUpdateBootstrapJournalUseCase().validate,
+            validateRelease: InstalledProductReleasePolicy.validate,
+            validateSettlement: InstalledProductReleasePolicy.validate
+        )
         let readWorker = MacRuntimeControlReadWorker(
             releaseInfo: .generated,
             operationLeaseReader: operationLeaseController,
             workflowOperationStateReader: workflowOperationStateRepository,
+            stableUpdateJournalReader: stableUpdateJournalReader,
             guestAddressProvider: runtimeEndpointStore,
             vmLifecycleResourceReader: vmLifecycleController,
+            installedProductReleaseReader: installedProductReleaseReader,
             hostSettingsReader: hostSettingsRepository
         )
+        let platformAgentSelectionOwner =
+            SystemPlatformAgentUpdateBootstrapSelectionOwner(
+                installedPaths: installedPaths
+            )
         let commandWorker = MacRuntimeControlCommandWorker(
             guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
             guestMaintenanceController: RuntimeGuestMaintenanceControlUseCase(),
-            guestAddressProvider: runtimeEndpointStore
+            guestAddressProvider: runtimeEndpointStore,
+            platformAgentVerificationInvoker:
+                SystemPlatformAgentUpdateBootstrapVerificationInvoker(
+                    installedPaths: installedPaths,
+                    selectionOwner: platformAgentSelectionOwner
+                ),
+            platformAgentSelectionOwner: platformAgentSelectionOwner
         )
         let client = MacRuntimeControlClient(
             releaseInfo: .generated,
             operationLeaseReader: operationLeaseController,
             guestAddressProvider: runtimeEndpointStore,
             vmLifecycleResourceReader: vmLifecycleController,
+            installedProductReleaseReader: installedProductReleaseReader,
             hostSettingsReader: hostSettingsRepository,
             commandWorker: commandWorker
         )

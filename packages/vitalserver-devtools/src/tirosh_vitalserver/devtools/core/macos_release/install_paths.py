@@ -33,11 +33,54 @@ def settings_install_app_bundle(settings: MacOSReleaseSettings) -> str:
     )
 
 
+def settings_host_platform_installation_root(
+    settings: MacOSReleaseSettings,
+) -> str:
+    return f"{settings_install_prefix(settings)}/host-platform"
+
+
+def settings_host_platform_current_release(
+    settings: MacOSReleaseSettings,
+) -> str:
+    return f"{settings_host_platform_installation_root(settings)}/current"
+
+
+def settings_host_platform_release_slot(
+    settings: MacOSReleaseSettings,
+    release_id: str,
+) -> str:
+    return f"{settings_host_platform_installation_root(settings)}/releases/{release_id}"
+
+
+def settings_current_release_app_bundle(settings: MacOSReleaseSettings) -> str:
+    return (
+        f"{settings_host_platform_current_release(settings)}/"
+        f"app/{settings.app_name}.app"
+    )
+
+
+def settings_current_release_binary(
+    settings: MacOSReleaseSettings,
+    name: str,
+) -> str:
+    return f"{settings_host_platform_current_release(settings)}/bin/{name}"
+
+
+def settings_current_release_nginx_prefix(settings: MacOSReleaseSettings) -> str:
+    return f"{settings_host_platform_current_release(settings)}/nginx"
+
+
 def settings_install_platform_agent(settings: MacOSReleaseSettings) -> str:
     return (
-        f"{settings_install_app_bundle(settings)}/Contents/MacOS/"
+        f"{settings_current_release_app_bundle(settings)}/Contents/MacOS/"
         "vitalserver-platform-agent"
     )
+
+
+def settings_install_update_handoff_jobs(
+    settings: MacOSReleaseSettings,
+) -> str:
+    return f"{settings_install_prefix(settings)}/update-handoff/jobs"
 
 
 def settings_install_nginx_prefix(settings: MacOSReleaseSettings) -> str:
@@ -75,12 +118,16 @@ def install_platform_agent(context: PackageContext) -> str:
     return settings_install_platform_agent(context.settings)
 
 
+def install_update_handoff_jobs(context: PackageContext) -> str:
+    return settings_install_update_handoff_jobs(context.settings)
+
+
 def install_nginx_prefix(context: PackageContext) -> str:
     return settings_install_nginx_prefix(context.settings)
 
 
 def install_nginx_bin(context: PackageContext) -> str:
-    return f"{install_nginx_prefix(context)}/sbin/nginx"
+    return f"{settings_current_release_nginx_prefix(context.settings)}/sbin/nginx"
 
 
 def package_path(context: PackageContext, path: str) -> Path:

@@ -2251,7 +2251,6 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.logText = "runtime log line\nwatchdog recovered"
         viewModel.releaseInfo = RuntimeReleaseInfo(
             helperVersion: "1.0",
-            minimumUpdaterVersion: "1.0",
             vitalServerVersion: "2026.05.30",
             services: [
                 RuntimeBundledServiceInfo(name: "vitalserver", image: "vitalserver:latest", version: "2026.05.30")
@@ -2531,7 +2530,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var lastAppliedSettings: RuntimeSettings?
     var settings = RuntimeSettings()
     var status = platformState()
-    var operationState = PlatformOperationState(activeOperation: nil, install: .unavailable())
+    var operationState = PlatformOperationState(
+        activeOperation: nil,
+        install: .unavailable(),
+        stableUpdate: .missing()
+    )
     var healthStatus = platformState()
     var vitalDBObservation: VitalDBObservationDocument?
     var vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(updatedAt: "2026-07-01T00:00:00+00:00")
@@ -3181,7 +3184,6 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         }
         return RuntimeReleaseInfo(
             helperVersion: "test",
-            minimumUpdaterVersion: "test",
             vitalServerVersion: "test",
             services: []
         )

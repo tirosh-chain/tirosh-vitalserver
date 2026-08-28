@@ -17,7 +17,7 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
         let contractURL = productRoot.appendingPathComponent("package-install-contract.json")
         try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
 
-        let targetVersion = try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1"))
+        let targetVersion = try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.2"))
         try lifecycle.writePackageInstallContract(
             targetVersion: targetVersion,
             intent: .fresh,
@@ -39,7 +39,7 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
         )
         XCTAssertEqual(encoded["schemaVersion"] as? Int, 2)
         XCTAssertEqual(encoded["packageIdentifier"] as? String, Constants.Product.identifier)
-        XCTAssertEqual(encoded["targetVersion"] as? String, "0.2.1")
+        XCTAssertEqual(encoded["targetVersion"] as? String, "0.2.2")
         XCTAssertEqual(encoded["intent"] as? String, "fresh")
         XCTAssertNil(encoded["mode"])
     }
@@ -55,7 +55,7 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
             RuntimePackageInstallContract(
                 schemaVersion: RuntimePackageInstallContract.currentSchemaVersion + 1,
                 packageIdentifier: Constants.Product.identifier,
-                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1")),
+                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.2")),
                 intent: .fresh
             )
         ).write(to: contractURL)
@@ -75,7 +75,7 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
         try JSONEncoder().encode(
             RuntimePackageInstallContract(
                 packageIdentifier: "example.invalid.package",
-                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1")),
+                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.2")),
                 intent: .fresh
             )
         ).write(to: contractURL)
@@ -115,7 +115,7 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
         try JSONEncoder().encode(
             RuntimePackageInstallContract(
                 packageIdentifier: Constants.Product.identifier,
-                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1")),
+                targetVersion: try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.2")),
                 intent: .sameVersionRepair
             )
         ).write(to: contractURL)
@@ -126,7 +126,7 @@ final class RuntimeFreshInstallHostSettingsTests: XCTestCase {
     }
 
     func testInstallProvisionRejectsTargetMismatchAndNonFreshIntentBeforeSQLiteProvisioning() throws {
-        let currentVersion = try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.1"))
+        let currentVersion = try XCTUnwrap(RuntimePackageVersion(rawValue: "0.2.2"))
         let cases = [
             RuntimePackageInstallContract(
                 packageIdentifier: Constants.Product.identifier,
@@ -542,7 +542,7 @@ private final class RuntimeReceiptPresentPreinstallCommandRunner: RuntimeCommand
                   <key>pkgid</key>
                   <string>\(Constants.Product.identifier)</string>
                   <key>pkg-version</key>
-                  <string>0.2.1</string>
+                  <string>0.2.2</string>
                 </dict>
                 </plist>
                 """,

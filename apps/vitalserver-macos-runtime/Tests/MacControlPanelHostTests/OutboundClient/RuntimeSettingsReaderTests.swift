@@ -1381,7 +1381,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let reader = SystemPlatformStateReader(
             runtimeLauncherPath: directory.appendingPathComponent("launcher").path,
             runSyncCommand: { _, _ in
-                RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service")
+                RuntimeCommandResult(exitCode: 113, stdout: "", stderr: "Could not find service")
             }
         )
 
@@ -1426,7 +1426,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 RuntimeCommandResult(exitCode: 28, stdout: "", stderr: "Operation timed out")
             },
             runSyncCommand: { _, _ in
-                RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service")
+                RuntimeCommandResult(exitCode: 113, stdout: "", stderr: "Could not find service")
             }
         )
 
@@ -1485,7 +1485,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 RuntimeCommandResult(exitCode: 0, stdout: "200", stderr: "")
             },
             runSyncCommand: { _, _ in
-                RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service")
+                RuntimeCommandResult(exitCode: 113, stdout: "", stderr: "Could not find service")
             }
         )
 
@@ -1768,7 +1768,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     }
 
     private func missingLaunchdServiceCommand() -> @Sendable (String, [String]) -> RuntimeCommandResult {
-        { _, _ in RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service") }
+        { _, _ in RuntimeCommandResult(exitCode: 113, stdout: "", stderr: "Could not find service") }
     }
 
     private func runtimeEvent(id: String, timestamp: String) -> RuntimeEventDocument {

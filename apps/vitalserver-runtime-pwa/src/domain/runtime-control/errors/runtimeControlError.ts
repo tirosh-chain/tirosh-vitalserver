@@ -278,7 +278,7 @@ function recoveryForStatus(status: number, code: string | undefined): string {
   }
 
   if (code === "updateApplyUnavailable") {
-    return "This 0.2.1 build does not support update apply. Check bundle integrity only; do not retry the apply request.";
+    return "This installed Helper cannot enter the stable product update workflow. Export logs and confirm the installed build exposes update apply capability.";
   }
 
   if (status === 503 && code === "guestControlUnavailable") {

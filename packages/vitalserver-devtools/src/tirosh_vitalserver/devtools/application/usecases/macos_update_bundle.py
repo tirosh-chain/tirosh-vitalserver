@@ -48,6 +48,11 @@ from tirosh_vitalserver.devtools.core.update_bundle_models import (
     BuildUpdateBundleInput,
 )
 
+# The retained schema-3 publisher requires a SemVer field even though the
+# stable bootstrap contract has no updater-version gate. Keep that legacy
+# serialization detail out of the product release manifest.
+LEGACY_SCHEMA3_NO_UPDATER_VERSION_GATE = "0.0.0"
+
 
 def build_update_bundle(input: ReleaseUpdateBundleInput) -> int:
     root = repo_root()
@@ -143,7 +148,7 @@ def build_update_bundle(input: ReleaseUpdateBundleInput) -> int:
             bundle_name=bundle_name,
             channel=release.channel,
             release_label=release.release_label,
-            min_updater_version=release.minimum_updater_version,
+            min_updater_version=LEGACY_SCHEMA3_NO_UPDATER_VERSION_GATE,
             bundle_kind=bundle_kind,
             helper_version=release.helper_version,
             target_platform=input.target_platform or release.target_platform,
@@ -189,7 +194,7 @@ def apply_smoke_update_bundle(input: ApplySmokeReleaseUpdateBundleInput) -> int:
     release = load_release_manifest(release_file)
     if release.channel != "dev":
         raise SystemExit(
-            f"0.2.1 {release.channel} update apply smoke is unavailable because "
+            f"legacy {release.channel} update apply smoke is unavailable because "
             "trusted publisher verification is not implemented"
         )
     bundle_path = release_update_bundle_path(

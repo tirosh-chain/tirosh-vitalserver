@@ -67,9 +67,18 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
 from tirosh_vitalserver.devtools.config.release_manifest import load_release_manifest
+from tirosh_vitalserver.devtools.config.update_bootstrap_trust_store import (
+    UpdateBootstrapTrustStoreDecodeError,
+    UpdateBootstrapTrustStoreInvalidError,
+    UpdateBootstrapTrustStoreReadError,
+    UpdateBootstrapTrustStoreUnavailableError,
+    load_update_bootstrap_trust_store,
+)
 from tirosh_vitalserver.devtools.core.guest_services import RootfsInputMetadataPlan
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
+    settings_host_platform_release_slot,
     settings_install_home,
+    settings_install_prefix,
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.package_install import (
@@ -169,6 +178,9 @@ def release_package_environment_preflight_report(
         check_required_tool("codesign"),
         check_required_tool("pkgbuild"),
         check_output_path(outputs.pkg_output, "pkg-output"),
+        check_update_bootstrap_trust_store(
+            resolve_path(root, input.update_bootstrap_trust_store)
+        ),
     ]
     if input.output_kind == "dmg":
         checks.extend(
@@ -196,6 +208,7 @@ def release_package_preflight_report(
             release_file=input.release_file,
             output=input.output,
             output_kind=output_kind,
+            update_bootstrap_trust_store=(input.update_bootstrap_trust_store),
         )
     )
     rootfs_base = resolve_path(root, input.rootfs_base)
@@ -260,6 +273,11 @@ def release_dmg_artifact_report(
     settings = load_macos_release_settings(input.config, root)
     release_file = resolve_path(root, input.release_file)
     release = load_release_manifest(release_file)
+    release_slot = settings_host_platform_release_slot(
+        settings,
+        f"helper-{release.helper_version}",
+    )
+    nginx_release_path = f"{release_slot}/release/nginx"
     outputs = package_outputs(
         settings=settings,
         release=release,
@@ -271,6 +289,9 @@ def release_dmg_artifact_report(
         check_required_tool("hdiutil"),
         check_required_tool("pkgutil"),
         check_required_file(dmg_output, "dmg-artifact"),
+        check_update_bootstrap_trust_store(
+            resolve_path(root, input.update_bootstrap_trust_store)
+        ),
     ]
     if any(check.blocks for check in checks):
         return PreflightReport(name="release-dmg-artifact", checks=tuple(checks))
@@ -282,6 +303,17 @@ def release_dmg_artifact_report(
             dmg_output=dmg_output,
             installer_pkg_name=settings.outputs.dmg_installer_pkg_name,
             install_home_path=settings_install_home(settings),
+            install_product_root_path=settings_install_prefix(settings),
+            nginx_release_path=nginx_release_path,
+            update_handoff_supervisor_path=(settings.install.update_handoff_supervisor),
+            update_handoff_supervisor_plist_path=(
+                f"{settings.install.launch_daemons_dir}/"
+                f"{settings.launchd.update_handoff_supervisor.installed_plist}"
+            ),
+            expected_update_bootstrap_trust_store=resolve_path(
+                root,
+                input.update_bootstrap_trust_store,
+            ),
         )
     )
     return PreflightReport(name="release-dmg-artifact", checks=tuple(checks))
@@ -388,6 +420,11 @@ def inspect_dmg_layout(
     dmg_output: Path,
     installer_pkg_name: str,
     install_home_path: str,
+    install_product_root_path: str,
+    nginx_release_path: str,
+    update_handoff_supervisor_path: str,
+    update_handoff_supervisor_plist_path: str,
+    expected_update_bootstrap_trust_store: Path,
 ) -> list[PreflightCheck]:
     checks: list[PreflightCheck] = []
     attachment = None
@@ -415,6 +452,15 @@ def inspect_dmg_layout(
                 inspect_dmg_installer_pkg_payload(
                     installer_pkg=installer_pkg,
                     install_home_path=install_home_path,
+                    install_product_root_path=install_product_root_path,
+                    nginx_release_path=nginx_release_path,
+                    update_handoff_supervisor_path=(update_handoff_supervisor_path),
+                    update_handoff_supervisor_plist_path=(
+                        update_handoff_supervisor_plist_path
+                    ),
+                    expected_update_bootstrap_trust_store=(
+                        expected_update_bootstrap_trust_store
+                    ),
                 )
             )
         tools_dir = mount / "Troubleshooting Tools"
@@ -432,13 +478,11 @@ def inspect_dmg_layout(
                     "dmg-upstream-redis-backup-command",
                 ),
                 check_required_executable(
-                    tools_dir
-                    / "bin/vitalserver-troubleshooting-reset-for-reinstall",
+                    tools_dir / "bin/vitalserver-troubleshooting-reset-for-reinstall",
                     "dmg-reset-cli",
                 ),
                 check_required_executable(
-                    tools_dir
-                    / "bin/vitalserver-troubleshooting-upstream-redis-save",
+                    tools_dir / "bin/vitalserver-troubleshooting-upstream-redis-save",
                     "dmg-upstream-redis-save-cli",
                 ),
             ]
@@ -462,6 +506,11 @@ def inspect_dmg_installer_pkg_payload(
     *,
     installer_pkg: Path,
     install_home_path: str,
+    install_product_root_path: str,
+    nginx_release_path: str,
+    update_handoff_supervisor_path: str,
+    update_handoff_supervisor_plist_path: str,
+    expected_update_bootstrap_trust_store: Path,
 ) -> list[PreflightCheck]:
     try:
         with TemporaryDirectory(prefix="vitalserver-dmg-pkg-") as temporary_dir:
@@ -482,6 +531,27 @@ def inspect_dmg_installer_pkg_payload(
                     install_home_path=install_home_path,
                 )
             )
+            checks.extend(
+                verify_dmg_pkg_nginx_runtime_closure(
+                    payload=payload,
+                    nginx_release_path=nginx_release_path,
+                )
+            )
+            checks.append(
+                verify_dmg_pkg_update_bootstrap_trust_store(
+                    payload=payload,
+                    install_product_root_path=install_product_root_path,
+                    expected=expected_update_bootstrap_trust_store,
+                )
+            )
+            checks.extend(
+                verify_dmg_pkg_update_handoff_supervisor(
+                    payload=payload,
+                    executable_path=update_handoff_supervisor_path,
+                    plist_path=update_handoff_supervisor_plist_path,
+                    jobs_path=f"{install_product_root_path}/update-handoff/jobs",
+                )
+            )
             return checks
     except (OSError, RuntimeError) as error:
         return [
@@ -492,6 +562,75 @@ def inspect_dmg_installer_pkg_payload(
                 detail=f"{installer_pkg}: {error}",
             )
         ]
+
+
+def verify_dmg_pkg_nginx_runtime_closure(
+    *,
+    payload: Path,
+    nginx_release_path: str,
+) -> list[PreflightCheck]:
+    nginx = payload / nginx_release_path.strip("/")
+    return [
+        check_required_executable_file(
+            nginx / "sbin/nginx",
+            "dmg-payload-nginx-executable",
+        ),
+        check_required_payload_file(
+            nginx / "lib/libpcre2-8.0.dylib",
+            "dmg-payload-nginx-libpcre2",
+        ),
+        check_required_payload_file(
+            nginx / "lib/libssl.3.dylib",
+            "dmg-payload-nginx-libssl",
+        ),
+        check_required_payload_file(
+            nginx / "lib/libcrypto.3.dylib",
+            "dmg-payload-nginx-libcrypto",
+        ),
+    ]
+
+
+def verify_dmg_pkg_update_handoff_supervisor(
+    *,
+    payload: Path,
+    executable_path: str,
+    plist_path: str,
+    jobs_path: str,
+) -> list[PreflightCheck]:
+    executable = payload / executable_path.strip("/")
+    plist = payload / plist_path.strip("/")
+    checks = [
+        check_required_executable_file(
+            executable,
+            "dmg-payload-update-handoff-supervisor",
+        ),
+        check_required_payload_file(
+            plist,
+            "dmg-payload-update-handoff-supervisor-plist",
+        ),
+    ]
+    if any(check.blocks for check in checks):
+        return checks
+    checks.extend(
+        [
+            check_text_contains(
+                plist,
+                "dmg-payload-update-handoff-supervisor-service-command",
+                f"<string>{executable_path}</string>",
+            ),
+            check_text_contains(
+                plist,
+                "dmg-payload-update-handoff-supervisor-jobs-owner",
+                f"<string>{jobs_path}</string>",
+            ),
+            check_text_contains(
+                plist,
+                "dmg-payload-update-handoff-supervisor-keepalive",
+                "<key>KeepAlive</key>\n  <true/>",
+            ),
+        ]
+    )
+    return checks
 
 
 def verify_dmg_pkg_rootfs_material(
@@ -571,6 +710,102 @@ def verify_dmg_pkg_rootfs_material(
             )
         )
     return checks
+
+
+def verify_dmg_pkg_update_bootstrap_trust_store(
+    *,
+    payload: Path,
+    install_product_root_path: str,
+    expected: Path,
+) -> PreflightCheck:
+    installed = (
+        payload
+        / install_product_root_path.strip("/")
+        / "config"
+        / "update-bootstrap-trust-store.json"
+    )
+    file_check = check_required_payload_file(
+        installed,
+        "dmg-payload-update-bootstrap-trust-store",
+    )
+    if file_check.blocks:
+        return file_check
+    try:
+        load_update_bootstrap_trust_store(installed)
+    except UpdateBootstrapTrustStoreReadError as error:
+        return PreflightCheck(
+            name="dmg-payload-update-bootstrap-trust-store",
+            status=PreflightStatus.FAILED,
+            message="packaged update bootstrap trust store read failed",
+            detail=str(error),
+        )
+    except (
+        UpdateBootstrapTrustStoreDecodeError,
+        UpdateBootstrapTrustStoreInvalidError,
+        UpdateBootstrapTrustStoreUnavailableError,
+    ) as error:
+        return PreflightCheck(
+            name="dmg-payload-update-bootstrap-trust-store",
+            status=PreflightStatus.INVALID,
+            message="packaged update bootstrap trust store is invalid",
+            detail=str(error),
+        )
+    try:
+        expected_bytes = expected.read_bytes()
+        actual_bytes = installed.read_bytes()
+    except OSError as error:
+        return PreflightCheck(
+            name="dmg-payload-update-bootstrap-trust-store",
+            status=PreflightStatus.FAILED,
+            message="update bootstrap trust store comparison read failed",
+            detail=str(error),
+        )
+    if actual_bytes != expected_bytes:
+        return PreflightCheck(
+            name="dmg-payload-update-bootstrap-trust-store",
+            status=PreflightStatus.FAILED,
+            message="packaged update bootstrap trust store differs from release input",
+            detail=f"expected={expected} actual={installed}",
+        )
+    return PreflightCheck(
+        name="dmg-payload-update-bootstrap-trust-store",
+        status=PreflightStatus.PASSED,
+        message="packaged update bootstrap trust store matches release input",
+    )
+
+
+def check_update_bootstrap_trust_store(path: Path) -> PreflightCheck:
+    try:
+        load_update_bootstrap_trust_store(path)
+    except UpdateBootstrapTrustStoreUnavailableError as error:
+        return PreflightCheck(
+            name="update-bootstrap-trust-store",
+            status=PreflightStatus.MISSING,
+            message="update bootstrap trust store is unavailable",
+            detail=str(error),
+        )
+    except UpdateBootstrapTrustStoreReadError as error:
+        return PreflightCheck(
+            name="update-bootstrap-trust-store",
+            status=PreflightStatus.FAILED,
+            message="update bootstrap trust store read failed",
+            detail=str(error),
+        )
+    except (
+        UpdateBootstrapTrustStoreDecodeError,
+        UpdateBootstrapTrustStoreInvalidError,
+    ) as error:
+        return PreflightCheck(
+            name="update-bootstrap-trust-store",
+            status=PreflightStatus.INVALID,
+            message="update bootstrap trust store is invalid",
+            detail=str(error),
+        )
+    return PreflightCheck(
+        name="update-bootstrap-trust-store",
+        status=PreflightStatus.PASSED,
+        message=f"update bootstrap trust store is valid: {path}",
+    )
 
 
 def check_required_payload_file(path: Path, name: str) -> PreflightCheck:
@@ -900,8 +1135,7 @@ def install_pkg(input: MacOSPackageInstallInput) -> int:
     target_version = NumericPackageVersion.parse(release.helper_version)
     if target_version is None:
         raise SystemExit(
-            "package install target version is invalid "
-            f"value={release.helper_version}"
+            f"package install target version is invalid value={release.helper_version}"
         )
     receipt = read_package_receipt(settings.package_identifier)
     if isinstance(receipt, PackageReceiptReadFailed):
@@ -946,8 +1180,7 @@ def install_pkg(input: MacOSPackageInstallInput) -> int:
                 ]
             )
             print(
-                "installed runtime settings: "
-                f"{settings.install.install_settings_json}"
+                f"installed runtime settings: {settings.install.install_settings_json}"
             )
         run(["sudo", "installer", "-pkg", str(pkg_output), "-target", "/"])
     except subprocess.CalledProcessError as error:
@@ -1011,6 +1244,17 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
         )
     )
     guest_deploy_source = resolve_path(root, input.guest_deploy_source)
+    try:
+        update_bootstrap_trust_store = load_update_bootstrap_trust_store(
+            resolve_path(root, input.update_bootstrap_trust_store)
+        )
+    except (
+        UpdateBootstrapTrustStoreDecodeError,
+        UpdateBootstrapTrustStoreInvalidError,
+        UpdateBootstrapTrustStoreReadError,
+        UpdateBootstrapTrustStoreUnavailableError,
+    ) as error:
+        raise SystemExit(f"error: {error}") from error
     package_vm_home = settings.pkg_root / settings_install_home(settings).strip("/")
 
     return PackageContext(
@@ -1027,6 +1271,7 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
         rootfs_base=resolve_path(root, input.rootfs_base),
         golden_runtime_dir=resolve_path(root, input.golden_runtime_dir),
         guest_deploy_source=guest_deploy_source,
+        update_bootstrap_trust_store=update_bootstrap_trust_store,
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=package_vm_home / "data/deploy",
             base_url=ubuntu_config.base_url,

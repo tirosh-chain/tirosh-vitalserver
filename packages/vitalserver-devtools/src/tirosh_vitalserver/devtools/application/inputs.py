@@ -3,6 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.core.helper_stable_update_release_models import (
+    HelperStableUpdateLayer,
+    HelperStableUpdateLayerRelease,
+)
+from tirosh_vitalserver.devtools.core.update_bootstrap_bundle_models import (
+    BuildUpdateBootstrapBundleInput,
+    VerifyUpdateBootstrapBundleInput,
+)
 from tirosh_vitalserver.devtools.core.update_bundle_models import BuildUpdateBundleInput
 from tirosh_vitalserver.devtools.core.upstream_vitalserver_contract import (
     VerificationMode,
@@ -120,6 +128,7 @@ class DockerImageBundleInput:
 @dataclass(frozen=True)
 class GuestDeploymentInput:
     config: Path
+    release_file: Path
     vm_home: Path
     runtime_dir: Path
     deploy_dir: Path | None
@@ -283,6 +292,40 @@ class ReleaseUpdateBundleInput:
 
 
 @dataclass(frozen=True)
+class HelperStableUpdateLayerArtifactInput:
+    layer: HelperStableUpdateLayer
+    artifact: Path
+    artifact_media_type: str
+    effect_executor: Path
+    effect_configuration: Path
+    rollback_artifact: Path
+    rollback_media_type: str
+
+
+@dataclass(frozen=True)
+class ComposeHelperStableUpdateReleaseInput:
+    update_id: str
+    specification_id: str
+    product_version: str
+    runtime_version: str
+    target_platform: str
+    target_architecture: str
+    layers: tuple[HelperStableUpdateLayerArtifactInput, ...]
+    next_updater: Path
+    publisher_key_id: str
+    publisher_private_key: Path
+    publisher_trust_store: Path
+    issued_at: str
+    output: Path
+
+
+@dataclass(frozen=True)
+class MaterializedHelperUpdatePayload:
+    root: Path
+    layers: tuple[HelperStableUpdateLayerRelease, ...]
+
+
+@dataclass(frozen=True)
 class VerifyReleaseUpdateBundleInput:
     config: Path
     release_file: Path
@@ -301,11 +344,17 @@ class ApplySmokeReleaseUpdateBundleInput:
 
 
 @dataclass(frozen=True)
+class FieldProofPreflightInput:
+    update_bootstrap_trust_store: Path | None
+
+
+@dataclass(frozen=True)
 class ReleasePackageEnvironmentPreflightInput:
     config: Path
     release_file: Path
     output: Path | None
     output_kind: str
+    update_bootstrap_trust_store: Path
 
 
 @dataclass(frozen=True)
@@ -325,6 +374,7 @@ class ReleasePackageInput:
     nginx_expected_version: str | None
     docker_platform: str | None
     guest_deploy_source: Path
+    update_bootstrap_trust_store: Path
 
 
 @dataclass(frozen=True)
@@ -342,6 +392,7 @@ class ReleaseDmgArtifactVerifyInput:
     config: Path
     release_file: Path
     output: Path | None
+    update_bootstrap_trust_store: Path
 
 
 @dataclass(frozen=True)
@@ -371,13 +422,16 @@ class VerifyUpdateBundleInput:
 
 __all__ = [
     "ApplySmokeReleaseUpdateBundleInput",
+    "BuildUpdateBootstrapBundleInput",
     "BuildUpdateBundleInput",
     "CloudInitInput",
     "ComposeCommandInput",
+    "ComposeHelperStableUpdateReleaseInput",
     "ConfigValueInput",
     "DockerImageBundleInput",
     "EnvironmentInput",
     "GuestDeploymentInput",
+    "HelperStableUpdateLayerArtifactInput",
     "HostProxyInput",
     "InstalledHealthInput",
     "InstalledSmokeInput",
@@ -385,6 +439,7 @@ __all__ = [
     "MacOSAppInput",
     "MacOSPackageCleanInput",
     "MacOSPackageInstallInput",
+    "MaterializedHelperUpdatePayload",
     "NginxBundleInput",
     "OpenProductUrlInput",
     "PythonWorkspaceToolInput",
@@ -408,5 +463,6 @@ __all__ = [
     "RuntimeWaitInput",
     "UbuntuBootAssetsInput",
     "VerifyReleaseUpdateBundleInput",
+    "VerifyUpdateBootstrapBundleInput",
     "VerifyUpdateBundleInput",
 ]

@@ -29,9 +29,7 @@ final class UpdateBundleContractsTests: XCTestCase {
           "components": {
             "updater": "4.5.6"
           },
-          "minUpdaterVersion": "1.2.0",
           "requiresGuestActivation": true,
-          "requiresTwoPhaseUpdate": false,
           "createdAt": "2026-05-21T12:00:00Z",
           "artifacts": [
             { "name": "rootfs-base.raw.gz", "type": "rootfs-base", "sha256": "abc", "size": 10 },
@@ -45,9 +43,7 @@ final class UpdateBundleContractsTests: XCTestCase {
 
         XCTAssertEqual(manifest.version, "1.2.3")
         XCTAssertEqual(manifest.runtimeVersion, "4.5.6")
-        XCTAssertEqual(manifest.minUpdaterVersion, "1.2.0")
         XCTAssertTrue(manifest.requiresGuestActivation)
-        XCTAssertFalse(manifest.requiresTwoPhaseUpdate)
         XCTAssertEqual(manifest.artifacts.map(\.type), [.rootfsBase, .guestDeploy])
         XCTAssertEqual(manifest.migrations.first?.name, "001.sh")
     }
@@ -66,7 +62,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         """.utf8)))
     }
 
-    func testManifestCompatibilityFieldsDefaultForNewDocuments() throws {
+    func testManifestGuestActivationDefaultsForNewDocuments() throws {
         let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {
           "schemaVersion": 3,
@@ -92,9 +88,7 @@ final class UpdateBundleContractsTests: XCTestCase {
         XCTAssertEqual(manifest.helperVersion, "1.2.3")
         XCTAssertEqual(manifest.targetPlatform, "macos-arm64")
         XCTAssertEqual(manifest.components, ["updater": "4.5.6"])
-        XCTAssertNil(manifest.minUpdaterVersion)
         XCTAssertFalse(manifest.requiresGuestActivation)
-        XCTAssertFalse(manifest.requiresTwoPhaseUpdate)
     }
 
     func testDecodesLayeredManifestShape() throws {
@@ -107,7 +101,6 @@ final class UpdateBundleContractsTests: XCTestCase {
           "helperVersion": "0.2.0",
           "releaseLabel": "0.2.0-dev.1",
           "targetPlatform": "macos-arm64",
-          "minUpdaterVersion": "0.1.6",
           "components": {
             "helperUI": "0.2.0+macos.1",
             "updater": "0.2.0",
@@ -117,7 +110,6 @@ final class UpdateBundleContractsTests: XCTestCase {
             "vitalServer": "2.3.4"
           },
           "requiresGuestActivation": true,
-          "requiresTwoPhaseUpdate": false,
           "createdAt": "2026-05-22T00:00:00Z",
           "artifacts": [],
           "migrations": []
@@ -132,7 +124,6 @@ final class UpdateBundleContractsTests: XCTestCase {
         XCTAssertEqual(manifest.targetPlatform, "macos-arm64")
         XCTAssertEqual(manifest.components["vmDriver"], "0.2.0+macos.1")
         XCTAssertEqual(manifest.components["serviceStack"], "2.3.4-stack.1")
-        XCTAssertEqual(manifest.minUpdaterVersion, "0.1.6")
     }
 
     func testUnknownBundleKindRoundTrips() throws {

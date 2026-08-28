@@ -59,7 +59,27 @@ extension RuntimeLifecycle {
                 workflowOperationStateRepository: SQLiteRuntimeWorkflowOperationStateRepository(
                     databaseURL: installedPaths.runtimeStateDatabase
                 ),
-                operationID: { UUID().uuidString.lowercased() }
+                operationID: { UUID().uuidString.lowercased() },
+                installationID: { UUID().uuidString.lowercased() },
+                settleInstalledProductRelease: {
+                    operationID,
+                    installationID in
+                    let release = try MakeInstalledProductReleaseUseCase()
+                        .makePackageInstall(
+                            installationId: installationID,
+                            productId: Constants.Product.identifier,
+                            productVersion: Constants.launcherVersion,
+                            runtimeVersion: Constants.launcherVersion,
+                            installOperationId: operationID,
+                            settledAt: ISO8601DateFormatter().string(from: clock.now)
+                        )
+                    try SQLiteUpdateBootstrapJournalRepository(
+                        databaseURL: installedPaths.runtimeStateDatabase,
+                        validate: ValidateUpdateBootstrapJournalUseCase().validate,
+                        validateRelease: InstalledProductReleasePolicy.validate,
+                        validateSettlement: InstalledProductReleasePolicy.validate
+                    ).settlePackageInstallRelease(release)
+                }
             )
         )
     }

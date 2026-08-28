@@ -270,9 +270,11 @@ def sqlite_utc_naive_timestamp(
     field: str,
 ) -> datetime:
     """Return the one timestamp representation permitted in SQLite indexes."""
-    return _require_aware_timestamp(timestamp, kind=kind, field=field).astimezone(
-        UTC
-    ).replace(tzinfo=None)
+    return (
+        _require_aware_timestamp(timestamp, kind=kind, field=field)
+        .astimezone(UTC)
+        .replace(tzinfo=None)
+    )
 
 
 def required_aware_datetime(

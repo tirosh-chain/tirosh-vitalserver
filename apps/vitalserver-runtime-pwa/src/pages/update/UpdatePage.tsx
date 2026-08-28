@@ -98,7 +98,7 @@ export function UpdatePage() {
       <Panel title="Bundle integrity">
         <pre className="command-output">
           {summarize.data?.summary ??
-            "Inspect the bundle to show manifest and checksum details."}
+            "Inspect the bundle to show its stable bootstrap identity and target."}
         </pre>
         <button
           type="button"
@@ -110,7 +110,7 @@ export function UpdatePage() {
           }}
           disabled={!hasBundlePath || verify.isPending || workflowActive}
         >
-          Check Integrity
+          Verify Publisher & Payload
         </button>
         {summarize.isError ? (
           <ErrorState title="Failed to inspect bundle" error={summarize.error} />
@@ -121,10 +121,11 @@ export function UpdatePage() {
 
       <Panel title="Apply update">
         <p className="muted">
-          Integrity checking does not authenticate the publisher.
+          Apply is enabled only after the selected bundle's publisher signature,
+          target, next updater, specification, and complete payload closure are verified.
         </p>
         <ConfirmButton
-          confirmMessage="Apply the integrity-checked update bundle? Publisher authenticity is unverified."
+          confirmMessage="Apply the authenticated update bundle?"
           onClick={applyBundle}
           disabled={
             !hasBundlePath ||
@@ -134,17 +135,17 @@ export function UpdatePage() {
             !canApplyBundle
           }
         >
-          Apply Bundle
+          Apply Product Update
         </ConfirmButton>
         {!selectedBundleVerified && hasBundlePath ? (
-          <p className="muted">Check the selected bundle integrity before applying it.</p>
+          <p className="muted">Verify the selected bundle before applying it.</p>
         ) : null}
         {capabilities.isError ? (
           <ErrorState title="Failed to read update capability" error={capabilities.error} />
         ) : null}
         {!capabilities.isPending && !capabilities.isError && capabilities.data?.canApplyBundle === false ? (
           <p className="muted">
-            This 0.2.1 build cannot apply updates because trusted publisher verification is unavailable.
+            Stable product update apply is unavailable in this installed build.
           </p>
         ) : null}
         {!capabilities.isPending && !capabilities.isError && capabilities.data?.canApplyBundle === undefined ? (

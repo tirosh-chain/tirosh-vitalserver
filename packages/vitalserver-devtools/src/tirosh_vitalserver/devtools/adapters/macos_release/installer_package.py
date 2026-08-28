@@ -7,6 +7,7 @@ import signal
 import subprocess
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
@@ -16,6 +17,12 @@ from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     stage_materialized_guest_deploy,
     stage_rootfs_input_metadata,
+)
+from tirosh_vitalserver.devtools.adapters.macos_release import (
+    helper_host_platform_installation as host_installation_documents,
+)
+from tirosh_vitalserver.devtools.adapters.macos_release import (
+    helper_host_platform_release_archive as host_release_archive,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     copy_executable,
@@ -31,13 +38,27 @@ from tirosh_vitalserver.devtools.adapters.macos_release.installer_templates impo
     render_packaging_template,
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.shell_commands import run
+from tirosh_vitalserver.devtools.core.helper_host_platform_installation import (
+    HostReleaseIdentity,
+    ReplaceableLaunchdService,
+    make_initial_installation_manifest,
+    make_release_manifest,
+)
+from tirosh_vitalserver.devtools.core.helper_host_platform_release import (
+    HELPER_HOST_ARCHIVE_COMPOSITION_SCHEMA,
+)
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     install_app_bundle,
     install_home,
-    install_nginx_prefix,
+    install_prefix,
+    install_update_handoff_jobs,
     package_install_value,
     package_output_value,
     package_path,
+    settings_current_release_binary,
+    settings_host_platform_current_release,
+    settings_host_platform_installation_root,
+    settings_host_platform_release_slot,
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.settings import (
@@ -50,6 +71,11 @@ RESET_TROUBLESHOOTING_CLI_NAME = "vitalserver-troubleshooting-reset-for-reinstal
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
 UPSTREAM_REDIS_SAVE_CLI_NAME = "vitalserver-troubleshooting-upstream-redis-save"
 UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
+UPDATE_HANDOFF_SUPERVISOR_PRODUCT_NAME = "vitalserver-update-handoff-supervisor"
+HOST_INSTALLATION_MANAGER_PRODUCT_NAME = "vitalserver-host-installation-manager"
+HOST_PLATFORM_EFFECT_EXECUTOR_PRODUCT_NAME = (
+    "vitalserver-host-platform-layer-effect-executor"
+)
 DMG_PROCESS_INSPECTION_TIMEOUT_SECONDS = 10
 DMG_OUTPUT_RELEASE_GRACE_ATTEMPTS = 40
 DMG_OUTPUT_TERMINATE_ATTEMPTS = 8
@@ -428,9 +454,7 @@ def hdiutil_verify_image(dmg_output: Path) -> None:
     if result.returncode == 0:
         return
     detail = "\n".join(
-        line
-        for line in [result.stdout.strip(), result.stderr.strip()]
-        if line
+        line for line in [result.stdout.strip(), result.stderr.strip()] if line
     )
     raise RuntimeError(detail or f"hdiutil verify exited {result.returncode}")
 
@@ -444,9 +468,7 @@ def expand_pkg_payload(package: Path, destination: Path) -> Path:
     )
     if result.returncode != 0:
         detail = "\n".join(
-            line
-            for line in [result.stdout.strip(), result.stderr.strip()]
-            if line
+            line for line in [result.stdout.strip(), result.stderr.strip()] if line
         )
         raise RuntimeError(detail or f"pkgutil expand exited {result.returncode}")
     payload = destination / "Payload"
@@ -533,8 +555,7 @@ def attached_disk_images() -> list[dict[str, object]]:
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace").strip()
         raise RuntimeError(
-            "failed to read attached disk images: "
-            f"{stderr or result.returncode}"
+            f"failed to read attached disk images: {stderr or result.returncode}"
         )
     document = plistlib.loads(result.stdout)
     images = document.get("images") if isinstance(document, dict) else None
@@ -663,6 +684,17 @@ def stage_pkg_root(context: PackageContext) -> None:
     if context.pkg_scripts.exists():
         remove_staging_tree(context.pkg_scripts)
 
+    release_id = f"helper-{context.release.helper_version}"
+    installation_root = settings_host_platform_installation_root(context.settings)
+    slot_path = settings_host_platform_release_slot(context.settings, release_id)
+    release_path = f"{slot_path}/release"
+    package_slot = package_path(context, slot_path)
+    package_release = package_path(context, release_path)
+    release_app_path = f"{release_path}/app/{context.settings.app_name}.app"
+    release_vm_cli_path = f"{release_path}/bin/vitalserver-vm"
+    release_proxy_path = f"{release_path}/bin/vitalserver-proxy-run"
+    release_nginx_path = f"{release_path}/nginx"
+
     mkdirs = [
         package_path(context, package_install_value(context, "applications_dir")),
         package_path(
@@ -672,7 +704,8 @@ def stage_pkg_root(context: PackageContext) -> None:
         package_path(context, f"{install_home(context)}/runtime"),
         package_path(context, f"{install_home(context)}/data/deploy"),
         package_path(context, f"{install_home(context)}/Support/Proxy"),
-        package_path(context, install_nginx_prefix(context)),
+        package_path(context, f"{release_path}/bin"),
+        package_path(context, release_nginx_path),
         package_path(
             context,
             package_install_value(context, "launch_daemons_dir"),
@@ -684,7 +717,7 @@ def stage_pkg_root(context: PackageContext) -> None:
 
     install_file(
         context.runtime_cli,
-        package_path(context, package_install_value(context, "vm_cli")),
+        package_path(context, release_vm_cli_path),
     )
     run(
         [
@@ -694,28 +727,71 @@ def stage_pkg_root(context: PackageContext) -> None:
             "-",
             "--entitlements",
             str(context.runtime_dir / "Entitlements.shared.plist"),
-            str(package_path(context, package_install_value(context, "vm_cli"))),
+            str(package_path(context, release_vm_cli_path)),
         ]
     )
-    assert_virtualization_entitlement(
-        package_path(context, package_install_value(context, "vm_cli"))
+    assert_virtualization_entitlement(package_path(context, release_vm_cli_path))
+    manager_source = context.runtime_cli.parent / HOST_INSTALLATION_MANAGER_PRODUCT_NAME
+    manager_destination = package_path(
+        context,
+        package_install_value(context, "host_installation_manager"),
+    )
+    copy_executable(manager_source, manager_destination)
+    effect_executor_source = (
+        context.runtime_cli.parent / HOST_PLATFORM_EFFECT_EXECUTOR_PRODUCT_NAME
+    )
+    effect_executor_destination = package_path(
+        context,
+        package_install_value(context, "host_platform_effect_executor"),
+    )
+    copy_executable(effect_executor_source, effect_executor_destination)
+    for stable_executable in [manager_destination, effect_executor_destination]:
+        run(
+            [
+                "codesign",
+                "--force",
+                "--sign",
+                "-",
+                str(stable_executable),
+            ]
+        )
+    supervisor_source = (
+        context.runtime_cli.parent / UPDATE_HANDOFF_SUPERVISOR_PRODUCT_NAME
+    )
+    supervisor_destination = package_path(
+        context,
+        package_install_value(context, "update_handoff_supervisor"),
+    )
+    copy_executable(supervisor_source, supervisor_destination)
+    run(
+        [
+            "codesign",
+            "--force",
+            "--sign",
+            "-",
+            str(supervisor_destination),
+        ]
     )
 
     packaging_dir = context.runtime_dir / "Support/Packaging"
     render_packaging_executable(
         context.settings,
         packaging_dir / "proxy-run.template",
-        package_path(context, package_install_value(context, "proxy_runner")),
+        package_path(context, release_proxy_path),
     )
     render_packaging_executable(
         context.settings,
         packaging_dir / "uninstall.template",
         package_path(context, package_install_value(context, "uninstaller")),
     )
-    copy_tree(context.app_bundle, package_path(context, install_app_bundle(context)))
+    copy_tree(context.app_bundle, package_path(context, release_app_path))
+    copy_tree(
+        context.app_bundle,
+        package_path(context, install_app_bundle(context)),
+    )
     copy_tree(
         context.nginx_bundle,
-        package_path(context, install_nginx_prefix(context)),
+        package_path(context, release_nginx_path),
     )
     install_file(image, package_path(context, f"{install_home(context)}/runtime/Image"))
     install_file(
@@ -731,6 +807,13 @@ def stage_pkg_root(context: PackageContext) -> None:
         package_path(
             context,
             f"{install_home(context)}/runtime/{rootfs_manifest.name}",
+        ),
+    )
+    install_file(
+        context.update_bootstrap_trust_store,
+        package_path(
+            context,
+            f"{install_prefix(context)}/config/update-bootstrap-trust-store.json",
         ),
     )
     install_file(
@@ -751,6 +834,179 @@ def stage_pkg_root(context: PackageContext) -> None:
         package_deploy_dir,
     )
     render_launchd_templates(context)
+    launchd_templates = context.settings.launchd
+    replaceable_service_specs = (
+        ("platform-agent", launchd_templates.platform_agent),
+        ("vm", launchd_templates.vm),
+        ("proxy", launchd_templates.proxy),
+        ("guest-log-sync", launchd_templates.guest_log_sync),
+        ("sleep-prevention", launchd_templates.sleep_prevention),
+        ("watchdog", launchd_templates.watchdog),
+        ("automatic-backup", launchd_templates.automatic_backup),
+    )
+    launch_daemon_root = package_path(
+        context,
+        package_install_value(context, "launch_daemons_dir"),
+    )
+    services: list[ReplaceableLaunchdService] = []
+    service_sources: list[dict[str, str]] = []
+    for role, template in replaceable_service_specs:
+        source = launch_daemon_root / template.installed_plist
+        with source.open("rb") as stream:
+            label = plistlib.load(stream).get("Label")
+        if not isinstance(label, str) or not label:
+            raise SystemExit(
+                f"error: replaceable launchd service label is missing: {source}"
+            )
+        installed_path = (
+            f"{package_install_value(context, 'launch_daemons_dir')}/"
+            f"{template.installed_plist}"
+        )
+        services.append(
+            ReplaceableLaunchdService(
+                role=role,
+                name=label,
+                definition_path=installed_path,
+                definition_sha256=host_installation_documents.sha256_file(source),
+            )
+        )
+        slot_service_source = package_slot / "service-definitions" / f"{role}.plist"
+        install_file(source, slot_service_source)
+        service_sources.append({"role": role, "sourcePath": str(slot_service_source)})
+
+    bootstrap_path = (
+        f"{install_prefix(context)}/operator-interface/runtime-console-bootstrap.json"
+    )
+    package_bootstrap = package_path(context, bootstrap_path)
+    host_installation_documents.write_json_document(
+        package_bootstrap,
+        {
+            "schemaVersion": "vitalserver.helper-runtime-console-bootstrap/v1",
+            "currentReleaseLinkPath": settings_host_platform_current_release(
+                context.settings
+            ),
+            "applicationBundlePath": install_app_bundle(context),
+        },
+    )
+    slot_bootstrap = (
+        package_slot / "operator-interface" / "runtime-console-bootstrap.json"
+    )
+    install_file(package_bootstrap, slot_bootstrap)
+    release_identity_without_archive = HostReleaseIdentity(
+        release_id=release_id,
+        version=context.release.helper_version,
+        archive_sha256="",
+        slot_relative_path=f"releases/{release_id}",
+    )
+    application_relative_path = f"app/{context.settings.app_name}.app"
+    application_entrypoint_relative_path = f"Contents/MacOS/{context.settings.app_name}"
+    release_manifest = make_release_manifest(
+        installation_id=context.settings.install.host_platform_installation_id,
+        release=release_identity_without_archive,
+        installation_root=installation_root,
+        files=host_installation_documents.immutable_release_files(
+            package_release,
+            exclude_release_manifest=True,
+        ),
+        application_bundle_path=install_app_bundle(context),
+        application_bundle_relative_path=application_relative_path,
+        application_bundle_tree_sha256=host_installation_documents.sha256_regular_file_tree(
+            package_path(context, release_app_path)
+        ),
+        application_entrypoint_relative_path=application_entrypoint_relative_path,
+        bootstrap_path=bootstrap_path,
+        bootstrap_sha256=host_installation_documents.sha256_file(package_bootstrap),
+        services=tuple(services),
+        manager_executable_path=package_install_value(
+            context,
+            "host_installation_manager",
+        ),
+        supervisor_executable_path=package_install_value(
+            context,
+            "update_handoff_supervisor",
+        ),
+        supervisor_service_name="ai.tirosh.vitalserver.helper.update-handoff-supervisor",
+        mutable_stores=(
+            {
+                "id": "runtime-state",
+                "path": f"{install_home(context)}/data",
+                "kind": "directory",
+                "owner": "vitalserver-helper",
+                "retention": "preserve-by-default",
+            },
+            {
+                "id": "update-handoff-jobs",
+                "path": install_update_handoff_jobs(context),
+                "kind": "directory",
+                "owner": "update-handoff-supervisor",
+                "retention": "operation-policy",
+            },
+        ),
+    )
+    host_installation_documents.write_json_document(
+        package_release / "installation-manifest.json",
+        release_manifest,
+    )
+    archive_composition = context.pkg_scripts / (
+        "initial-helper-host-platform-release-composition.json"
+    )
+    host_installation_documents.write_json_document(
+        archive_composition,
+        {
+            "schemaVersion": HELPER_HOST_ARCHIVE_COMPOSITION_SCHEMA,
+            "releaseSourceDirectory": str(package_release),
+            "serviceDefinitionSources": service_sources,
+            "operatorInterfaceBootstrapSourcePath": str(slot_bootstrap),
+        },
+    )
+    initial_archive = context.pkg_scripts / (
+        "initial-helper-host-platform-release.tar.gz"
+    )
+    archive_sha256, _, _ = (
+        host_release_archive.compose_helper_host_platform_release_archive(
+            archive_composition,
+            initial_archive,
+        )
+    )
+    release_identity = HostReleaseIdentity(
+        release_id=release_id,
+        version=context.release.helper_version,
+        archive_sha256=archive_sha256,
+        slot_relative_path=f"releases/{release_id}",
+    )
+    host_installation_documents.write_json_document(
+        context.pkg_scripts / "initial-host-platform-installation.json",
+        make_initial_installation_manifest(
+            installation_id=context.settings.install.host_platform_installation_id,
+            release=release_identity,
+            activated_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        ),
+    )
+    current_link = package_path(
+        context,
+        settings_host_platform_current_release(context.settings),
+    )
+    current_link.parent.mkdir(parents=True, exist_ok=True)
+    current_link.symlink_to(f"{slot_path}/release")
+    stable_links = (
+        (
+            package_path(context, package_install_value(context, "vm_cli")),
+            settings_current_release_binary(
+                context.settings,
+                "vitalserver-vm",
+            ),
+        ),
+        (
+            package_path(context, package_install_value(context, "proxy_runner")),
+            settings_current_release_binary(
+                context.settings,
+                "vitalserver-proxy-run",
+            ),
+        ),
+    )
+    for link, target in stable_links:
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(target)
     copy_executable(packaging_dir / "preinstall", context.pkg_scripts / "preinstall")
     copy_executable(
         context.runtime_cli,
@@ -760,6 +1016,9 @@ def stage_pkg_root(context: PackageContext) -> None:
         context.settings,
         packaging_dir / "postinstall.template",
         context.pkg_scripts / "postinstall",
+        {
+            "INITIAL_RELEASE_ROOT": release_path,
+        },
     )
     render_packaging_template(
         context.settings,

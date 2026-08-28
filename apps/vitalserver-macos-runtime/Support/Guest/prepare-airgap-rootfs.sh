@@ -25,6 +25,8 @@ GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
 GUEST_TOOLS_INSTALL_PROOF_FILE="${GUEST_TOOLS_HOME}/install-proof.json"
 PYTHON_WHEEL_DIR="${DEPLOY_DIR}/python-wheels"
+FRESH_INSTALL_RELEASE_IDENTITY_FILE="${DEPLOY_DIR}/build-metadata/fresh-install-release.json"
+INITIAL_CONTAINER_ARCHIVE="${DEPLOY_DIR}/docker-images/vitalserver-images.tar.gz"
 ROOTFS_STAGE="startup"
 ROOTFS_FAILURE_RECORDED=0
 APT_INDEX_UPDATE_TIMEOUT_SECONDS=1800
@@ -786,6 +788,12 @@ fi
 ROOTFS_STAGE="runtime-package-verify"
 verify_runtime_packages
 install_guest_tools_for_rootfs_smoke
+ROOTFS_STAGE="initial-update-owner-artifacts"
+"${GUEST_TOOLS_VENV}/bin/tirosh-vitalserver-compose-initial-update-owner-state" \
+  --release-identity "${FRESH_INSTALL_RELEASE_IDENTITY_FILE}" \
+  --deploy-dir "${DEPLOY_DIR}" \
+  --container-archive "${INITIAL_CONTAINER_ARCHIVE}" \
+  --guest-tools-home "${GUEST_TOOLS_HOME}"
 ROOTFS_STAGE="rootfs-smoke"
 tirosh-vitalserver-rootfs-smoke
 stop_rootfs_runtime_services

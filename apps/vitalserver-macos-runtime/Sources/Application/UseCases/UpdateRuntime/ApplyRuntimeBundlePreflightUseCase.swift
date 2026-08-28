@@ -8,7 +8,6 @@ public struct ApplyRuntimeBundlePreflightInput: Equatable, Sendable {
     public let backupsDirectory: URL
     public let rootfsBase: URL
     public let updateFreeSpaceMarginBytes: UInt64
-    public let currentUpdaterVersion: String
     public let currentChannel: UpdateBundleChannel
     public let currentPlatform: String?
 
@@ -17,7 +16,6 @@ public struct ApplyRuntimeBundlePreflightInput: Equatable, Sendable {
         backupsDirectory: URL,
         rootfsBase: URL,
         updateFreeSpaceMarginBytes: UInt64,
-        currentUpdaterVersion: String,
         currentChannel: UpdateBundleChannel,
         currentPlatform: String?
     ) {
@@ -25,7 +23,6 @@ public struct ApplyRuntimeBundlePreflightInput: Equatable, Sendable {
         self.backupsDirectory = backupsDirectory
         self.rootfsBase = rootfsBase
         self.updateFreeSpaceMarginBytes = updateFreeSpaceMarginBytes
-        self.currentUpdaterVersion = currentUpdaterVersion
         self.currentChannel = currentChannel
         self.currentPlatform = currentPlatform
     }
@@ -165,7 +162,6 @@ public struct ApplyRuntimeBundlePreflightUseCase {
         operations.log(manifestPlan.manifestLogMessage)
         try RuntimeUpdatePreflightPolicy.checkCompatibility(
             manifest: manifest,
-            currentUpdaterVersion: input.currentUpdaterVersion,
             currentChannel: input.currentChannel,
             currentPlatform: input.currentPlatform
         )

@@ -23,6 +23,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
             "start-installed-services",
             "apply-start-on-boot-policy",
             "wait-install-runtime-health",
+            "settle-installed-product-release",
             "cleanup-install-settings",
         ])
     }
@@ -44,6 +45,7 @@ final class RuntimeOperationPlanTests: XCTestCase {
             "configure-installed-permissions",
             "start-installed-services",
             "apply-start-on-boot-policy",
+            "settle-installed-product-release",
             "cleanup-install-settings",
         ])
         XCTAssertFalse(RuntimeOperationPlans.installProvision.steps.contains(.waitInstallRuntimeHealth))

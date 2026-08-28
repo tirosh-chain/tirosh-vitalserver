@@ -79,8 +79,29 @@ extension RuntimeLifecycle {
         )
     }
 
-    private func acquireRuntimeOperationLease(_ operation: RuntimeOperation) throws -> RuntimeOperationLeaseDocument {
+    func acquireRuntimeOperationLease(_ operation: RuntimeOperation) throws -> RuntimeOperationLeaseDocument {
         let document = makeRuntimeOperationLeaseDocument(operation)
+        try runtimeOperationLeaseOwner().acquire(document)
+        return document
+    }
+
+    func acquireRuntimeOperationLease(
+        _ operation: RuntimeOperation,
+        targetInstallationId: String,
+        expectedInstallationRevision: Int
+    ) throws -> RuntimeOperationLeaseDocument {
+        let timestamps = runtimeOperationLeaseTimestamps(now: clock.now)
+        let document = RuntimeOperationLeaseDocument(
+            operationId: UUID().uuidString,
+            operation: operation,
+            targetInstallationId: targetInstallationId,
+            expectedInstallationRevision: expectedInstallationRevision,
+            ownerPID: Int(ProcessInfo.processInfo.processIdentifier),
+            startedAt: timestamps.now,
+            heartbeatAt: timestamps.now,
+            expiresAt: timestamps.expiresAt,
+            message: nil
+        )
         try runtimeOperationLeaseOwner().acquire(document)
         return document
     }
@@ -105,7 +126,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    private func heartbeatRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
+    func heartbeatRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
         let timestamps = runtimeOperationLeaseTimestamps(now: clock.now)
         try runtimeOperationLeaseOwner().heartbeat(
             operationId: document.operationId,
@@ -122,7 +143,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    private func releaseRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
+    func releaseRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
         try runtimeOperationLeaseOwner().release(operationId: document.operationId)
     }
 
