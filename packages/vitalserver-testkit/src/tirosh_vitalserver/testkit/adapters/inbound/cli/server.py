@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
     add_common_server_args,
+)
+from tirosh_vitalserver.testkit.adapters.inbound.cli.hl7_output import (
+    render_hl7_result_json,
 )
 from tirosh_vitalserver.testkit.adapters.outbound.bed_registry_store import (
     JsonFileBedRegistryStore,
@@ -21,10 +23,6 @@ from tirosh_vitalserver.testkit.adapters.outbound.vital_artifact import (
 )
 from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.usecases import wait_for_server
-from tirosh_vitalserver.testkit.application.usecases.server.hl7 import (
-    Hl7Poller,
-    Hl7PollResult,
-)
 from tirosh_vitalserver.testkit.configuration.bed_registry_config import (
     load_bed_registry_state_path,
 )
@@ -35,6 +33,7 @@ from tirosh_vitalserver.testkit.configuration.session_config import (
     load_session_artifact_dir,
     load_session_state_path,
 )
+from tirosh_vitalserver.testkit.hl7 import create_hl7_poller
 from tirosh_vitalserver.testkit.observability import (
     emit_testkit_event,
 )
@@ -138,8 +137,7 @@ def run_health(args: argparse.Namespace) -> int:
 def run_poll_hl7(args: argparse.Namespace) -> int:
     """Poll the legacy HL7 endpoint until interrupted or ``--once`` completes."""
 
-    client = VitalServerClient(args.vitalserver_url, timeout=args.timeout)
-    poller = Hl7Poller(client)
+    poller = create_hl7_poller(args.vitalserver_url, timeout=args.timeout)
 
     try:
         for result in poller.poll(
@@ -147,13 +145,9 @@ def run_poll_hl7(args: argparse.Namespace) -> int:
             limit=1 if args.once else None,
         ):
             print(
-                json.dumps(
-                    _hl7_result_document(
-                        result,
-                        show_patient_id=args.show_patient_id,
-                    ),
-                    ensure_ascii=False,
-                    separators=(",", ":"),
+                render_hl7_result_json(
+                    result,
+                    show_patient_id=args.show_patient_id,
                 ),
                 flush=True,
             )
@@ -161,43 +155,6 @@ def run_poll_hl7(args: argparse.Namespace) -> int:
         return 0
 
     return 0
-
-
-def _hl7_result_document(
-    result: Hl7PollResult,
-    *,
-    show_patient_id: bool,
-) -> dict[str, object]:
-    messages: list[dict[str, object]] = []
-    for message in result.messages:
-        document: dict[str, object] = {
-            "version": message.version,
-            "group": message.group,
-            "bedName": message.bed_name,
-            "observedAt": message.observed_at,
-            "observations": [
-                {
-                    "valueType": observation.value_type,
-                    "identifier": observation.identifier,
-                    "subId": observation.sub_id,
-                    "value": observation.value,
-                    "unit": observation.unit,
-                    "status": observation.status,
-                }
-                for observation in message.observations
-            ],
-        }
-        if show_patient_id:
-            document["patientId"] = message.patient_id
-        messages.append(document)
-
-    return {
-        "state": result.state.value,
-        "polledAt": result.polled_at.isoformat(),
-        "responseBytes": result.response_bytes,
-        "elapsedSeconds": result.elapsed_seconds,
-        "messages": messages,
-    }
 
 
 def run_serve(args: argparse.Namespace) -> int:

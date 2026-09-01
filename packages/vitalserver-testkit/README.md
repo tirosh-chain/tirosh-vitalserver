@@ -38,6 +38,17 @@ JSON Lines로 출력한다. 빈 응답, 이전 응답과 동일한 응답, 새 �
 `unchanged`, `data` 상태로 구분한다. HTTP 오류와 잘못된 HL7 응답은 빈 데이터로 바꾸지
 않고 명시적으로 실패한다.
 
+구현 책임은 다음 경계로 분리한다.
+
+| 계층 | 책임 |
+| --- | --- |
+| `schemas/hl7.py` | decoder가 반환하는 HL7 message와 observation 계약 |
+| `adapters/outbound/hl7/framing.py` | HTTP body의 `VT`/`FS` framing 해석 |
+| `adapters/outbound/hl7/message.py` | segment 검증과 typed message 변환 |
+| `adapters/outbound/hl7/response.py` | framing decoder와 message decoder 조립 |
+| `application/usecases/server/hl7.py` | HTTP 조회 결과의 polling 상태와 반복 실행 |
+| `adapters/inbound/cli/hl7_output.py` | 환자 ID 노출 정책과 JSON Lines 표현 |
+
 ```sh
 uv run vitalserver-testkit poll-hl7 \
   --vitalserver-url http://localhost \

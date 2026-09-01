@@ -9,6 +9,7 @@ from tirosh_vitalserver.testkit.application.usecases.server.hl7 import (
     Hl7PollState,
 )
 from tirosh_vitalserver.testkit.errors import Hl7RequestError
+from tirosh_vitalserver.testkit.schemas.hl7 import Hl7Message, Hl7Observation
 from tirosh_vitalserver.testkit.schemas.http import HttpResponse
 
 HL7_BODY = (
@@ -30,6 +31,31 @@ class FakeHl7Source:
         return next(self._responses)
 
 
+class FakeHl7Decoder:
+    def decode(self, payload: bytes) -> tuple[Hl7Message, ...]:
+        if payload == b"":
+            return ()
+        return (
+            Hl7Message(
+                version="2.3",
+                patient_id="PATIENT001",
+                group="ICU",
+                bed_name="BED01",
+                observed_at="20260901143025",
+                observations=(
+                    Hl7Observation(
+                        value_type="NM",
+                        identifier="SpHb",
+                        sub_id="0",
+                        value="12.3",
+                        unit="g/dL",
+                        status="F",
+                    ),
+                ),
+            ),
+        )
+
+
 def _response(body: bytes, status_code: int = 200) -> HttpResponse:
     return HttpResponse(
         status_code=status_code,
@@ -43,7 +69,7 @@ def test_poll_once_distinguishes_data_unchanged_and_empty() -> None:
     source = FakeHl7Source(
         [_response(HL7_BODY), _response(HL7_BODY), _response(b"")]
     )
-    poller = Hl7Poller(source)
+    poller = Hl7Poller(source, FakeHl7Decoder())
 
     first = poller.poll_once()
     second = poller.poll_once()
@@ -58,14 +84,20 @@ def test_poll_once_distinguishes_data_unchanged_and_empty() -> None:
 
 
 def test_poll_once_reports_non_success_http_response() -> None:
-    poller = Hl7Poller(FakeHl7Source([_response(b"failure", status_code=503)]))
+    poller = Hl7Poller(
+        FakeHl7Source([_response(b"failure", status_code=503)]),
+        FakeHl7Decoder(),
+    )
 
     with pytest.raises(Hl7RequestError, match="HTTP 503"):
         poller.poll_once()
 
 
 def test_poll_rejects_non_positive_interval() -> None:
-    poller = Hl7Poller(FakeHl7Source([_response(HL7_BODY)]))
+    poller = Hl7Poller(
+        FakeHl7Source([_response(HL7_BODY)]),
+        FakeHl7Decoder(),
+    )
 
     with pytest.raises(ValueError, match="interval_seconds"):
         tuple(poller.poll(interval_seconds=0, limit=1))
@@ -75,6 +107,7 @@ def test_poll_uses_explicit_limit_and_sleeper() -> None:
     sleeps: list[float] = []
     poller = Hl7Poller(
         FakeHl7Source([_response(HL7_BODY), _response(HL7_BODY)]),
+        FakeHl7Decoder(),
         sleep=sleeps.append,
     )
 

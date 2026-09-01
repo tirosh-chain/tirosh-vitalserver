@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from tirosh_vitalserver.testkit.application.ports import Hl7SourcePort
-from tirosh_vitalserver.testkit.domain.hl7 import Hl7Message, parse_hl7_stream
+from tirosh_vitalserver.testkit.application.ports import Hl7DecoderPort, Hl7SourcePort
 from tirosh_vitalserver.testkit.errors import Hl7RequestError
+from tirosh_vitalserver.testkit.schemas.hl7 import Hl7Message
 
 
 class Hl7PollState(StrEnum):
@@ -39,10 +39,12 @@ class Hl7Poller:
     def __init__(
         self,
         source: Hl7SourcePort,
+        decoder: Hl7DecoderPort,
         *,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._source = source
+        self._decoder = decoder
         self._sleep = sleep
         self._last_digest: bytes | None = None
 
@@ -55,7 +57,7 @@ class Hl7Poller:
                 f"VitalServer /HL7 returned HTTP {response.status_code}"
             )
 
-        messages = parse_hl7_stream(response.body)
+        messages = self._decoder.decode(response.body)
         digest = hashlib.sha256(response.body).digest()
 
         if response.body == b"":
