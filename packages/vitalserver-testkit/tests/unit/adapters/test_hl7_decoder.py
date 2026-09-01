@@ -7,7 +7,12 @@ from tirosh_vitalserver.testkit.adapters.outbound.hl7 import (
     VitalServerHl7MessageDecoder,
     VitalServerHl7ResponseDecoder,
 )
-from tirosh_vitalserver.testkit.errors import Hl7FramingError, Hl7SegmentError
+from tirosh_vitalserver.testkit.errors import (
+    Hl7EncodingError,
+    Hl7FramingError,
+    Hl7ParseError,
+    Hl7SegmentError,
+)
 
 
 def _message(
@@ -28,7 +33,7 @@ def _message(
         f"OBR|||||||{observed_at}",
         *observations,
     )
-    return b"\x0b" + "\n".join(segments).encode("latin-1") + b"\n\x1c\n"
+    return b"\x0b" + "\n".join(segments).encode("utf-8") + b"\n\x1c\n"
 
 
 def _decoder() -> VitalServerHl7ResponseDecoder:
@@ -92,3 +97,70 @@ def test_message_decoder_preserves_empty_observation_value() -> None:
     message = VitalServerHl7MessageDecoder().decode(frame)
 
     assert message.observations[0].value == ""
+
+
+def test_response_decoder_preserves_korean_group_and_bed_name() -> None:
+    messages = _decoder().decode(_message(group="중환자실", bed_name="1번베드"))
+
+    assert messages[0].group == "중환자실"
+    assert messages[0].bed_name == "1번베드"
+
+
+def test_message_decoder_rejects_invalid_utf8() -> None:
+    payload = _message().replace(b"ICU", b"\xff")
+    frame = VitalServerHl7FramingDecoder().decode(payload)[0]
+
+    with pytest.raises(Hl7EncodingError, match="UTF-8") as exc_info:
+        VitalServerHl7MessageDecoder().decode(frame)
+
+    assert isinstance(exc_info.value, Hl7ParseError)
+    assert isinstance(exc_info.value.__cause__, UnicodeDecodeError)
+    assert "PATIENT001" not in str(exc_info.value)
+    assert frame.decode("latin-1") not in str(exc_info.value)
+
+
+def test_framing_decoder_rejects_missing_end_byte() -> None:
+    with pytest.raises(Hl7FramingError, match="end byte"):
+        VitalServerHl7FramingDecoder().decode(_message().replace(b"\x1c\n", b""))
+
+
+def test_framing_decoder_rejects_empty_frame() -> None:
+    with pytest.raises(Hl7FramingError, match="empty HL7 frame"):
+        VitalServerHl7FramingDecoder().decode(b"\x0b\x1c\n")
+
+
+def test_response_decoder_preserves_empty_group() -> None:
+    messages = _decoder().decode(_message(group=""))
+
+    assert messages[0].group == ""
+    assert messages[0].bed_name == "BED01"
+
+
+def test_response_decoder_preserves_empty_patient_id() -> None:
+    messages = _decoder().decode(_message(patient_id=""))
+
+    assert messages[0].patient_id == ""
+
+
+def test_message_decoder_preserves_empty_observation_unit() -> None:
+    payload = _message(observations=("OBX||NM|SpHb|0|12.3||||||F",))
+    frame = VitalServerHl7FramingDecoder().decode(payload)[0]
+
+    message = VitalServerHl7MessageDecoder().decode(frame)
+
+    assert message.observations[0].unit == ""
+    assert message.observations[0].value == "12.3"
+
+
+def test_response_decoder_distinguishes_zero_and_empty_observation_values() -> None:
+    messages = _decoder().decode(
+        _message(
+            observations=(
+                "OBX||NM|PVI|0|0|%|||||F",
+                "OBX||NM|SpHb|0||g/dL|||||F",
+            )
+        )
+    )
+
+    assert messages[0].observations[0].value == "0"
+    assert messages[0].observations[1].value == ""

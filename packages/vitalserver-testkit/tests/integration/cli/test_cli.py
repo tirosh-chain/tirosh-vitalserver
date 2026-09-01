@@ -83,6 +83,7 @@ def test_cli_poll_hl7_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Poll VitalServer /HL7" in captured.out
     assert "--interval" in captured.out
     assert "--once" in captured.out
+    assert "--show-patient-id" in captured.out
 
 
 def test_cli_bed_scenario_parse_error_is_user_facing(

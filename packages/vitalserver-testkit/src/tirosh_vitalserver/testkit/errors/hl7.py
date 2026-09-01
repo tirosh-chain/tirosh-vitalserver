@@ -17,6 +17,10 @@ class Hl7FramingError(Hl7ParseError):
     """Raised when the response does not use the expected MLLP-like framing."""
 
 
+class Hl7EncodingError(Hl7ParseError):
+    """Raised when a framed message is not valid UTF-8."""
+
+
 class Hl7SegmentError(Hl7ParseError):
     """Raised when a framed message has an invalid required segment."""
 
@@ -26,6 +30,7 @@ class Hl7RequestError(Hl7Error):
 
 
 __all__ = [
+    "Hl7EncodingError",
     "Hl7Error",
     "Hl7FramingError",
     "Hl7ParseError",

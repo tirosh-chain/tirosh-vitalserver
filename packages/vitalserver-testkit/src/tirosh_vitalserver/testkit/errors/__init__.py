@@ -17,6 +17,7 @@ from tirosh_vitalserver.testkit.errors.bed import (
     InsufficientBedsForRecordersError,
 )
 from tirosh_vitalserver.testkit.errors.hl7 import (
+    Hl7EncodingError,
     Hl7Error,
     Hl7FramingError,
     Hl7ParseError,
@@ -43,6 +44,7 @@ __all__ = [
     "BedRoomNameRequiredError",
     "DomainError",
     "DuplicateBedRoomNameError",
+    "Hl7EncodingError",
     "Hl7Error",
     "Hl7FramingError",
     "Hl7ParseError",

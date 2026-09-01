@@ -8,7 +8,7 @@ from tirosh_vitalserver.testkit.application.usecases.server.hl7 import (
     Hl7Poller,
     Hl7PollState,
 )
-from tirosh_vitalserver.testkit.errors import Hl7RequestError
+from tirosh_vitalserver.testkit.errors import Hl7ParseError, Hl7RequestError
 from tirosh_vitalserver.testkit.schemas.hl7 import Hl7Message, Hl7Observation
 from tirosh_vitalserver.testkit.schemas.http import HttpResponse
 
@@ -31,29 +31,49 @@ class FakeHl7Source:
         return next(self._responses)
 
 
+def _sample_messages() -> tuple[Hl7Message, ...]:
+    return (
+        Hl7Message(
+            version="2.3",
+            patient_id="PATIENT001",
+            group="ICU",
+            bed_name="BED01",
+            observed_at="20260901143025",
+            observations=(
+                Hl7Observation(
+                    value_type="NM",
+                    identifier="SpHb",
+                    sub_id="0",
+                    value="12.3",
+                    unit="g/dL",
+                    status="F",
+                ),
+            ),
+        ),
+    )
+
+
 class FakeHl7Decoder:
     def decode(self, payload: bytes) -> tuple[Hl7Message, ...]:
         if payload == b"":
             return ()
-        return (
-            Hl7Message(
-                version="2.3",
-                patient_id="PATIENT001",
-                group="ICU",
-                bed_name="BED01",
-                observed_at="20260901143025",
-                observations=(
-                    Hl7Observation(
-                        value_type="NM",
-                        identifier="SpHb",
-                        sub_id="0",
-                        value="12.3",
-                        unit="g/dL",
-                        status="F",
-                    ),
-                ),
-            ),
-        )
+        return _sample_messages()
+
+
+class ScriptedHl7Decoder:
+    """Decoder test double with one explicit outcome per call."""
+
+    def __init__(
+        self,
+        outcomes: list[Exception | tuple[Hl7Message, ...]],
+    ) -> None:
+        self._outcomes: Iterator[Exception | tuple[Hl7Message, ...]] = iter(outcomes)
+
+    def decode(self, payload: bytes) -> tuple[Hl7Message, ...]:
+        outcome = next(self._outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
 
 def _response(body: bytes, status_code: int = 200) -> HttpResponse:
@@ -81,6 +101,25 @@ def test_poll_once_distinguishes_data_unchanged_and_empty() -> None:
     assert len(second.messages) == 1
     assert third.state is Hl7PollState.EMPTY
     assert third.messages == ()
+
+
+def test_poll_once_propagates_parse_error_without_recording_digest() -> None:
+    parse_error = Hl7ParseError("invalid HL7 payload")
+    messages = _sample_messages()
+    poller = Hl7Poller(
+        FakeHl7Source([_response(HL7_BODY), _response(HL7_BODY)]),
+        ScriptedHl7Decoder([parse_error, messages]),
+    )
+
+    with pytest.raises(Hl7ParseError) as exc_info:
+        poller.poll_once()
+
+    assert exc_info.value is parse_error
+
+    result = poller.poll_once()
+
+    assert result.state is Hl7PollState.DATA
+    assert result.messages == messages
 
 
 def test_poll_once_reports_non_success_http_response() -> None:

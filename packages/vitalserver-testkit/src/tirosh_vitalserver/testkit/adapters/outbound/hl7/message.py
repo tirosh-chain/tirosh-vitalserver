@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tirosh_vitalserver.testkit.errors import Hl7SegmentError
+from tirosh_vitalserver.testkit.errors import Hl7EncodingError, Hl7SegmentError
 from tirosh_vitalserver.testkit.schemas.hl7 import Hl7Message, Hl7Observation
 
 
@@ -10,9 +10,16 @@ class VitalServerHl7MessageDecoder:
     """Decode one framed message into the explicit TestKit HL7 contract."""
 
     def decode(self, frame: bytes) -> Hl7Message:
-        """Validate required segments and preserve their field values."""
+        """Decode one UTF-8 frame and preserve required segment field values.
 
-        text = frame.decode("latin-1")
+        ``MSH-18`` is legacy message text. It does not select a transport
+        encoding.
+        """
+
+        try:
+            text = frame.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise Hl7EncodingError("HL7 frame is not valid UTF-8") from exc
         segments = tuple(segment for segment in text.splitlines() if segment != "")
         if not segments:
             raise Hl7SegmentError("HL7 frame has no segments")
