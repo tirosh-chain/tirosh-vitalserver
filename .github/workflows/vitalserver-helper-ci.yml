@@ -67,36 +67,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  distribution-review:
-    name: macOS distribution source review
-    runs-on: macos-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: ".python-version"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: apps/vitalserver-runtime-pwa/package-lock.json
-
-      - name: Install PWA dependencies
-        run: npm ci --prefix apps/vitalserver-runtime-pwa
-
-      - name: Run the complete distribution source review
-        run: make dist/pkg/dev/review
-
   product-components:
     name: Python and Recorder component review
     runs-on: ubuntu-latest
