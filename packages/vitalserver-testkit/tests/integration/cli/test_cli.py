@@ -74,6 +74,18 @@ def test_cli_serve_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "--port" in captured.out
 
 
+def test_cli_poll_hl7_help(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        main(["poll-hl7", "--help"])
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 0
+    assert "Poll VitalServer /HL7" in captured.out
+    assert "--interval" in captured.out
+    assert "--once" in captured.out
+    assert "--show-patient-id" in captured.out
+
+
 def test_cli_bed_scenario_parse_error_is_user_facing(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

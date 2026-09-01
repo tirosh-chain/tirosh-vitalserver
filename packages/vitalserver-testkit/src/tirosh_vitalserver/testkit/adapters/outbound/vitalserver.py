@@ -35,6 +35,11 @@ class VitalServerClient:
     def health(self, path: str = "/check") -> HttpResponse:
         return self.get(path)
 
+    def fetch_hl7(self) -> HttpResponse:
+        """Read the legacy bed-level ORU snapshot endpoint."""
+
+        return self.get("/HL7")
+
     def login(self, user_id: str, password: str) -> HttpResponse:
         return self.post_form("/api/login", {"id": user_id, "pw": password})
 

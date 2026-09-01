@@ -8,6 +8,9 @@ from pathlib import Path
 from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
     add_common_server_args,
 )
+from tirosh_vitalserver.testkit.adapters.inbound.cli.hl7_output import (
+    render_hl7_result_json,
+)
 from tirosh_vitalserver.testkit.adapters.outbound.bed_registry_store import (
     JsonFileBedRegistryStore,
 )
@@ -30,6 +33,7 @@ from tirosh_vitalserver.testkit.configuration.session_config import (
     load_session_artifact_dir,
     load_session_state_path,
 )
+from tirosh_vitalserver.testkit.hl7 import create_hl7_poller
 from tirosh_vitalserver.testkit.observability import (
     emit_testkit_event,
 )
@@ -57,6 +61,30 @@ def add_server_parsers(
     )
 
     parser.set_defaults(command=run_health)
+
+    hl7_parser = subparsers.add_parser(
+        "poll-hl7",
+        help="Poll VitalServer /HL7 and print parsed snapshots",
+        description="Poll VitalServer /HL7 and print parsed snapshots as JSON lines.",
+    )
+    add_common_server_args(hl7_parser)
+    hl7_parser.add_argument(
+        "--interval",
+        type=float,
+        default=1.0,
+        help="Polling interval seconds",
+    )
+    hl7_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Fetch one snapshot and exit",
+    )
+    hl7_parser.add_argument(
+        "--show-patient-id",
+        action="store_true",
+        help="Include patient IDs in JSON output",
+    )
+    hl7_parser.set_defaults(command=run_poll_hl7)
 
     serve_parser = subparsers.add_parser(
         "serve",
@@ -102,6 +130,29 @@ def run_health(args: argparse.Namespace) -> int:
     )
 
     print(f"VitalServer is ready: {args.vitalserver_url}{args.path}")
+
+    return 0
+
+
+def run_poll_hl7(args: argparse.Namespace) -> int:
+    """Poll the legacy HL7 endpoint until interrupted or ``--once`` completes."""
+
+    poller = create_hl7_poller(args.vitalserver_url, timeout=args.timeout)
+
+    try:
+        for result in poller.poll(
+            interval_seconds=args.interval,
+            limit=1 if args.once else None,
+        ):
+            print(
+                render_hl7_result_json(
+                    result,
+                    show_patient_id=args.show_patient_id,
+                ),
+                flush=True,
+            )
+    except KeyboardInterrupt:
+        return 0
 
     return 0
 

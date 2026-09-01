@@ -494,6 +494,34 @@ for result in summary.results:
     print(result.bytes_sent, result.elapsed_seconds, result.error)
 ```
 
+## HL7 최신값 polling
+
+`GET /HL7`은 push stream이 아니라 병상별 최신 숫자값 snapshot입니다. `poll-hl7`은
+이 endpoint를 반복 조회합니다.
+
+```sh
+uv run vitalserver-testkit poll-hl7 \
+  --vitalserver-url http://localhost \
+  --interval 1
+```
+
+한 번만 조회하려면 `--once`를 사용합니다.
+
+성공한 poll의 상태는 다음만 사용합니다.
+
+- `data`: 이전과 다른 본문을 파싱했습니다
+- `unchanged`: 이전과 같은 본문입니다
+- `empty`: HTTP 200이고 본문이 비어 있습니다
+
+HTTP 오류와 decode 실패는 `empty`가 아닙니다. 명령은 그 실패를 그대로 보고하고
+종료합니다.
+
+환자 ID는 기본 JSON 출력에 넣지 않습니다. 로컬 검증에서 명시적으로 필요할 때만
+`--show-patient-id`를 사용합니다.
+
+`poll-hl7`은 현재 `/HL7` 구현이 주는 최신 numeric observation만 읽습니다.
+waveform과 장비별 source는 제공하지 않습니다.
+
 ## 서버 상태 확인
 
 검증 중에는 다른 터미널에서 container 상태와 log를 같이 봅니다.

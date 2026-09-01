@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from tirosh_vitalserver.testkit.schemas.hl7 import Hl7Message
 from tirosh_vitalserver.testkit.schemas.http import HttpResponse
 from tirosh_vitalserver.testkit.types.json import JsonValue
 
@@ -42,6 +43,18 @@ class VitalServerPort(Protocol):
         *,
         endpoint: str = "/api/send",
     ) -> HttpResponse: ...
+
+
+class Hl7SourcePort(Protocol):
+    """Reads the explicit response returned by VitalServer ``GET /HL7``."""
+
+    def fetch_hl7(self) -> HttpResponse: ...
+
+
+class Hl7DecoderPort(Protocol):
+    """Decodes one explicit VitalServer HL7 response body."""
+
+    def decode(self, payload: bytes) -> tuple[Hl7Message, ...]: ...
 
 
 class SocketIoClientPort(Protocol):

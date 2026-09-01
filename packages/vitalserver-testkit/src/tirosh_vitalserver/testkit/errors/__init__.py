@@ -16,6 +16,14 @@ from tirosh_vitalserver.testkit.errors.bed import (
     DuplicateBedRoomNameError,
     InsufficientBedsForRecordersError,
 )
+from tirosh_vitalserver.testkit.errors.hl7 import (
+    Hl7EncodingError,
+    Hl7Error,
+    Hl7FramingError,
+    Hl7ParseError,
+    Hl7RequestError,
+    Hl7SegmentError,
+)
 from tirosh_vitalserver.testkit.errors.recorder import (
     RecorderCountInvalidError,
     RecorderDomainError,
@@ -36,6 +44,12 @@ __all__ = [
     "BedRoomNameRequiredError",
     "DomainError",
     "DuplicateBedRoomNameError",
+    "Hl7EncodingError",
+    "Hl7Error",
+    "Hl7FramingError",
+    "Hl7ParseError",
+    "Hl7RequestError",
+    "Hl7SegmentError",
     "InsufficientBedsForRecordersError",
     "InvalidVitalFilenameError",
     "RecorderCountInvalidError",
