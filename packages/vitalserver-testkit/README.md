@@ -29,6 +29,52 @@ uv run vitalserver-testkit health \
   --vitalserver-url http://localhost
 ```
 
+### HL7 최신값 polling
+
+Legacy VitalServer의 `GET /HL7`은 push stream이 아니라 병상별 최신 숫자값 snapshot을
+반환한다. `poll-hl7`은 이 endpoint를 기본 1초 간격으로 조회하고, MLLP-like
+`VT(0x0b)`/`FS(0x1c)` framing과 `MSH`, `PID`, `PV1`, `OBR`, `OBX` segment를 파싱해
+JSON Lines로 출력한다. 빈 응답, 이전 응답과 동일한 응답, 새 데이터는 각각 `empty`,
+`unchanged`, `data` 상태로 구분한다. HTTP 오류와 잘못된 HL7 응답은 빈 데이터로 바꾸지
+않고 명시적으로 실패한다.
+
+```sh
+uv run vitalserver-testkit poll-hl7 \
+  --vitalserver-url http://localhost \
+  --interval 1
+```
+
+한 번만 조회하려면 `--once`를 사용한다. 환자 ID는 기본 JSON 출력에 포함되지 않으며,
+로컬 검증에서 명시적으로 필요할 때만 `--show-patient-id`를 사용한다.
+
+```sh
+uv run vitalserver-testkit poll-hl7 \
+  --vitalserver-url http://localhost \
+  --once
+```
+
+Python 코드에서는 public composition helper를 사용할 수 있다.
+
+```python
+from tirosh_vitalserver.testkit.hl7 import create_hl7_poller
+
+poller = create_hl7_poller("http://localhost", timeout=5)
+
+for result in poller.poll(interval_seconds=1):
+    for message in result.messages:
+        for observation in message.observations:
+            print(
+                message.bed_name,
+                observation.identifier,
+                observation.value,
+                observation.unit,
+            )
+```
+
+이 기능은 현재 `/HL7` 구현 그대로 최신 `OBX|...|NM` 숫자값만 읽는다. waveform,
+장비 식별자, 누락 복구, ACK, 재전송을 제공하지 않으며 신뢰성 있는 실시간 data plane으로
+사용하면 안 된다.
+
 VRecorder처럼 Socket.IO에 접속해 `join_vr`를 보내고, simulated recorder data를 계속 흘립니다.
 VRecorder 접속 lifecycle, `dt` 수신, 관리 이벤트 수신은 `stream-recorder` 기준으로 검증합니다.
 `send-recorder`와 `verify-recorder`는 one-shot `send_data` 확인용이며 `join_vr`를 보내지 않습니다.

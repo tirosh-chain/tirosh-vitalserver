@@ -44,6 +44,12 @@ class VitalServerPort(Protocol):
     ) -> HttpResponse: ...
 
 
+class Hl7SourcePort(Protocol):
+    """Reads the explicit response returned by VitalServer ``GET /HL7``."""
+
+    def fetch_hl7(self) -> HttpResponse: ...
+
+
 class SocketIoClientPort(Protocol):
     """Socket.IO client operations used by realtime recorder adapters."""
 
