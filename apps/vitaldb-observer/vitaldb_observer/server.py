@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
+from collections.abc import Sequence
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
 from .collector import VitalDBCollector
-from .config import ObserverSettings, load_settings
+from .config import ObserverSettings, ObserverSettingsError, load_settings
 from .diagnostics import write_diagnostic_event
-from .redis_client import RedisClient, RedisEndpoint
+from .redis_client import RedisClient
 from .time import utc_now_iso
 
 
@@ -21,13 +23,7 @@ class ObserverServer(ThreadingHTTPServer):
         super().__init__(server_address, ObserverRequestHandler)
         self.settings = settings
         self.collector = VitalDBCollector(
-            redis_client=RedisClient(
-                RedisEndpoint(
-                    host=settings.redis_host,
-                    port=settings.redis_port,
-                    timeout_seconds=settings.redis_timeout_seconds,
-                )
-            ),
+            redis_client=RedisClient(settings.redis_endpoint),
             settings=settings,
         )
 
@@ -156,8 +152,13 @@ def _recorder_counts(document: dict[str, Any]) -> dict[str, int]:
     return counts
 
 
-def main() -> None:
-    settings = load_settings()
+def main(argv: Sequence[str] | None = None) -> None:
+    args = sys.argv[1:] if argv is None else argv
+    try:
+        settings = load_settings(argv=args)
+    except ObserverSettingsError as error:
+        print(f"vitaldb-observer: {error}", file=sys.stderr)
+        raise SystemExit(2) from None
     server = ObserverServer((settings.host, settings.port), settings)
     write_diagnostic_event(
         "server_started",

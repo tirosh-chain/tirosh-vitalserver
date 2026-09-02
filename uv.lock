@@ -15,6 +15,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "tirosh-vitaldb-observer",
     "tirosh-vitalserver",
     "tirosh-vitalserver-core",
     "tirosh-vitalserver-devtools",
@@ -3139,6 +3140,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/a3/ae/2ca4913e5c0f09781
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/45/c7b5c3168458db837e8ceab06dc77824e18202679d0463f0e8f002143a97/tinycss2-1.5.1-py3-none-any.whl", hash = "sha256:3415ba0f5839c062696996998176c4a3751d18b7edaaeeb658c9ce21ec150661", size = 28404, upload-time = "2025-11-23T10:29:08.676Z" },
 ]
+
+[[package]]
+name = "tirosh-vitaldb-observer"
+version = "0.2.0"
+source = { editable = "apps/vitaldb-observer" }
 
 [[package]]
 name = "tirosh-vitalserver"

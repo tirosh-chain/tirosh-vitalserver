@@ -2,18 +2,92 @@ from __future__ import annotations
 
 import socket
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 
 class RedisProtocolError(RuntimeError):
     pass
 
 
-@dataclass(frozen=True)
+class RedisConnectionError(RedisProtocolError):
+    pass
+
+
+class RedisAuthenticationError(RedisProtocolError):
+    pass
+
+
+class RedisCommandError(RedisProtocolError):
+    pass
+
+
+@dataclass(frozen=True, init=False, eq=False)
 class RedisEndpoint:
     host: str
     port: int
     timeout_seconds: float
+    database: int = 0
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        timeout_seconds: float,
+        database: int = 0,
+        password: str | None = None,
+    ) -> None:
+        object.__setattr__(self, "host", host)
+        object.__setattr__(self, "port", port)
+        object.__setattr__(self, "timeout_seconds", timeout_seconds)
+        object.__setattr__(self, "database", database)
+        # Keep password off dataclass fields so asdict/repr cannot leak it.
+        object.__setattr__(self, "_password", password)
+
+    @property
+    def password(self) -> str | None:
+        return cast(str | None, object.__getattribute__(self, "_password"))
+
+    @property
+    def password_configured(self) -> bool:
+        return self.password is not None
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, RedisEndpoint):
+            return NotImplemented
+        return (
+            self.host,
+            self.port,
+            self.timeout_seconds,
+            self.database,
+            self.password,
+        ) == (
+            other.host,
+            other.port,
+            other.timeout_seconds,
+            other.database,
+            other.password,
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self.host,
+                self.port,
+                self.timeout_seconds,
+                self.database,
+                self.password,
+            )
+        )
+
+    def __repr__(self) -> str:
+        return (
+            "RedisEndpoint("
+            f"host={self.host!r}, "
+            f"port={self.port}, "
+            f"timeout_seconds={self.timeout_seconds}, "
+            f"database={self.database}, "
+            f"password_configured={self.password_configured})"
+        )
 
 
 class RedisClient:
@@ -50,9 +124,7 @@ class RedisClient:
             raise RedisProtocolError(f"unexpected LRANGE response for {key}: {value!r}")
         for item in value:
             if not isinstance(item, str):
-                raise RedisProtocolError(
-                    f"unexpected LRANGE item for {key}: {item!r}"
-                )
+                raise RedisProtocolError(f"unexpected LRANGE item for {key}: {item!r}")
         return value
 
     def scan(self, pattern: str, count: int = 1000) -> list[str]:
@@ -90,9 +162,7 @@ class RedisClient:
                 f"unexpected SCAN cursor for {pattern}: {next_cursor!r}"
             )
         if not isinstance(page, list):
-            raise RedisProtocolError(
-                f"unexpected SCAN page for {pattern}: {page!r}"
-            )
+            raise RedisProtocolError(f"unexpected SCAN page for {pattern}: {page!r}")
         keys: list[str] = []
         for item in page:
             if not isinstance(item, str):
@@ -109,11 +179,25 @@ class RedisClient:
             timeout=self._endpoint.timeout_seconds,
         ) as connection:
             connection.settimeout(self._endpoint.timeout_seconds)
+            self._prepare_connection(connection)
             connection.sendall(_encode_command(parts))
             return _RESPReader(
                 connection,
                 decode_bulk_strings=decode_bulk_strings,
             ).read()
+
+    def _prepare_connection(self, connection: socket.socket) -> None:
+        password = self._endpoint.password
+        if password is not None:
+            connection.sendall(_encode_command(("AUTH", password)))
+            try:
+                _read_simple_ok(connection, action="AUTH")
+            except RedisConnectionError:
+                raise
+            except RedisCommandError:
+                raise RedisAuthenticationError("Redis authentication failed") from None
+        connection.sendall(_encode_command(("SELECT", str(self._endpoint.database))))
+        _read_simple_ok(connection, action="SELECT")
 
 
 class _RESPReader:
@@ -124,24 +208,24 @@ class _RESPReader:
     def read(self) -> Any:
         prefix = self._read_exact(1)
         if prefix == b"+":
-            return self._read_line().decode()
+            return _decode_resp_text(self._read_line())
         if prefix == b"-":
-            raise RedisProtocolError(self._read_line().decode())
+            raise RedisCommandError(_decode_resp_text(self._read_line()))
         if prefix == b":":
-            return int(self._read_line().decode())
+            return _decode_resp_int(self._read_line())
         if prefix == b"$":
-            length = int(self._read_line().decode())
+            length = _decode_resp_int(self._read_line())
             if length == -1:
                 return None
             data = self._read_exact(length)
             self._read_exact(2)
-            return data.decode() if self._decode_bulk_strings else data
+            return _decode_resp_text(data) if self._decode_bulk_strings else data
         if prefix == b"*":
-            length = int(self._read_line().decode())
+            length = _decode_resp_int(self._read_line())
             if length == -1:
                 return None
             return [self.read() for _ in range(length)]
-        raise RedisProtocolError(f"unknown RESP prefix: {prefix!r}")
+        raise RedisProtocolError("unknown RESP prefix")
 
     def _read_line(self) -> bytes:
         chunks: list[bytes] = []
@@ -157,11 +241,40 @@ class _RESPReader:
         while len(data) < length:
             chunk = self._connection.recv(length - len(data))
             if not chunk:
-                raise RedisProtocolError(
+                raise RedisConnectionError(
                     "connection closed while reading Redis response"
                 )
             data += chunk
         return data
+
+
+def _read_simple_ok(connection: socket.socket, *, action: str) -> None:
+    reader = _RESPReader(connection, decode_bulk_strings=True)
+    prefix = reader._read_exact(1)
+    if prefix == b"-":
+        raise RedisCommandError(_decode_resp_text(reader._read_line()))
+    if prefix == b"+":
+        value = _decode_resp_text(reader._read_line())
+        if value != "OK":
+            raise RedisProtocolError(f"unexpected {action} response")
+        return
+    if prefix in {b":", b"$", b"*"}:
+        raise RedisProtocolError(f"unexpected {action} response")
+    raise RedisProtocolError("unknown RESP prefix")
+
+
+def _decode_resp_text(data: bytes) -> str:
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise RedisProtocolError("Redis response is not valid UTF-8") from None
+
+
+def _decode_resp_int(data: bytes) -> int:
+    try:
+        return int(_decode_resp_text(data))
+    except ValueError:
+        raise RedisProtocolError("Redis response is invalid") from None
 
 
 def _encode_command(parts: tuple[str, ...]) -> bytes:

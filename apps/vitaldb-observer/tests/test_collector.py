@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
+import pytest
+
 from vitaldb_observer.collector import VitalDBCollector
 from vitaldb_observer.config import ObserverSettings
+from vitaldb_observer.redis_client import RedisEndpoint
 
 
 class FakeRedis:
@@ -599,9 +603,49 @@ def test_collector_reports_missing_access_log_file(tmp_path: Path) -> None:
 
     document = collector.collect().as_json()
 
+    assert document["ready"] is True
     assert document["proxyConnections"] == []
     assert _read_issue_messages(document, "proxyAccessLog") == [
-        f"proxy access log does not exist: {missing_log}"
+        "proxy access log does not exist"
+    ]
+
+
+def test_collector_reports_access_log_permission_failure(tmp_path: Path) -> None:
+    access_log = tmp_path / "access.jsonl"
+    access_log.write_text("{}\n", encoding="utf-8")
+    access_log.chmod(0)
+    try:
+        if os.access(access_log, os.R_OK):
+            pytest.skip("process can read mode 0 files")
+        collector = VitalDBCollector(
+            redis_client=FakeRedis(values={}),
+            settings=_settings(access_log),
+        )
+        document = collector.collect().as_json()
+    finally:
+        access_log.chmod(0o600)
+
+    assert document["ready"] is True
+    assert document["proxyConnections"] == []
+    assert _read_issue_messages(document, "proxyAccessLog") == [
+        "proxy access log is not readable"
+    ]
+
+
+def test_collector_reports_access_log_read_failure(tmp_path: Path) -> None:
+    access_log = tmp_path / "access.jsonl"
+    access_log.mkdir()
+    collector = VitalDBCollector(
+        redis_client=FakeRedis(values={}),
+        settings=_settings(access_log),
+    )
+
+    document = collector.collect().as_json()
+
+    assert document["ready"] is True
+    assert document["proxyConnections"] == []
+    assert _read_issue_messages(document, "proxyAccessLog") == [
+        "proxy access log read failed"
     ]
 
 
@@ -716,6 +760,12 @@ def _settings(
         audit_event_limit=audit_event_limit,
         access_log_path=str(access_log) if access_log else "",
         access_log_limit=20,
+        redis_endpoint=RedisEndpoint(
+            host="redis",
+            port=6379,
+            timeout_seconds=1,
+            database=0,
+        ),
     )
 
 

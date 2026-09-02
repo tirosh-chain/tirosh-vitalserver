@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>ai.tirosh.vitaldb-observer</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/libexec/vitaldb-observer/venv/bin/vitaldb-observer</string>
+		<string>--host</string>
+		<string>127.0.0.1</string>
+		<string>--port</string>
+		<string>18084</string>
+		<string>--redis-host</string>
+		<string>127.0.0.1</string>
+		<string>--redis-port</string>
+		<string>6379</string>
+		<string>--redis-database</string>
+		<string>0</string>
+		<string>--redis-password-file</string>
+		<string>/usr/local/etc/vitaldb-observer/secrets/redis-password</string>
+		<string>--access-log-path</string>
+		<string>/Library/Application Support/VitalServerHelper/logs/runtime/proxy-nginx.access.log</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>UserName</key>
+	<string>_vitaldb-observer</string>
+	<key>StandardOutPath</key>
+	<string>/usr/local/var/log/vitalserver/vitaldb-observer.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/usr/local/var/log/vitalserver/vitaldb-observer.err.log</string>
+</dict>
+</plist>
