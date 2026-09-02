@@ -44,6 +44,7 @@
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit/usage.md) |
 | Redis key와 relay 근거 보기 | [VitalServer recorder Redis key model](recorder/redis-key-model.md) |
 | Redis Relay 구조, 설정, 전송 계약과 Native 운영 보기 | [Redis Relay](redis-relay/index.md) |
+| Host에서 VitalDB 관측 daemon을 설치·운영하기 | [VitalDB Observer](vitaldb-observer/index.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](runtime/macos/index.md) |
 | runtime operation 상태 전이 검증 기준 보기 | [Runtime State Machine Traceability](runtime/macos/state-machine-traceability.md) |
 | Runtime Control PWA 구현 기준 보기 | [Runtime Control PWA](pwa/index.md) |
@@ -121,6 +122,12 @@
 | [Redis Relay 설정과 보안](redis-relay/configuration.md) | TOML, Source/Target, scope, credential file과 오류 계약 |
 | [Redis Relay Protocol v1](redis-relay/protocol-v1.md) | Target key, atomic publish, event와 consumer 책임 |
 | [Redis Relay 운영 가이드](redis-relay/operations.md) | wheel, launchd/systemd, status, update와 장애 판단 |
+
+### VitalDB Observer
+
+| 문서 | 역할 |
+|---|---|
+| [VitalDB Observer](vitaldb-observer/index.md) | Native Host 실행, API, 설정, launchd 설치와 장애 판단 |
 
 ### Testkit
 
@@ -201,8 +208,9 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 27. [Testkit 사용법](testkit/usage.md)
 28. [VitalServer recorder Redis key model](recorder/redis-key-model.md)
 29. [Redis Relay](redis-relay/index.md)
-30. [VitalServer macOS Runtime](runtime/macos/index.md)
-31. [Branch 운영 기준](repository/branching.md)
+30. [VitalDB Observer](vitaldb-observer/index.md)
+31. [VitalServer macOS Runtime](runtime/macos/index.md)
+32. [Branch 운영 기준](repository/branching.md)
 
 Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니다.
 
@@ -219,4 +227,5 @@ make swagger/up
 - 실행 방법은 사용법 문서에 모으고, 전략 문서에는 판단 기준과 결정 배경을 남깁니다.
 - VitalServer Source Redis key의 의미는 [VitalServer recorder Redis key model](recorder/redis-key-model.md)에 모읍니다.
 - Redis Relay 자체의 설정, Protocol과 운영 계약은 [Redis Relay](redis-relay/index.md) 문서군에 모읍니다.
+- VitalDB Observer 사용자/운영 계약은 [VitalDB Observer](vitaldb-observer/index.md) 한 파일에 모읍니다.
 - VM package/runtime 세부 사항은 `docs/runtime/macos/` 문서군에 모읍니다.

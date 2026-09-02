@@ -27,6 +27,7 @@ docs = [
 [tool.uv.workspace]
 members = [
   "packages/vitalserver-core",
+  "apps/vitaldb-observer",
   "apps/vitalserver-recorder-recovery",
   "apps/vitalserver-redis-relay",
   "packages/vitalserver-devtools",

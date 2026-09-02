@@ -216,8 +216,7 @@ class VitalDBCollector:
             if key.removeprefix("beds:")
         )
         return [
-            self._bed(bed_id, observed_at, read_issues)
-            for bed_id in sorted(bed_ids)
+            self._bed(bed_id, observed_at, read_issues) for bed_id in sorted(bed_ids)
         ]
 
     def _bed(
@@ -271,21 +270,41 @@ class VitalDBCollector:
                 "proxy access log path is not configured",
             )
             return []
-        log_path = Path(path)
-        if not log_path.exists():
+        try:
+            lines = _tail_lines(Path(path), _ACCESS_LOG_TAIL_BYTES)
+        except FileNotFoundError:
             _append_read_issue(
                 read_issues,
                 "proxyAccessLog",
-                f"proxy access log does not exist: {path}",
+                "proxy access log does not exist",
             )
             return []
-        try:
-            lines = _tail_lines(log_path, _ACCESS_LOG_TAIL_BYTES)
-        except UnicodeDecodeError as error:
+        except PermissionError:
             _append_read_issue(
                 read_issues,
                 "proxyAccessLog",
-                f"proxy access log is not valid UTF-8: {error}",
+                "proxy access log is not readable",
+            )
+            return []
+        except OSError:
+            _append_read_issue(
+                read_issues,
+                "proxyAccessLog",
+                "proxy access log read failed",
+            )
+            return []
+        except UnicodeDecodeError:
+            _append_read_issue(
+                read_issues,
+                "proxyAccessLog",
+                "proxy access log is not valid UTF-8",
+            )
+            return []
+        except ValueError:
+            _append_read_issue(
+                read_issues,
+                "proxyAccessLog",
+                "proxy access log read failed",
             )
             return []
         observations: list[ProxyConnectionObservation] = []
@@ -381,18 +400,17 @@ def _is_recent(
     except ValueError:
         return False
     age_seconds = observed - timestamp
-    return (
-        -_RECORDER_TIMESTAMP_FUTURE_SKEW_SECONDS
-        <= age_seconds
-        <= threshold_seconds
-    )
+    return -_RECORDER_TIMESTAMP_FUTURE_SKEW_SECONDS <= age_seconds <= threshold_seconds
 
 
 def _tail_lines(path: Path, max_bytes: int) -> list[str]:
-    size = path.stat().st_size
     with path.open("rb") as handle:
+        handle.seek(0, 2)
+        size = handle.tell()
         if size > max_bytes:
             handle.seek(-max_bytes, 2)
+        else:
+            handle.seek(0)
         data = handle.read()
     return data.decode("utf-8").splitlines()
 
@@ -408,11 +426,7 @@ def _parse_audit_event_document(raw_value: str) -> dict[str, Any]:
 
 
 def _audit_event_type(event: dict[str, Any]) -> str:
-    return (
-        _string_value(event, "event_type")
-        or _string_value(event, "eventType")
-        or ""
-    )
+    return _string_value(event, "event_type") or _string_value(event, "eventType") or ""
 
 
 def _audit_event_timestamp(event: dict[str, Any]) -> str | None:
@@ -648,9 +662,7 @@ def _required_non_negative_int(data: dict[str, Any], keys: tuple[str, ...]) -> i
             f"send_data event has invalid {selected_key}: {value!r}"
         ) from None
     if parsed < 0:
-        raise ValueError(
-            f"send_data event has negative {selected_key}: {value!r}"
-        )
+        raise ValueError(f"send_data event has negative {selected_key}: {value!r}")
     return parsed
 
 
