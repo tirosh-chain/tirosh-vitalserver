@@ -2427,7 +2427,7 @@ private func loadedRedisRelaySettings(enabled: Bool) -> RuntimeRedisRelaySetting
             enabled: enabled,
             target: RuntimeRedisRelayTargetRead(
                 url: "redis://relay.example:6379/0",
-                username: "relay-user",
+                usernameConfigured: true,
                 passwordConfigured: false,
                 tls: false
             ),

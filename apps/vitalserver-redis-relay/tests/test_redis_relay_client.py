@@ -2,13 +2,25 @@ from __future__ import annotations
 
 from typing import Any
 
-from vitalserver_redis_relay.redis_client import RedisClient
+import pytest
+
+from vitalserver_redis_relay.key_filter import RelayScope
+from vitalserver_redis_relay.redis_client import (
+    RedisAuthenticationError,
+    RedisClient,
+)
 from vitalserver_redis_relay.replication import (
     KeyType,
     RedisKeySnapshot,
     TargetPublishStatus,
 )
-from vitalserver_redis_relay.settings import RedisEndpoint, RelayPublishContract
+from vitalserver_redis_relay.settings import (
+    RedisEndpoint,
+    RelayPublishContract,
+    RelaySettings,
+    default_publish_contract,
+)
+from vitalserver_redis_relay.status import build_status_document
 
 
 class FakeSocket:
@@ -73,13 +85,15 @@ def test_session_authenticates_and_selects_database_once(monkeypatch: Any) -> No
         create_connection,
     )
 
+    username = "default"
+    password = "secret"
     client = RedisClient(
         RedisEndpoint(
             host="target",
             port=6379,
             database=2,
-            username="default",
-            password="secret",
+            username=username,
+            password=password,
         )
     )
 
@@ -87,9 +101,11 @@ def test_session_authenticates_and_selects_database_once(monkeypatch: Any) -> No
         assert session.command("PING") == "PONG"
 
     assert len(sockets) == 1
-    assert b"AUTH" in sockets[0].sent[0]
-    assert b"default" in sockets[0].sent[0]
-    assert b"secret" in sockets[0].sent[0]
+    _assert_auth_command(
+        sockets[0].sent[0],
+        username=username,
+        password=password,
+    )
     assert b"SELECT" in sockets[0].sent[1]
     assert b"2" in sockets[0].sent[1]
     assert b"PING" in sockets[0].sent[2]
@@ -208,6 +224,182 @@ def test_publish_snapshot_if_changed_uses_atomic_protocol_script(
     assert b"mirror:published" in command
     assert b"helper-test" in command
     assert b"redis-dump-payload" in command
+
+
+AUTH_USERNAME = "relay-user"
+AUTH_PASSWORD = "sentinel-password"
+
+
+def test_source_password_auth_failure_does_not_expose_credentials(
+    monkeypatch: Any,
+) -> None:
+    def create_connection(address: tuple[str, int], timeout: float) -> FakeSocket:
+        del address, timeout
+        return FakeSocket(
+            b"-ERR invalid password sentinel-password\r\n"
+        )
+
+    monkeypatch.setattr(
+        "vitalserver_redis_relay.redis_client.socket.create_connection",
+        create_connection,
+    )
+    client = RedisClient(
+        RedisEndpoint(host="redis", port=6379, database=0, password=AUTH_PASSWORD)
+    )
+
+    with (
+        pytest.raises(
+            RedisAuthenticationError,
+            match="Redis authentication failed",
+        ) as error,
+        client.session(),
+    ):
+        pass
+
+    assert AUTH_PASSWORD not in str(error.value)
+    assert AUTH_PASSWORD not in repr(error.value)
+    assert error.value.__cause__ is None
+
+
+def test_target_username_password_auth_failure_does_not_expose_credentials(
+    monkeypatch: Any,
+) -> None:
+    def create_connection(address: tuple[str, int], timeout: float) -> FakeSocket:
+        del address, timeout
+        return FakeSocket(
+            b"-WRONGPASS user relay-user password sentinel-password\r\n"
+        )
+
+    monkeypatch.setattr(
+        "vitalserver_redis_relay.redis_client.socket.create_connection",
+        create_connection,
+    )
+    client = RedisClient(
+        RedisEndpoint(
+            host="target",
+            port=6379,
+            database=0,
+            username=AUTH_USERNAME,
+            password=AUTH_PASSWORD,
+        )
+    )
+
+    with (
+        pytest.raises(
+            RedisAuthenticationError,
+            match="Redis authentication failed",
+        ) as error,
+        client.session(),
+    ):
+        pass
+
+    message = str(error.value)
+    assert AUTH_USERNAME not in message
+    assert AUTH_PASSWORD not in message
+    assert AUTH_USERNAME not in repr(error.value)
+    assert AUTH_PASSWORD not in repr(error.value)
+    assert error.value.__cause__ is None
+
+
+def test_auth_connection_close_still_retries(monkeypatch: Any) -> None:
+    sockets: list[FakeSocket] = []
+    sleeps: list[float] = []
+
+    def create_connection(address: tuple[str, int], timeout: float) -> FakeSocket:
+        del address, timeout
+        socket = FakeSocket(b"" if not sockets else b"+OK\r\n+PONG\r\n")
+        sockets.append(socket)
+        return socket
+
+    monkeypatch.setattr(
+        "vitalserver_redis_relay.redis_client.socket.create_connection",
+        create_connection,
+    )
+    client = RedisClient(
+        RedisEndpoint(host="redis", port=6379, database=0, password=AUTH_PASSWORD),
+        retry_sleep=sleeps.append,
+    )
+
+    with client.session() as session:
+        assert session.command("PING") == "PONG"
+
+    assert len(sockets) == 2
+    assert sleeps == [0.25]
+
+
+def test_authentication_failure_status_does_not_include_credentials() -> None:
+    error = RedisAuthenticationError("Redis authentication failed")
+    document = build_status_document(
+        settings=RelaySettings(
+            enabled=True,
+            source=RedisEndpoint(
+                host="redis",
+                port=6379,
+                database=0,
+                password=AUTH_PASSWORD,
+            ),
+            target=RedisEndpoint(
+                host="target",
+                port=6379,
+                database=0,
+                username=AUTH_USERNAME,
+                password=AUTH_PASSWORD,
+            ),
+            publish_contract=default_publish_contract(),
+            scope=RelayScope.VITAL_RECONSTRUCTION,
+            include_recorder_network_context=False,
+            interval_seconds=1.0,
+            scan_count=1000,
+            status_interval_seconds=5.0,
+        ),
+        state="relay_failed",
+        error=str(error),
+    )
+
+    assert document["lastError"] == "Redis authentication failed"
+    assert AUTH_USERNAME not in str(document)
+    assert AUTH_PASSWORD not in str(document)
+
+
+def _assert_auth_command(
+    payload: bytes,
+    *,
+    username: str | None,
+    password: str,
+) -> None:
+    try:
+        parts = _resp_bulk_strings(payload)
+    except ValueError:
+        raise AssertionError("AUTH command is not a valid RESP array") from None
+    expected: tuple[bytes, ...]
+    if username is None:
+        expected = (b"AUTH", password.encode())
+    else:
+        expected = (b"AUTH", username.encode(), password.encode())
+    if parts != expected:
+        raise AssertionError("AUTH command did not use the configured credentials")
+
+
+def _resp_bulk_strings(payload: bytes) -> tuple[bytes, ...]:
+    if not payload.startswith(b"*"):
+        raise ValueError("not a RESP array")
+    rest = payload[1:]
+    header, _, remainder = rest.partition(b"\r\n")
+    count = int(header)
+    parts: list[bytes] = []
+    cursor = remainder
+    for _ in range(count):
+        if not cursor.startswith(b"$"):
+            raise ValueError("not a bulk string")
+        size_line, _, cursor = cursor[1:].partition(b"\r\n")
+        size = int(size_line)
+        part = cursor[:size]
+        cursor = cursor[size:]
+        if not cursor.startswith(b"\r\n"):
+            raise ValueError("truncated bulk string")
+        cursor = cursor[2:]
+        parts.append(part)
+    return tuple(parts)
 
 
 def _array_response(values: list[str]) -> bytes:

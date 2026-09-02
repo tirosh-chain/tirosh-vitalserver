@@ -237,11 +237,16 @@ Regex allowlist는 UI가 만들지 않고 relay code의 policy가 소유합니�
 
 | Host/guest shared path | Container path | 내용 |
 |---|---|---|
-| `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml` | `/run/tirosh/config/redis-relay.toml` | relay enable, target endpoint, preset, publish contract |
+| `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml` | `/run/tirosh/config/redis-relay.toml` | relay enable, canonical target URL, preset, publish contract, credential file paths |
+| `/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-username` | `/run/tirosh/secrets/redis-relay-target-username` | target Redis username |
 | `/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-password` | `/run/tirosh/secrets/redis-relay-target-password` | target Redis password |
 
-Password 원문은 Runtime Control settings/read model과 TOML에 저장하지 않습니다. Helper read model은
-저장 여부만 `passwordConfigured`로 노출합니다.
+Username/password 원문은 Runtime Control settings/read model과 TOML에 저장하지 않습니다.
+Guest Control writer가 고정 secret file에 원자적으로 쓰고, TOML에는 경로만 남깁니다.
+Read API는 저장 여부만 `usernameConfigured`/`passwordConfigured`로 노출합니다.
+`target.url`에 user-info를 넣지 않습니다. 디스크에 남은 URL username은 Compose `UP`이
+Relay start 전에 canonical URL + `username_file`로 한 번 전환합니다. URL password는
+invalid이며 migration하지 않습니다.
 TOML의 `[publish]` 섹션은 VitalServer Redis Relay Protocol v1의 target key prefix, event stream,
 fingerprint hash, dedupe hash, stream maxlen, publisher id를 명시합니다.
 

@@ -48,8 +48,10 @@ def test_status_masks_password(tmp_path: Path) -> None:
     write_status_artifact(status_path, document)
 
     artifact_document = json.loads(status_path.read_text())
+    rendered = status_path.read_text()
     assert artifact_document == document
-    assert document["targetUrl"] == "redis://default@target:6379/0"
+    assert document["targetUrl"] == "redis://target:6379/0"
+    assert document["targetUsernameConfigured"] is True
     assert document["targetPasswordConfigured"] is True
     assert document["batches"] == 0
     assert document["totals"]["copied"] == 0
@@ -60,7 +62,10 @@ def test_status_masks_password(tmp_path: Path) -> None:
     assert document["lastSuccessAt"] == "2026-06-18T00:00:01Z"
     assert document["lastErrorAt"] is None
     assert document["lastErrorSamples"] == []
-    assert "secret" not in status_path.read_text()
+    assert "secret" not in rendered
+    assert "default@" not in rendered
+    assert "secret" not in repr(settings)
+    assert "default" not in repr(settings.target)
 
 
 def test_status_fingerprint_changes_when_connection_contract_changes(
@@ -103,6 +108,64 @@ def test_status_fingerprint_changes_when_connection_contract_changes(
     first = json.loads(first_status_path.read_text())
     second = json.loads(second_status_path.read_text())
     assert first["settingsFingerprint"] != second["settingsFingerprint"]
+
+
+def test_status_fingerprint_ignores_credential_values() -> None:
+    left = RelaySettings(
+        enabled=True,
+        source=RedisEndpoint(
+            host="redis",
+            port=6379,
+            database=0,
+            password="secret-a",
+        ),
+        target=RedisEndpoint(
+            host="target",
+            port=6379,
+            database=0,
+            username="user-a",
+            password="secret-a",
+        ),
+        publish_contract=default_publish_contract(),
+        scope=RelayScope.VITAL_RECONSTRUCTION,
+        include_recorder_network_context=True,
+        interval_seconds=1.0,
+        scan_count=1000,
+        status_interval_seconds=5.0,
+    )
+    right = RelaySettings(
+        enabled=True,
+        source=RedisEndpoint(
+            host="redis",
+            port=6379,
+            database=0,
+            password="secret-b",
+        ),
+        target=RedisEndpoint(
+            host="target",
+            port=6379,
+            database=0,
+            username="user-b",
+            password="secret-b",
+        ),
+        publish_contract=default_publish_contract(),
+        scope=RelayScope.VITAL_RECONSTRUCTION,
+        include_recorder_network_context=True,
+        interval_seconds=1.0,
+        scan_count=1000,
+        status_interval_seconds=5.0,
+    )
+
+    left_document = build_status_document(settings=left, state="running")
+    right_document = build_status_document(settings=right, state="running")
+
+    assert left_document["settingsFingerprint"] == right_document["settingsFingerprint"]
+    assert left_document["targetUsernameConfigured"] is True
+    assert left_document["targetPasswordConfigured"] is True
+    assert "secret-a" not in repr(left)
+    assert "user-a" not in repr(left)
+    assert "secret-b" not in repr(right)
+    assert "user-b" not in repr(right)
 
 
 def test_unavailable_status_reports_explicit_error_observation(tmp_path: Path) -> None:

@@ -473,6 +473,8 @@ public struct RuntimeRedisRelayTarget: Codable, Equatable, Sendable {
     public var username: String
     public var password: String
     public var clearPassword: Bool
+    public var clearUsername: Bool
+    public var usernameConfigured: Bool
     public var passwordConfigured: Bool
     public var tls: Bool
 
@@ -481,6 +483,8 @@ public struct RuntimeRedisRelayTarget: Codable, Equatable, Sendable {
         username: String = "",
         password: String = "",
         clearPassword: Bool = false,
+        clearUsername: Bool = false,
+        usernameConfigured: Bool = false,
         passwordConfigured: Bool = false,
         tls: Bool = false
     ) {
@@ -488,6 +492,8 @@ public struct RuntimeRedisRelayTarget: Codable, Equatable, Sendable {
         self.username = username
         self.password = password
         self.clearPassword = clearPassword
+        self.clearUsername = clearUsername
+        self.usernameConfigured = usernameConfigured
         self.passwordConfigured = passwordConfigured
         self.tls = tls
     }
@@ -497,6 +503,8 @@ public struct RuntimeRedisRelayTarget: Codable, Equatable, Sendable {
         case username
         case password
         case clearPassword
+        case clearUsername
+        case usernameConfigured
         case passwordConfigured
         case tls
     }
@@ -508,6 +516,8 @@ public struct RuntimeRedisRelayTarget: Codable, Equatable, Sendable {
             username: try container.decodeIfPresent(String.self, forKey: .username) ?? "",
             password: try container.decodeIfPresent(String.self, forKey: .password) ?? "",
             clearPassword: try container.decodeIfPresent(Bool.self, forKey: .clearPassword) ?? false,
+            clearUsername: try container.decodeIfPresent(Bool.self, forKey: .clearUsername) ?? false,
+            usernameConfigured: try container.decodeIfPresent(Bool.self, forKey: .usernameConfigured) ?? false,
             passwordConfigured: try container.decodeIfPresent(Bool.self, forKey: .passwordConfigured) ?? false,
             tls: try container.decodeIfPresent(Bool.self, forKey: .tls) ?? false
         )

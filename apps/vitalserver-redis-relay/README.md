@@ -1,158 +1,63 @@
 # vitalserver-redis-relay
 
-`vitalserver-redis-relay` copies allowlisted VitalServer Redis keys from the
-internal Redis 3.2 source to an operator-configured target Redis 8.x endpoint.
+`vitalserver-redis-relay`는 VitalServer Source Redis에서 허용된 key snapshot을 읽어
+운영자가 지정한 Target Redis로 전달하는 Protocol v1 publisher입니다. Source에는 write하지
+않고 session, authentication, credential key를 전달하지 않습니다.
 
-The relay is for realtime and high-volume numeric/trend/waveform transfer. It
-does not expose source Redis over HTTP and does not write to source Redis.
+제품 구조, 설정, 전송 계약과 Native 운영 방법은
+[Redis Relay 문서](../../docs/redis-relay/index.md)를 기준으로 봅니다.
 
-## Contract
+## 1. Source layout
 
-- Source Redis is internal: `redis://redis:6379/0`.
-- Target Redis is configured by VitalServer Helper Advanced settings.
-- Source reads use `SCAN`, `TYPE`, `PTTL`, and `DUMP`.
-- Target writes use the VitalServer Redis Relay Protocol v1:
-  `RESTORE` the binary payload, update the target fingerprint, record publish
-  dedupe state, and `XADD` a `key_published` event atomically.
-- Target Redis commands reconnect and retry with bounded exponential backoff
-  when the socket is closed, times out, or fails before a Redis response is
-  read. Retry exhaustion remains an explicit publish failure in relay status.
-- If the target endpoint stays unreachable for longer than one command retry
-  window, the relay process stays alive, records the failed batch, and retries
-  again on the next relay loop. When the target becomes reachable again, the
-  relay resumes publishing the current allowed source Redis snapshots.
-- The relay is a publisher. Target-side consumers own consumer group pending
-  recovery, dead-letter handling, decoding, and downstream idempotency.
-- Credential/session/auth keys are always denied.
-- UI selects a scope preset; regex rules are not user configurable.
-
-## Target output
-
-The target Redis receives restored source payload keys plus metadata streams.
-
-| Target key | Purpose |
+| Module | 책임 |
 |---|---|
-| `vitalserver:<source-key>` | Restored source Redis key snapshot |
-| `vitalserver:relay:events` | Protocol v1 metadata stream |
-| `vitalserver:relay:fingerprints` | Target key -> source payload fingerprint |
-| `vitalserver:relay:published` | Publish dedupe key -> event id |
+| `settings.py` | TOML, endpoint, credential file 계약 검증 |
+| `key_filter.py` | scope allow policy와 고정 deny policy |
+| `replication.py` | 한 batch의 순수 복제 workflow와 결과 |
+| `redis_client.py` | RESP connection, Source read, Target atomic publish adapter |
+| `relay_loop.py` | 설정 reload, batch 실행, status 조립 |
+| `status.py` | status schema v1과 atomic file publisher |
+| `status_owner.py` | HTTP와 Unix socket status owner adapter |
+| `status_publisher.py` | status publisher port, composite 결과와 실패 계약 |
+| `__main__.py` | CLI와 adapter composition |
 
-The event stream is metadata-only. Consumers must fetch `target_key` from target
-Redis to decode or transform the payload.
+Application loop는 status의 저장 위치나 transport를 추측하지 않습니다. CLI가 File, HTTP,
+Unix socket adapter를 명시적으로 조립하고, replication policy는 filesystem이나 network 상태를
+읽지 않습니다.
 
-Protocol v1 event fields:
+## 2. Local development
 
-| Field | Meaning |
-|---|---|
-| `schema_version` | Protocol schema version. Current value is `1`. |
-| `event` | Event name. Current value is `key_published`. |
-| `source_key` | Source Redis key. |
-| `target_key` | Target Redis key containing the restored payload. |
-| `key_type` | Source Redis key type. |
-| `ttl_ms` | Source key PTTL represented for Redis `RESTORE`. |
-| `source_fingerprint` | SHA-256 of the source DUMP payload. |
-| `dedupe_key` | Stable key for duplicate publish detection. |
-| `published_at` | UTC timestamp emitted by this publisher. |
-| `publisher` | Publisher id. Default `vitalserver-helper-relay`. |
+저장소 root에서 wheel을 만들고 개발용 venv에 설치합니다.
 
-Consumers should use Redis Streams consumer groups, fetch `target_key`, decode
-or transform the payload, perform idempotent downstream writes, and acknowledge
-only successful work. Pending recovery, dead-letter handling, and downstream
-idempotency belong to the consumer system.
-
-## Config
-
-```toml
-[redis_relay]
-enabled = true
-scope = "vital_reconstruction"
-include_recorder_network_context = true
-interval_seconds = 1.0
-scan_count = 1000
-
-[source]
-host = "redis"
-port = 6379
-database = 0
-
-[target]
-url = "redis://default@10.0.0.12:6379/0"
-password_file = "/run/tirosh/secrets/redis-relay-target-password"
-
-[publish]
-target_key_prefix = "vitalserver:"
-event_stream_key = "vitalserver:relay:events"
-fingerprint_hash_key = "vitalserver:relay:fingerprints"
-publish_dedupe_hash_key = "vitalserver:relay:published"
-event_stream_maxlen = 100000
-publisher_id = "vitalserver-helper-relay"
+```sh
+uv build --package tirosh-vitalserver-redis-relay --wheel
+uv venv .venv-redis-relay
+uv pip install --python .venv-redis-relay/bin/python --no-deps \
+  dist/tirosh_vitalserver_redis_relay-0.2.0-py3-none-any.whl
+.venv-redis-relay/bin/vitalserver-redis-relay --help
+.venv-redis-relay/bin/python -m vitalserver_redis_relay --help
 ```
 
-If the config file is missing or `enabled = false`, the container stays alive
-and writes a disabled status document.
+`.venv-redis-relay`는 개발 확인용입니다. launchd와 systemd에는 사용하지 않습니다. Native
+system venv와 supervisor 설치는 [운영 가이드](../../docs/redis-relay/operations.md)를 따릅니다.
 
-VitalServer Helper stores the target as separate UI inputs: Target URL, TLS,
-Username, and Password. The runtime configure command combines Target URL, TLS,
-and Username into the TOML `target.url`; Password remains outside the URL and is
-provided through `password_file`.
+## 3. Validation
 
-Helper Target URL examples:
+```sh
+uv run pytest apps/vitalserver-redis-relay/tests
+uv run ruff check \
+  apps/vitalserver-redis-relay/vitalserver_redis_relay \
+  apps/vitalserver-redis-relay/tests
+uv run mypy \
+  apps/vitalserver-redis-relay/vitalserver_redis_relay \
+  apps/vitalserver-redis-relay/tests
+```
 
-- `redis://192.168.64.1:16381/0`
-- `redis://redis.example:6379/0`
-- `redis://redis.example:6380/2`
+## 4. Documentation
 
-Generated TOML URL examples:
-
-- `redis://192.168.64.1:16381/0`
-- `redis://default@redis.example:6379/0`
-- `rediss://default@redis.example:6380/2`
-
-Target URL is interpreted from the relay container/guest runtime, not from the
-macOS Helper UI process. Use the guest-reachable host address for a Redis
-endpoint published on the Mac host; in the shared NAT runtime that address is
-usually `192.168.64.1`.
-
-## Status
-
-The relay writes JSON status to `/run/tirosh/status/redis-relay-status.json`
-as a diagnostics artifact and publishes the same document to the Guest Control
-`PUT /runtime/redis-relay/status` owner mutation. `REDIS_RELAY_STATUS_OWNER_URL` is a
-required VM-runtime transport contract; Linux Native instead provides the same
-owner mutation through `REDIS_RELAY_STATUS_OWNER_SOCKET`. Exactly one transport
-must be configured, and the relay refuses to start when both or neither are
-configured. Linux mounts the root-owned socket directory read-only into the
-relay container, so the container can publish only its status mutation without
-opening the Runtime Controller's loopback API on a bridge or LAN address.
-Product consumers read the Guest/Postgres owner snapshot through
-`GET /runtime/redis-relay/status`; they do not read the status file directly. The
-status never includes the target password.
-
-- `enabled` and `state` describe the relay process contract.
-- `settingsFingerprint` changes when the password-free connection/scope contract changes.
-- `publishEventStreamKey`, `publishTargetKeyPrefix`, and `publishPublisherId`
-  describe the active Protocol v1 publish contract.
-- `batches`, `totals`, and `lastBatch` show scan/publish progress.
-- `lastSuccessAt` is updated after a batch completes with zero publish errors.
-- `lastErrorAt` and `lastError` are updated when config or copy work fails.
-- `lastErrorSamples` shows bounded key/stage/message samples from the latest
-  failed batch so operators can distinguish target connection, publish, and
-  payload errors.
-
-`lastErrorSamples[].code` is the machine-readable relay publish error contract:
-
-| Code | Stage | Meaning |
-|---|---|---|
-| `source_dump_failed` | `source_dump` | Source Redis key metadata or `DUMP` failed. |
-| `target_publish_failed` | `target_publish` | Atomic target `RESTORE`/fingerprint/dedupe/event publish failed. |
-
-Docker health checks verify that the relay is configured with a status owner URL;
-they do not read the diagnostics status file as product liveness. Target Redis
-authentication, network, or publish failures are reported in the status owner
-snapshot instead of making the container disappear from service liveness.
-Transient target disconnects are retried inside the active batch with bounded
-backoff; persistent failures remain visible as `target_publish_failed` samples.
-Longer target outages do not stop the relay container. The next successful
-batch republishes source keys that are still present in source Redis. The relay
-is not a durable queue: source keys that expire or are deleted while the target
-is unreachable cannot be recovered by the publisher alone.
+| 문서 | 내용 |
+|---|---|
+| [Redis Relay 개요](../../docs/redis-relay/index.md) | 목적, 아키텍처, 책임 경계 |
+| [설정과 보안](../../docs/redis-relay/configuration.md) | TOML, scope, credential 계약 |
+| [Protocol v1](../../docs/redis-relay/protocol-v1.md) | Target key, event, consumer 책임 |
+| [운영 가이드](../../docs/redis-relay/operations.md) | Native 설치, supervisor, status, 장애 판단 |

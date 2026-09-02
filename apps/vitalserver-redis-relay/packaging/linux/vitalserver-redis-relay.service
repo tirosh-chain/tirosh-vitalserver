@@ -1,0 +1,22 @@
+# EXAMPLE systemd unit. VitalServer packaging does not install or enable this
+# unit. Copy it to an operator-owned systemd directory after installing the
+# wheel into /opt/vitalserver/redis-relay/venv and creating the dedicated user,
+# config, secret files, and status directory. systemd owns process lifetime
+# and restart.
+
+[Unit]
+Description=VitalServer Redis Relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vitalserver-redis-relay
+Group=vitalserver-redis-relay
+ExecStart=/opt/vitalserver/redis-relay/venv/bin/vitalserver-redis-relay --config-path /etc/vitalserver/redis-relay.toml --status-path /var/lib/vitalserver/redis-relay/status.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

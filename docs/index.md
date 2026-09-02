@@ -43,6 +43,7 @@
 | recorder `send_data` flow control 계약 확인하기 | [Recorder ingress send_data flow control contract](recorder/send-data-flow-control.md) |
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit/usage.md) |
 | Redis key와 relay 근거 보기 | [VitalServer recorder Redis key model](recorder/redis-key-model.md) |
+| Redis Relay 구조, 설정, 전송 계약과 Native 운영 보기 | [Redis Relay](redis-relay/index.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](runtime/macos/index.md) |
 | runtime operation 상태 전이 검증 기준 보기 | [Runtime State Machine Traceability](runtime/macos/state-machine-traceability.md) |
 | Runtime Control PWA 구현 기준 보기 | [Runtime Control PWA](pwa/index.md) |
@@ -111,6 +112,15 @@
 | [VitalServer recorder Redis key model](recorder/redis-key-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](api/vitalserver.openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
 | [Recorder Ingress OpenAPI](api/recorder-ingress.openapi.yaml) | recorder ingress sidecar 운영 endpoint spec |
+
+### Redis Relay
+
+| 문서 | 역할 |
+|---|---|
+| [Redis Relay](redis-relay/index.md) | Native Host 중심 구조, 실행 환경, owner와 책임 경계 |
+| [Redis Relay 설정과 보안](redis-relay/configuration.md) | TOML, Source/Target, scope, credential file과 오류 계약 |
+| [Redis Relay Protocol v1](redis-relay/protocol-v1.md) | Target key, atomic publish, event와 consumer 책임 |
+| [Redis Relay 운영 가이드](redis-relay/operations.md) | wheel, launchd/systemd, status, update와 장애 판단 |
 
 ### Testkit
 
@@ -190,8 +200,9 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 26. [Vital Recorder integration contract](recorder/vital-recorder-integration.md)
 27. [Testkit 사용법](testkit/usage.md)
 28. [VitalServer recorder Redis key model](recorder/redis-key-model.md)
-28. [VitalServer macOS Runtime](runtime/macos/index.md)
-29. [Branch 운영 기준](repository/branching.md)
+29. [Redis Relay](redis-relay/index.md)
+30. [VitalServer macOS Runtime](runtime/macos/index.md)
+31. [Branch 운영 기준](repository/branching.md)
 
 Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니다.
 
@@ -206,5 +217,6 @@ make swagger/up
 - 문서는 가능한 한 한글로 작성합니다.
 - CLI, API, Socket.IO, Redis, Docker, Compose처럼 개발자에게 익숙한 용어는 원어를 유지합니다.
 - 실행 방법은 사용법 문서에 모으고, 전략 문서에는 판단 기준과 결정 배경을 남깁니다.
-- Redis key와 relay처럼 구현의 근거가 되는 사실은 [VitalServer recorder Redis key model](recorder/redis-key-model.md)에 모읍니다.
+- VitalServer Source Redis key의 의미는 [VitalServer recorder Redis key model](recorder/redis-key-model.md)에 모읍니다.
+- Redis Relay 자체의 설정, Protocol과 운영 계약은 [Redis Relay](redis-relay/index.md) 문서군에 모읍니다.
 - VM package/runtime 세부 사항은 `docs/runtime/macos/` 문서군에 모읍니다.

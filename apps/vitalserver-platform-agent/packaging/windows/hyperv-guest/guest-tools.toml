@@ -18,6 +18,7 @@ commandBinDir = "/usr/local/bin"
 runtimeConfigFile = "/mnt/runtime/config/runtime-config.json"
 runtimeSettingsFile = "/mnt/runtime/config/runtime-settings.json"
 redisRelayConfigFile = "/mnt/runtime/config/redis-relay/redis-relay.toml"
+redisRelayUsernameFile = "/mnt/runtime/config/redis-relay-secrets/redis-relay-target-username"
 redisRelayPasswordFile = "/mnt/runtime/config/redis-relay-secrets/redis-relay-target-password"
 
 [controlStore]

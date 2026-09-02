@@ -10,6 +10,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
+from tirosh_guest_tools.adapters.outbound.redis_relay_settings import (
+    FileRedisRelaySettingsRepository,
+)
 from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
 from tirosh_guest_tools.contracts import ComposeJob, ComposeService
 from tirosh_guest_tools.domain.errors import (
@@ -33,6 +36,7 @@ from tirosh_guest_tools.infrastructure.common import (
     read_json,
     run,
 )
+from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 logger = logging.getLogger(__name__)
 COMPOSE_STOP_COMMAND_TIMEOUT_BUFFER_SECONDS = 10
@@ -205,6 +209,7 @@ def run_compose_action(action: ComposeAction | str) -> None:
 
     if action == ComposeAction.UP:
         prepare_container_bind_source_directories()
+        migrate_redis_relay_legacy_credentials()
         start_ordered()
     elif action == ComposeAction.STOP:
         stop_services_in_order()
@@ -214,6 +219,14 @@ def run_compose_action(action: ComposeAction | str) -> None:
             f"unsupported compose action: {action}",
             code="compose-action-unsupported",
         )
+
+
+def migrate_redis_relay_legacy_credentials() -> None:
+    FileRedisRelaySettingsRepository(
+        SETTINGS.paths.redis_relay_config_file,
+        SETTINGS.paths.redis_relay_username_file,
+        SETTINGS.paths.redis_relay_password_file,
+    ).migrate_legacy_target_credentials()
 
 
 def load_runtime_env() -> RuntimeConfig:

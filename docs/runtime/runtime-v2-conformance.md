@@ -26,7 +26,7 @@ The following published Runtime v2 routes are outside the default read-only run 
 | Owner | Resource | Required meaning |
 | Runtime Controller | `GET`/`PUT /runtime/settings` | product settings read state and explicit apply operation |
 | Runtime Controller | `POST /runtime/admin-password` | secret-bearing command with no password read-back |
-| Runtime Controller | `GET`/`PUT /runtime/redis-relay/settings` | Relay config read without secret material and explicit secret preserve/replace/clear apply |
+| Runtime Controller | `GET`/`PUT /runtime/redis-relay/settings` | Relay config read without secret material (`usernameConfigured`/`passwordConfigured` only) and explicit username/password preserve/replace/clear apply |
 | Runtime Controller | `GET /runtime/events` | Runtime-owned operation event page and opaque cursor |
 | Runtime Controller | `POST /runtime/maintenance/datastore/repair` | optional Guest-owned datastore maintenance operation, negotiated through `maintenance:datastore-repair:create` |
 | Runtime Controller | `GET /runtime/lab/sessions` | explicit persisted Lab session collection; absence, failure, and empty remain distinct |

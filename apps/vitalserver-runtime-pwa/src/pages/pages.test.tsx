@@ -373,6 +373,7 @@ describe("runtime console pages", () => {
     hooks.useApplyRuntimeRedisRelaySettings.mockReturnValue(applyRelay);
     renderPage(<SettingsPage />);
 
+    expect(screen.getByText("Username currently configured: no")).toBeInTheDocument();
     expect(screen.getByText("Password currently configured: no")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Target URL"), {
       target: { value: "redis://relay.example:6379/1" }
@@ -386,10 +387,18 @@ describe("runtime console pages", () => {
       expect.objectContaining({
         target: expect.objectContaining({
           url: "redis://relay.example:6379/1",
-          password: "relay-secret"
+          password: "relay-secret",
+          clearUsername: false,
+          clearPassword: false
         })
       })
     );
+    const applyTarget = applyRelay.mutate.mock.calls[0]?.[0]?.target as {
+      usernameConfigured?: boolean;
+      passwordConfigured?: boolean;
+    };
+    expect(applyTarget.usernameConfigured).toBeUndefined();
+    expect(applyTarget.passwordConfigured).toBeUndefined();
   });
 
   it("keeps unavailable Runtime settings distinct from an empty settings form", () => {
@@ -1971,7 +1980,7 @@ function setupDefaultHooks() {
       enabled: false,
       target: {
         url: "redis://redis.example:6379/0",
-        username: "",
+        usernameConfigured: false,
         passwordConfigured: false,
         tls: false
       },
@@ -2336,6 +2345,8 @@ function settings(overrides = {}) {
         username: "",
         password: "",
         clearPassword: false,
+        clearUsername: false,
+        usernameConfigured: false,
         passwordConfigured: false,
         tls: false
       },

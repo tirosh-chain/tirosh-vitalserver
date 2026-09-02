@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -8,6 +11,7 @@ from pathlib import Path
 
 from .replication import RelayBatchResult
 from .settings import RedisEndpoint, RelaySettings
+from .status_publisher import StatusPublishOutcome, StatusPublishResult
 
 
 @dataclass(frozen=True)
@@ -81,9 +85,53 @@ def build_status_document(
     return _wire_status(status)
 
 
+class FileStatusPublisher:
+    name = "file"
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def publish(self, document: dict[str, object]) -> StatusPublishResult:
+        try:
+            write_status_artifact(self.path, document)
+        except OSError as error:
+            return StatusPublishResult(
+                outcomes=(
+                    StatusPublishOutcome(
+                        publisher=self.name,
+                        published=False,
+                        error=f"status file write failed: {error}",
+                    ),
+                )
+            )
+        return StatusPublishResult(
+            outcomes=(
+                StatusPublishOutcome(publisher=self.name, published=True),
+            )
+        )
+
+
 def write_status_artifact(path: Path, document: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, sort_keys=True) + "\n")
+    encoded = json.dumps(document, sort_keys=True) + "\n"
+    descriptor, temporary = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            descriptor = -1
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except OSError:
+        if descriptor >= 0:
+            os.close(descriptor)
+        with suppress(FileNotFoundError):
+            os.unlink(temporary)
+        raise
 
 
 def build_unavailable_status_document(*, state: str, error: str) -> dict[str, object]:
@@ -174,13 +222,24 @@ def _error_samples(result: RelayBatchResult | None) -> list[dict[str, str]]:
 
 def _target_url(target: RedisEndpoint) -> str:
     scheme = "rediss" if target.tls else "redis"
-    userinfo = f"{target.username}@" if target.username else ""
     database = f"/{target.database}" if target.database else "/0"
-    return f"{scheme}://{userinfo}{target.host}:{target.port}{database}"
+    return f"{scheme}://{target.host}:{target.port}{database}"
+
+
+def _endpoint_fingerprint(endpoint: RedisEndpoint | None) -> dict[str, object] | None:
+    if endpoint is None:
+        return None
+    return {
+        "host": endpoint.host,
+        "port": endpoint.port,
+        "database": endpoint.database,
+        "tls": endpoint.tls,
+        "usernameConfigured": bool(endpoint.username),
+        "passwordConfigured": bool(endpoint.password),
+    }
 
 
 def _settings_fingerprint(settings: RelaySettings) -> str:
-    target = settings.target
     payload = {
         "enabled": settings.enabled,
         "scope": settings.scope.value,
@@ -198,19 +257,8 @@ def _settings_fingerprint(settings: RelaySettings) -> str:
             "eventStreamMaxlen": settings.publish_contract.event_stream_maxlen,
             "publisherId": settings.publish_contract.publisher_id,
         },
-        "source": {
-            "host": settings.source.host,
-            "port": settings.source.port,
-            "database": settings.source.database,
-            "usernameConfigured": bool(settings.source.username),
-            "tls": settings.source.tls,
-        },
-        "target": None
-        if target is None
-        else {
-            "url": _target_url(target),
-            "passwordConfigured": bool(target.password),
-        },
+        "source": _endpoint_fingerprint(settings.source),
+        "target": _endpoint_fingerprint(settings.target),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
         "utf-8"

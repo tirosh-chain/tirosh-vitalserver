@@ -31,7 +31,32 @@ type Draft = {
   backupScheduleText: string;
 };
 
-type RedisRelayDraft = RuntimeRedisRelaySettingsApplyRequest;
+type RedisRelayDraft = RuntimeRedisRelaySettingsApplyRequest & {
+  target: RuntimeRedisRelaySettingsApplyRequest["target"] & {
+    usernameConfigured: boolean;
+    passwordConfigured: boolean;
+  };
+};
+
+function toRedisRelayApplyRequest(
+  draft: RedisRelayDraft
+): RuntimeRedisRelaySettingsApplyRequest {
+  return {
+    enabled: draft.enabled,
+    target: {
+      url: draft.target.url,
+      username: draft.target.username,
+      password: draft.target.password,
+      clearPassword: draft.target.clearPassword,
+      clearUsername: draft.target.clearUsername,
+      tls: draft.target.tls
+    },
+    scope: draft.scope,
+    includeRecorderNetworkContext: draft.includeRecorderNetworkContext,
+    intervalSeconds: draft.intervalSeconds,
+    scanCount: draft.scanCount
+  };
+}
 
 export function SettingsPage() {
   const read = useRuntimeProductSettings();
@@ -57,9 +82,12 @@ export function SettingsPage() {
             ...settings,
             target: {
               url: settings.target.url,
-              username: settings.target.username,
+              username: "",
               password: "",
               clearPassword: false,
+              clearUsername: false,
+              usernameConfigured: settings.target.usernameConfigured,
+              passwordConfigured: settings.target.passwordConfigured,
               tls: settings.target.tls
             }
           }
@@ -302,7 +330,7 @@ export function SettingsPage() {
             }
             onClick={() => {
               if (relayDraft) {
-                applyRelay.mutate(relayDraft);
+                applyRelay.mutate(toRedisRelayApplyRequest(relayDraft));
               }
             }}
           >
@@ -311,8 +339,8 @@ export function SettingsPage() {
         }
       >
         <p className="muted">
-          Redis Relay configuration and its secret belong to the Runtime Controller.
-          The configured password is reported only as present or absent.
+          Redis Relay configuration and its secrets belong to the Runtime Controller.
+          Configured username and password are reported only as present or absent.
         </p>
         {relayRead.isPending ? <p>Loading Redis Relay settings...</p> : null}
         {relayRead.isError ? (
@@ -353,7 +381,11 @@ export function SettingsPage() {
                 onChange={(username) =>
                   setRelayDraft({
                     ...relayDraft,
-                    target: { ...relayDraft.target, username }
+                    target: {
+                      ...relayDraft.target,
+                      username,
+                      clearUsername: false
+                    }
                   })
                 }
               />
@@ -430,6 +462,27 @@ export function SettingsPage() {
               />
               Include recorder network context
             </label>
+            <label className="checkbox-label block-checkbox">
+              <input
+                type="checkbox"
+                checked={relayDraft.target.clearUsername}
+                onChange={(event) =>
+                  setRelayDraft({
+                    ...relayDraft,
+                    target: {
+                      ...relayDraft.target,
+                      username: "",
+                      clearUsername: event.target.checked
+                    }
+                  })
+                }
+              />
+              Clear configured target username
+            </label>
+            <p className="muted">
+              Username currently configured:{" "}
+              {relayRead.data?.settings?.target.usernameConfigured ? "yes" : "no"}
+            </p>
             <label className="checkbox-label block-checkbox">
               <input
                 type="checkbox"

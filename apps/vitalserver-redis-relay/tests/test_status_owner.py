@@ -10,9 +10,10 @@ from uuid import uuid4
 import pytest
 
 from vitalserver_redis_relay.status_owner import (
-    GuestControlStatusOwnerPublisher,
-    StatusOwnerConfigurationError,
+    HttpStatusOwnerPublisher,
+    UnixSocketStatusOwnerPublisher,
 )
+from vitalserver_redis_relay.status_publisher import StatusPublisherConfigurationError
 
 
 class FakeResponse:
@@ -26,22 +27,23 @@ class FakeResponse:
         return None
 
 
-def test_status_owner_publisher_puts_status_document(monkeypatch) -> None:
+def test_http_status_owner_publisher_puts_status_document(monkeypatch: Any) -> None:
     requests: list[Any] = []
 
-    def fake_urlopen(request, timeout: float) -> FakeResponse:
+    def fake_urlopen(request: Any, timeout: float) -> FakeResponse:
         requests.append((request, timeout))
         return FakeResponse(200)
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
 
-    result = GuestControlStatusOwnerPublisher(
+    result = HttpStatusOwnerPublisher(
         owner_url="http://guest-control:18330/runtime/redis-relay/status",
         timeout_seconds=2.0,
     ).publish({"observedAt": "2026-07-01T00:00:00Z", "state": "running"})
 
-    assert result.published is True
-    assert result.error is None
+    assert result.any_published is True
+    assert result.outcomes[0].publisher == "http"
+    assert result.outcomes[0].error is None
     request, timeout = requests[0]
     assert request.full_url == "http://guest-control:18330/runtime/redis-relay/status"
     assert request.get_method() == "PUT"
@@ -52,22 +54,78 @@ def test_status_owner_publisher_puts_status_document(monkeypatch) -> None:
     }
 
 
-def test_status_owner_publisher_requires_exactly_one_transport(tmp_path: Path) -> None:
-    with pytest.raises(StatusOwnerConfigurationError) as error:
-        GuestControlStatusOwnerPublisher(owner_url="")
+def test_http_status_owner_publisher_rejects_empty_url() -> None:
+    with pytest.raises(StatusPublisherConfigurationError, match="must not be empty"):
+        HttpStatusOwnerPublisher(owner_url="  ")
 
-    assert str(error.value) == (
-        "Exactly one Redis relay status owner URL or socket path is required."
-    )
 
-    with pytest.raises(StatusOwnerConfigurationError):
-        GuestControlStatusOwnerPublisher(
-            owner_url="http://guest-control:18330/runtime/redis-relay/status",
-            owner_socket_path=tmp_path / "owner.sock",
+def test_http_status_owner_publisher_rejects_malformed_url() -> None:
+    with pytest.raises(StatusPublisherConfigurationError, match="is invalid") as error:
+        HttpStatusOwnerPublisher(owner_url="not-a-url")
+
+    assert "not-a-url" not in str(error.value)
+    assert error.value.__cause__ is None
+
+
+def test_http_status_owner_publisher_rejects_unsupported_scheme() -> None:
+    with pytest.raises(
+        StatusPublisherConfigurationError,
+        match="scheme must be http or https",
+    ) as error:
+        HttpStatusOwnerPublisher(owner_url="ftp://user:secret@example.test/status")
+
+    message = str(error.value)
+    assert "ftp://" not in message
+    assert "secret" not in message
+    assert "example.test" not in message
+    assert error.value.__cause__ is None
+
+
+def test_http_status_owner_publisher_rejects_missing_host() -> None:
+    with pytest.raises(StatusPublisherConfigurationError, match="host is required"):
+        HttpStatusOwnerPublisher(owner_url="http:///runtime/redis-relay/status")
+
+
+def test_http_status_owner_publisher_rejects_invalid_port() -> None:
+    with pytest.raises(
+        StatusPublisherConfigurationError,
+        match="port is invalid",
+    ) as error:
+        HttpStatusOwnerPublisher(
+            owner_url="http://guest-control:99999/runtime/redis-relay/status"
         )
 
+    assert "99999" not in str(error.value)
+    assert "guest-control" not in str(error.value)
+    assert error.value.__cause__ is None
 
-def test_status_owner_publisher_puts_status_document_over_unix_socket() -> None:
+
+def test_http_status_owner_publisher_accepts_https_url(monkeypatch: Any) -> None:
+    requests: list[Any] = []
+
+    def fake_urlopen(request: Any, timeout: float) -> FakeResponse:
+        requests.append((request, timeout))
+        return FakeResponse(200)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    document = {"observedAt": "2026-07-01T00:00:00Z", "state": "running"}
+
+    result = HttpStatusOwnerPublisher(
+        owner_url="https://guest-control:18330/runtime/redis-relay/status",
+        timeout_seconds=2.0,
+    ).publish(document)
+
+    assert result.any_published is True
+    request, timeout = requests[0]
+    assert request.full_url == (
+        "https://guest-control:18330/runtime/redis-relay/status"
+    )
+    assert request.get_method() == "PUT"
+    assert timeout == 2.0
+    assert json.loads(request.data.decode("utf-8")) == document
+
+
+def test_unix_status_owner_publisher_puts_status_document_over_unix_socket() -> None:
     if not hasattr(socket, "AF_UNIX"):
         pytest.skip("Unix domain sockets are unavailable on this platform")
     socket_path = Path("/tmp") / f"vitalserver-status-owner-{uuid4().hex}.sock"
@@ -106,14 +164,15 @@ def test_status_owner_publisher_puts_status_document_over_unix_socket() -> None:
         assert ready.wait(timeout=1)
         document = {"observedAt": "2026-07-01T00:00:00Z", "state": "running"}
 
-        result = GuestControlStatusOwnerPublisher(
+        result = UnixSocketStatusOwnerPublisher(
             owner_socket_path=socket_path,
             timeout_seconds=1,
         ).publish(document)
 
         thread.join(timeout=1)
         assert not thread.is_alive()
-        assert result.published is True
+        assert result.any_published is True
+        assert result.outcomes[0].publisher == "unix-socket"
         assert request[0].startswith(
             b"PUT /runtime/redis-relay/status HTTP/1.1\r\n"
         )

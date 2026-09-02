@@ -670,7 +670,7 @@ function createGateway(): GatewayMock {
         enabled: false,
         target: {
           url: "redis://redis.example:6379/0",
-          username: "",
+          usernameConfigured: false,
           passwordConfigured: false,
           tls: false
         },
@@ -856,6 +856,8 @@ function fullSettingsShape() {
         username: "",
         password: "",
         clearPassword: false,
+        clearUsername: false,
+        usernameConfigured: false,
         passwordConfigured: false,
         tls: false
       },

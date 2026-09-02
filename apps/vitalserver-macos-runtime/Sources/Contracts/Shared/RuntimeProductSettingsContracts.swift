@@ -80,13 +80,13 @@ public struct RuntimeAdminPasswordRequest: Codable, Equatable, Sendable {
 
 public struct RuntimeRedisRelayTargetRead: Codable, Equatable, Sendable {
     public let url: String
-    public let username: String
+    public let usernameConfigured: Bool
     public let passwordConfigured: Bool
     public let tls: Bool
 
-    public init(url: String, username: String, passwordConfigured: Bool, tls: Bool) {
+    public init(url: String, usernameConfigured: Bool, passwordConfigured: Bool, tls: Bool) {
         self.url = url
-        self.username = username
+        self.usernameConfigured = usernameConfigured
         self.passwordConfigured = passwordConfigured
         self.tls = tls
     }
@@ -97,13 +97,15 @@ public struct RuntimeRedisRelayTargetApply: Codable, Equatable, Sendable {
     public let username: String
     public let password: String?
     public let clearPassword: Bool
+    public let clearUsername: Bool
     public let tls: Bool
 
-    public init(url: String, username: String, password: String?, clearPassword: Bool, tls: Bool) {
+    public init(url: String, username: String, password: String?, clearPassword: Bool, clearUsername: Bool, tls: Bool) {
         self.url = url
         self.username = username
         self.password = password
         self.clearPassword = clearPassword
+        self.clearUsername = clearUsername
         self.tls = tls
     }
 }

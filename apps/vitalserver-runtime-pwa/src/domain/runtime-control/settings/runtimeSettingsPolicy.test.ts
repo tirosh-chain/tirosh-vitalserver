@@ -46,6 +46,8 @@ describe("runtime settings policy", () => {
           username: "relay",
           password: "",
           clearPassword: false,
+          clearUsername: false,
+          usernameConfigured: true,
           passwordConfigured: false,
           tls: false
         }
@@ -67,6 +69,8 @@ describe("runtime settings policy", () => {
           username: "relay",
           password: "",
           clearPassword: false,
+          clearUsername: false,
+          usernameConfigured: true,
           passwordConfigured: false,
           tls: false
         }
@@ -309,6 +313,8 @@ function redisRelaySettings(overrides = {}) {
       username: "",
       password: "",
       clearPassword: false,
+      clearUsername: false,
+      usernameConfigured: false,
       passwordConfigured: false,
       tls: false
     },
