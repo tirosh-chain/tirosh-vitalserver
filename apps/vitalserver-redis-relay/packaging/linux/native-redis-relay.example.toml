@@ -1,0 +1,29 @@
+# EXAMPLE Linux native Host config.
+# Copy to /etc/vitalserver/redis-relay.toml.
+# Credential values stay in secret files; this TOML stores paths only.
+
+[redis_relay]
+enabled = true
+scope = "vital_reconstruction"
+include_recorder_network_context = false
+interval_seconds = 1.0
+scan_count = 1000
+
+[source]
+host = "127.0.0.1"
+port = 6379
+database = 0
+# password_file = "/etc/vitalserver/secrets/redis-relay-source-password"
+
+[target]
+url = "rediss://redis.example:6380/2"
+username_file = "/etc/vitalserver/secrets/redis-relay-target-username"
+password_file = "/etc/vitalserver/secrets/redis-relay-target-password"
+
+[publish]
+target_key_prefix = "vitalserver:"
+event_stream_key = "vitalserver:relay:events"
+fingerprint_hash_key = "vitalserver:relay:fingerprints"
+publish_dedupe_hash_key = "vitalserver:relay:published"
+event_stream_maxlen = 100000
+publisher_id = "vitalserver-helper-relay"

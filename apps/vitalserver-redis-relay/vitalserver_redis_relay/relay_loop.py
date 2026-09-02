@@ -16,22 +16,15 @@ from .status import (
     build_status_document,
     build_unavailable_status_document,
     status_timestamp,
-    write_status_artifact,
 )
-from .status_owner import GuestControlStatusOwnerPublisher
+from .status_publisher import StatusPublisher, StatusPublishError
 
 
 def run_forever(
     *,
     config_path: Path,
-    status_path: Path,
-    status_owner_url: str | None = None,
-    status_owner_socket: Path | None = None,
+    status_publisher: StatusPublisher,
 ) -> None:
-    status_owner = GuestControlStatusOwnerPublisher(
-        owner_url=status_owner_url,
-        owner_socket_path=status_owner_socket,
-    )
     batches = 0
     totals = RelayBatchResult()
     last_success_at: str | None = None
@@ -42,8 +35,7 @@ def run_forever(
             settings = load_settings(config_path)
         except RelaySettingsError as error:
             _record_status(
-                status_owner=status_owner,
-                status_path=status_path,
+                status_publisher=status_publisher,
                 document=build_unavailable_status_document(
                     state="config_invalid",
                     error=str(error),
@@ -55,8 +47,7 @@ def run_forever(
         delay = settings.interval_seconds
         if not settings.enabled:
             _record_status(
-                status_owner=status_owner,
-                status_path=status_path,
+                status_publisher=status_publisher,
                 document=build_status_document(
                     settings=settings,
                     state="disabled",
@@ -66,17 +57,16 @@ def run_forever(
             )
             time.sleep(settings.status_interval_seconds)
             continue
-        if settings.target is None:
+        if settings.source is None or settings.target is None:
             last_error_at = status_timestamp()
             _record_status(
-                status_owner=status_owner,
-                status_path=status_path,
+                status_publisher=status_publisher,
                 document=build_status_document(
                     settings=settings,
                     state="config_invalid",
                     batches=batches,
                     totals=totals,
-                    error="target is required when relay is enabled",
+                    error="source and target are required when relay is enabled",
                     last_success_at=last_success_at,
                     last_error_at=last_error_at,
                 ),
@@ -106,8 +96,7 @@ def run_forever(
         except Exception as error:
             last_error_at = status_timestamp()
             _record_status(
-                status_owner=status_owner,
-                status_path=status_path,
+                status_publisher=status_publisher,
                 document=build_status_document(
                     settings=settings,
                     state="relay_failed",
@@ -131,8 +120,7 @@ def run_forever(
             last_error_at = status_timestamp()
             error_message = _batch_error_message(result)
         _record_status(
-            status_owner=status_owner,
-            status_path=status_path,
+            status_publisher=status_publisher,
             document=build_status_document(
                 settings=settings,
                 state=state,
@@ -173,21 +161,14 @@ def _batch_error_message(result: RelayBatchResult) -> str:
 
 def _record_status(
     *,
-    status_owner: GuestControlStatusOwnerPublisher,
-    status_path: Path,
+    status_publisher: StatusPublisher,
     document: dict[str, object],
 ) -> None:
-    _publish_status(status_owner, document)
-    try:
-        write_status_artifact(status_path, document)
-    except OSError as error:
-        print(f"redis relay status artifact write failed: {error}", file=stderr)
-
-
-def _publish_status(
-    status_owner: GuestControlStatusOwnerPublisher,
-    document: dict[str, object],
-) -> None:
-    result = status_owner.publish(document)
-    if not result.published:
-        print(f"redis relay status owner publish skipped: {result.error}", file=stderr)
+    result = status_publisher.publish(document)
+    for outcome in result.failed_outcomes():
+        print(
+            f"redis relay status publisher {outcome.publisher} failed: {outcome.error}",
+            file=stderr,
+        )
+    if not result.any_published:
+        raise StatusPublishError(result)

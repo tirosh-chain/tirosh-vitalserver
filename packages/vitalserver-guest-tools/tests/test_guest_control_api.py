@@ -39,7 +39,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     VitalFileUploadResult,
 )
 from tirosh_vitalserver.devtools.runtime_v2_conformance import RuntimeV2ConformanceSuite
-from vitalserver_redis_relay.status_owner import GuestControlStatusOwnerPublisher
+from vitalserver_redis_relay.status_owner import UnixSocketStatusOwnerPublisher
 
 
 class FakeClock:
@@ -998,7 +998,7 @@ class FakeRedisRelaySettings:
             "enabled": False,
             "target": {
                 "url": "redis://redis.example:6379/0",
-                "username": "",
+                "usernameConfigured": False,
                 "passwordConfigured": False,
                 "tls": False,
             },
@@ -1012,7 +1012,35 @@ class FakeRedisRelaySettings:
         return self.settings
 
     def save(self, settings: dict[str, object]) -> None:
-        self.settings = settings
+        target = settings["target"]
+        assert isinstance(target, dict)
+        current_target = self.settings["target"]
+        assert isinstance(current_target, dict)
+        username_configured = bool(current_target["usernameConfigured"])
+        password_configured = bool(current_target["passwordConfigured"])
+        if str(target.get("username") or ""):
+            username_configured = True
+        if bool(target.get("clearUsername")):
+            username_configured = False
+        if str(target.get("password") or ""):
+            password_configured = True
+        if bool(target.get("clearPassword")):
+            password_configured = False
+        self.settings = {
+            "enabled": settings["enabled"],
+            "target": {
+                "url": target["url"],
+                "usernameConfigured": username_configured,
+                "passwordConfigured": password_configured,
+                "tls": target["tls"],
+            },
+            "scope": settings["scope"],
+            "includeRecorderNetworkContext": settings[
+                "includeRecorderNetworkContext"
+            ],
+            "intervalSeconds": settings["intervalSeconds"],
+            "scanCount": settings["scanCount"],
+        }
 
 
 def runtime_settings_document() -> dict[str, object]:
@@ -1297,7 +1325,7 @@ def test_redis_relay_status_owner_socket_publishes_to_guest_control_owner(
     try:
         assert stat.S_IMODE(socket_path.stat().st_mode) == 0o600
         document = redis_relay_status_document()
-        result = GuestControlStatusOwnerPublisher(
+        result = UnixSocketStatusOwnerPublisher(
             owner_socket_path=socket_path,
             timeout_seconds=1,
         ).publish(document)
@@ -1307,7 +1335,7 @@ def test_redis_relay_status_owner_socket_publishes_to_guest_control_owner(
             usecases=usecases,
         )
 
-        assert result.published is True
+        assert result.any_published is True
         assert status == HTTPStatus.OK
         assert snapshot == {
             "readState": "loaded",
@@ -2767,9 +2795,10 @@ def test_redis_relay_settings_routes_read_apply_and_do_not_return_secret(
         "enabled": True,
         "target": {
             "url": "redis://relay.example:6379/1",
-            "username": "relay",
+            "username": "acl-operator",
             "password": "private-secret",
             "clearPassword": False,
+            "clearUsername": False,
             "tls": True,
         },
         "scope": "waveform_trend_only",
@@ -2787,6 +2816,13 @@ def test_redis_relay_settings_routes_read_apply_and_do_not_return_secret(
     assert operation["command"] == "apply-redis-relay-settings"
     assert operation["state"] == "completed"
     assert "private-secret" not in json.dumps(operation)
+    loaded = usecases.get_redis_relay_settings()
+    assert loaded["settings"]["target"]["usernameConfigured"] is True
+    assert loaded["settings"]["target"]["passwordConfigured"] is True
+    assert "username" not in loaded["settings"]["target"]
+    assert "password" not in loaded["settings"]["target"]
+    assert "acl-operator" not in str(loaded["settings"])
+    assert "private-secret" not in str(loaded["settings"])
 
 
 def test_latest_vitaldb_observation_route_reports_unavailable_without_adapter() -> None:

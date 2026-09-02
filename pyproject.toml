@@ -28,6 +28,7 @@ docs = [
 members = [
   "packages/vitalserver-core",
   "apps/vitalserver-recorder-recovery",
+  "apps/vitalserver-redis-relay",
   "packages/vitalserver-devtools",
   "packages/vitalserver-guest-tools",
   "packages/vitalserver-testkit",

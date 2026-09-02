@@ -240,7 +240,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
     func testRedisRelaySettingsUseRuntimeOwnerAPIWithoutReturningSecret() throws {
         let readClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,
-            body: #"{"state":"loaded","settings":{"enabled":false,"target":{"url":"redis://redis.example:6379/0","username":"","passwordConfigured":true,"tls":false},"scope":"vital_reconstruction","includeRecorderNetworkContext":false,"intervalSeconds":1.0,"scanCount":1000},"readError":null}"#
+            body: #"{"state":"loaded","settings":{"enabled":false,"target":{"url":"redis://redis.example:6379/0","usernameConfigured":false,"passwordConfigured":true,"tls":false},"scope":"vital_reconstruction","includeRecorderNetworkContext":false,"intervalSeconds":1.0,"scanCount":1000},"readError":null}"#
         ))
         let readGateway = try HTTPRuntimeGuestControlGateway(
             baseURL: "http://127.0.0.1:18330", httpClient: readClient
@@ -249,8 +249,11 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         let read = try readGateway.redisRelaySettings()
 
         XCTAssertEqual(read.settings?.target.passwordConfigured, true)
+        XCTAssertEqual(read.settings?.target.usernameConfigured, false)
         XCTAssertEqual(readClient.requests.map(\.httpMethod), ["GET"])
-        XCTAssertFalse(String(data: try JSONEncoder().encode(read), encoding: .utf8)?.contains("password\":") == true)
+        let encodedRead = String(data: try JSONEncoder().encode(read), encoding: .utf8)
+        XCTAssertFalse(encodedRead?.contains("password\":") == true)
+        XCTAssertFalse(encodedRead?.contains("\"username\":") == true)
 
         let applyClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 202,
@@ -266,6 +269,7 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
                 username: "relay",
                 password: "relay-secret",
                 clearPassword: false,
+                clearUsername: false,
                 tls: true
             ),
             scope: .waveformTrendOnly,

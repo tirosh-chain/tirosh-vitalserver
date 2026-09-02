@@ -1564,6 +1564,8 @@ function fullSettings() {
         username: "",
         password: "",
         clearPassword: false,
+        clearUsername: false,
+        usernameConfigured: false,
         passwordConfigured: false,
         tls: false
       },

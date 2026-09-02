@@ -377,8 +377,8 @@ credential로 recorder-ingress를 호출합니다. recorder-ingress가
 | `GET` | `/runtime/services` | list Guest-owned compose services |
 | `GET` | `/runtime/services/{service}/status` | read one Guest-owned service status through Guest Control API |
 | `GET` | `/runtime/redis-relay/status` | read Redis Relay status directly from the Runtime owner resource without `RuntimeStatus` aggregation |
-| `GET` | `/runtime/redis-relay/settings` | read Runtime-owned Relay settings with only `passwordConfigured` secret state |
-| `PUT` | `/runtime/redis-relay/settings` | preserve, replace, or explicitly clear the Relay secret and reconcile Compose |
+| `GET` | `/runtime/redis-relay/settings` | read Runtime-owned Relay settings with `usernameConfigured`/`passwordConfigured` secret state and no credential values |
+| `PUT` | `/runtime/redis-relay/settings` | preserve, replace, or explicitly clear username/password files and reconcile Compose |
 | `POST` | `/runtime/services/{service}/start` | start one Guest-owned service through Guest Control API |
 | `POST` | `/runtime/services/{service}/stop` | stop one Guest-owned service through Guest Control API |
 | `POST` | `/runtime/services/{service}/restart` | restart one Guest-owned service through Guest Control API |

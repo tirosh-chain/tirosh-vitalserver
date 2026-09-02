@@ -2994,7 +2994,7 @@ export interface components {
         };
         RuntimeRedisRelayTargetRead: {
             url: string;
-            username: string;
+            usernameConfigured: boolean;
             passwordConfigured: boolean;
             tls: boolean;
         };
@@ -3003,6 +3003,7 @@ export interface components {
             username: string;
             password?: string;
             clearPassword: boolean;
+            clearUsername: boolean;
             tls: boolean;
         };
         RuntimeRedisRelaySettingsRead: {
@@ -3120,6 +3121,8 @@ export interface components {
             username: string;
             password: string;
             clearPassword: boolean;
+            clearUsername: boolean;
+            usernameConfigured: boolean;
             passwordConfigured: boolean;
             tls: boolean;
         };

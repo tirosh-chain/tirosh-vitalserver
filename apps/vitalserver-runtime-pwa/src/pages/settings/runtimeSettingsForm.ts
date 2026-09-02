@@ -47,6 +47,8 @@ export type RuntimeSettingsDraft = {
   redisRelayUsername: string;
   redisRelayPassword: string;
   redisRelayClearPassword: boolean;
+  redisRelayClearUsername: boolean;
+  redisRelayUsernameConfigured: boolean;
   redisRelayPasswordConfigured: boolean;
   redisRelayTLS: boolean;
   redisRelayScope: RuntimeSettings["redisRelay"]["scope"];
@@ -102,6 +104,8 @@ export const emptyRuntimeSettingsDraft: RuntimeSettingsDraft = {
   redisRelayUsername: "",
   redisRelayPassword: "",
   redisRelayClearPassword: false,
+  redisRelayClearUsername: false,
+  redisRelayUsernameConfigured: false,
   redisRelayPasswordConfigured: false,
   redisRelayTLS: false,
   redisRelayScope: "vital_reconstruction",
@@ -204,9 +208,11 @@ export function runtimeSettingsToDraft(
     logArchiveMaximumGiB: formatNumber(settings.logArchiveMaximumGiB),
     redisRelayEnabled: settings.redisRelay.enabled,
     redisRelayTargetURL: settings.redisRelay.target.url,
-    redisRelayUsername: settings.redisRelay.target.username,
+    redisRelayUsername: "",
     redisRelayPassword: "",
     redisRelayClearPassword: false,
+    redisRelayClearUsername: false,
+    redisRelayUsernameConfigured: settings.redisRelay.target.usernameConfigured,
     redisRelayPasswordConfigured: settings.redisRelay.target.passwordConfigured,
     redisRelayTLS: settings.redisRelay.target.tls,
     redisRelayScope: settings.redisRelay.scope,
@@ -336,6 +342,8 @@ export function draftToRuntimeSettings(
         username: draft.redisRelayUsername.trim(),
         password: draft.redisRelayPassword,
         clearPassword: draft.redisRelayClearPassword,
+        clearUsername: draft.redisRelayClearUsername,
+        usernameConfigured: draft.redisRelayUsernameConfigured,
         passwordConfigured: draft.redisRelayPasswordConfigured,
         tls: draft.redisRelayTLS
       },

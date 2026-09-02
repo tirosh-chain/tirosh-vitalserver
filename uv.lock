@@ -20,6 +20,7 @@ members = [
     "tirosh-vitalserver-devtools",
     "tirosh-vitalserver-guest-tools",
     "tirosh-vitalserver-recorder-recovery",
+    "tirosh-vitalserver-redis-relay",
     "tirosh-vitalserver-testkit",
     "tirosh-vitalserver-vitalfile",
 ]
@@ -3235,6 +3236,11 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.32,<1" },
     { name = "vitaldb", specifier = ">=1.7,<2" },
 ]
+
+[[package]]
+name = "tirosh-vitalserver-redis-relay"
+version = "0.2.0"
+source = { editable = "apps/vitalserver-redis-relay" }
 
 [[package]]
 name = "tirosh-vitalserver-testkit"

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>ai.tirosh.vitalserver.redis-relay</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/libexec/vitalserver-redis-relay/venv/bin/vitalserver-redis-relay</string>
+		<string>--config-path</string>
+		<string>/usr/local/etc/vitalserver/redis-relay.toml</string>
+		<string>--status-path</string>
+		<string>/usr/local/var/vitalserver/redis-relay-status.json</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>UserName</key>
+	<string>_vitalserver-redis-relay</string>
+	<key>StandardOutPath</key>
+	<string>/usr/local/var/log/vitalserver/redis-relay.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/usr/local/var/log/vitalserver/redis-relay.err.log</string>
+</dict>
+</plist>

@@ -604,6 +604,13 @@ struct RuntimeAdvancedPanel: View {
                     AppConstants.Labels.redisRelayUsername,
                     text: $viewModel.settings.redisRelay.target.username
                 )
+                if viewModel.settings.redisRelay.target.usernameConfigured {
+                    settingHelp(AppConstants.Labels.redisRelayUsernameConfigured)
+                    settingToggle(
+                        AppConstants.Labels.redisRelayClearUsername,
+                        isOn: $viewModel.settings.redisRelay.target.clearUsername
+                    )
+                }
                 settingRow(AppConstants.Labels.redisRelayPassword) {
                     SecureField("", text: $viewModel.settings.redisRelay.target.password)
                         .labelsHidden()
@@ -724,17 +731,16 @@ struct RuntimeAdvancedPanel: View {
             url: viewModel.settings.redisRelay.target.url.isEmpty
             ? RuntimeRedisRelayTarget.defaultURL
             : viewModel.settings.redisRelay.target.url,
-            username: viewModel.settings.redisRelay.target.username,
             tls: viewModel.settings.redisRelay.target.tls
         )
     }
 
-    private func redisRelayFinalURL(url: String, username: String, tls: Bool) -> String {
+    private func redisRelayFinalURL(url: String, tls: Bool) -> String {
         guard var components = URLComponents(string: url) else {
             return url
         }
         components.scheme = tls ? "rediss" : "redis"
-        components.user = username.isEmpty ? nil : username
+        components.user = nil
         components.password = nil
         return components.string ?? url
     }

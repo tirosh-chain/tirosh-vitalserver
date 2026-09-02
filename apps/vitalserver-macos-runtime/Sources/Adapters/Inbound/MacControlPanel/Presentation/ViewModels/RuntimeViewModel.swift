@@ -800,9 +800,11 @@ public final class RuntimeViewModel: ObservableObject {
             enabled: document.enabled,
             target: RuntimeRedisRelayTarget(
                 url: document.target.url,
-                username: document.target.username,
+                username: "",
                 password: "",
                 clearPassword: false,
+                clearUsername: false,
+                usernameConfigured: document.target.usernameConfigured,
                 passwordConfigured: document.target.passwordConfigured,
                 tls: document.target.tls
             ),
@@ -823,6 +825,7 @@ public final class RuntimeViewModel: ObservableObject {
                 username: settings.target.username,
                 password: settings.target.password.isEmpty ? nil : settings.target.password,
                 clearPassword: settings.target.clearPassword,
+                clearUsername: settings.target.clearUsername,
                 tls: settings.target.tls
             ),
             scope: settings.scope == .waveformTrendOnly ? .waveformTrendOnly : .vitalReconstruction,

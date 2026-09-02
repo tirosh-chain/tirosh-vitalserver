@@ -180,7 +180,7 @@ export const runtimeRedisRelaySettingsReadSchema = z.object({
       enabled: z.boolean(),
       target: z.object({
         url: z.string(),
-        username: z.string(),
+        usernameConfigured: z.boolean(),
         passwordConfigured: z.boolean(),
         tls: z.boolean()
       }),
@@ -577,6 +577,8 @@ export const runtimeSettingsSchema = z
             username: z.string(),
             password: z.string(),
             clearPassword: z.boolean(),
+            clearUsername: z.boolean(),
+            usernameConfigured: z.boolean(),
             passwordConfigured: z.boolean(),
             tls: z.boolean()
           })

@@ -230,8 +230,14 @@ def main() -> int:
             if document["state"] != "loaded" or not isinstance(settings, dict) or document["readError"] is not None:
                 raise RuntimeError(f"Redis Relay settings owner is not loaded state={document['state']} readError={document['readError']}")
             target = settings.get("target")
-            if not isinstance(target, dict) or "passwordConfigured" not in target or "password" in target:
-                raise RuntimeError("Redis Relay settings secret state is not explicit or exposes password material")
+            if (
+                not isinstance(target, dict)
+                or "passwordConfigured" not in target
+                or "usernameConfigured" not in target
+                or "password" in target
+                or "username" in target
+            ):
+                raise RuntimeError("Redis Relay settings secret state is not explicit or exposes secret material")
             return "Runtime Controller Redis Relay settings owner is loaded without secret material."
 
         stage("redis-relay-settings", redis_relay_settings)

@@ -8848,13 +8848,13 @@
         "additionalProperties": false,
         "required": [
           "url",
-          "username",
+          "usernameConfigured",
           "passwordConfigured",
           "tls"
         ],
         "properties": {
           "url": { "type": "string" },
-          "username": { "type": "string" },
+          "usernameConfigured": { "type": "boolean" },
           "passwordConfigured": { "type": "boolean" },
           "tls": { "type": "boolean" }
         }
@@ -8866,6 +8866,7 @@
           "url",
           "username",
           "clearPassword",
+          "clearUsername",
           "tls"
         ],
         "properties": {
@@ -8873,6 +8874,7 @@
           "username": { "type": "string" },
           "password": { "type": "string" },
           "clearPassword": { "type": "boolean" },
+          "clearUsername": { "type": "boolean" },
           "tls": { "type": "boolean" }
         }
       },
@@ -9322,6 +9324,12 @@
           "clearPassword": {
             "type": "boolean"
           },
+          "clearUsername": {
+            "type": "boolean"
+          },
+          "usernameConfigured": {
+            "type": "boolean"
+          },
           "passwordConfigured": {
             "type": "boolean"
           },
@@ -9334,6 +9342,8 @@
           "username",
           "password",
           "clearPassword",
+          "clearUsername",
+          "usernameConfigured",
           "passwordConfigured",
           "tls"
         ]

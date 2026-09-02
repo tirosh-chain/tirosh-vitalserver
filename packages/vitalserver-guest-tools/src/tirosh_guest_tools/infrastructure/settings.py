@@ -58,6 +58,7 @@ class PathSettings:
     runtime_config_file: Path
     runtime_settings_file: Path
     redis_relay_config_file: Path
+    redis_relay_username_file: Path
     redis_relay_password_file: Path
     compose_runtime_limits_file: Path
     guest_tools_home: Path
@@ -173,6 +174,7 @@ def load_settings(
         runtime_config_file=toml_path_value(paths, "runtimeConfigFile"),
         runtime_settings_file=toml_path_value(paths, "runtimeSettingsFile"),
         redis_relay_config_file=toml_path_value(paths, "redisRelayConfigFile"),
+        redis_relay_username_file=toml_path_value(paths, "redisRelayUsernameFile"),
         redis_relay_password_file=toml_path_value(paths, "redisRelayPasswordFile"),
         compose_runtime_limits_file=toml_path_value(
             paths,

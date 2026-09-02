@@ -12,6 +12,7 @@ import yaml
 from tirosh_guest_tools.application import compose
 from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
 from tirosh_guest_tools.domain.errors import GuestContractError, GuestDependencyError
+from tirosh_guest_tools.domain.guest_control.models import GuestControlDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.infrastructure import common
 
@@ -956,6 +957,11 @@ def test_up_compose_action_prepares_recorder_ingress_bind_sources(
     )
     monkeypatch.setattr(
         compose,
+        "migrate_redis_relay_legacy_credentials",
+        lambda: events.append("migrate-redis-relay-legacy-credentials"),
+    )
+    monkeypatch.setattr(
+        compose,
         "start_ordered",
         lambda: events.append("start-ordered"),
     )
@@ -966,7 +972,44 @@ def test_up_compose_action_prepares_recorder_ingress_bind_sources(
         "mount-runtime-share",
         "mount-vital-files-share",
         "prepare-container-bind-source-directories",
+        "migrate-redis-relay-legacy-credentials",
         "start-ordered",
+    ]
+
+
+def test_up_compose_action_stops_when_redis_relay_migration_fails(
+    monkeypatch: Any,
+) -> None:
+    events: list[str] = []
+
+    def migrate() -> None:
+        events.append("migrate-redis-relay-legacy-credentials")
+        raise GuestControlDependencyError(
+            "redis relay target.password_file is configured but missing",
+            kind="redisRelayPasswordMissing",
+        )
+
+    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
+    monkeypatch.setattr(compose, "load_runtime_env", lambda: object())
+    monkeypatch.setattr(
+        compose,
+        "prepare_container_bind_source_directories",
+        lambda: events.append("prepare-container-bind-source-directories"),
+    )
+    monkeypatch.setattr(compose, "migrate_redis_relay_legacy_credentials", migrate)
+    monkeypatch.setattr(
+        compose,
+        "start_ordered",
+        lambda: events.append("start-ordered"),
+    )
+
+    with pytest.raises(GuestControlDependencyError, match="configured but missing"):
+        compose.run_compose_action(ComposeAction.UP)
+
+    assert events == [
+        "prepare-container-bind-source-directories",
+        "migrate-redis-relay-legacy-credentials",
     ]
 
 

@@ -120,6 +120,10 @@ class RedisConnectionError(RedisProtocolError):
     pass
 
 
+class RedisAuthenticationError(RedisProtocolError):
+    pass
+
+
 class RedisClient:
     def __init__(
         self,
@@ -409,7 +413,12 @@ class RedisClientSession:
         else:
             parts = ("AUTH", self._endpoint.password)
         connection.sendall(_encode_command(parts))
-        _RESPReader(connection, decode_bulk_strings=True).read()
+        try:
+            _RESPReader(connection, decode_bulk_strings=True).read()
+        except RedisConnectionError:
+            raise
+        except RedisProtocolError:
+            raise RedisAuthenticationError("Redis authentication failed") from None
 
 
 class _RESPReader:

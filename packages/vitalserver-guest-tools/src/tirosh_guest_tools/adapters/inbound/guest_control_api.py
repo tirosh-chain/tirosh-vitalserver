@@ -155,6 +155,7 @@ def build_default_usecases() -> GuestControlUseCases:
         runtime_admin=FileRuntimeAdminRepository(SETTINGS.paths.runtime_config_file),
         redis_relay_settings=FileRedisRelaySettingsRepository(
             SETTINGS.paths.redis_relay_config_file,
+            SETTINGS.paths.redis_relay_username_file,
             SETTINGS.paths.redis_relay_password_file,
         ),
         vitaldb_read_model=vitaldb_read_model,

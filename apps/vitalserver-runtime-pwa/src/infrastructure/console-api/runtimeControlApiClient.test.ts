@@ -197,7 +197,7 @@ describe("RuntimeControlApiClient", () => {
         enabled: false,
         target: {
           url: "redis://redis.example:6379/0",
-          username: "",
+          usernameConfigured: false,
           passwordConfigured: false,
           tls: false
         },
@@ -215,6 +215,7 @@ describe("RuntimeControlApiClient", () => {
         username: "relay",
         password: "secret",
         clearPassword: false,
+        clearUsername: false,
         tls: true
       },
       scope: "waveform_trend_only" as const,
@@ -259,6 +260,7 @@ describe("RuntimeControlApiClient", () => {
           username: "",
           password: "",
           clearPassword: false,
+          clearUsername: false,
           tls: false
         },
         scope: "vital_reconstruction",
@@ -953,6 +955,8 @@ function fullSettingsShape() {
         username: "",
         password: "",
         clearPassword: false,
+        clearUsername: false,
+        usernameConfigured: false,
         passwordConfigured: false,
         tls: false
       },
