@@ -22,7 +22,9 @@ Relay는 VitalServer raw Redis port를 외부에 직접 열지 않습니다. 대
 - relay scope를 나누는 기준
 - relay 구현이 지켜야 하는 binary/TTL/consumer 책임 경계
 
-Target Redis에서 event를 어떻게 읽고 consumer group, pending recovery, DLQ를 어떻게 운영하는지는 site dev 문서의 [Redis Relay](../../site-docs/dev/redis-relay.md)를 기준으로 봅니다.
+Target Redis publish 계약은 [Redis Relay Protocol v1](../redis-relay/protocol-v1.md)을 기준으로
+봅니다. 공개 consumer 설명은 site dev 문서의
+[Redis Relay](../../site-docs/dev/redis-relay.md)를 함께 봅니다.
 
 ## 2. 저장 흐름
 
@@ -249,4 +251,6 @@ Regex allowlist와 denylist는 relay code의 policy가 소유합니다. UI가 do
 
 ### 8-3. Contract reference
 
-Target Redis key prefix, event stream, Protocol v1 field, consumer 권장 흐름은 site dev 문서의 [Redis Relay](../../site-docs/dev/redis-relay.md)를 기준으로 봅니다.
+Target Redis key prefix, event stream, Protocol v1 field와 consumer 권장 흐름의 저장소 기준은
+[Redis Relay Protocol v1](../redis-relay/protocol-v1.md)입니다. Site dev 문서는 외부 consumer용
+공개 projection입니다.

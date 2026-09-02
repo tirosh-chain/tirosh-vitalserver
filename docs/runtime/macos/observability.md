@@ -517,37 +517,32 @@ audit_event_index (
 
 ### 9-1. External Redis relay
 
-외부 consumer가 VitalServer host 밖의 다른 PC나 Kubernetes cluster에서 실행되는 배포에서도 raw Redis port를 VM 밖으로 열지 않습니다. 실시간/대용량 numeric, trend, waveform relay는 observer API가 아니라 별도 relay container가 담당합니다. Relay는 VitalServer compose 내부에서 source Redis 3.2를 읽고, Helper Advanced 설정에 명시된 target Redis 8.x endpoint로 publish합니다.
+Redis Relay 자체의 구조, 설정, Protocol과 Native 운영 계약은
+[Redis Relay 문서군](../../redis-relay/index.md)이 소유합니다. 이 절에서는 macOS Runtime의
+관측 owner와 연결되는 부분만 정의합니다.
 
 | 항목 | 계약 |
 |---|---|
-| Source | internal `redis://redis:6379/0` |
-| Target | Helper Advanced Redis relay setting |
-| Owner | `vitalserver-redis-relay` |
-| Control | Helper Advanced setting -> runtime relay TOML + secret file |
-| Payload | allowlisted Redis key의 binary `DUMP` payload |
-| Write direction | source read-only, target write-only |
+| Runtime settings owner | Guest Control Redis Relay settings repository |
+| Runtime status owner | Guest/Postgres owner snapshot |
+| Relay diagnostics artifact | `/run/tirosh/status/redis-relay-status.json` |
+| Status mutation | `PUT /runtime/redis-relay/status` |
+| Product read | `GET /runtime/redis-relay/status` |
 
-Relay는 source Redis에서 `SCAN`, `TYPE`, `PTTL`, `DUMP`를 사용합니다. Target Redis에는 VitalServer Redis Relay Protocol v1로 key restore, fingerprint update, publish dedupe, `key_published` stream event를 한 Lua script 안에서 atomic하게 기록합니다. Credential/session/auth 계열 key는 항상 denylist로 제외합니다. `.vital`과 비슷한 수준의 복원이 필요하면 `vital_reconstruction` preset을 사용해 waveform/trend payload와 bed/recorder/device context key를 함께 publish합니다.
+Guest Control은 Runtime의 TOML과 credential file을 쓰고, Relay는 이를 소비합니다. Settings GET은
+credential 원문 대신 `usernameConfigured`와 `passwordConfigured`만 노출합니다. Apply는 값의
+preserve, replace, 명시적 clear를 구분합니다. 세부 설정과 legacy migration 규칙은
+[설정과 보안](../../redis-relay/configuration.md)을 봅니다.
 
-운영 원칙:
+VM Relay는 status file을 diagnostics artifact로 기록하는 동시에 같은 document를 HTTP owner
+mutation으로 보냅니다. Helper와 Runtime Control은 Guest/Postgres owner snapshot을 제품의 현재
+상태로 읽으며 Host `RuntimeStatus`나 shared file에서 Relay 상태를 재구성하지 않습니다. GET은
+`loaded`, `invalidResponse`, `readFailed`를 구분합니다.
 
-- Raw Redis port를 외부 network에 publish하지 않습니다.
-- Helper Advanced에서 target Redis 설정이 없으면 relay는 disabled 상태입니다.
-- target URL은 macOS Helper process 기준이 아니라 relay container/guest runtime 기준 주소입니다. Mac host에서 publish한 Redis를 shared NAT guest에서 바라볼 때는 보통 `redis://192.168.64.1:<port>/<db>` 형태를 사용합니다.
-- Guest Control이 `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml`과 `/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-username`, `/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-password`를 소유합니다. TOML에는 credential 값이 아니라 고정 secret 경로만 기록합니다.
-- relay container는 config directory를 `/run/tirosh/config`, secrets directory를 `/run/tirosh/secrets`로 read-only mount해서 읽습니다. Canonical 파일명은 `redis-relay-target-username`과 `redis-relay-target-password`입니다.
-- `target.url`은 `redis`/`rediss` scheme과 host/port/database만 허용합니다. URL username/password/user-info는 설정 오류입니다.
-- username/password 원문은 settings/read model/TOML/status/log/exception/repr/fingerprint에 저장하거나 반환하지 않습니다.
-- Runtime Control settings read는 원문 대신 `usernameConfigured`와 `passwordConfigured` boolean만 노출합니다. Apply는 새 username/password 입력을 받을 수 있고, 빈 값은 기존 secret 유지, `clearUsername`/`clearPassword`는 명시적 삭제입니다.
-- Compose `UP`과 settings save/apply는 `start_ordered()` 전에 Guest Control이 레거시 URL username을 canonical URL + `username_file`로 한 번 전환합니다. GET/read는 파일을 변경하지 않습니다. URL password는 migration 대상이 아니며 invalid로 남습니다. password_file이 정확한 contract 경로가 아니거나 owner-side password file이 missing/unreadable/non-UTF-8/empty이면 username/config를 쓰기 전에 실패하고 compose start를 막습니다. disabled/no-auth로 숨기지 않습니다.
-- relay 장애는 VitalServer traffic path 장애로 승격하지 않고 relay degraded/status로 보고합니다.
-- relay는 `/run/tirosh/status/redis-relay-status.json`을 원자적으로 갱신합니다. VM/Linux container는 같은 document를 `PUT /runtime/redis-relay/status` owner mutation으로 Guest Control API에 추가로 보냅니다. Native Host는 owner transport가 없으면 File-only입니다. `GET /runtime/redis-relay/status`는 Guest/SQLite owner snapshot을 읽어 `loaded`, `invalidResponse`, `readFailed`를 구분해 노출합니다. Runtime surface의 `/runtime/redis-relay/status`는 이 read result를 그대로 전달하며 Host `RuntimeStatus`나 shared status file을 VM/container의 current product state로 사용하지 않습니다.
-- relay container는 publisher입니다. Target Redis consumer group pending recovery, DLQ, decode idempotency, downstream 재처리는 target 쪽 consumer가 소유합니다.
-- target Redis 수신 계약과 consumer 권장 흐름은 site dev 문서의 `Redis Relay`를 기준으로 봅니다.
-- `running_with_errors`는 부분 성공 상태입니다. 현재 batch의 실패 원인은 status JSON의 `lastErrorSamples`에서 key/stage/code/errorType/message로 확인합니다.
-- relay publish error code는 machine-readable 계약입니다. `source_dump_failed`는 source key metadata 또는 `DUMP` 실패, `target_publish_failed`는 target Redis의 atomic restore/fingerprint/dedupe/event publish 실패를 의미합니다.
-- relay preset은 코드의 domain policy가 소유하며 UI는 regex를 만들지 않습니다.
+Relay 장애는 VitalServer traffic path 장애로 승격하지 않습니다. `running_with_errors`와
+`lastErrorSamples`를 Relay 상태로 보고하고 Host watchdog recovery input으로 사용하지 않습니다.
+Status field, publisher 실패와 운영 판단은 [Redis Relay 운영 가이드](../../redis-relay/operations.md),
+Target publish와 consumer 책임은 [Protocol v1](../../redis-relay/protocol-v1.md)을 기준으로 봅니다.
 
 ## 10. 정리 단계
 

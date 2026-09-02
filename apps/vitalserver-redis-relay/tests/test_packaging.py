@@ -13,7 +13,7 @@ import pytest
 
 APP_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
-README = APP_DIR / "README.md"
+OPERATIONS = REPO_ROOT / "docs/redis-relay/operations.md"
 PYPROJECT = APP_DIR / "pyproject.toml"
 DOCKERFILE = APP_DIR / "Dockerfile"
 LAUNCHD_PLIST = APP_DIR / "packaging/macos/ai.tirosh.vitalserver.redis-relay.plist"
@@ -24,10 +24,10 @@ DUPLICATE_DRAFT = REPO_ROOT / "packages/vitalserver-redis-relay"
 CONSOLE_NAME = "vitalserver-redis-relay"
 
 
-def supervisor_contract_from_readme() -> dict[str, dict[str, str]]:
+def supervisor_contract_from_operations() -> dict[str, dict[str, str]]:
     rows: dict[str, dict[str, str]] = {}
     in_table = False
-    for line in README.read_text(encoding="utf-8").splitlines():
+    for line in OPERATIONS.read_text(encoding="utf-8").splitlines():
         if line.startswith("| OS | system venv | supervisor executable |"):
             in_table = True
             continue
@@ -54,14 +54,14 @@ def launchd_program_arguments(text: str) -> list[str]:
     ]
 
 
-def readme_path_row(path: str) -> tuple[str, str]:
-    for line in README.read_text(encoding="utf-8").splitlines():
+def operations_path_row(path: str) -> tuple[str, str]:
+    for line in OPERATIONS.read_text(encoding="utf-8").splitlines():
         if not line.startswith("| `") or path not in line:
             continue
         cells = [part.strip().strip("`") for part in line.split("|")[1:6]]
         if cells[0] == path:
             return cells[2], cells[3]
-    raise AssertionError(f"README path table is missing {path}")
+    raise AssertionError(f"operations path table is missing {path}")
 
 
 def systemd_exec_start(text: str) -> str:
@@ -130,36 +130,36 @@ def test_example_native_configs_match_supervisor_paths() -> None:
         assert "@" not in target["url"]
 
 
-def test_supervisor_executables_match_readme_venv_install_and_unit_files() -> None:
-    contract = supervisor_contract_from_readme()
-    readme = README.read_text(encoding="utf-8")
+def test_supervisor_executables_match_operations_and_unit_files() -> None:
+    contract = supervisor_contract_from_operations()
+    operations = OPERATIONS.read_text(encoding="utf-8")
     macos = contract["macOS"]
     linux = contract["Linux"]
     macos_exec = f"{macos['venv']}/bin/{CONSOLE_NAME}"
     linux_exec = f"{linux['venv']}/bin/{CONSOLE_NAME}"
     assert macos["executable"] == macos_exec
     assert linux["executable"] == linux_exec
-    assert f"uv venv {macos['venv']}" in readme
-    assert f"uv venv {linux['venv']}" in readme
-    assert f"--python {macos['venv']}/bin/python" in readme
-    assert f"--python {linux['venv']}/bin/python" in readme
+    assert f"uv venv {macos['venv']}" in operations
+    assert f"uv venv {linux['venv']}" in operations
+    assert f"--python {macos['venv']}/bin/python" in operations
+    assert f"--python {linux['venv']}/bin/python" in operations
     arguments = launchd_program_arguments(LAUNCHD_PLIST.read_text(encoding="utf-8"))
     exec_start = systemd_exec_start(SYSTEMD_UNIT.read_text(encoding="utf-8"))
     assert arguments[0] == macos_exec
     assert exec_start.split()[0] == linux_exec
-    assert macos_exec in readme
-    assert linux_exec in readme
-    assert ".venv-redis-relay" in readme
+    assert macos_exec in operations
+    assert linux_exec in operations
+    assert ".venv-redis-relay" in operations
     assert (
         macos_exec
-        not in readme.split("### Development venv", 1)[1].split(
-            "### System-wide executable contract", 1
+        not in operations.split("### 2-2. Development venv", 1)[1].split(
+            "### 2-3. System executable 계약", 1
         )[0]
     )
 
 
-def test_readme_install_commands_set_config_and_supervisor_file_ownership() -> None:
-    readme = README.read_text(encoding="utf-8")
+def test_operations_install_commands_set_config_and_supervisor_file_ownership() -> None:
+    operations = OPERATIONS.read_text(encoding="utf-8")
     expected = (
         (
             "/usr/local/etc/vitalserver/redis-relay.toml",
@@ -183,11 +183,11 @@ def test_readme_install_commands_set_config_and_supervisor_file_ownership() -> N
         ),
     )
     for path, owner, mode in expected:
-        table_owner, table_mode = readme_path_row(path)
+        table_owner, table_mode = operations_path_row(path)
         assert table_owner == owner
         assert table_mode == mode
-        assert f"sudo chown {owner} {path}" in readme
-        assert f"sudo chmod {mode} {path}" in readme
+        assert f"sudo chown {owner} {path}" in operations
+        assert f"sudo chmod {mode} {path}" in operations
 
 
 def test_launchd_plist_is_foreground_example_without_secrets() -> None:
@@ -198,8 +198,8 @@ def test_launchd_plist_is_foreground_example_without_secrets() -> None:
     assert "<key>KeepAlive</key>" in text
     assert "/usr/local/var/log/vitalserver/redis-relay.out.log" in text
     assert "/usr/local/var/log/vitalserver/redis-relay.err.log" in text
-    readme = README.read_text(encoding="utf-8")
-    assert "/usr/local/var/log/vitalserver" in readme
+    operations = OPERATIONS.read_text(encoding="utf-8")
+    assert "/usr/local/var/log/vitalserver" in operations
     assert "password" not in text.lower()
     assert "username_file" not in text
     assert "EnvironmentVariables" not in text

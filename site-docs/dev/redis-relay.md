@@ -7,6 +7,10 @@ allowlisted Redis data를 외부 target Redis로 publish하는 계약입니다.
 설명합니다. 특정 Tirosh 내부 구현에 묶인 문서가 아니라, Helper가 공개할 수 있는 generic external
 Redis consumer contract입니다.
 
+이 페이지는 외부 consumer용 공개 projection입니다. Relay 구현, 설정, Native 운영과 Protocol의
+저장소 기준 문서는 각각 `docs/redis-relay/` 문서군에서 관리하며, 이 페이지에는 외부 consumer가
+필요한 계약만 싣습니다.
+
 ## 1. 목적
 
 ### 1-1. 해결하는 문제
