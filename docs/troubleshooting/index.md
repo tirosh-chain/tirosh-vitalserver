@@ -195,6 +195,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-192 | DMG runtime smoke가 Host Platform Agent 없이 실행되어 Guest NTP 실패를 통과시킴 | Packaging / Runtime health / Network | implemented; package verification passed | [NTP failure passes runtime boot smoke](192_ntp_failure_passes-runtime-boot-smoke.md) |
 | TS-193 | Redis Relay가 URL username을 거절하거나 Guest Control settings가 invalid로 남음 | Guest containers / Runtime Control | active | [Redis Relay legacy URL username is not migrated or stays in the URL](193_redis-relay-legacy-url-username-migration.md) |
 | TS-231 | Recorder observability 증명이 service-start connection reset으로 죽음 | TestKit / Runtime health | resolved | [Recorder observability proof crashes on service-start connection reset](231_recorder-observability-proof-service-start-race.md) |
+| TS-232 | Runtime Control이 Recorder observability의 명시적 null key를 누락해 PWA 상세가 실패 | Recorder observability / Runtime Control PWA | resolved | [Runtime Control omits Recorder observability null fields](232_runtime-control-omits-recorder-observability-null-fields.md) |
 
 ## Follow-up 규칙
 
