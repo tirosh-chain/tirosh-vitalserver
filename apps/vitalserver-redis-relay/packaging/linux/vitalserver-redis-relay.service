@@ -1,8 +1,6 @@
-# EXAMPLE systemd unit. VitalServer packaging does not install or enable this
-# unit. Copy it to an operator-owned systemd directory after installing the
-# wheel into /opt/vitalserver/redis-relay/venv and creating the dedicated user,
-# config, secret files, and status directory. systemd owns process lifetime
-# and restart.
+# EXAMPLE systemd unit. install.py copies this file to
+# /etc/systemd/system when an operator runs it. Product PKG packaging does
+# not install or enable this unit. systemd owns process lifetime and restart.
 
 [Unit]
 Description=VitalServer Redis Relay

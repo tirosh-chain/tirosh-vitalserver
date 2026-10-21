@@ -41,7 +41,20 @@ uv pip install --python .venv-redis-relay/bin/python --no-deps \
 `.venv-redis-relay`는 개발 확인용입니다. launchd와 systemd에는 사용하지 않습니다. Native
 system venv와 supervisor 설치는 [운영 가이드](../../docs/redis-relay/operations.md)를 따릅니다.
 
-## 3. Validation
+## 3. Native install
+
+wheel을 만든 뒤, root 또는 elevated shell에서 packaging 스크립트를 실행합니다. venv가
+없으면 `uv venv` 다음 `uv pip install --no-deps`를 실행하고, venv가 있으면 `uv pip
+install --no-deps`만 실행합니다. macOS는 launchd, Linux는 systemd, Windows는 Task
+Scheduler로 등록합니다. Windows Service로 등록하지 않습니다. 스크립트는 wheel에
+포함되지 않습니다.
+
+```sh
+python apps/vitalserver-redis-relay/packaging/install.py install \
+  --wheel dist/tirosh_vitalserver_redis_relay-0.2.0-py3-none-any.whl
+```
+
+## 4. Validation
 
 ```sh
 uv run pytest apps/vitalserver-redis-relay/tests
@@ -53,7 +66,7 @@ uv run mypy \
   apps/vitalserver-redis-relay/tests
 ```
 
-## 4. Documentation
+## 5. Documentation
 
 | 문서 | 내용 |
 |---|---|

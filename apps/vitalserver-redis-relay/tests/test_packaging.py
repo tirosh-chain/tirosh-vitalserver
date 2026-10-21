@@ -308,6 +308,7 @@ def test_wheel_contains_runtime_package_without_tests_or_draft(
     joined = "\n".join(names)
     assert "tests/" not in joined
     assert "packaging/" not in joined
+    assert not any(name.endswith("install.py") for name in names)
     assert "tirosh_vitalserver/redis_relay/" not in joined
     assert "packages/vitalserver-redis-relay" not in joined
     with zipfile.ZipFile(built_wheel) as archive:
