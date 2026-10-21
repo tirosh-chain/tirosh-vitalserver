@@ -1,0 +1,28 @@
+# EXAMPLE Windows native Host config.
+# install.py copies this to C:\ProgramData\VitalServer\redis-relay.toml
+# when that file is absent. Credential values stay in secret files.
+
+[redis_relay]
+enabled = true
+scope = "vital_reconstruction"
+include_recorder_network_context = false
+interval_seconds = 1.0
+scan_count = 1000
+
+[source]
+host = "127.0.0.1"
+port = 6379
+database = 0
+
+[target]
+url = "rediss://redis.example:6380/2"
+username_file = "C:/ProgramData/VitalServer/secrets/redis-relay-target-username"
+password_file = "C:/ProgramData/VitalServer/secrets/redis-relay-target-password"
+
+[publish]
+target_key_prefix = "vitalserver:"
+event_stream_key = "vitalserver:relay:events"
+fingerprint_hash_key = "vitalserver:relay:fingerprints"
+publish_dedupe_hash_key = "vitalserver:relay:published"
+event_stream_maxlen = 100000
+publisher_id = "vitalserver-helper-relay"

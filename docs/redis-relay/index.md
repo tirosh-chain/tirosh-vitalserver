@@ -63,9 +63,11 @@ v1을 계속 사용하며, Native Host는 별도의 구현이 아닙니다.
 | Linux Native | systemd | console script, foreground | JSON file |
 | VM Guest | Guest service/Compose | `python -m vitalserver_redis_relay` | file + HTTP owner |
 | Linux Container | Container supervisor | `python -m vitalserver_redis_relay` | file + Unix socket owner |
+| Windows Native | Task Scheduler | console script, foreground | JSON file |
 
-Windows native service는 현재 범위 밖입니다. Windows에서 Guest/Container로 실행하는 기존
-경로와 Native Windows Service 지원은 같은 의미가 아닙니다.
+Windows는 Task Scheduler가 foreground 프로세스를 부팅 시 시작하고 실패 시 다시 시작합니다.
+계정은 LocalService(`S-1-5-19`)입니다. Windows Service(SCM)로 등록하지 않습니다.
+Guest/Container로 실행하는 경로와 이 Native 설치는 다른 계약입니다.
 
 ## 3. 책임과 경계
 
@@ -77,7 +79,7 @@ Windows native service는 현재 범위 밖입니다. Windows에서 Guest/Contai
 | Relay 설정과 credential file 제공 | Native operator 또는 Runtime Control |
 | 허용 key policy | Redis Relay domain policy |
 | Snapshot 읽기와 Protocol v1 publish | Redis Relay |
-| 프로세스 start/stop/restart | launchd, systemd 또는 Guest/Container supervisor |
+| 프로세스 start/stop/restart | launchd, systemd, Windows Task Scheduler 또는 Guest/Container supervisor |
 | Target payload decode와 downstream write | Target consumer |
 | Consumer pending recovery와 DLQ | Target consumer |
 
