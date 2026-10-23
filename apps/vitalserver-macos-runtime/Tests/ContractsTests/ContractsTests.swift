@@ -4,6 +4,100 @@ import XCTest
 import Errors
 
 final class ContractsTests: XCTestCase {
+    func testRecorderObservabilityDetailPreservesRequiredNullableFields() throws {
+        let detail = RuntimeRecorderObservabilityDetail.unavailable(
+            vrcode: "06311eba",
+            readError: "Guest Control unavailable"
+        )
+        let data = try JSONEncoder().encode(detail)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var support = try XCTUnwrap(object["support"] as? [String: Any])
+        let report = try XCTUnwrap(object["report"] as? [String: Any])
+        let profile = try XCTUnwrap(object["profile"] as? [String: Any])
+        let reading = try XCTUnwrap(
+            (object["readings"] as? [String: Any])?["temperatureCelsius"]
+                as? [String: Any]
+        )
+
+        XCTAssertTrue(support["source"] is NSNull)
+        XCTAssertTrue(support["expectedSince"] is NSNull)
+        XCTAssertTrue(report["receivedAt"] is NSNull)
+        XCTAssertTrue(profile["collection"] is NSNull)
+        XCTAssertTrue(reading["value"] is NSNull)
+        XCTAssertTrue(reading["observedAt"] is NSNull)
+        XCTAssertEqual(
+            try JSONDecoder().decode(RuntimeRecorderObservabilityDetail.self, from: data),
+            detail
+        )
+
+        support.removeValue(forKey: "source")
+        object["support"] = support
+        let missingSource = try JSONSerialization.data(withJSONObject: object)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeRecorderObservabilityDetail.self,
+                from: missingSource
+            )
+        )
+    }
+
+    func testRecorderObservabilityHistoryPreservesRequiredNullableFields() throws {
+        let timeline = RuntimeRecorderObservabilityTimeline.unavailable(
+            vrcode: "06311eba",
+            readError: "timeline unavailable"
+        )
+        let timelineData = try JSONEncoder().encode(timeline)
+        var timelineObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: timelineData) as? [String: Any]
+        )
+
+        XCTAssertTrue(timelineObject["supportState"] is NSNull)
+        XCTAssertTrue(timelineObject["query"] is NSNull)
+        XCTAssertEqual(timelineObject["readError"] as? String, "timeline unavailable")
+        XCTAssertEqual(
+            try JSONDecoder().decode(RuntimeRecorderObservabilityTimeline.self, from: timelineData),
+            timeline
+        )
+
+        timelineObject.removeValue(forKey: "readError")
+        let missingTimelineReadError = try JSONSerialization.data(withJSONObject: timelineObject)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeRecorderObservabilityTimeline.self,
+                from: missingTimelineReadError
+            )
+        )
+
+        let incidents = try JSONDecoder().decode(
+            RuntimeRecorderObservabilityIncidents.self,
+            from: Data(
+                #"{"state":"loaded","vrcode":"06311eba","timeBasis":"receivedAt","incidents":[],"nextCursor":null,"readError":null}"#.utf8
+            )
+        )
+        let incidentsData = try JSONEncoder().encode(incidents)
+        var incidentsObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: incidentsData) as? [String: Any]
+        )
+
+        XCTAssertTrue(incidentsObject["nextCursor"] is NSNull)
+        XCTAssertTrue(incidentsObject["readError"] is NSNull)
+        XCTAssertEqual(
+            try JSONDecoder().decode(RuntimeRecorderObservabilityIncidents.self, from: incidentsData),
+            incidents
+        )
+
+        incidentsObject.removeValue(forKey: "nextCursor")
+        let missingNextCursor = try JSONSerialization.data(withJSONObject: incidentsObject)
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeRecorderObservabilityIncidents.self,
+                from: missingNextCursor
+            )
+        )
+    }
+
     func testLabArchiveFinalizationPreservesRequiredNullableFields() throws {
         let finalization = RuntimeLabArchiveFinalization(
             state: .exported,

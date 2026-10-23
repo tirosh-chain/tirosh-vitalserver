@@ -44,85 +44,118 @@ public struct RuntimeRecorderOperationalIssue: Codable, Equatable, Sendable {
 
 public struct RuntimeRecorderOperationalHealth: Codable, Equatable, Sendable {
     public let state: RuntimeRecorderOperationalHealthState
-    public let evaluatedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var evaluatedAt: String?
     public let issueCount: Int
     public let issues: [RuntimeRecorderOperationalIssue]
 }
 
 public struct RuntimeRecorderObservabilityReading: Codable, Equatable, Sendable {
     public let state: RuntimeRecorderObservabilityReadingState
-    public let value: RuntimeJSONValue?
-    public let detail: String?
-    public let observedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var value: RuntimeJSONValue?
+    @RuntimeRequiredNullable
+    public private(set) var detail: String?
+    @RuntimeRequiredNullable
+    public private(set) var observedAt: String?
 }
 
 public struct RuntimeRecorderObservabilitySupport: Codable, Equatable, Sendable {
     public let state: String
-    public let source: String?
-    public let expectedSince: String?
-    public let recorderVersion: String?
-    public let producerVersion: String?
-    public let protocolVersion: String?
+    @RuntimeRequiredNullable
+    public private(set) var source: String?
+    @RuntimeRequiredNullable
+    public private(set) var expectedSince: String?
+    @RuntimeRequiredNullable
+    public private(set) var recorderVersion: String?
+    @RuntimeRequiredNullable
+    public private(set) var producerVersion: String?
+    @RuntimeRequiredNullable
+    public private(set) var protocolVersion: String?
 }
 
 public struct RuntimeRecorderObservabilityReport: Codable, Equatable, Sendable {
     public let state: String
-    public let receivedAt: String?
-    public let deviceObservedAt: String?
-    public let collectionState: String?
+    @RuntimeRequiredNullable
+    public private(set) var receivedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var deviceObservedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var collectionState: String?
     public let readIssueCount: Int
 }
 
 public struct RuntimeRecorderObservabilityCollection: Codable, Equatable, Sendable {
-    public let powerIntervalSeconds: Int?
-    public let telemetryIntervalSeconds: Int?
-    public let observationIntervalSeconds: Int?
+    @RuntimeRequiredNullable
+    public private(set) var powerIntervalSeconds: Int?
+    @RuntimeRequiredNullable
+    public private(set) var telemetryIntervalSeconds: Int?
+    @RuntimeRequiredNullable
+    public private(set) var observationIntervalSeconds: Int?
 }
 
 public struct RuntimeRecorderObservabilityCapability: Codable, Equatable, Sendable {
     public let state: String
-    public let source: String?
-    public let detail: String?
+    @RuntimeRequiredNullable
+    public private(set) var source: String?
+    @RuntimeRequiredNullable
+    public private(set) var detail: String?
 }
 
 public struct RuntimeRecorderObservabilityProfile: Codable, Equatable, Sendable {
     public let state: RuntimeRecorderObservabilityProfileState
-    public let receivedAt: String?
-    public let deviceObservedAt: String?
-    public let deviceId: String?
-    public let bootId: String?
+    @RuntimeRequiredNullable
+    public private(set) var receivedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var deviceObservedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var deviceId: String?
+    @RuntimeRequiredNullable
+    public private(set) var bootId: String?
     public let software: [String: RuntimeRecorderObservabilityReading]
-    public let collection: RuntimeRecorderObservabilityCollection?
+    @RuntimeRequiredNullable
+    public private(set) var collection: RuntimeRecorderObservabilityCollection?
     public let capabilities: [String: RuntimeRecorderObservabilityCapability]
 }
 
 public struct RuntimeRecorderObservabilityBoot: Codable, Equatable, Sendable {
     public let state: String
     public let orderingState: String
-    public let bootId: String?
-    public let startedAt: String?
-    public let cleanShutdownAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var bootId: String?
+    @RuntimeRequiredNullable
+    public private(set) var startedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var cleanShutdownAt: String?
 }
 
 /// Health of the evidence collectors on the Recorder. This is reported by the
 /// Recorder; it is deliberately not inferred from the absence of incidents.
 public struct RuntimeRecorderObservabilityEvidenceHealth: Codable, Equatable, Sendable {
     public let state: String
-    public let checkedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var checkedAt: String?
     public let checkCount: Int
-    public let detail: String?
+    @RuntimeRequiredNullable
+    public private(set) var detail: String?
 }
 
 /// Current, policy-produced incident assessment for the latest observation.
 /// Historical incidents are represented separately by the incident history API.
 public struct RuntimeRecorderObservabilityIncidentState: Codable, Equatable, Sendable {
     public let state: String
-    public let policyVersion: String?
-    public let bootLoopState: String?
-    public let repeatedUndervoltageState: String?
-    public let evidenceState: String?
-    public let consecutiveUnexpectedBoots: Int?
-    public let undervoltageBootsConsidered: Int?
+    @RuntimeRequiredNullable
+    public private(set) var policyVersion: String?
+    @RuntimeRequiredNullable
+    public private(set) var bootLoopState: String?
+    @RuntimeRequiredNullable
+    public private(set) var repeatedUndervoltageState: String?
+    @RuntimeRequiredNullable
+    public private(set) var evidenceState: String?
+    @RuntimeRequiredNullable
+    public private(set) var consecutiveUnexpectedBoots: Int?
+    @RuntimeRequiredNullable
+    public private(set) var undervoltageBootsConsidered: Int?
 }
 
 public struct RuntimeRecorderObservabilityNetworkInterface: Codable, Equatable, Sendable {
@@ -164,7 +197,8 @@ public struct RuntimeRecorderObservabilityDetail: Codable, Equatable, Sendable {
     public let operationalHealth: RuntimeRecorderOperationalHealth
     public let readings: RuntimeRecorderObservabilityReadings
     public let readIssues: [RuntimeRecorderObservabilityReadIssue]
-    public let readError: String?
+    @RuntimeRequiredNullable
+    public private(set) var readError: String?
 
     public static func unavailable(
         vrcode: String,

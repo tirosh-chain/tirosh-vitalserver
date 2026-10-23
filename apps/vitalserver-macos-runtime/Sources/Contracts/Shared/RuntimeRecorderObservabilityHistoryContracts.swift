@@ -79,7 +79,8 @@ public struct RuntimeRecorderObservabilityIncidentQuery: Equatable, Sendable {
 }
 
 public struct RuntimeRecorderObservabilityMetricBucket: Codable, Equatable, Sendable {
-    public let average: Double?
+    @RuntimeRequiredNullable
+    public private(set) var average: Double?
     public let stateCounts: [String: Int]
 }
 
@@ -98,11 +99,14 @@ public struct RuntimeRecorderObservabilityTimeline: Codable, Equatable, Sendable
 
     public let state: RuntimeRecorderObservabilityTimelineState
     public let vrcode: String
-    public let supportState: RuntimeRecorderObservabilityHistorySupportState?
+    @RuntimeRequiredNullable
+    public private(set) var supportState: RuntimeRecorderObservabilityHistorySupportState?
     public let timeBasis: RuntimeRecorderObservabilityHistoryTimeBasis
-    public let query: Query?
+    @RuntimeRequiredNullable
+    public private(set) var query: Query?
     public let buckets: [RuntimeRecorderObservabilityTimelineBucket]
-    public let readError: String?
+    @RuntimeRequiredNullable
+    public private(set) var readError: String?
 
     public static func unavailable(vrcode: String, readError: String) -> Self {
         .init(
@@ -125,18 +129,24 @@ public struct RuntimeRecorderObservabilityIncident: Codable, Equatable, Sendable
     public let code: String
     public let severity: String
     public let state: String
-    public let bootId: String?
-    public let occurredAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var bootId: String?
+    @RuntimeRequiredNullable
+    public private(set) var occurredAt: String?
     public let receivedAt: String
     public let timeState: String
     public let summary: String
     public let evidence: [RuntimeRecorderObservabilityIncidentEvidence]
     public let source: String
-    public let capturedAt: String?
-    public let captureTimeState: String?
+    @RuntimeRequiredNullable
+    public private(set) var capturedAt: String?
+    @RuntimeRequiredNullable
+    public private(set) var captureTimeState: String?
     public let incidentType: RuntimeRecorderObservabilityIncidentType
-    public let incidentBootId: String?
-    public let messageExcerpt: String?
+    @RuntimeRequiredNullable
+    public private(set) var incidentBootId: String?
+    @RuntimeRequiredNullable
+    public private(set) var messageExcerpt: String?
     public let truncated: Bool
 }
 
@@ -145,8 +155,10 @@ public struct RuntimeRecorderObservabilityIncidents: Codable, Equatable, Sendabl
     public let vrcode: String
     public let timeBasis: RuntimeRecorderObservabilityHistoryTimeBasis
     public let incidents: [RuntimeRecorderObservabilityIncident]
-    public let nextCursor: String?
-    public let readError: String?
+    @RuntimeRequiredNullable
+    public private(set) var nextCursor: String?
+    @RuntimeRequiredNullable
+    public private(set) var readError: String?
 
     public static func unavailable(vrcode: String, readError: String) -> Self {
         .init(
